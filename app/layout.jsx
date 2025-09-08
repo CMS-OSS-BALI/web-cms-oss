@@ -1,5 +1,9 @@
 import "./globals.css";
 import LayoutClient from "./layout-client";
+import { Inter } from "next/font/google";
+import PageviewTracker from "@/app/components/analytics/PageviewTracker";
+
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata = {
   title: "Create Next App",
@@ -9,7 +13,9 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body className>
+      <body className={inter.className}>
+        {/* Tracker kunjungan anonim; set true untuk skip halaman admin */}
+        <PageviewTracker ignoreAdmin={true} />
         <LayoutClient>{children}</LayoutClient>
       </body>
     </html>

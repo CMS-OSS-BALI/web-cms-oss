@@ -1,0 +1,77 @@
+/* Footer wrapper – sejajarkan dengan page-wrap & kasih ruang bawah */
+.wrap {
+  /* jaga jarak dari konten */
+  margin-top: 20px;
+
+  /* biar tidak ikut menyusut saat parent flex */
+  flex-shrink: 0; /* <-- penting di layout flex column */
+
+  /* padding: vertical 0, horizontal responsif, bottom + safe-area */
+  padding: 0 clamp(16px, 4vw, 32px) calc(env(safe-area-inset-bottom) + 16px);
+}
+
+/* panel glass gelap yang lebih pekat + radius & shadow konsisten */
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+
+  /* sejajarkan lebar dengan .page-wrap (1320px) */
+  max-width: 1320px; /* <-- baru */
+  margin: 0 auto; /* <-- baru */
+
+  padding: 12px 16px;
+  background: linear-gradient(
+    180deg,
+    rgba(11, 18, 35, 0.96),
+    rgba(11, 18, 35, 0.94)
+  );
+  color: #e7edf6;
+  font-size: 12.5px;
+  border: 1px solid #2f3f60; /* selaras tone judul baru */
+  border-radius: 16px; /* radius seragam */
+  line-height: 1.2;
+  box-shadow: 0 8px 18px rgba(2, 6, 23, 0.25);
+  /* tidak pakai backdrop-filter agar kompatibel */
+}
+
+.left {
+  color: #cbd5e1;
+}
+
+.right {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  list-style: none; /* reset bullet */
+  padding: 0; /* reset ul */
+  margin: 0; /* reset ul */
+}
+
+/* link dengan target sentuh lebih besar + focus ring jelas */
+.link {
+  color: #93c5fd;
+  text-decoration: none;
+  padding: 2px 4px;
+  border-radius: 8px;
+  transition: filter 0.2s ease, transform 0.05s ease;
+}
+.link:hover {
+  text-decoration: underline;
+}
+.link:active {
+  transform: translateY(1px);
+}
+.link:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
+}
+
+@media (max-width: 900px) {
+  .row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+}

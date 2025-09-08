@@ -1,13 +1,8 @@
 import Cookies from "js-cookie";
 
-
-async function crudRequest(
-  endpoint,
-  method,
-  body
-) {
+async function crudRequest(endpoint, method, body) {
   try {
-    const token = Cookies.get("token") ;
+    const token = Cookies.get("token");
     const options = {
       method,
       headers: {
@@ -43,14 +38,10 @@ async function crudRequest(
 
 export const crudService = {
   get: (endpoint) => crudRequest(endpoint, "GET"),
-  post: (endpoint, data) =>
-    crudRequest(endpoint, "POST", data),
-  put: (endpoint, data) =>
-    crudRequest(endpoint, "PUT", data),
-  patch: (endpoint, data) =>
-    crudRequest(endpoint, "PATCH", data),
-  delete: (endpoint)=>
-    crudRequest(endpoint, "DELETE", { id }),
+  post: (endpoint, data) => crudRequest(endpoint, "POST", data),
+  put: (endpoint, data) => crudRequest(endpoint, "PUT", data),
+  patch: (endpoint, data) => crudRequest(endpoint, "PATCH", data),
+  delete: (endpoint) => crudRequest(endpoint, "DELETE"),
   request: (options) =>
     crudRequest(options.endpoint, options.method, options.body),
 };

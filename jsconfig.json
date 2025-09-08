@@ -1,7 +1,10 @@
 {
   "compilerOptions": {
+    "baseUrl": ".",
     "paths": {
       "@/*": ["./*"]
-    }
-  }
+    },
+    "checkJs": false //Set "checkJs": true only if you want VS Code to type-check your JS files using JSDoc.
+  },
+  "exclude": ["node_modules"]
 }
