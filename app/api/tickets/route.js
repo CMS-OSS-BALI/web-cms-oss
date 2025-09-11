@@ -3,11 +3,11 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
-import transporter from "@/lib/mailer";
-import QRCode from "qrcode";
-import { randomUUID, randomBytes } from "crypto";
+import { sendTicketEmail } from "@/lib/mailer";
+import { randomUUID } from "crypto";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 /* ================= Helpers ================= */
 function toInt(v, def = null) {
@@ -111,7 +111,7 @@ export async function GET(req) {
      - PAID  -> status PENDING + total_price = ticket_price (kapasitas dihitung PENDING+CONFIRMED)
      - checkin_status default: NOT_CHECKED_IN
      - generate ticket_code & qr_url (/api/tickets/qr?code=...)
-     - kirim email berisi QR (inline image)
+     - kirim email berisi QR (template QR-only via sendTicketEmail)
 ==================================================== */
 export async function POST(req) {
   try {
@@ -208,7 +208,13 @@ export async function POST(req) {
 
     // Kode tiket & URL QR
     const code = `EVT-${newTicketCode(6)}-${newTicketCode(4)}`;
-    const base = originFromReq(req);
+    const base = (
+      process.env.NEXT_PUBLIC_APP_URL ||
+      process.env.APP_URL ||
+      process.env.NEXTAUTH_URL ||
+      originFromReq(req)
+    ).replace(/\/+$/, "");
+
     const qr_url = `${base}/api/tickets/qr?code=${encodeURIComponent(code)}`;
 
     const created = await prisma.tickets.create({
@@ -238,47 +244,28 @@ export async function POST(req) {
       },
     });
 
-    // Kirim email QR (best-effort)
-    if (transporter) {
-      try {
-        const pngBuffer = await QRCode.toBuffer(code, { width: 512 });
-        await transporter.sendMail({
-          to: email,
-          from: process.env.MAIL_FROM || "OSS CMS <no-reply@localhost>",
-          subject: `Tiket ${event.title}`,
-          html: `
-            <div style="font-family:Arial, sans-serif">
-              <h2 style="margin:0 0 12px">Tiket ${
-                isPaid ? "Pending" : "Berhasil Dipesan"
-              }</h2>
-              <p>Event: <b>${event.title}</b></p>
-              <p>Jadwal: ${new Date(
-                event.start_at
-              ).toLocaleString()} - ${new Date(
-            event.end_at
-          ).toLocaleString()}</p>
-              <p>Kode Tiket: <b>${code}</b></p>
-              ${
-                isPaid
-                  ? `<p>Status: <b>PENDING</b>. Silakan selesaikan pembayaran.</p>`
-                  : `<p>Status: <b>CONFIRMED</b>. Scan QR berikut saat check-in:</p>`
-              }
-              <p><img src="cid:ticketqr" alt="QR Code" style="max-width:280px" /></p>
-            </div>
-          `,
-          attachments: [
-            {
-              filename: "ticket-qr.png",
-              content: pngBuffer,
-              cid: "ticketqr",
-            },
-          ],
-        });
-      } catch (e) {
-        console.error("[MAILER] send ticket error:", e?.message || e);
-      }
-    } else {
-      console.warn("[MAILER] SMTP not configured. Ticket email not sent.");
+    // Kirim email tiket (template QR-only)
+    try {
+      await sendTicketEmail({
+        to: email,
+        full_name,
+        event: {
+          title: event.title,
+          start_at: event.start_at,
+          end_at: event.end_at,
+          location: event.location,
+          organizer: "Panitia Penyelenggara",
+          timezone: "Asia/Makassar",
+        },
+        ticket_code: code,
+        qr_url,
+        logo_url: process.env.LOGO_URL,
+        is_paid: !isPaid,
+        support_email: process.env.SUPPORT_EMAIL,
+        breakGmailThread: process.env.NODE_ENV !== "production",
+      });
+    } catch (e) {
+      console.error("[MAILER] sendTicketEmail error:", e?.message || e);
     }
 
     return NextResponse.json(created, { status: 201 });
@@ -336,9 +323,14 @@ export async function PATCH(req) {
     });
 
     // resend email (opsional)
-    if (b?.action === "resend" && transporter) {
+    if (b?.action === "resend") {
       try {
-        const base = originFromReq(req);
+        const base = (
+          process.env.NEXT_PUBLIC_APP_URL ||
+          process.env.APP_URL ||
+          process.env.NEXTAUTH_URL ||
+          originFromReq(req)
+        ).replace(/\/+$/, "");
         const event = await prisma.events.findUnique({
           where: { id: updated.event_id },
           select: {
@@ -346,33 +338,31 @@ export async function PATCH(req) {
             title: true,
             start_at: true,
             end_at: true,
+            location: true,
           },
         });
-        const pngBuffer = await QRCode.toBuffer(updated.ticket_code, {
-          width: 512,
-        });
-        await transporter.sendMail({
+
+        const qr_url = `${base}/api/tickets/qr?code=${encodeURIComponent(
+          updated.ticket_code
+        )}`;
+
+        await sendTicketEmail({
           to: updated.email,
-          from: process.env.MAIL_FROM || "OSS CMS <no-reply@localhost>",
-          subject: `Tiket ${event?.title || "Event"}`,
-          html: `
-            <div style="font-family:Arial, sans-serif">
-              <h2 style="margin:0 0 12px">Salinan Tiket</h2>
-              <p>Event: <b>${event?.title || "-"}</b></p>
-              <p>Jadwal: ${
-                event?.start_at
-                  ? new Date(event.start_at).toLocaleString()
-                  : "-"
-              } - ${
-            event?.end_at ? new Date(event.end_at).toLocaleString() : "-"
-          }</p>
-              <p>Kode Tiket: <b>${updated.ticket_code}</b></p>
-              <p><img src="cid:ticketqr" alt="QR Code" style="max-width:280px" /></p>
-            </div>
-          `,
-          attachments: [
-            { filename: "ticket-qr.png", content: pngBuffer, cid: "ticketqr" },
-          ],
+          full_name: updated.full_name,
+          event: {
+            title: event?.title || "Event",
+            start_at: event?.start_at,
+            end_at: event?.end_at,
+            location: event?.location,
+            organizer: "Panitia Penyelenggara",
+            timezone: "Asia/Makassar",
+          },
+          ticket_code: updated.ticket_code,
+          qr_url,
+          logo_url: process.env.LOGO_URL,
+          is_paid: updated.status === "CONFIRMED" || Boolean(updated.paid_at),
+          support_email: process.env.SUPPORT_EMAIL,
+          breakGmailThread: process.env.NODE_ENV !== "production",
         });
       } catch (e) {
         console.error("resend email failed:", e);

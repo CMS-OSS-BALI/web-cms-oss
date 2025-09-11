@@ -1,0 +1,103 @@
+/* ================================
+   Header / Topbar — Glass (non-sticky)
+================================ */
+:root {
+  --topbar-h: 56px;
+
+  /* Fallback (solid) */
+  --topbar-bg: #ffffff;
+  --topbar-border: rgba(2, 6, 23, 0.08);
+
+  /* Glass look (light) */
+  --topbar-glass-bg: linear-gradient(
+    to bottom right,
+    rgba(255, 255, 255, 0.65),
+    rgba(255, 255, 255, 0.35)
+  );
+  --topbar-glass-border: rgba(255, 255, 255, 0.35);
+  --topbar-glass-shadow: 0 10px 30px rgba(2, 6, 23, 0.1);
+
+  /* Text & icon */
+  --topbar-title-color: #0f172a;
+  --topbar-icon-color: #0f172a;
+  --topbar-icon-hover: rgba(2, 6, 23, 0.06);
+}
+
+/* Optional dark mode */
+.dark {
+  --topbar-bg: #0f172a;
+  --topbar-border: rgba(255, 255, 255, 0.06);
+
+  --topbar-glass-bg: linear-gradient(
+    to bottom right,
+    rgba(15, 23, 42, 0.55),
+    rgba(15, 23, 42, 0.35)
+  );
+  --topbar-glass-border: rgba(255, 255, 255, 0.08);
+  --topbar-glass-shadow: 0 10px 30px rgba(2, 6, 23, 0.45);
+
+  --topbar-title-color: #e2e8f0;
+  --topbar-icon-color: #e2e8f0;
+  --topbar-icon-hover: rgba(255, 255, 255, 0.1);
+}
+
+/* ====== Header container (NON-STICKY) ====== */
+.admin-topbar {
+  /* non-sticky: biar tidak mengikuti scroll */
+  position: static; /* <— kunci utamanya */
+  top: auto;
+  z-index: 1;
+
+  height: var(--topbar-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+
+  /* fallback solid */
+  background: var(--topbar-bg);
+  border-bottom: 1px solid var(--topbar-border);
+}
+
+/* Glass upgrade (tetap jalan walau non-sticky) */
+@supports (backdrop-filter: blur(1rem)) or (-webkit-backdrop-filter: blur(1rem)) {
+  .admin-topbar {
+    background: var(--topbar-glass-bg);
+    border-bottom: 1px solid var(--topbar-glass-border);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    box-shadow: var(--topbar-glass-shadow);
+  }
+}
+
+/* ====== Layout kiri/kanan ====== */
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ====== Controls ====== */
+.hamburger-btn {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 9999px !important;
+  color: var(--topbar-icon-color) !important;
+}
+.hamburger-btn:hover {
+  background: var(--topbar-icon-hover) !important;
+}
+
+/* ====== Title ====== */
+.topbar-title {
+  margin: 0;
+  font-weight: 600;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--topbar-title-color);
+}

@@ -11,7 +11,16 @@
   --card: #ffffff;
   --muted: #64748b;
   --border: #e5e7eb;
+
+  /* responsive spacing */
+  --space-x: clamp(12px, 2.2vw, 24px);
+  --space-y: clamp(16px, 3vw, 32px);
+
+  /* admin shell */
+  --sidebar-col: 256px; /* default desktop */
+  --shell-gap: clamp(8px, 2.2vw, 24px);
 }
+
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #0b1220;
@@ -30,6 +39,7 @@ body {
   height: 100%;
   overflow: hidden; /* window tidak scroll; kolom konten yang scroll */
 }
+
 body {
   background: var(--bg);
   color: var(--fg);
@@ -37,88 +47,23 @@ body {
     "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
+
 .text-muted {
   color: var(--muted);
 }
 
-/* ================================
-   Sidebar (AntD Menu dark)
-================================ */
-.sidebar {
-  position: sticky;
-  top: 0;
-  height: 100dvh;
-  overflow: auto;
-}
-.sidebar-profile {
-  background: rgba(255, 255, 255, 0.06) !important;
-  border-color: rgba(148, 163, 184, 0.14) !important;
-  border-radius: 22px !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-}
-.sidebar-profile .ant-card-body {
-  padding: 16px;
-}
-
-.sidebar .ant-menu-dark {
-  background: transparent;
-}
-.sidebar .ant-menu-dark .ant-menu-item {
-  border-radius: 9999px;
-  margin-inline: 0;
-  margin-block: 4px;
-}
-.sidebar .ant-menu-dark .ant-menu-item a {
-  color: #cbd5e1;
-}
-.sidebar .ant-menu-dark .ant-menu-item:hover,
-.sidebar .ant-menu-dark .ant-menu-item-active {
-  background: rgba(255, 255, 255, 0.1);
-}
-.sidebar .ant-menu-dark .ant-menu-item-selected {
-  background: #fff;
-  box-shadow: 0 6px 18px rgba(2, 6, 23, 0.18);
-}
-.sidebar .ant-menu-dark .ant-menu-item-selected a {
-  color: #0f172a;
-}
-.sidebar .menu-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.1);
-  margin-right: 8px;
-}
-.sidebar .ant-menu-dark .ant-menu-item-selected .menu-icon {
-  background: rgba(15, 23, 42, 0.06);
-}
-.sidebar .menu-icon-svg {
-  width: 16px;
-  height: 16px;
-  color: #fff;
-}
-.sidebar .ant-menu-dark .ant-menu-item-selected .menu-icon-svg {
-  color: #0f172a;
-}
-
-.sidebar-bottom {
-  margin-top: auto;
-  padding-top: 12px;
-  border-top: 1px dashed rgba(148, 163, 184, 0.22);
-}
-.sidebar-logout {
-  background: rgba(248, 113, 113, 0.12) !important;
-  border: 1px solid rgba(248, 113, 113, 0.35) !important;
-  color: #fecaca !important;
-}
-.sidebar-logout:hover {
-  background: rgba(248, 113, 113, 0.22) !important;
-  border-color: rgba(248, 113, 113, 0.5) !important;
-  color: #fff !important;
+/* Kurangi animasi di device low-end / user preference */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* ================================
@@ -126,10 +71,28 @@ body {
 ================================ */
 .admin-shell {
   display: grid;
-  grid-template-columns: 256px minmax(0, 1fr);
-  column-gap: 24px;
+  grid-template-columns: var(--sidebar-col) minmax(0, 1fr);
+  column-gap: var(--shell-gap);
   height: 100dvh;
 }
+
+/* Responsif: kecilkan kolom sidebar & gap saat layar mengecil */
+@media (max-width: 1280px) {
+  :root {
+    --sidebar-col: 220px;
+  }
+}
+@media (max-width: 1024px) {
+  :root {
+    --sidebar-col: 72px;
+  } /* match collapsed sidebar */
+}
+@media (max-width: 640px) {
+  :root {
+    --shell-gap: 8px;
+  }
+}
+
 .admin-content {
   display: flex;
   flex-direction: column;
@@ -137,6 +100,7 @@ body {
   min-height: 0;
   overflow: auto; /* scroll di sini */
   -webkit-overflow-scrolling: touch;
+
   /* scrollbar transparan */
   scrollbar-width: thin;
   scrollbar-color: rgba(148, 163, 184, 0.45) transparent;
@@ -163,15 +127,16 @@ body {
   overflow: visible;
 }
 
+/* Container halaman (max width + padding responsif + safe-area) */
 .page-wrap {
-  max-width: 1320px;
-  margin: 0 auto;
-  padding: 32px 32px 40px;
-}
-@media (min-width: 1280px) {
-  .page-wrap {
-    padding: 28px 32px 40px;
-  }
+  max-width: min(1320px, 100% - 2rem);
+  margin-inline: auto;
+  padding: clamp(16px, 3vw, 32px) clamp(12px, 3.2vw, 32px)
+    clamp(24px, 4vw, 40px);
+  padding-left: calc(clamp(12px, 3.2vw, 32px) + env(safe-area-inset-left, 0px));
+  padding-right: calc(
+    clamp(12px, 3.2vw, 32px) + env(safe-area-inset-right, 0px)
+  );
 }
 
 /* ================================
@@ -191,13 +156,26 @@ body {
     url("/images/test.bg.png");
 }
 
+/* Mobile: hindari fixed-like effect (hemat GPU) */
+@media (max-width: 640px) {
+  .bg-app {
+    background-attachment: scroll;
+    background-image: linear-gradient(
+        to bottom right,
+        #ffffff,
+        rgba(2, 6, 23, 0.64)
+      ),
+      url("/images/test.bg.png");
+  }
+}
+
 /* ================================
    Card gelap (AntD Card)
 ================================ */
 .card-dark {
   border: 1px solid #2f3f60;
-  padding: 16px;
-  border-radius: 20px;
+  padding: clamp(12px, 2.2vw, 16px);
+  border-radius: clamp(14px, 1.6vw, 20px);
   color: #e5e7eb;
   background: linear-gradient(
     180deg,
@@ -225,7 +203,7 @@ body {
   border-color: #2f3f60 !important;
   color: #e5e7eb;
   box-shadow: 0 12px 30px rgba(2, 6, 23, 0.35);
-  padding: 0; /* body padding diatur via bodyStyle */
+  padding: 0;
 }
 .card-dark .ant-card-body {
   background: transparent !important;
@@ -233,7 +211,6 @@ body {
 
 /* ================================
    Visitors toolbar (range 7d/30d/90d)
-   -> letakkan di kanan-atas card grafik
 ================================ */
 .vis-card {
   position: relative;
@@ -259,7 +236,8 @@ body {
   border-radius: 9999px;
   box-shadow: 0 8px 18px rgba(59, 130, 246, 0.28);
 }
-/* Fallback untuk tombol custom (kalau bukan AntD Segmented) */
+
+/* Fallback tombol custom */
 .vis-card .range-buttons {
   position: absolute;
   top: 12px;
@@ -298,7 +276,7 @@ body {
   min-height: 100dvh;
   display: grid;
   place-items: center;
-  padding: 24px;
+  padding: clamp(16px, 3vw, 24px);
   background: radial-gradient(
       1200px 600px at 20% -10%,
       rgba(59, 130, 246, 0.18),
@@ -312,7 +290,7 @@ body {
     #0b1220;
 }
 .auth-card {
-  width: 420px;
+  width: clamp(320px, 92vw, 420px);
   border-radius: 20px !important;
   border: 1px solid #2a3957 !important;
   background: rgba(12, 18, 35, 0.6) !important;
@@ -416,14 +394,14 @@ body {
   border-radius: 9999px;
 }
 
-/* ==== Segmented (dark glass / pill) ==== */
+/* Segmented (dark glass / pill) */
 .seg-dark.ant-segmented {
   background: rgba(6, 12, 24, 0.55);
   border: 1px solid #2f3f60;
   border-radius: 9999px;
   padding: 3px;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 .seg-dark.ant-segmented:hover {
   border-color: #3c507a;
@@ -431,8 +409,6 @@ body {
 .seg-dark.ant-segmented:focus-within {
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.28);
 }
-
-/* teks & padding item */
 .seg-dark .ant-segmented-item {
   color: #cbd5e1;
 }
@@ -444,8 +420,6 @@ body {
 .seg-dark .ant-segmented-item:hover .ant-segmented-item-label {
   color: #ffffff;
 }
-
-/* pilihan aktif */
 .seg-dark .ant-segmented-thumb {
   background: linear-gradient(180deg, #60a5fa, #3b82f6);
   border-radius: 9999px;
@@ -456,13 +430,9 @@ body {
   color: #2f3f60;
   font-weight: 700;
 }
-
-/* versi lebih ringkas untuk “Days” */
 .seg-compact .ant-segmented-item-label {
   padding: 6px 10px;
 }
-
-/* bar alat di kanan atas chart */
 .chart-toolbar {
   display: flex;
   gap: 8px;
@@ -471,8 +441,6 @@ body {
 }
 
 /* ===== Partners: util kecil biar rapi ===== */
-
-/* Input/Select/Texarea versi gelap seragam */
 .input-dark {
   width: 100%;
   height: 40px;
@@ -483,9 +451,6 @@ body {
   padding: 8px 12px;
   outline: 0;
 }
-.select-dark {
-  composes: input-dark;
-} /* jika PostCSS disabled, copy kelas input-dark saja */
 .select-dark {
   width: 100%;
   height: 40px;
@@ -507,7 +472,6 @@ body {
   resize: none;
 }
 
-/* Tombol varian konsisten dengan .btn & .btn-primary yang sudah ada */
 .btn-ghost-dark {
   background: #0b1223;
   color: #e5e7eb;
@@ -535,7 +499,6 @@ body {
   filter: brightness(0.98);
 }
 
-/* Chip/Tag transparan */
 .tag-ghost {
   display: inline-flex;
   align-items: center;
@@ -555,7 +518,7 @@ body {
   gap: 12px;
 }
 
-/* Modal overlay & card (dipakai tiga modal) */
+/* Modal overlay & card */
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -581,7 +544,7 @@ body {
   overflow: hidden;
 }
 
-/* Clamp 2 baris untuk deskripsi kartu */
+/* Clamp 2 baris */
 .line-clamp-2 {
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -609,9 +572,8 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 16px; /* bodyStyle merata, pastikan card-dark tidak double padding */
+  padding: 16px;
 }
-
 .hdr__text {
   min-width: 0;
 }
@@ -627,7 +589,6 @@ body {
   color: #9fb1d1;
   font-size: 13px;
 }
-
 .hdr__action {
   flex: 0 0 auto;
 }
@@ -636,10 +597,9 @@ body {
   padding: 0 16px;
   border-radius: 12px;
   font-size: 14px;
-  line-height: 42px; /* vertical centering untuk icon/teks satu baris */
+  line-height: 42px;
 }
 
-/* Responsif: tombol turun ke bawah & full width saat layar sempit */
 @media (max-width: 640px) {
   .hdr {
     flex-direction: column;
@@ -652,6 +612,10 @@ body {
 }
 
 /* ===== Partners Filters: compact bar ===== */
+:root {
+  --fld-h: 36px;
+}
+
 .filters-row {
   display: flex;
   align-items: flex-end;
@@ -714,7 +678,7 @@ body {
   border-color: #5b75a8;
 }
 
-/* Scrollbar tipis (horizontal) untuk bar filter */
+/* Scrollbar tipis (horizontal) */
 .filters-row::-webkit-scrollbar {
   height: 6px;
 }
@@ -726,82 +690,22 @@ body {
   border-radius: 9999px;
 }
 
-/* ===== Partners: Filter bar (compact, single row) ===== */
-:root {
-  --fld-h: 36px;
-}
-
+/* Filters grid layout */
 .filters-bar {
   display: grid;
-  /* Search | Country | Type | Per page | Actions */
-  grid-template-columns: 1fr 200px 140px 110px auto;
+  grid-template-columns: 1fr 200px 140px 110px auto; /* Search | Country | Type | Per page | Actions */
   gap: 8px;
   align-items: center;
 }
-
-/* Field wrapper: boleh shrink dengan baik */
 .fld {
   min-width: 0;
 }
-
-/* Tombol kanan */
 .actions {
   display: flex;
   gap: 8px;
   justify-self: end;
 }
 
-/* Aksesibilitas */
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-/* Kontrol dark + compact (seragam ukuran) */
-.input-dark,
-.select-dark {
-  box-sizing: border-box;
-  background: #0e182c;
-  border: 1px solid #2f3f60;
-  color: #e6eaf2;
-  border-radius: 10px;
-  width: 100%;
-}
-.input-compact {
-  height: var(--fld-h);
-  padding: 0 10px;
-  font-size: 13px;
-  line-height: var(--fld-h);
-}
-
-.select-dark.input-compact {
-  padding-right: 34px; /* jangan kurang dari background-position + background-size/2 */
-}
-
-/* Buttons */
-.btn-compact {
-  height: var(--fld-h);
-  padding: 0 12px;
-  font-size: 13px;
-  border-radius: 10px;
-}
-.btn-ghost-dark {
-  background: transparent;
-  color: #e6eaf2;
-  border: 1px solid #2f3f60;
-}
-.btn-ghost-dark:hover {
-  border-color: #5b75a8;
-}
-
-/* ===== Responsive ===== */
 @media (max-width: 980px) {
   .filters-bar {
     grid-template-columns: 1fr 160px 120px 90px auto;
@@ -842,10 +746,10 @@ body {
   box-shadow: 0 8px 18px rgba(2, 6, 23, 0.25);
 }
 
-/* Thumbnail: tinggi dibatasi, crop rapi */
+/* Thumbnail */
 .partner-thumb {
   position: relative;
-  height: clamp(120px, 16vw, 180px); /* << kecil & konsisten */
+  height: clamp(120px, 16vw, 180px);
   background: #111a2c;
   border-bottom: 1px solid #2f3f60;
   overflow: hidden;
@@ -884,7 +788,7 @@ body {
   font-size: 13px;
   color: #d1d9e6;
   max-height: 40px;
-  overflow: hidden; /* 2 baris-ish */
+  overflow: hidden;
 }
 .partner-actions {
   margin-top: auto;
@@ -897,12 +801,12 @@ body {
   margin-left: auto;
 }
 
-/* ==== Chips / Pills for actions & links ==== */
+/* Chips / Pills */
 .btn-chip {
   display: inline-flex;
-  align-items: center; /* vertikal tengah */
-  justify-content: center; /* horizontal tengah */
-  text-align: center; /* jaga multi-line tetap center */
+  align-items: center;
+  justify-content: center;
+  text-align: center;
   gap: 8px;
   height: 32px;
   padding: 0 12px;
@@ -912,9 +816,8 @@ body {
   border: 1px solid transparent;
   background: transparent;
   color: #e6eaf2;
-  transition: filter 0.15s ease, transform 0.05s ease, border-color 0.2s ease;
+  transition: filter 0.15s, transform 0.05s, border-color 0.2s;
 }
-
 .btn-chip:active {
   transform: translateY(1px);
 }
@@ -923,7 +826,6 @@ body {
   cursor: not-allowed;
 }
 
-/* variants */
 .btn-chip--ghost {
   border-color: #2f3f60;
 }
@@ -950,7 +852,7 @@ body {
   border-color: rgba(244, 63, 94, 0.8);
 }
 
-/* link pills (website / MOU) */
+/* Link pills */
 .link-pill {
   display: inline-flex;
   align-items: center;
@@ -963,7 +865,7 @@ body {
   color: #cfe3ff;
   text-decoration: none;
   background: rgba(255, 255, 255, 0.04);
-  transition: border-color 0.2s ease, color 0.2s ease;
+  transition: border-color 0.2s, color 0.2s;
 }
 .link-pill:hover {
   border-color: #5b75a8;
@@ -978,30 +880,25 @@ body {
 
 /* ===== Pagination (dark glass, compact) ===== */
 .pager-card {
-  /* beri jarak dari grid card di atas, rapatkan ke footer */
   margin-top: clamp(20px, 3.2vw, 32px);
   margin-bottom: 8px;
 }
-
 .pager {
   display: flex;
   align-items: center;
   gap: 14px;
   padding: 12px 16px;
 }
-
 .pager-info {
   color: #cbd5e1;
   font-size: 12px;
 }
-
 .pager-controls {
   margin-left: auto;
   display: flex;
   align-items: center;
   gap: 6px;
 }
-
 .pager-btn {
   min-width: 36px;
   height: 36px;
@@ -1023,43 +920,35 @@ body {
   opacity: 0.5;
   cursor: not-allowed;
 }
-
 .pager-btn.is-active {
   background: linear-gradient(180deg, #60a5fa, #3b82f6);
   color: #fff;
   border-color: rgba(96, 165, 250, 0.45);
   box-shadow: 0 8px 18px rgba(59, 130, 246, 0.25);
 }
-
 .pager-dots {
   padding: 0 4px;
   color: #9fb1d1;
 }
 
-/* —— pad bottom page-wrap lebih kecil ketika ada pager —— */
-/* (pilih salah satu pendekatan di bawah) */
-
-/* A. Paling aman: tambah class di container halaman */
+/* page-wrap lebih rapat saat ada pager */
 .page-wrap--tight {
   padding-bottom: 16px;
 }
-
-/* B. Atau otomatis (butuh :has yang sudah didukung browser modern) */
 .page-wrap:has(.pager-card) {
   padding-bottom: 16px;
 }
 
-/* ===== Modal card (dark glass) ===== */
+/* ===== Modal (dark glass) ===== */
 .modal-card {
   width: 100%;
-  max-width: 900px;
-  border-radius: 16px;
+  max-width: clamp(320px, 92vw, 900px);
+  border-radius: clamp(14px, 2vw, 16px);
   background: #0b1223;
   border: 1px solid #2f3f60;
   box-shadow: 0 24px 70px rgba(2, 6, 23, 0.55);
   color: #e6eaf2;
 }
-
 .modal-head {
   position: sticky;
   top: 0;
@@ -1085,14 +974,11 @@ body {
 .modal-close:hover {
   border-color: #5b75a8;
 }
-
 .modal-body {
   max-height: 72vh;
   overflow: auto;
   padding: 16px;
 }
-
-/* sticky footer */
 .modal-foot {
   position: sticky;
   bottom: 0;
@@ -1109,23 +995,22 @@ body {
 .form-grid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 12px; /* row gap */
+  gap: 12px;
 }
 @media (min-width: 768px) {
   .form-grid {
     grid-template-columns: 1fr 1fr;
-    column-gap: 16px; /* col gap lebih lega di layar md+ */
+    column-gap: 16px;
     row-gap: 12px;
   }
 }
 .fld {
   min-width: 0;
-} /* biar input tidak overflow */
+}
 .fld-2 {
   grid-column: 1 / -1;
 }
 
-/* Field + labels */
 .lbl {
   display: block;
   margin-bottom: 6px;
@@ -1142,7 +1027,7 @@ body {
   resize: vertical;
 }
 
-/* Input group (addon) */
+/* Input group */
 .input-group {
   display: flex;
   align-items: center;
@@ -1164,7 +1049,7 @@ body {
   border-bottom-left-radius: 0 !important;
 }
 
-/* Fieldset (contact) */
+/* Fieldset */
 .fieldset {
   border: 1px dashed #2f3f60;
   border-radius: 12px;
@@ -1176,7 +1061,7 @@ body {
   color: #9fb1d1;
 }
 
-/* Input/Select/Textarea – padding seragam, fokus enak */
+/* Dark inputs unified */
 .input-dark,
 .select-dark,
 .textarea-dark {
@@ -1208,93 +1093,9 @@ body {
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
 }
 
-/* Label jarak kecil */
-.lbl {
-  margin-bottom: 6px;
-  font-size: 12px;
-  color: #cbd5e1;
-}
-
-/* ===== Modal footer buttons: tebal, konsisten, dengan loading spinner ===== */
-.modal-foot .btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-width: 96px; /* biar lebar Cancel & Save seimbang */
-  height: 40px;
-  padding: 0 16px;
-  border-radius: 12px;
-  font-weight: 700;
-  font-size: 13px;
-  border: 1px solid transparent;
-  transition: background 0.15s ease, border-color 0.15s ease,
-    box-shadow 0.15s ease, transform 0.05s ease;
-}
-.modal-foot .btn:active {
-  transform: translateY(1px);
-}
-
-/* Ghost (Cancel) – dark glass */
-.modal-foot .btn-ghost-dark {
-  background: rgba(255, 255, 255, 0.04);
-  color: #e6eaf2;
-  border-color: #2f3f60;
-}
-.modal-foot .btn-ghost-dark:hover {
-  border-color: #5b75a8;
-}
-.modal-foot .btn-ghost-dark:focus {
-  box-shadow: 0 0 0 2px rgba(148, 163, 184, 0.25);
-}
-
-/* Primary (Save/Update) – gradient + glow */
-.modal-foot .btn-primary {
-  color: #fff;
-  background: linear-gradient(180deg, #60a5fa, #3b82f6);
-  border-color: rgba(96, 165, 250, 0.35);
-  box-shadow: 0 10px 24px rgba(59, 130, 246, 0.25);
-}
-.modal-foot .btn-primary:hover {
-  filter: brightness(0.98);
-}
-.modal-foot .btn-primary:focus {
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35);
-}
-
-/* Disabled state yang jelas */
-.modal-foot .btn[disabled] {
-  opacity: 0.65;
-  cursor: not-allowed;
-  box-shadow: none;
-}
-
-/* Loading spinner kecil di kiri teks */
-.modal-foot .btn.is-loading {
-  pointer-events: none;
-  position: relative;
-}
-.modal-foot .btn.is-loading::before {
-  content: "";
-  width: 14px;
-  height: 14px;
-  border-radius: 9999px;
-  border: 2px solid rgba(255, 255, 255, 0.6);
-  border-top-color: #fff;
-  display: inline-block;
-  animation: spin 0.7s linear infinite;
-  margin-right: 4px;
-}
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 .textarea-dark {
   line-height: 1.45;
 }
-
 .textarea-dark.ta-rows-3 {
   min-height: 96px;
 }
@@ -1304,7 +1105,6 @@ body {
 .textarea-dark.ta-rows-5 {
   min-height: 144px;
 }
-
 @media (max-width: 560px) {
   .textarea-dark.ta-rows-4 {
     min-height: 140px;
@@ -1312,8 +1112,6 @@ body {
 }
 
 /* ==== AntD dark polish for Partners page ==== */
-
-/* kartu partner gelap + body & actions transparan */
 .partner-card-dark.ant-card {
   border: 1px solid #2f3f60;
   background: #0b1223;
@@ -1332,14 +1130,11 @@ body {
 .partner-card-dark .ant-card-actions > li {
   padding: 8px 10px;
 }
-
-/* judul kartu */
 .text-card-title {
   color: #e6eaf2 !important;
   font-weight: 700;
 }
 
-/* tag gaya "pill" tipis */
 .tag-chip {
   border-color: #2f3f60 !important;
   background: rgba(255, 255, 255, 0.04) !important;
@@ -1348,8 +1143,6 @@ body {
   padding: 2px 8px !important;
   font-size: 11px !important;
 }
-
-/* link ghost */
 .link-ghost {
   display: inline-flex;
   align-items: center;
@@ -1366,21 +1159,16 @@ body {
   border-color: #5b75a8;
 }
 
-/* rapikan Row gutter visual */
 .ant-row {
   --gap: 16px;
 }
-
-/* tombol kecil di actions biar compact */
 .partner-card-dark .ant-btn {
   font-size: 12px;
   height: 30px;
   padding: 0 10px;
 }
 
-/* bedakan nuansa visual header vs filter */
 .hdr-card {
-  /* lebih gelap & solid */
   background: linear-gradient(
     180deg,
     rgba(11, 18, 35, 0.96),
@@ -1388,13 +1176,10 @@ body {
   ) !important;
 }
 .filter-card {
-  /* sedikit lebih terang + kaca */
   background: rgba(14, 20, 36, 0.88) !important;
   backdrop-filter: blur(6px) saturate(140%);
   -webkit-backdrop-filter: blur(6px) saturate(140%);
 }
-
-/* kontrol di filter dibuat compact & rata tinggi */
 .filter-card .ant-input,
 .filter-card .ant-select-selector,
 .filter-card .ant-input-affix-wrapper {
@@ -1402,5 +1187,5 @@ body {
   border-radius: 10px;
 }
 .filter-card .ant-select-selector .ant-select-selection-search-input {
-  height: 34px; /* biar teks center */
+  height: 34px; /* center text */
 }
