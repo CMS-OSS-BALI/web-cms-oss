@@ -1,9 +1,16 @@
 "use client";
 
+import { Suspense, lazy } from "react";
+import Loading from "@/app/components/loading/LoadingImage";
 import usePartnersViewModel from "./usePartnersViewModel";
-import PartnersContent from "./PartnersContent";
+
+const PartnersContentLazy = lazy(() => import("./PartnersContent"));
 
 export default function PartnersPage() {
   const vm = usePartnersViewModel();
-  return <PartnersContent {...vm} />;
+  return (
+    <Suspense fallback={<div className="page-wrap"><Loading /></div>}>
+      <PartnersContentLazy {...vm} />
+    </Suspense>
+  );
 }

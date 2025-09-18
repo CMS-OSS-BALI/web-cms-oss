@@ -19,12 +19,12 @@ import {
 
 const { Title, Text } = Typography;
 
-const CARD_BG = "rgba(11, 18, 35, 0.94)";
+const CARD_BG = "rgba(11, 18, 35, 0.94)"; // disamakan dengan panel lain
 const darkCardStyle = {
   background: CARD_BG,
   border: "1px solid #2f3f60",
-  borderRadius: 14,
-  boxShadow: "0 10px 24px rgba(2,6,23,.35)",
+  borderRadius: 16,
+  boxShadow: "0 10px 24px rgba(2, 6, 23, .35)",
 };
 
 export default function ProfileContent(props) {
@@ -79,14 +79,14 @@ export default function ProfileContent(props) {
           colorBorder: "#2f3f60",
           colorText: "#e6eaf2",
           colorBgContainer: CARD_BG,
-          borderRadius: 10,
-          controlHeight: 34, // input/button lebih pendek (default 40/36)
+          borderRadius: 12,
+          controlHeight: 36,
         },
         components: {
           Card: {
             headerBg: "transparent",
             colorBorderSecondary: "#2f3f60",
-            borderRadiusLG: 14,
+            borderRadiusLG: 16,
           },
           Button: { borderRadius: 999 },
           Input: { colorBgContainer: "#0e182c" },

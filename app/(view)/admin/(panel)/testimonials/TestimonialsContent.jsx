@@ -22,6 +22,8 @@ import {
   theme as antdTheme,
 } from "antd";
 import { PlusOutlined, EyeOutlined } from "@ant-design/icons";
+import HtmlEditor from "@/../app/components/editor/HtmlEditor";
+import { sanitizeHtml } from "@/app/utils/dompurify";
 
 const { Title, Text, Paragraph } = Typography;
 const PLACEHOLDER =
@@ -138,9 +140,10 @@ function TestimonialFormModal({
                   required={isCreate}
                   rules={req("Testimonial wajib diisi")}
                 >
-                  <Input.TextArea
-                    rows={5}
-                    style={{ ...ctrlStyle, resize: "vertical" }}
+                  <HtmlEditor
+                    className="editor-dark"
+                    variant="mini"
+                    minHeight={200}
                   />
                 </Form.Item>
               </Col>
@@ -222,9 +225,14 @@ function TestimonialViewModal({ open, data, onClose }) {
           <Title level={4} style={{ marginTop: 0 }}>
             {data?.name || "—"}
           </Title>
-          <Paragraph style={{ whiteSpace: "pre-wrap", marginBottom: 0 }}>
-            {data?.message || "—"}
-          </Paragraph>
+          {data?.message ? (
+            <div
+              style={{ marginBottom: 0 }}
+              dangerouslySetInnerHTML={{ __html: sanitizeHtml(data.message ?? "") }}
+            />
+          ) : (
+            <Paragraph style={{ marginBottom: 0 }}>—</Paragraph>
+          )}
         </div>
       </div>
 
@@ -299,13 +307,26 @@ function TestimonialCard({ t, onView, onEdit, onDelete }) {
         >
           {t.name}
         </Text>
-        <Paragraph
-          style={{ margin: 0, lineHeight: 1.45 }}
-          ellipsis={{ rows: 4 }}
-          type="secondary"
-        >
-          {t.message || "—"}
-        </Paragraph>
+        {t.message ? (
+          <div
+            style={{
+              margin: 0,
+              lineHeight: 1.45,
+              color: "#94a3b8",
+              display: "-webkit-box",
+              WebkitLineClamp: 4,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+            }}
+            dangerouslySetInnerHTML={{
+              __html: sanitizeHtml(t.message || ""),
+            }}
+          />
+        ) : (
+          <Paragraph style={{ margin: 0, lineHeight: 1.45 }} type="secondary">
+            -
+          </Paragraph>
+        )}
       </div>
 
       <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
@@ -582,7 +603,9 @@ export default function TestimonialsContent(props) {
           style={{ ...darkCardStyle, marginTop: 12, marginBottom: 0 }}
           styles={{ body: { padding: 12 } }}
         >
-          <div style={{ display: "flex, justifyContent: center" }}>
+          <div
+            style={{ width: "100%", display: "flex", justifyContent: "center" }}
+          >
             <Pagination
               current={page}
               total={total}

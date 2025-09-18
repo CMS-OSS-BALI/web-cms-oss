@@ -1,6 +1,7 @@
 // app/api/programs/[id]/route.js
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { translate } from "@/app/utils/geminiTranslator";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -12,15 +13,57 @@ function badRequest(message) {
 function notFound() {
   return NextResponse.json({ message: "Not found" }, { status: 404 });
 }
+function pickTrans(trans, primary, fallback) {
+  const by = (loc) => trans?.find((t) => t.locale === loc);
+  return by(primary) || by(fallback) || null;
+}
 
 /* ========= GET /api/programs/:id  (DETAIL) ========= */
-export async function GET(_req, { params }) {
+// Query: locale=xx&fallback=id
+export async function GET(req, { params }) {
   try {
     const id = params?.id;
+    const { searchParams } = new URL(req.url);
+    const locale = (searchParams.get("locale") || "id").toLowerCase();
+    const fallback = (searchParams.get("fallback") || "id").toLowerCase();
+
     const item = await prisma.programs.findFirst({
       where: { id, deleted_at: null },
+      select: {
+        id: true,
+        admin_user_id: true,
+        image_url: true,
+        program_category: true,
+        price: true,
+        phone: true,
+        is_published: true,
+        created_at: true,
+        updated_at: true,
+        translations: {
+          where: { locale: { in: [locale, fallback] } },
+          select: { locale: true, name: true, description: true },
+        },
+      },
     });
-    return item ? NextResponse.json({ data: item }) : notFound();
+    if (!item) return notFound();
+
+    const t = pickTrans(item.translations, locale, fallback);
+    const data = {
+      id: item.id,
+      admin_user_id: item.admin_user_id,
+      image_url: item.image_url,
+      program_category: item.program_category,
+      price: item.price,
+      phone: item.phone,
+      is_published: item.is_published,
+      created_at: item.created_at,
+      updated_at: item.updated_at,
+      locale_used: t?.locale || null,
+      name: t?.name || null,
+      description: t?.description || null,
+    };
+
+    return NextResponse.json({ data });
   } catch (err) {
     console.error(`GET /api/programs/${params?.id} error:`, err);
     return NextResponse.json(
@@ -30,7 +73,13 @@ export async function GET(_req, { params }) {
   }
 }
 
-/* ========= PATCH|PUT /api/programs/:id  (UPDATE) ========= */
+/* ========= PUT/PATCH /api/programs/:id  (UPDATE + upsert translations) ========= */
+/**
+ * Body (semua opsional, setidaknya satu):
+ *  image_url?, program_category?, price?, phone?, is_published?,
+ *  name_id?, description_id?, name_en?, description_en?,
+ *  autoTranslate? (default false di update; set true jika ingin regen en dari id yg baru)
+ */
 export async function PUT(req, ctx) {
   return PATCH(req, ctx);
 }
@@ -42,10 +91,8 @@ export async function PATCH(req, { params }) {
 
     const body = await req.json();
 
+    // update kolom utama
     const data = {};
-    if (body.name !== undefined) data.name = String(body.name).trim();
-    if (body.description !== undefined)
-      data.description = body.description ?? null;
     if (body.image_url !== undefined) data.image_url = body.image_url ?? null;
 
     if (body.program_category !== undefined) {
@@ -68,14 +115,91 @@ export async function PATCH(req, { params }) {
     if (body.phone !== undefined) data.phone = body.phone ?? null;
     if (body.is_published !== undefined)
       data.is_published = !!body.is_published;
-    data.updated_at = new Date();
+    if (Object.keys(data).length) data.updated_at = new Date();
 
-    const updated = await prisma.programs.update({
-      where: { id },
-      data,
-    });
+    const updated = Object.keys(data).length
+      ? await prisma.programs.update({ where: { id }, data })
+      : await prisma.programs.findUnique({ where: { id } });
 
-    return NextResponse.json({ data: updated });
+    if (!updated) return notFound();
+
+    // upsert translations bila dikirim
+    const ops = [];
+
+    if (body.name_id !== undefined || body.description_id !== undefined) {
+      ops.push(
+        prisma.programs_translate.upsert({
+          where: { id_programs_locale: { id_programs: id, locale: "id" } },
+          update: {
+            ...(body.name_id !== undefined
+              ? { name: String(body.name_id).slice(0, 191) }
+              : {}),
+            ...(body.description_id !== undefined
+              ? { description: body.description_id ?? null }
+              : {}),
+          },
+          create: {
+            id_programs: id,
+            locale: "id",
+            name: String(body.name_id ?? "(no title)").slice(0, 191),
+            description: body.description_id ?? null,
+          },
+        })
+      );
+    }
+
+    // nama/desc en eksplisit
+    if (body.name_en !== undefined || body.description_en !== undefined) {
+      ops.push(
+        prisma.programs_translate.upsert({
+          where: { id_programs_locale: { id_programs: id, locale: "en" } },
+          update: {
+            ...(body.name_en !== undefined
+              ? { name: String(body.name_en).slice(0, 191) }
+              : {}),
+            ...(body.description_en !== undefined
+              ? { description: body.description_en ?? null }
+              : {}),
+          },
+          create: {
+            id_programs: id,
+            locale: "en",
+            name: String(body.name_en ?? "(no title)").slice(0, 191),
+            description: body.description_en ?? null,
+          },
+        })
+      );
+    }
+
+    // autoTranslate bila diminta & ada perubahan di 'id'
+    if (body.autoTranslate && (body.name_id || body.description_id)) {
+      const name_en = body.name_id
+        ? await translate(String(body.name_id), "id", "en")
+        : undefined;
+      const desc_en = body.description_id
+        ? await translate(String(body.description_id), "id", "en")
+        : undefined;
+
+      ops.push(
+        prisma.programs_translate.upsert({
+          where: { id_programs_locale: { id_programs: id, locale: "en" } },
+          update: {
+            ...(name_en ? { name: name_en.slice(0, 191) } : {}),
+            ...(desc_en !== undefined ? { description: desc_en ?? null } : {}),
+          },
+          create: {
+            id_programs: id,
+            locale: "en",
+            name: (name_en || "(no title)").slice(0, 191),
+            description: desc_en ?? null,
+          },
+        })
+      );
+    }
+
+    if (ops.length) await prisma.$transaction(ops);
+
+    return NextResponse.json({ data: { id } });
   } catch (e) {
     console.error(`PATCH /api/programs/${params?.id} error:`, e);
     if (e.code === "P2025") return notFound();

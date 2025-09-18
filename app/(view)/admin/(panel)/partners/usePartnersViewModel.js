@@ -1,61 +1,58 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { crudService } from "@/app/utils/services/crudService";
+import useSWR from "swr";
+import { fetcher } from "@/lib/swr/fetcher";
+
+const DEFAULT_LOCALE = "id";
+const FALLBACK_LOCALE = "en";
 
 export default function usePartnersViewModel() {
-  const [loading, setLoading] = useState(true);
-  const [partners, setPartners] = useState([]);
+  const [loading, setLoading] = useState(false); // for non-GET ops
 
   const [q, setQ] = useState("");
   const [country, setCountry] = useState("");
   const [type, setType] = useState("");
 
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
-  const [total, setTotal] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
+  const [perPage, setPerPage] = useState(8);
+  const [total, setTotal] = useState(0); // derived
+  const [totalPages, setTotalPages] = useState(1); // derived
 
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
-  const fetchPartners = useCallback(
-    async (opts = {}) => {
-      setLoading(true);
-      setError("");
-      try {
-        const sp = new URLSearchParams();
-        sp.set("page", String(opts.page ?? page));
-        sp.set("perPage", String(opts.perPage ?? perPage));
-
-        const qv = (opts.q ?? q)?.trim();
-        if (qv) sp.set("q", qv);
-
-        const cv = (opts.country ?? country)?.trim();
-        if (cv) sp.set("country", cv);
-
-        const tv = (opts.type ?? type)?.toString().toUpperCase();
-        if (tv) sp.set("type", tv);
-
-        const json = await crudService.get(`/api/partners?${sp.toString()}`);
-
-        setPartners(json?.data || []);
-        setPage(json?.page || 1);
-        setPerPage(json?.perPage || 10);
-        setTotal(json?.total || 0);
-        setTotalPages(json?.totalPages || 1);
-      } catch (e) {
-        setError(e?.message || "Gagal memuat data partners");
-      } finally {
-        setLoading(false);
-      }
-    },
-    [page, perPage, q, country, type]
-  );
-
+  const sp = new URLSearchParams();
+  sp.set("page", String(page));
+  sp.set("perPage", String(perPage));
+  if (q.trim()) sp.set("q", q.trim());
+  if (country.trim()) sp.set("country", country.trim());
+  if (type) sp.set("type", String(type).toUpperCase());
+  sp.set("locale", DEFAULT_LOCALE);
+  sp.set("fallback", FALLBACK_LOCALE);
+  const listKey = `/api/partners?${sp.toString()}`;
+  const {
+    data: listJson,
+    error: listErr,
+    isLoading: listLoading,
+    mutate,
+  } = useSWR(listKey, fetcher);
+  const partners = listJson?.data || [];
   useEffect(() => {
-    fetchPartners();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (listJson?.total !== undefined) {
+      setTotal(listJson.total);
+      setTotalPages(listJson?.totalPages || 1);
+      if (listJson?.page) setPage(listJson.page);
+      if (listJson?.perPage) setPerPage(listJson.perPage);
+    }
+  }, [listJson]);
+
+  const fetchPartners = useCallback(async (opts = {}) => {
+    if ("page" in opts) setPage(Math.max(1, opts.page));
+    if ("perPage" in opts) setPerPage(opts.perPage);
+    if ("q" in opts) setQ(opts.q || "");
+    if ("country" in opts) setCountry(opts.country || "");
+    if ("type" in opts) setType(opts.type || "");
   }, []);
 
   // CREATE
@@ -63,9 +60,19 @@ export default function usePartnersViewModel() {
     setError("");
     setMessage("");
     try {
-      await crudService.post("/api/partners", payload);
+      const res = await fetch("/api/partners", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...payload, locale: DEFAULT_LOCALE }),
+      });
+      if (!res.ok)
+        throw new Error(
+          (await res.json().catch(() => null))?.message ||
+            "Gagal menambah partner"
+        );
       setMessage("Partner berhasil ditambahkan");
       await fetchPartners({ page: 1 });
+      await mutate();
       return { ok: true };
     } catch (e) {
       const msg = e?.message || "Gagal menambah partner";
@@ -79,12 +86,18 @@ export default function usePartnersViewModel() {
     setError("");
     setMessage("");
     try {
-      await crudService.patch(
-        `/api/partners/${encodeURIComponent(id)}`,
-        payload
-      );
+      const res = await fetch(`/api/partners/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...payload, locale: DEFAULT_LOCALE }),
+      });
+      if (!res.ok)
+        throw new Error(
+          (await res.json().catch(() => null))?.message ||
+            "Gagal memperbarui partner"
+        );
       setMessage("Partner berhasil diperbarui");
-      await fetchPartners({ page });
+      await mutate();
       return { ok: true };
     } catch (e) {
       const msg = e?.message || "Gagal memperbarui partner";
@@ -98,10 +111,16 @@ export default function usePartnersViewModel() {
     setError("");
     setMessage("");
     try {
-      await crudService.delete(`/api/partners/${encodeURIComponent(id)}`);
+      const res = await fetch(`/api/partners/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      if (!res.ok)
+        throw new Error(
+          (await res.json().catch(() => null))?.message ||
+            "Gagal menghapus partner"
+        );
       setMessage("Partner dihapus");
-      const nextPage = partners.length === 1 && page > 1 ? page - 1 : page;
-      await fetchPartners({ page: nextPage });
+      await mutate();
       return { ok: true };
     } catch (e) {
       const msg = e?.message || "Gagal menghapus partner";
@@ -111,7 +130,7 @@ export default function usePartnersViewModel() {
   };
 
   return {
-    loading,
+    loading: listLoading || loading,
     partners,
     q,
     setQ,
@@ -125,7 +144,7 @@ export default function usePartnersViewModel() {
     setPerPage,
     total,
     totalPages,
-    error,
+    error: error || listErr?.message || "",
     message,
     fetchPartners,
     createPartner,

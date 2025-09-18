@@ -1,14 +1,16 @@
 "use client";
 
-import ProgramsContent from "./ProgramsContent";
+import { Suspense, lazy } from "react";
+import Loading from "@/app/components/loading/LoadingImage";
 import useProgramsViewModel from "./useProgramsViewModel";
+
+const ProgramsContentLazy = lazy(() => import("./ProgramsContent"));
 
 export default function ProgramsPage() {
   const vm = useProgramsViewModel();
-
   return (
-    <div style={{ padding: 16 }}>
-      <ProgramsContent {...vm} />
-    </div>
+    <Suspense fallback={<div className="page-wrap"><Loading /></div>}>
+      <ProgramsContentLazy {...vm} />
+    </Suspense>
   );
 }

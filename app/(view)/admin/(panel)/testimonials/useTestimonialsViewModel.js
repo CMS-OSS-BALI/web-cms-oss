@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { crudService } from "@/app/utils/services/crudService";
+import { useCallback, useMemo, useState, useEffect } from "react";
+import useSWR from "swr";
+import { fetcher } from "@/lib/swr/fetcher";
 
 /**
  * ViewModel Testimonials
@@ -9,67 +10,59 @@ import { crudService } from "@/app/utils/services/crudService";
  * - Admin-only actions (create/update/delete) mengandalkan cookie session
  */
 export default function useTestimonialsViewModel() {
-  const [loading, setLoading] = useState(true);
-  const [testimonials, setTestimonials] = useState([]);
+  const [loading, setLoading] = useState(false); // non-GET ops
 
   // filter & paging (client-side)
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(12);
-  const [total, setTotal] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0); // derived
+  const [totalPages, setTotalPages] = useState(1); // derived
 
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
-  const fetchTestimonials = useCallback(
-    async (opts = {}) => {
-      setLoading(true);
-      setError("");
+  // SWR all testimonials
+  const { data: rawJson, error: rawErr, isLoading: listLoading, mutate } = useSWR(`/api/testimonials`, fetcher);
+  const rawList = useMemo(() => (rawJson?.data || []).filter((it) => !it.deleted_at), [rawJson]);
 
-      try {
-        const qv = (opts.q ?? q)?.trim().toLowerCase();
-        const pp = Number(opts.perPage ?? perPage) || 12;
-        let pg = Number(opts.page ?? page) || 1;
+  const computePaged = useCallback(() => {
+    const qv = (q || "").trim().toLowerCase();
+    const pp = Number(perPage) || 12;
+    let pg = Number(page) || 1;
 
-        // GET semua testimoni (publik)
-        const json = await crudService.get(`/api/testimonials`);
-        const raw = json?.data || [];
+    let filtered = rawList;
+    if (qv) {
+      filtered = filtered.filter(
+        (it) =>
+          (it.name || "").toLowerCase().includes(qv) ||
+          (it.message || "").toLowerCase().includes(qv)
+      );
+    }
 
-        // filter q (name/message)
-        let filtered = raw.filter((it) => !it.deleted_at);
-        if (qv) {
-          filtered = filtered.filter(
-            (it) =>
-              (it.name || "").toLowerCase().includes(qv) ||
-              (it.message || "").toLowerCase().includes(qv)
-          );
-        }
+    const ttl = filtered.length;
+    const ttlPages = Math.max(1, Math.ceil(ttl / pp));
+    if (pg > ttlPages) pg = ttlPages;
+    const start = (pg - 1) * pp;
+    const list = filtered.slice(start, start + pp);
+    return { list, ttl, ttlPages, pg, pp };
+  }, [rawList, q, page, perPage]);
 
-        const ttl = filtered.length;
-        const ttlPages = Math.max(1, Math.ceil(ttl / pp));
-        if (pg > ttlPages) pg = ttlPages;
-
-        const start = (pg - 1) * pp;
-        const list = filtered.slice(start, start + pp);
-
-        setTestimonials(list);
-        setPage(pg);
-        setPerPage(pp);
-        setTotal(ttl);
-        setTotalPages(ttlPages);
-      } catch (e) {
-        setError(e?.message || "Gagal memuat data testimonials");
-      } finally {
-        setLoading(false);
-      }
-    },
-    [page, perPage, q]
-  );
-
+  const { list: testimonials, ttl, ttlPages, pg, pp } = computePaged();
+  // sync derived paging numbers when data or filters change
   useEffect(() => {
-    fetchTestimonials();
+    setTotal(ttl);
+    setTotalPages(ttlPages);
+    if (pg !== page) setPage(pg);
+    if (pp !== perPage) setPerPage(pp);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ttl, ttlPages, pg, pp]);
+
+  const fetchTestimonials = useCallback(async (opts = {}) => {
+    if ("q" in opts) setQ(opts.q || "");
+    if ("page" in opts) setPage(Math.max(1, opts.page));
+    if ("perPage" in opts) setPerPage(opts.perPage);
+    // SWR will refetch raw list as needed
   }, []);
 
   // CREATE (admin)
@@ -77,9 +70,15 @@ export default function useTestimonialsViewModel() {
     setError("");
     setMessage("");
     try {
-      await crudService.post("/api/testimonials", payload); // butuh cookie session
+      const res = await fetch("/api/testimonials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(()=>null))?.message || "Gagal menambah testimonial");
       setMessage("Testimonial berhasil ditambahkan");
       await fetchTestimonials({ page: 1 });
+      await mutate();
       return { ok: true };
     } catch (e) {
       const msg = e?.message || "Gagal menambah testimonial";
@@ -94,17 +93,14 @@ export default function useTestimonialsViewModel() {
     setMessage("");
     try {
       // Jika crudService tidak punya method put, ganti ke: crudService.request("PUT", url, payload)
-      (await crudService.put?.(
-        `/api/testimonials/${encodeURIComponent(id)}`,
-        payload
-      )) ??
-        crudService.request(
-          "PUT",
-          `/api/testimonials/${encodeURIComponent(id)}`,
-          payload
-        );
+      const res = await fetch(`/api/testimonials/${encodeURIComponent(id)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(()=>null))?.message || "Gagal memperbarui testimonial");
       setMessage("Testimonial berhasil diperbarui");
-      await fetchTestimonials({ page });
+      await mutate();
       return { ok: true };
     } catch (e) {
       const msg = e?.message || "Gagal memperbarui testimonial";
@@ -118,10 +114,10 @@ export default function useTestimonialsViewModel() {
     setError("");
     setMessage("");
     try {
-      await crudService.delete(`/api/testimonials/${encodeURIComponent(id)}`);
+      const res = await fetch(`/api/testimonials/${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (!res.ok) throw new Error((await res.json().catch(()=>null))?.message || "Gagal menghapus testimonial");
       setMessage("Testimonial dihapus");
-      const nextPage = testimonials.length === 1 && page > 1 ? page - 1 : page;
-      await fetchTestimonials({ page: nextPage });
+      await mutate();
       return { ok: true };
     } catch (e) {
       const msg = e?.message || "Gagal menghapus testimonial";
@@ -131,7 +127,7 @@ export default function useTestimonialsViewModel() {
   };
 
   return {
-    loading,
+    loading: listLoading || loading,
     testimonials,
     q,
     setQ,
@@ -141,7 +137,7 @@ export default function useTestimonialsViewModel() {
     setPerPage,
     total,
     totalPages,
-    error,
+    error: error || (rawErr?.message || ""),
     message,
     fetchTestimonials,
     createTestimonial,

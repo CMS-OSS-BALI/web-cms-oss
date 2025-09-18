@@ -28,7 +28,10 @@ import {
   theme as antdTheme,
   DatePicker,
 } from "antd";
-import { PlusOutlined, EyeOutlined } from "@ant-design/icons";
+import { PlusOutlined, EyeOutlined, QrcodeOutlined } from "@ant-design/icons";
+import { QRCodeCanvas } from "qrcode.react";
+import HtmlEditor from "@/../app/components/editor/HtmlEditor";
+import { sanitizeHtml } from "@/app/utils/dompurify";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -200,7 +203,7 @@ function EventFormModal({
         body: { padding: 0 },
         mask: { backgroundColor: "rgba(0,0,0,.6)" },
       }}
-      destroyOnClose
+      destroyOnHidden
     >
       <div className="form-scroll">
         <div style={{ padding: 16 }}>
@@ -280,9 +283,10 @@ function EventFormModal({
                   label="Description"
                   rules={reqText("Description")}
                 >
-                  <Input.TextArea
-                    rows={4}
-                    style={{ ...ctrlStyle, resize: "vertical" }}
+                  <HtmlEditor
+                    className="editor-dark"
+                    variant="mini"
+                    minHeight={200}
                   />
                 </Form.Item>
               </Col>
@@ -363,7 +367,14 @@ function EventViewModal({ open, data, onClose }) {
   // Detail
   const rows = [];
   if (data?.description)
-    rows.push({ label: "Description", content: data.description });
+    rows.push({
+      label: "Description",
+      content: (
+        <div
+          dangerouslySetInnerHTML={{ __html: sanitizeHtml(data.description ?? "") }}
+        />
+      ),
+    });
   rows.push({
     label: "Schedule",
     content:
@@ -405,12 +416,11 @@ function EventViewModal({ open, data, onClose }) {
   const [tPerPage, setTPerPage] = useState(10);
   const [tTotal, setTTotal] = useState(0);
   const [tQ, setTQ] = useState("");
-  const [tStatus, setTStatus] = useState(""); // PENDING|CONFIRMED|CANCELLED
+  const [tStatus, setTStatus] = useState(""); // PENDING|CONFIRMED|CANCELLED (opsional)
   const [tCheckin, setTCheckin] = useState(""); // CHECKED_IN|NOT_CHECKED_IN
+  const [exporting, setExporting] = useState(false);
   const [api, contextHolder] = notification.useNotification();
 
-  const statusColor = (s) =>
-    s === "CONFIRMED" ? "success" : s === "PENDING" ? "warning" : "error";
   const checkinColor = (c) => (c === "CHECKED_IN" ? "success" : "default");
 
   async function fetchTickets() {
@@ -440,6 +450,113 @@ function EventViewModal({ open, data, onClose }) {
       });
     } finally {
       setTLoading(false);
+    }
+  }
+
+  async function exportRegistrations() {
+    if (!data?.id) return;
+    setExporting(true);
+    try {
+      // kumpulkan SEMUA data sesuai filter aktif
+      const base = new URLSearchParams({ event_id: data.id });
+      if (tQ) base.set("q", tQ);
+      if (tStatus) base.set("status", tStatus);
+      if (tCheckin) base.set("checkin_status", tCheckin);
+
+      let all = [];
+      let page = 1;
+      const per = 200; // batch besar
+      while (true) {
+        const params = new URLSearchParams(base);
+        params.set("page", String(page));
+        params.set("perPage", String(per));
+        const res = await fetch(`/api/tickets?${params.toString()}`, {
+          cache: "no-store",
+        });
+        const json = await res.json();
+        const batch = json?.data || [];
+        all = all.concat(batch);
+        const total = Number(json?.total || all.length);
+        if (all.length >= total || batch.length === 0) break;
+        page += 1;
+      }
+
+      const headers = [
+        "No",
+        "Name",
+        "Email",
+        "WA",
+        "Status Check-in",
+        "Jam Check-in",
+      ];
+      const asWaText = (v) => (v ? `="${String(v).trim()}"` : "");
+      const rows = all.map((r, i) => ({
+        No: i + 1,
+        Name: r.full_name || "",
+        Email: r.email || "",
+        WA: asWaText(r.whatsapp), // ← paksa Excel jadi teks
+        "Status Check-in": r.checkin_status || "",
+        "Jam Check-in": r.checked_in_at
+          ? dayjs(r.checked_in_at).format("DD/MM/YYYY HH.mm")
+          : "",
+      }));
+
+      const guessDelimiter = () => {
+        try {
+          const s = (1.1).toLocaleString();
+          return s.includes(",") ? ";" : ",";
+        } catch {
+          return ";";
+        }
+      };
+      const DELIM = guessDelimiter();
+
+      const esc = (v) => {
+        const s = String(v ?? "");
+        // perlu quote kalau ada tanda kutip, baris baru, atau delimiter aktif
+        return s.includes('"') || s.includes("\n") || s.includes(DELIM)
+          ? `"${s.replace(/"/g, '""')}"`
+          : s;
+      };
+
+      const csv = [
+        headers.join(DELIM),
+        ...rows.map((r) => headers.map((h) => esc(r[h])).join(DELIM)),
+      ].join("\n");
+
+      // Tambah BOM agar Excel baca UTF-8 dengan benar
+      const blob = new Blob(["\uFEFF" + csv], {
+        type: "text/csv;charset=utf-8;",
+      });
+
+      const safeTitle = (data?.title || "event")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+      const stamp = dayjs().format("YYYYMMDD-HHmm");
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `registrations-${safeTitle}-${stamp}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+
+      api.success({
+        message: "Export CSV selesai",
+        description: `Total ${rows.length} baris diekspor.`,
+        placement: "topRight",
+      });
+    } catch (e) {
+      api.error({
+        message: "Export gagal",
+        description: e?.message || "Silakan coba lagi.",
+        placement: "topRight",
+      });
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -483,33 +600,18 @@ function EventViewModal({ open, data, onClose }) {
           "—"
         ),
     },
-    { title: "Code", dataIndex: "ticket_code", key: "ticket_code" },
     {
-      title: "Status",
-      dataIndex: "status",
-      key: "status",
-      render: (v) => <Tag color={statusColor(v)}>{v || "—"}</Tag>,
-    },
-    {
-      title: "Check-in",
+      title: "Status Check-in",
       dataIndex: "checkin_status",
       key: "checkin_status",
-      render: (v, r) => (
-        <Space size={4}>
-          <Tag color={checkinColor(v)}>{v || "—"}</Tag>
-          {r?.checked_in_at && (
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {fmtDT(r.checked_in_at)}
-            </Text>
-          )}
-        </Space>
-      ),
+      render: (v) => <Tag color={checkinColor(v)}>{v || "—"}</Tag>,
     },
     {
-      title: "Created",
-      dataIndex: "created_at",
-      key: "created_at",
-      render: (v) => fmtDT(v),
+      title: "Jam Check-in",
+      dataIndex: "checked_in_at",
+      key: "checked_in_at",
+      render: (_, r) =>
+        r?.checkin_status === "CHECKED_IN" ? fmtTime(r?.checked_in_at) : "—",
     },
     {
       title: "Actions",
@@ -570,7 +672,7 @@ function EventViewModal({ open, data, onClose }) {
         body: { padding: 0 },
         mask: { backgroundColor: "rgba(0,0,0,.6)" },
       }}
-      destroyOnClose
+      destroyOnHidden
     >
       {contextHolder}
       <div className="view-scroll">
@@ -588,6 +690,11 @@ function EventViewModal({ open, data, onClose }) {
           />
 
           <Space size={[8, 8]} wrap style={{ marginBottom: 16 }}>
+            {(() => {
+              const end = data?.end_at ? new Date(data.end_at).getTime() : NaN;
+              const isDone = Number.isFinite(end) && end < Date.now();
+              return isDone ? <Tag color="default">Done</Tag> : null;
+            })()}
             <Tag color={data?.is_published ? "success" : "default"}>
               {data?.is_published ? "Published" : "Draft"}
             </Tag>
@@ -612,6 +719,8 @@ function EventViewModal({ open, data, onClose }) {
           </Descriptions>
 
           <Divider style={{ borderColor: "#2f3f60" }} />
+
+          {/* Toolbar di atas tabel */}
           <Space
             align="center"
             style={{
@@ -626,26 +735,11 @@ function EventViewModal({ open, data, onClose }) {
             <Space wrap>
               <Input.Search
                 allowClear
-                placeholder="Cari nama/email/WA/kode…"
+                placeholder="Cari nama/email/WA…"
                 onSearch={(v) => {
                   setTQ((v || "").trim());
                   setTPage(1);
                   setTimeout(() => fetchTickets(), 0);
-                }}
-              />
-              <Select
-                placeholder="Status"
-                allowClear
-                style={{ minWidth: 150 }}
-                options={[
-                  { value: "CONFIRMED", label: "CONFIRMED" },
-                  { value: "PENDING", label: "PENDING" },
-                  { value: "CANCELLED", label: "CANCELLED" },
-                ]}
-                value={tStatus || undefined}
-                onChange={(v) => {
-                  setTStatus(v || "");
-                  setTPage(1);
                 }}
               />
               <Select
@@ -674,6 +768,13 @@ function EventViewModal({ open, data, onClose }) {
                   label: `${n}/page`,
                 }))}
               />
+              <Button
+                shape="round"
+                onClick={exportRegistrations}
+                loading={exporting}
+              >
+                Export CSV
+              </Button>
             </Space>
           </Space>
 
@@ -731,7 +832,7 @@ function Pill({ children }) {
 /* =========================================================
    CARD
 ========================================================= */
-function EventCard({ e, onView, onEdit, onDelete }) {
+function EventCard({ e, onView, onEdit, onDelete, onShowQr }) {
   const badgeStyle = {
     position: "absolute",
     top: 8,
@@ -746,8 +847,10 @@ function EventCard({ e, onView, onEdit, onDelete }) {
     boxShadow: "0 6px 14px rgba(0,0,0,.25)",
   };
 
-  const desc =
-    (e.description || "").replace(/^["“”']+|["“”']+$/g, "").trim() || "—";
+  const cleanedDesc = (e.description || "").replace(/^[`"'\s]+|[`"'\s]+$/g, "").trim();
+  const safeDesc = sanitizeHtml(cleanedDesc || "");
+  const plainDesc = safeDesc.replace(/<[^>]*>/g, "").trim();
+  const hasDesc = plainDesc.length > 0;
   const dateRange =
     e.start_at && e.end_at
       ? `${fmtDate(e.start_at)} – ${fmtDate(e.end_at)}`
@@ -788,9 +891,21 @@ function EventCard({ e, onView, onEdit, onDelete }) {
               ev.currentTarget.src = PLACEHOLDER;
             }}
           />
-          <span style={badgeStyle}>
-            {e.is_published ? "Published" : "Draft"}
-          </span>
+          {(() => {
+            const isDone = (() => {
+              if (e?.status === "done") return true;
+              const end = e?.end_at ? new Date(e.end_at).getTime() : NaN;
+              return Number.isFinite(end) && end < Date.now();
+            })();
+            const style = isDone
+              ? { ...badgeStyle, background: "#334155", borderColor: "#94a3b8" }
+              : badgeStyle;
+            return (
+              <span style={style}>
+                {isDone ? "Done" : e.is_published ? "Published" : "Draft"}
+              </span>
+            );
+          })()}
         </div>
       }
     >
@@ -806,13 +921,25 @@ function EventCard({ e, onView, onEdit, onDelete }) {
         </Text>
 
         <div style={{ minHeight: "calc(1.45em * 3)" }}>
-          <Paragraph
-            type="secondary"
-            ellipsis={{ rows: 3, tooltip: desc }}
-            style={{ margin: 0, lineHeight: 1.45 }}
-          >
-            {desc}
-          </Paragraph>
+          {hasDesc ? (
+            <div
+              title={plainDesc || undefined}
+              style={{
+                margin: 0,
+                lineHeight: 1.45,
+                color: "#94a3b8",
+                display: "-webkit-box",
+                WebkitLineClamp: 3,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+              }}
+              dangerouslySetInnerHTML={{ __html: safeDesc }}
+            />
+          ) : (
+            <Paragraph style={{ margin: 0, lineHeight: 1.45 }} type="secondary">
+              -
+            </Paragraph>
+          )}
         </div>
 
         <div style={{ display: "grid", gap: 6 }}>
@@ -913,6 +1040,11 @@ function EventCard({ e, onView, onEdit, onDelete }) {
           </Button>
         </div>
         <div style={{ flex: 1 }}>
+          <Button size="small" shape="round" block onClick={() => onShowQr(e)} icon={<QrcodeOutlined />}>
+            QR Code
+          </Button>
+        </div>
+        <div style={{ flex: 1 }}>
           <Button size="small" shape="round" block onClick={onEdit}>
             Edit
           </Button>
@@ -947,13 +1079,14 @@ export default function EventsContent(props) {
     setQ,
     isPublished,
     setIsPublished, // "", "1", "0"
+    status,
+    setStatus,
     page,
     setPage,
     perPage,
     setPerPage,
     total = 0,
     error,
-    // message,  // <-- tidak dipakai lagi agar tidak dobel notif
     fetchEvents,
     createEvent,
     updateEvent,
@@ -969,15 +1102,16 @@ export default function EventsContent(props) {
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(null);
   const [view, setView] = useState(null);
+  const [qrEvent, setQrEvent] = useState(null);
 
   // Prefill form
   useEffect(() => {
     filterForm.setFieldsValue({
       q,
-      is_published: isPublished || undefined,
+      status: status || isPublished || undefined,
       perPage,
     });
-  }, [q, isPublished, perPage, filterForm]);
+  }, [q, isPublished, status, perPage, filterForm]);
 
   // Initial fetch only
   useEffect(() => {
@@ -988,11 +1122,12 @@ export default function EventsContent(props) {
       perPage,
       q,
       is_published: isPublished,
+      status,
       _ts: Date.now(),
     });
   }, []); // eslint-disable-line
 
-  // Hanya tampilkan error global (message sukses dihilangkan agar tidak dobel)
+  // Global errors
   useEffect(() => {
     if (error)
       api.error({
@@ -1040,6 +1175,7 @@ export default function EventsContent(props) {
         page,
         q,
         is_published: isPublished,
+        status,
         perPage,
         _ts: Date.now(),
       });
@@ -1058,11 +1194,14 @@ export default function EventsContent(props) {
   // Filters
   const onSearch = (vals) => {
     const nextQ = (vals?.q || "").trim();
-    const nextPub = normalizePub(vals?.is_published);
+    const rawStatus = vals?.status;
+    const isDone = rawStatus === "done";
+    const nextPub = isDone ? "" : normalizePub(rawStatus);
     const nextPer = vals?.perPage || perPage;
 
     setQ(nextQ);
     setIsPublished(nextPub);
+    setStatus(isDone ? "done" : "");
     setPerPage(nextPer);
     setPage(1);
 
@@ -1070,6 +1209,7 @@ export default function EventsContent(props) {
       page: 1,
       q: nextQ,
       is_published: nextPub,
+      status: isDone ? "done" : "",
       perPage: nextPer,
       _ts: Date.now(),
     });
@@ -1079,8 +1219,16 @@ export default function EventsContent(props) {
     filterForm.resetFields();
     setQ("");
     setIsPublished("");
+    setStatus("");
     setPage(1);
-    fetchEvents({ page: 1, q: "", is_published: "", perPage, _ts: Date.now() });
+    fetchEvents({
+      page: 1,
+      q: "",
+      is_published: "",
+      status: "",
+      perPage,
+      _ts: Date.now(),
+    });
   };
 
   const onPageChange = (p) => {
@@ -1090,6 +1238,7 @@ export default function EventsContent(props) {
       perPage,
       q,
       is_published: isPublished,
+      status,
       _ts: Date.now(),
     });
   };
@@ -1116,7 +1265,7 @@ export default function EventsContent(props) {
     };
   }, [editing]);
 
-  // Sinkronkan isi modal view dengan events terbaru (kalau ada aksi manual yg memicu fetchEvents)
+  // Sinkronkan isi modal view dengan events terbaru
   useEffect(() => {
     if (!view) return;
     const updated = events.find((x) => x.id === view.id);
@@ -1176,14 +1325,23 @@ export default function EventsContent(props) {
                 Kelola data event. Total {total} records.
               </Text>
             </div>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              shape="round"
-              onClick={openCreate}
-            >
-              Add Event
-            </Button>
+            <Space>
+              <Button
+                href="/admin/scanner"
+                icon={<QrcodeOutlined />}
+                shape="round"
+              >
+                Scanner
+              </Button>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                shape="round"
+                onClick={openCreate}
+              >
+                Add Event
+              </Button>
+            </Space>
           </Space>
         </Card>
 
@@ -1199,7 +1357,7 @@ export default function EventsContent(props) {
             style={{ display: "block" }}
             initialValues={{
               q,
-              is_published: isPublished || undefined,
+              status: status || isPublished || undefined,
               perPage,
             }}
           >
@@ -1215,13 +1373,14 @@ export default function EventsContent(props) {
               </Col>
 
               <Col xs={24} sm={12} md={8} lg={6} xl={5}>
-                <Form.Item name="is_published" style={{ width: "100%" }}>
+                <Form.Item name="status" style={{ width: "100%" }}>
                   <Select
                     allowClear
-                    placeholder="Published"
+                    placeholder="Status"
                     options={[
                       { value: "1", label: "Published" },
                       { value: "0", label: "Draft" },
+                      { value: "done", label: "Done" },
                     ]}
                     onChange={() => filterForm.submit()}
                   />
@@ -1231,7 +1390,7 @@ export default function EventsContent(props) {
               <Col xs={24} sm={8} md={6} lg={4} xl={3}>
                 <Form.Item name="perPage" style={{ width: "100%" }}>
                   <Select
-                    options={[8, 16, 32, 64, 128].map((n) => ({
+                    options={[6, 12, 24, 48, 96].map((n) => ({
                       value: n,
                       label: n,
                     }))}
@@ -1266,11 +1425,12 @@ export default function EventsContent(props) {
           ) : (
             <Row gutter={[16, 16]}>
               {events.map((e) => (
-                <Col key={e.id} xs={24} sm={12} md={12} lg={8} xl={6}>
+                <Col key={e.id} xs={24} sm={12} md={8} lg={8} xl={8}>
                   <EventCard
                     e={e}
                     onView={() => setView(e)}
                     onEdit={() => openEdit(e)}
+                    onShowQr={(ev) => setQrEvent(ev)}
                     onDelete={async () => {
                       try {
                         await deleteEvent(e.id);
@@ -1285,6 +1445,7 @@ export default function EventsContent(props) {
                           perPage,
                           q,
                           is_published: isPublished,
+                          status,
                           _ts: Date.now(),
                         });
                       } catch (err) {
@@ -1336,6 +1497,45 @@ export default function EventsContent(props) {
           }}
           onSubmit={handleSubmit}
         />
+
+        {/* QR Code Modal */}
+        <Modal
+          open={!!qrEvent}
+          onCancel={() => setQrEvent(null)}
+          footer={null}
+          centered
+          width={420}
+          title={qrEvent ? `QR — ${qrEvent.title || qrEvent.id}` : "QR Code"}
+          styles={{
+            content: { ...darkCardStyle },
+            header: {
+              background: "transparent",
+              borderBottom: "1px solid #2f3f60",
+            },
+            body: { padding: 16 },
+            mask: { backgroundColor: "rgba(0,0,0,.6)" },
+          }}
+          destroyOnHidden
+        >
+          <div style={{ display: "grid", placeItems: "center" }}>
+            {qrEvent && (
+              <QRCodeCanvas
+                value={qrEvent.id}
+                size={256}
+                includeMargin
+                imageSettings={{
+                  src: "/images/logo.jpg",
+                  width: 56,
+                  height: 56,
+                  excavate: true,
+                }}
+              />
+            )}
+            <div style={{ marginTop: 10, color: "#94a3b8", fontSize: 12 }}>
+              ID: {qrEvent?.id}
+            </div>
+          </div>
+        </Modal>
       </div>
     </ConfigProvider>
   );

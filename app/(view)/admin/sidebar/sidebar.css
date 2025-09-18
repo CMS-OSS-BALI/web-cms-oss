@@ -153,6 +153,19 @@
   border-radius: var(--item-radius);
 }
 
+/* Center ALL icons when collapsed (selected or not) */
+.sidebar.is-collapsed .ant-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sidebar.is-collapsed .ant-menu-item .ant-menu-item-icon {
+  margin-right: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .sidebar.is-collapsed .ant-menu-item > a,
 .sidebar.is-collapsed .ant-menu-item > span {
   display: grid !important;
@@ -161,8 +174,18 @@
   height: 100%;
   padding: 0 !important;
 }
-.sidebar.is-collapsed .ant-menu-item .ant-menu-title-content {
-  display: none !important;
+/* Jangan sembunyikan title-content saat collapsed; biarkan anchor tetap clickable */
+.sidebar.is-collapsed .ant-menu-item {
+  position: relative;
+}
+.sidebar.is-collapsed .ant-menu-item .ant-menu-title-content > a {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0 !important;
+  font-size: 0; /* sembunyikan teks tanpa menghilangkan anchor */
 }
 .sidebar.is-collapsed .ant-menu .ant-menu-item::after {
   display: none !important;
@@ -176,6 +199,8 @@
   height: var(--icon-size-collapsed);
 }
 
+/* Selected (collapsed): tanpa highlight lingkaran maupun row */
+
 /* Row hover/selected saat collapsed (tetap flat) */
 .sidebar.is-collapsed .ant-menu-item {
   background: transparent;
@@ -184,7 +209,13 @@
   background: var(--menu-hover-row) !important;
 }
 .sidebar.is-collapsed .ant-menu-item-selected {
-  background: var(--menu-selected-row) !important;
+  background: transparent !important; /* hilangkan highlight baris */
+}
+.sidebar.is-collapsed .ant-menu-item-selected > a,
+.sidebar.is-collapsed .ant-menu-item-selected > span,
+.sidebar.is-collapsed .ant-menu-item:hover > a,
+.sidebar.is-collapsed .ant-menu-item:hover > span {
+  background: transparent !important; /* pastikan anchor/tile juga transparan */
 }
 
 /* ====== Bottom / Logout ====== */

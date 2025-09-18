@@ -13,6 +13,7 @@ import {
   Space,
   Typography,
 } from "antd";
+import { QRCodeCanvas } from "qrcode.react";
 
 export default function BuyTicketContent(props) {
   const {
@@ -87,17 +88,25 @@ export default function BuyTicketContent(props) {
             )}
           </Descriptions>
 
-          {confirmed && ticket.qr_url && (
+          {confirmed && (ticket.ticket_code || ticket.qr_url) && (
             <>
               <Divider />
               <Typography.Paragraph>
                 Tunjukkan QR berikut saat <i>check-in</i>:
               </Typography.Paragraph>
-              <img
-                src={ticket.qr_url}
-                alt="QR Ticket"
-                style={{ maxWidth: 240 }}
-              />
+              <div style={{ display: "inline-block" }}>
+                <QRCodeCanvas
+                  value={ticket.ticket_code || ticket.qr_url}
+                  size={240}
+                  includeMargin
+                  imageSettings={{
+                    src: "/images/logo.jpg",
+                    height: 48,
+                    width: 48,
+                    excavate: true,
+                  }}
+                />
+              </div>
             </>
           )}
 

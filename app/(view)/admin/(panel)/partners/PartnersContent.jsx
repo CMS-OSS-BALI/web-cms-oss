@@ -25,6 +25,8 @@ import {
   theme as antdTheme,
 } from "antd";
 import { PlusOutlined, EyeOutlined, LinkOutlined } from "@ant-design/icons";
+import HtmlEditor from "@/../app/components/editor/HtmlEditor";
+import { sanitizeHtml } from "@/app/utils/dompurify";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -141,7 +143,7 @@ function PartnerFormModal({
         body: { padding: 0 },
         mask: { backgroundColor: "rgba(0,0,0,.6)" },
       }}
-      destroyOnClose
+      destroyOnHidden
     >
       <div className="form-scroll">
         <div style={{ padding: 16 }}>
@@ -179,9 +181,10 @@ function PartnerFormModal({
                   required={isCreate}
                   rules={req("Description wajib diisi")}
                 >
-                  <Input.TextArea
-                    rows={4}
-                    style={{ ...ctrlStyle, resize: "vertical" }}
+                  <HtmlEditor
+                    className="editor-dark"
+                    variant="mini"
+                    minHeight={200}
                   />
                 </Form.Item>
               </Col>
@@ -429,7 +432,14 @@ function PartnerViewModal({ open, data, onClose }) {
 
   const rows = [];
   if (data?.description)
-    rows.push({ label: "Description", content: data.description });
+    rows.push({
+      label: "Description",
+      content: (
+        <div
+          dangerouslySetInnerHTML={{ __html: sanitizeHtml(data.description ?? "") }}
+        />
+      ),
+    });
   const locParts = [data?.city, data?.state, data?.country].filter(Boolean);
   if (locParts.length)
     rows.push({ label: "Location", content: locParts.join(", ") });
@@ -518,7 +528,7 @@ function PartnerViewModal({ open, data, onClose }) {
         body: { padding: 0 },
         mask: { backgroundColor: "rgba(0,0,0,.6)" },
       }}
-      destroyOnClose
+      destroyOnHidden
     >
       <div className="view-scroll">
         <div style={{ padding: 16 }}>
@@ -595,6 +605,16 @@ function PartnerCard({ p, onView, onEdit, onDelete }) {
     border: "1px solid rgba(255,255,255,.35)",
     boxShadow: "0 6px 14px rgba(0,0,0,.25)",
   };
+  const locationLabel = [p.city, p.state, p.country]
+    .filter(Boolean)
+    .join(", ") || "-";
+  const cleanedDesc = (p.description || "")
+    .replace(/^[`"'\s]+|[`"'\s]+$/g, "")
+    .trim();
+  const safeDesc = sanitizeHtml(cleanedDesc || "");
+  const plainDesc = safeDesc.replace(/<[^>]*>/g, "").trim();
+  const hasDesc = plainDesc.length > 0;
+
 
   return (
     <Card
@@ -637,15 +657,29 @@ function PartnerCard({ p, onView, onEdit, onDelete }) {
           {p.name}
         </Text>
         <Text type="secondary" style={{ fontSize: 12 }}>
-          {[p.city, p.state, p.country].filter(Boolean).join(", ") || "—"}
+          {locationLabel}
         </Text>
-        <Paragraph
-          type="secondary"
-          ellipsis={{ rows: 2 }}
-          style={{ margin: 0 }}
-        >
-          {p.description || "—"}
-        </Paragraph>
+        <div style={{ minHeight: "calc(1.3em * 2)" }}>
+          {hasDesc ? (
+            <div
+              title={plainDesc || undefined}
+              style={{
+                margin: 0,
+                lineHeight: 1.3,
+                color: "#94a3b8",
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+              }}
+              dangerouslySetInnerHTML={{ __html: safeDesc }}
+            />
+          ) : (
+            <Paragraph style={{ margin: 0, lineHeight: 1.3 }} type="secondary">
+              -
+            </Paragraph>
+          )}
+        </div>
         <div
           style={{
             display: "flex",

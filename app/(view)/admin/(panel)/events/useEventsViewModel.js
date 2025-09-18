@@ -1,21 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { crudService } from "@/app/utils/services/crudService";
+import { useCallback, useEffect, useState } from "react";
+import useSWR from "swr";
+import { fetcher } from "@/lib/swr/fetcher";
+
+const DEFAULT_LOCALE = "id";
+const FALLBACK_LOCALE = "en";
 
 export default function useEventsViewModel() {
-  const [loading, setLoading] = useState(false);
-  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(false); // for non-GET ops
 
   const [q, setQ] = useState("");
   const [isPublished, setIsPublished] = useState("");
+  const [status, setStatus] = useState(""); // "done" | ""
   const [from, setFrom] = useState(null);
   const [to, setTo] = useState(null);
+  const [exporting, setExporting] = useState(false);
 
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(12);
-  const [total, setTotal] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
+  const [perPage, setPerPage] = useState(6);
+  const [total, setTotal] = useState(0); // kept for compatibility (derived)
+  const [totalPages, setTotalPages] = useState(1); // derived
 
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -28,6 +33,7 @@ export default function useEventsViewModel() {
         perPage,
         q,
         is_published: isPublished, // "1" | "0" | ""
+        status,
         from,
         to,
         ...params,
@@ -39,41 +45,51 @@ export default function useEventsViewModel() {
       if (p.is_published === "1" || p.is_published === "0") {
         sp.set("is_published", p.is_published);
       }
+      if (p.status) sp.set("status", p.status);
       if (p.from) sp.set("from", p.from);
       if (p.to) sp.set("to", p.to);
+      sp.set("locale", DEFAULT_LOCALE);
+      sp.set("fallback", FALLBACK_LOCALE);
       return sp.toString();
     },
-    [page, perPage, q, isPublished, from, to]
+    [page, perPage, q, isPublished, status, from, to]
   );
 
-  /** LIST */
-  const fetchEvents = useCallback(
-    async (overrides = {}) => {
-      setLoading(true);
-      setError("");
-      try {
-        const qs = buildQuery(overrides);
-        const json = await crudService.get(`/api/events?${qs}`);
+  // SWR key builder based on current filters/pagination
+  const listKey = `/api/events?${buildQuery({
+    page,
+    perPage,
+    q,
+    is_published: isPublished,
+    status,
+    from,
+    to,
+  })}`;
+  const {
+    data: listJson,
+    error: listErr,
+    isLoading: listLoading,
+    mutate,
+  } = useSWR(listKey, fetcher);
 
-        setEvents(Array.isArray(json?.data) ? json.data : []);
-        setTotal(Number(json?.total || 0));
-        setTotalPages(Number(json?.totalPages || 1));
+  const events = Array.isArray(listJson?.data) ? listJson.data : [];
+  useEffect(() => {
+    if (typeof listJson?.total === "number") {
+      setTotal(listJson.total);
+      setTotalPages(Number(listJson?.totalPages || 1));
+    }
+  }, [listJson]);
 
-        // sinkronkan state jika ada overrides
-        if ("page" in overrides) setPage(Math.max(1, overrides.page));
-        if ("perPage" in overrides) setPerPage(overrides.perPage);
-        if ("q" in overrides) setQ(overrides.q);
-        if ("is_published" in overrides) setIsPublished(overrides.is_published);
-        if ("from" in overrides) setFrom(overrides.from ?? null);
-        if ("to" in overrides) setTo(overrides.to ?? null);
-      } catch (e) {
-        setError(e?.message || "Failed to fetch");
-      } finally {
-        setLoading(false);
-      }
-    },
-    [buildQuery]
-  );
+  const fetchEvents = useCallback(async (overrides = {}) => {
+    // update filters/pagination; SWR will refetch due to key change
+    if ("page" in overrides) setPage(Math.max(1, overrides.page));
+    if ("perPage" in overrides) setPerPage(overrides.perPage);
+    if ("q" in overrides) setQ(overrides.q);
+    if ("is_published" in overrides) setIsPublished(overrides.is_published);
+    if ("status" in overrides) setStatus(overrides.status ?? "");
+    if ("from" in overrides) setFrom(overrides.from ?? null);
+    if ("to" in overrides) setTo(overrides.to ?? null);
+  }, []);
 
   /** CREATE */
   const createEvent = useCallback(
@@ -81,15 +97,25 @@ export default function useEventsViewModel() {
       setError("");
       setMessage("");
       try {
-        const data = await crudService.post("/api/events", payload);
+        const res = await fetch(`/api/events`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...payload, locale: DEFAULT_LOCALE }),
+        });
+        if (!res.ok)
+          throw new Error(
+            (await res.json().catch(() => null))?.message || "Failed to create"
+          );
         setMessage("Event berhasil ditambahkan.");
+        // go to first page and revalidate
         await fetchEvents({ page: 1 });
-        return { ok: true, data };
+        await mutate();
+        return { ok: true };
       } catch (e) {
         return { ok: false, error: e?.message || "Failed to create" };
       }
     },
-    [fetchEvents]
+    [fetchEvents, mutate]
   );
 
   /** UPDATE (pakai /api/events/[id]) */
@@ -98,15 +124,23 @@ export default function useEventsViewModel() {
       setError("");
       setMessage("");
       try {
-        const data = await crudService.patch(`/api/events/${id}`, payload);
+        const res = await fetch(`/api/events/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...payload, locale: DEFAULT_LOCALE }),
+        });
+        if (!res.ok)
+          throw new Error(
+            (await res.json().catch(() => null))?.message || "Failed to update"
+          );
         setMessage("Event berhasil diperbarui.");
-        await fetchEvents(); // refresh current view
-        return { ok: true, data };
+        await mutate();
+        return { ok: true };
       } catch (e) {
         return { ok: false, error: e?.message || "Failed to update" };
       }
     },
-    [fetchEvents]
+    [mutate]
   );
 
   /** DELETE (pakai /api/events/[id]) */
@@ -115,24 +149,28 @@ export default function useEventsViewModel() {
       setError("");
       setMessage("");
       try {
-        const data = await crudService.delete(`/api/events/${id}`);
+        const res = await fetch(`/api/events/${id}`, { method: "DELETE" });
+        if (!res.ok)
+          throw new Error(
+            (await res.json().catch(() => null))?.message || "Failed to delete"
+          );
         setMessage("Event berhasil dihapus.");
-        await fetchEvents(); // atau hitung page baru jika perlu
-        return { ok: true, data };
+        await mutate();
+        return { ok: true };
       } catch (e) {
         return { ok: false, error: e?.message || "Failed to delete" };
       }
     },
-    [fetchEvents]
+    [mutate]
   );
 
-  useEffect(() => {
-    fetchEvents({ page: 1, perPage });
-  }, []);
+  // initial page size
+  // keep default perPage 8
 
   return {
-    loading,
+    loading: listLoading || loading,
     events,
+    exporting,
     q,
     setQ,
     isPublished,
@@ -147,9 +185,11 @@ export default function useEventsViewModel() {
     setPerPage,
     total,
     totalPages,
-    error,
+    error: error || listErr?.message || "",
     message,
     fetchEvents,
+    status,
+    setStatus,
     createEvent,
     updateEvent,
     deleteEvent,

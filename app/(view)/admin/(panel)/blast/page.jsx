@@ -2,15 +2,15 @@
 
 import { Suspense, lazy } from "react";
 import Loading from "@/app/components/loading/LoadingImage";
-import useProfileViewModel from "./useProfileViewModel";
+import useBlastViewModel from "./useBlastViewModel";
 
-const ProfileContentLazy = lazy(() => import("./ProfileContent"));
+const BlastContentLazy = lazy(() => import("./BlastContent"));
 
 export default function Page() {
-  const vm = useProfileViewModel();
+  const vm = useBlastViewModel();
   return (
     <Suspense fallback={<div className="page-wrap"><Loading /></div>}>
-      <ProfileContentLazy {...vm} />
+      <BlastContentLazy {...vm} />
     </Suspense>
   );
 }

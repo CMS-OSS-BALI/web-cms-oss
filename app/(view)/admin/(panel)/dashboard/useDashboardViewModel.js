@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useSession } from "next-auth/react";
+import useSWR from "swr";
+import { fetcher } from "@/lib/swr/fetcher";
 
 export default function useDashboardViewModel() {
   const { data: session, status } = useSession();
@@ -12,78 +14,24 @@ export default function useDashboardViewModel() {
       ? "—"
       : new Intl.NumberFormat("id-ID").format(Number(n));
 
-  const [partnersCount, setPartnersCount] = useState(null);
-  const [eventsCount, setEventsCount] = useState(null);
-  const [merchantsCount, setMerchantsCount] = useState(null);
-  const [upcomingEvents, setUpcomingEvents] = useState([]);
+  // Counts via SWR
+  const { data: partnersJson } = useSWR("/api/partners?perPage=1", fetcher);
+  const { data: eventsJson } = useSWR("/api/events?perPage=1", fetcher);
+  const { data: merchantsJson } = useSWR("/api/merchants?perPage=1", fetcher);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/partners?perPage=1", {
-          cache: "no-store",
-        });
-        const j = await res.json().catch(() => ({}));
-        if (!cancelled) setPartnersCount(Number(j?.total ?? 0));
-      } catch {
-        !cancelled && setPartnersCount(0);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Upcoming events via SWR
+  const fromIso = useMemo(() => new Date().toISOString(), []);
+  const { data: upcomingJson } = useSWR(
+    `/api/events?is_published=1&from=${encodeURIComponent(fromIso)}&perPage=5`,
+    fetcher
+  );
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const totalRes = await fetch("/api/events?perPage=1", {
-          cache: "no-store",
-        });
-        const totalJson = await totalRes.json().catch(() => ({}));
-        if (!cancelled) setEventsCount(Number(totalJson?.total ?? 0));
-      } catch {
-        !cancelled && setEventsCount(0);
-      }
-
-      try {
-        const from = new Date().toISOString();
-        const res = await fetch(
-          `/api/events?is_published=1&from=${encodeURIComponent(
-            from
-          )}&perPage=5`,
-          { cache: "no-store" }
-        );
-        const j = await res.json().catch(() => ({}));
-        if (!cancelled) setUpcomingEvents(Array.isArray(j?.data) ? j.data : []);
-      } catch {
-        !cancelled && setUpcomingEvents([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/merchants?perPage=1", {
-          cache: "no-store",
-        });
-        const j = await res.json().catch(() => ({}));
-        if (!cancelled) setMerchantsCount(Number(j?.total ?? 0));
-      } catch {
-        !cancelled && setMerchantsCount(0);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const partnersCount = partnersJson?.total ?? null;
+  const eventsCount = eventsJson?.total ?? null;
+  const merchantsCount = merchantsJson?.total ?? null;
+  const upcomingEvents = Array.isArray(upcomingJson?.data)
+    ? upcomingJson.data
+    : [];
 
   const kpis = useMemo(
     () => [

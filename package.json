@@ -13,7 +13,10 @@
     "@ant-design/nextjs-registry": "^1.0.2",
     "@prisma/client": "^6.14.0",
     "@zxing/browser": "^0.1.5",
+    "axios": "^1.12.2",
     "bcryptjs": "^3.0.2",
+    "dompurify": "^3.2.6",
+    "jimp": "^0.22.12",
     "js-cookie": "^3.0.5",
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.542.0",
@@ -21,8 +24,10 @@
     "next-auth": "^4.24.11",
     "nodemailer": "^6.10.1",
     "qrcode": "^1.5.4",
+    "qrcode.react": "^3.2.0",
     "react": "18.2.0",
     "react-dom": "18.2.0",
+    "react-quill": "^2.0.0",
     "swr": "^2.3.6"
   },
   "devDependencies": {

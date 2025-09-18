@@ -9,18 +9,15 @@ import {
   Handshake,
   User,
   Store,
-  MessageSquareText, // Testimonials
-  QrCode, // ⟵ ikon untuk Scanner
+  MessageSquareText,
+  QrCode,
+  Megaphone,
 } from "lucide-react";
 
 export const MENU = [
   { label: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
   { label: "Programs", href: "/admin/programs", icon: Layers },
   { label: "Events", href: "/admin/events", icon: CalendarDays },
-
-  // ⟵ Item baru: Scanner (ZXing)
-  { label: "Scanner", href: "/admin/scanner", icon: QrCode },
-
   { label: "Partners", href: "/admin/partners", icon: Handshake },
   {
     label: "Testimonials",
@@ -28,6 +25,7 @@ export const MENU = [
     icon: MessageSquareText,
   },
   { label: "Merchants", href: "/admin/merchants", icon: Store },
+  { label: "Blast", href: "/admin/blast", icon: Megaphone },
   { label: "Profile", href: "/admin/profile", icon: User },
 ];
 

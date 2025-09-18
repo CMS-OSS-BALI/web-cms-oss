@@ -25,6 +25,8 @@ import {
   theme as antdTheme,
 } from "antd";
 import { PlusOutlined, EyeOutlined } from "@ant-design/icons";
+import HtmlEditor from "@/../app/components/editor/HtmlEditor";
+import { sanitizeHtml } from "@/app/utils/dompurify";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -164,7 +166,7 @@ function ProgramFormModal({
         body: { padding: 0 },
         mask: { backgroundColor: "rgba(0,0,0,.6)" },
       }}
-      destroyOnClose
+      destroyOnHidden
     >
       <div className="form-scroll">
         <div style={{ padding: 16 }}>
@@ -227,10 +229,13 @@ function ProgramFormModal({
                   name="description"
                   label="Description"
                   rules={reqText("Description")}
+                  valuePropName="value"
+                  getValueFromEvent={(val) => val}
                 >
-                  <Input.TextArea
-                    rows={4}
-                    style={{ ...ctrlStyle, resize: "vertical" }}
+                  <HtmlEditor
+                    className="editor-dark"
+                    variant="mini"
+                    minHeight={200}
                   />
                 </Form.Item>
               </Col>
@@ -295,7 +300,16 @@ function ProgramViewModal({ open, data, onClose }) {
 
   const rows = [];
   if (data?.description)
-    rows.push({ label: "Description", content: data.description });
+    rows.push({
+      label: "Description",
+      content: (
+        <div
+          dangerouslySetInnerHTML={{
+            __html: sanitizeHtml(data.description ?? ""),
+          }}
+        />
+      ),
+    });
   if (data?.phone) rows.push({ label: "Phone", content: data.phone });
   rows.push({
     label: "Status",
@@ -336,7 +350,7 @@ function ProgramViewModal({ open, data, onClose }) {
         body: { padding: 0 },
         mask: { backgroundColor: "rgba(0,0,0,.6)" },
       }}
-      destroyOnClose
+      destroyOnHidden
     >
       <div className="view-scroll">
         <div style={{ padding: 16 }}>
@@ -458,13 +472,20 @@ function ProgramCard({ p, onView, onEdit, onDelete }) {
         </Text>
 
         <div style={{ minHeight: "calc(1.45em * 3)" }}>
-          <Paragraph
-            type="secondary"
-            ellipsis={{ rows: 3, tooltip: desc }}
-            style={{ margin: 0, lineHeight: 1.45 }}
-          >
-            {desc}
-          </Paragraph>
+          <div
+            style={{
+              margin: 0,
+              lineHeight: 1.45,
+              color: "#94a3b8",
+              display: "-webkit-box",
+              WebkitLineClamp: 3,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+            }}
+            dangerouslySetInnerHTML={{
+              __html: sanitizeHtml(p.description || ""),
+            }}
+          />
         </div>
 
         <div

@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { crudService } from "@/app/utils/services/crudService";
+import useSWR from "swr";
+import { fetcher } from "@/lib/swr/fetcher";
 
 /* ===== Helpers ===== */
 const buildQuery = (params = {}) => {
@@ -14,8 +15,7 @@ const buildQuery = (params = {}) => {
 };
 
 export default function useProgramsViewModel() {
-  const [loading, setLoading] = useState(false);
-  const [programs, setPrograms] = useState([]);
+  const [loading, setLoading] = useState(false); // non-GET ops
   const [error, setError] = useState("");
 
   // filters
@@ -26,9 +26,9 @@ export default function useProgramsViewModel() {
 
   // pagination
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
-  const [total, setTotal] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
+  const [perPage, setPerPage] = useState(8);
+  const [total, setTotal] = useState(0); // derived
+  const [totalPages, setTotalPages] = useState(1); // derived
 
   // debounce
   const debounceRef = useRef(null);
@@ -39,43 +39,27 @@ export default function useProgramsViewModel() {
     []
   );
 
-  /** LIST */
-  const fetchPrograms = useCallback(
-    async (overrides = {}) => {
-      const params = {
-        q: overrides.q ?? q,
-        category: overrides.category ?? category,
-        published: overrides.published ?? published,
-        page: Math.max(1, overrides.page ?? page),
-        perPage: overrides.perPage ?? perPage,
-        sort: overrides.sort ?? sort,
-      };
+  // SWR List
+  const listParams = { q, category, published, page, perPage, sort };
+  const listKey = `/api/programs?${buildQuery(listParams)}`;
+  const { data: listJson, error: listErr, isLoading: listLoading, mutate } = useSWR(listKey, fetcher);
+  const programs = listJson?.data || [];
+  useEffect(() => {
+    if (listJson?.meta) {
+      setTotal(listJson.meta.total || 0);
+      setTotalPages(listJson.meta.totalPages || 1);
+    }
+  }, [listJson]);
 
-      // sinkronkan state kalau ada override
-      if ("q" in overrides) setQ(overrides.q);
-      if ("category" in overrides) setCategory(overrides.category);
-      if ("published" in overrides) setPublished(overrides.published);
-      if ("page" in overrides) setPage(params.page);
-      if ("perPage" in overrides) setPerPage(params.perPage);
-      if ("sort" in overrides) setSort(params.sort);
-
-      setLoading(true);
-      setError("");
-      try {
-        const qs = buildQuery(params);
-        const json = await crudService.get(`/api/programs?${qs}`);
-        setPrograms(json?.data || []);
-        setTotal(json?.meta?.total || 0);
-        setTotalPages(json?.meta?.totalPages || 1);
-      } catch (e) {
-        console.error(e);
-        setError(e?.message || "Failed to fetch");
-      } finally {
-        setLoading(false);
-      }
-    },
-    [q, category, published, page, perPage, sort]
-  );
+  const fetchPrograms = useCallback(async (overrides = {}) => {
+    if ("q" in overrides) setQ(overrides.q);
+    if ("category" in overrides) setCategory(overrides.category);
+    if ("published" in overrides) setPublished(overrides.published);
+    if ("page" in overrides) setPage(Math.max(1, overrides.page));
+    if ("perPage" in overrides) setPerPage(overrides.perPage);
+    if ("sort" in overrides) setSort(overrides.sort);
+    // SWR refetches on key change
+  }, []);
 
   /** CREATE */
   const createProgram = useCallback(
@@ -88,8 +72,14 @@ export default function useProgramsViewModel() {
             ? { ...payload, admin_user_id: ADMIN_ID }
             : payload;
 
-        await crudService.post("/api/programs", body);
-        await fetchPrograms();
+        const res = await fetch("/api/programs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) throw new Error((await res.json().catch(()=>null))?.message || "Failed to create");
+        await fetchPrograms({ page: 1 });
+        await mutate();
       } catch (e) {
         console.error(e);
         throw e;
@@ -97,7 +87,7 @@ export default function useProgramsViewModel() {
         setLoading(false);
       }
     },
-    [ADMIN_ID, fetchPrograms]
+    [ADMIN_ID, fetchPrograms, mutate]
   );
 
   /** UPDATE */
@@ -105,8 +95,13 @@ export default function useProgramsViewModel() {
     async (id, payload) => {
       setLoading(true);
       try {
-        await crudService.patch(`/api/programs/${id}`, payload); // pakai route [id]
-        await fetchPrograms();
+        const res = await fetch(`/api/programs/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error((await res.json().catch(()=>null))?.message || "Failed to update");
+        await mutate();
       } catch (e) {
         console.error(e);
         throw e;
@@ -114,7 +109,7 @@ export default function useProgramsViewModel() {
         setLoading(false);
       }
     },
-    [fetchPrograms]
+    [mutate]
   );
 
   /** DELETE */
@@ -122,8 +117,9 @@ export default function useProgramsViewModel() {
     async (id) => {
       setLoading(true);
       try {
-        await crudService.delete(`/api/programs/${id}`); // DELETE tanpa body
-        await fetchPrograms();
+        const res = await fetch(`/api/programs/${id}`, { method: "DELETE" });
+        if (!res.ok) throw new Error((await res.json().catch(()=>null))?.message || "Failed to delete");
+        await mutate();
       } catch (e) {
         console.error(e);
         throw e;
@@ -131,18 +127,18 @@ export default function useProgramsViewModel() {
         setLoading(false);
       }
     },
-    [fetchPrograms]
+    [mutate]
   );
 
-  // auto-fetch (debounce)
+  // auto-refetch (debounce state changes → mutate)
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => fetchPrograms(), 350);
+    debounceRef.current = setTimeout(() => mutate(), 350);
     return () => clearTimeout(debounceRef.current);
-  }, [q, category, published, page, perPage, sort, fetchPrograms]);
+  }, [q, category, published, page, perPage, sort, mutate]);
 
   return {
-    loading,
+    loading: listLoading || loading,
     programs,
     q,
     category,

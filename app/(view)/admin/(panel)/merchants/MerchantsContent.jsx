@@ -31,6 +31,8 @@ import {
   TwitterOutlined,
   LinkOutlined,
 } from "@ant-design/icons";
+import HtmlEditor from "@/../app/components/editor/HtmlEditor";
+import { sanitizeHtml } from "@/app/utils/dompurify";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -132,7 +134,7 @@ function MerchantFormModal({
         body: { padding: 0 },
         mask: { backgroundColor: "rgba(0,0,0,.6)" },
       }}
-      destroyOnClose
+      destroyOnHidden
     >
       <div className="form-scroll">
         <div style={{ padding: 16 }}>
@@ -272,7 +274,7 @@ function MerchantFormModal({
                 </Form.Item>
               </Col>
 
-              {/* About */}
+              {/* About (WYSIWYG) */}
               <Col span={24}>
                 <Form.Item
                   name="about"
@@ -285,9 +287,10 @@ function MerchantFormModal({
                     },
                   ]}
                 >
-                  <Input.TextArea
-                    rows={4}
-                    style={{ ...ctrlStyle, resize: "vertical" }}
+                  <HtmlEditor
+                    className="editor-dark"
+                    variant="mini"
+                    minHeight={200}
                   />
                 </Form.Item>
               </Col>
@@ -346,7 +349,13 @@ function MerchantFormModal({
 /* ===== View Modal ===== */
 function MerchantViewModal({ open, data, onClose }) {
   const rows = [];
-  if (data?.about) rows.push({ label: "About", content: data.about });
+  if (data?.about)
+    rows.push({
+      label: "About",
+      content: (
+        <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(data.about ?? "") }} />
+      ),
+    });
   if (data?.address) rows.push({ label: "Address", content: data.address });
   if (data?.email)
     rows.push({
@@ -445,7 +454,7 @@ function MerchantViewModal({ open, data, onClose }) {
         body: { padding: 0 },
         mask: { backgroundColor: "rgba(0,0,0,.6)" },
       }}
-      destroyOnClose
+      destroyOnHidden
     >
       <div className="view-scroll">
         <div style={{ padding: 16 }}>
@@ -519,9 +528,24 @@ function MerchantCard({ m, onView, onEdit, onDelete }) {
       : `https://${m.website}`
     : null;
 
-  const desc = (m.about || m.address || "")
-    .replace(/^["“”']+|["“”']+$/g, "")
-    .trim();
+  const websiteLabel = (() => {
+    if (!webUrl) return "";
+    const fallbackLabel = webUrl.replace(/^https?:\/\//i, "");
+    try {
+      const urlObj = new URL(webUrl);
+      const base = urlObj.hostname.replace(/^www\./, "");
+      const path = urlObj.pathname && urlObj.pathname !== "/" ? urlObj.pathname : "";
+      const label = `${base}${path}`.replace(/\/$/, "");
+      return label.length > 28 ? `${label.slice(0, 25)}...` : label;
+    } catch (_err) {
+      return fallbackLabel.length > 28 ? `${fallbackLabel.slice(0, 25)}...` : fallbackLabel;
+    }
+  })();
+
+  const cleanedDesc = (m.about || m.address || "").replace(/^[`"'\s]+|[`"'\s]+$/g, "").trim();
+  const safeDesc = sanitizeHtml(cleanedDesc || "");
+  const plainDesc = safeDesc.replace(/<[^>]*>/g, "").trim();
+  const hasDesc = plainDesc.length > 0;
 
   return (
     <Card
@@ -635,24 +659,42 @@ function MerchantCard({ m, onView, onEdit, onDelete }) {
             href={webUrl}
             target="_blank"
             rel="noreferrer"
+            title={webUrl}
             style={{
               borderColor: "#2f3f60",
               background: "rgba(255,255,255,.04)",
+              maxWidth: 220,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
             }}
           >
-            {webUrl.replace(/^https?:\/\//i, "")}
+            {websiteLabel}
           </Button>
         )}
       </div>
 
       {/* Deskripsi */}
-      <Paragraph
-        type="secondary"
-        ellipsis={{ rows: 2 }}
-        style={{ margin: "10px 0 0" }}
-      >
-        {desc || "—"}
-      </Paragraph>
+      <div style={{ minHeight: "calc(1.3em * 2)", margin: "10px 0 0" }}>
+        {hasDesc ? (
+          <div
+            title={plainDesc || undefined}
+            style={{
+              lineHeight: 1.3,
+              color: "#94a3b8",
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+            }}
+            dangerouslySetInnerHTML={{ __html: safeDesc }}
+          />
+        ) : (
+          <Paragraph style={{ margin: 0, lineHeight: 1.3 }} type="secondary">
+            -
+          </Paragraph>
+        )}
+      </div>
 
       {/* Actions */}
       <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
@@ -995,7 +1037,7 @@ export default function MerchantsContent(props) {
               twitter: editing.twitter || "",
               website: editing.website || "",
               mou_url: editing.mou_url || "",
-              image_url: editing.image_url || "", // ⬅️ NEW
+              image_url: editing.image_url || "",
             };
           }, [editing])}
           saving={saving}
@@ -1009,3 +1051,4 @@ export default function MerchantsContent(props) {
     </ConfigProvider>
   );
 }
+

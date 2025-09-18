@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useMemo } from "react";
-import { Button, Menu, Tooltip, ConfigProvider, Grid } from "antd";
+import { Button, Menu, Tooltip, ConfigProvider, Grid, Popconfirm } from "antd";
 import { LogOut } from "lucide-react";
 import useSidebarViewModel from "./useSidebarViewModel";
 import logo from "@/public/images/logo-removebg-preview.png";
@@ -95,23 +95,12 @@ export default function Sidebar({ collapsed }) {
       <div className="sidebar-bottom">
         {isCollapsed ? (
           <Tooltip title="Logout" placement="right">
-            <Button
-              danger
-              onClick={onLogout}
-              className="sidebar-logout icon-only"
-              icon={<LogOut size={18} />}
-            />
+            <span>
+              <MenuConfirmLogout onConfirm={onLogout} placement="right" />
+            </span>
           </Tooltip>
         ) : (
-          <Button
-            danger
-            block
-            onClick={onLogout}
-            className="sidebar-logout"
-            style={{ height: 40, borderRadius: 9999 }}
-          >
-            Logout
-          </Button>
+          <MenuConfirmLogout onConfirm={onLogout} placement="top" block />
         )}
       </div>
 
@@ -128,5 +117,35 @@ export default function Sidebar({ collapsed }) {
         }
       `}</style>
     </aside>
+  );
+}
+
+function MenuConfirmLogout({ onConfirm, placement = "top", block = false }) {
+  return (
+    <ConfigProvider
+      theme={{
+        components: { Popconfirm: { colorBgElevated: "#0b1223" } },
+      }}
+    >
+      <Popconfirm
+        title="Logout?"
+        description="Yakin ingin logout?"
+        okText="Logout"
+        okButtonProps={{ danger: true }}
+        placement={placement}
+        onConfirm={onConfirm}
+      >
+        <Button
+          danger
+          className={`sidebar-logout ${!block ? "icon-only" : ""}`}
+          icon={<LogOut size={18} />}
+          {...(block
+            ? { block: true, style: { height: 40, borderRadius: 9999 } }
+            : {})}
+        >
+          {block ? "Logout" : null}
+        </Button>
+      </Popconfirm>
+    </ConfigProvider>
   );
 }

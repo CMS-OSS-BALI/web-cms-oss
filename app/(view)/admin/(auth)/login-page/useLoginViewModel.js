@@ -21,7 +21,6 @@ export default function useLoginViewModel() {
   }, [errorQ, reason]);
 
   const nextParam = qs.get("next") || "/admin/dashboard";
-  const nextSafe = nextParam.startsWith("/") ? nextParam : "/admin/dashboard";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -49,8 +48,6 @@ export default function useLoginViewModel() {
         setLocalError("Email atau password salah.");
         return;
       }
-
-      // Abaikan res.url agar tidak balik ke halaman terakhir
       router.replace(DASHBOARD_URL);
     } catch (err) {
       setLocalError("Terjadi kesalahan. Coba lagi dalam beberapa saat.");

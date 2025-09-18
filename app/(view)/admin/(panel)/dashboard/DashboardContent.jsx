@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Row, Col, Card, Typography, List, Space, Button } from "antd";
+import { Row, Col, Card, Typography, List, Button } from "antd";
 import VisitorsSection from "@/app/components/dashboard/VisitorsSection";
 import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
@@ -14,6 +14,7 @@ export default function DashboardContent({
 }) {
   const { data: session } = useSession();
 
+  // ===== Helpers =====
   const pickKpi = (...candidates) => {
     const found = (kpis || []).find(
       (k) =>
@@ -45,6 +46,7 @@ export default function DashboardContent({
     month: "long",
   });
 
+  // ===== Nama pengguna (session/profile) =====
   const [nameFromApi, setNameFromApi] = useState("");
   useEffect(() => {
     let stop = false;
@@ -85,7 +87,7 @@ export default function DashboardContent({
     prettyNameFromEmail(session?.user?.email || email) ||
     "";
 
-  // ==== Programs count (active + total) ====
+  // ===== Programs count (active + total) =====
   const [progCount, setProgCount] = useState({
     total: null,
     active: null,
@@ -128,7 +130,7 @@ export default function DashboardContent({
     };
   }, []);
 
-  // KPI — urutan: Events, Merchants, Partners, Programs
+  // ===== KPI Cards =====
   const kpiCards = useMemo(() => {
     const totalEvents = pickKpi("Total Events");
     const totalMerchants = pickKpi("Total Merchants");
@@ -157,11 +159,30 @@ export default function DashboardContent({
     ];
   }, [kpis, progCount.active, progCount.total]);
 
-  // ==== Render helper for upcoming events (name + date + time range) ====
+  // ===== Upcoming Events helpers + sorting =====
   const getStart = (e) =>
     e?.start_at || e?.startAt || e?.start_date || e?.starts_at || e?.start;
   const getEnd = (e) =>
     e?.end_at || e?.endAt || e?.end_date || e?.ends_at || e?.end;
+
+  const toMs = (dStr) => {
+    if (!dStr) return Number.POSITIVE_INFINITY;
+    const d = new Date(dStr);
+    return Number.isNaN(d.getTime()) ? Number.POSITIVE_INFINITY : d.getTime();
+  };
+
+  // Urutkan dari paling dekat → paling jauh
+  const sortedUpcoming = useMemo(() => {
+    const arr = Array.isArray(upcomingEvents) ? [...upcomingEvents] : [];
+    return arr.sort((a, b) => {
+      const as = toMs(getStart(a));
+      const bs = toMs(getStart(b));
+      if (as !== bs) return as - bs;
+      const ae = toMs(getEnd(a));
+      const be = toMs(getEnd(b));
+      return ae - be;
+    });
+  }, [upcomingEvents]);
 
   const fmtDate = (dStr) => {
     const d = new Date(dStr);
@@ -246,9 +267,9 @@ export default function DashboardContent({
             </div>
 
             <div style={{ marginTop: 8, flex: 1 }}>
-              {upcomingEvents?.length ? (
+              {sortedUpcoming?.length ? (
                 <List
-                  dataSource={upcomingEvents}
+                  dataSource={sortedUpcoming}
                   split={false}
                   renderItem={(ev) => {
                     const title =

@@ -51,7 +51,7 @@
 
 /* link dengan target sentuh lebih besar + focus ring jelas */
 .link {
-  color: #93c5fd;
+  color: #5a96cf; /* lighter tint of 3674B5 */
   text-decoration: none;
   padding: 2px 4px;
   border-radius: 8px;
@@ -64,7 +64,7 @@
   transform: translateY(1px);
 }
 .link:focus-visible {
-  outline: 2px solid #60a5fa;
+  outline: 2px solid #5a96cf;
   outline-offset: 2px;
 }
 

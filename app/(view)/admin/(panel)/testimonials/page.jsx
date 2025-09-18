@@ -1,9 +1,16 @@
 "use client";
 
+import { Suspense, lazy } from "react";
+import Loading from "@/app/components/loading/LoadingImage";
 import useTestimonialsViewModel from "./useTestimonialsViewModel";
-import TestimonialsContent from "./TestimonialsContent";
+
+const TestimonialsContentLazy = lazy(() => import("./TestimonialsContent"));
 
 export default function TestimonialsPage() {
   const vm = useTestimonialsViewModel();
-  return <TestimonialsContent {...vm} />;
+  return (
+    <Suspense fallback={<div className="page-wrap"><Loading /></div>}>
+      <TestimonialsContentLazy {...vm} />
+    </Suspense>
+  );
 }
