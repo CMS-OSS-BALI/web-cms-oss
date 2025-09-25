@@ -136,14 +136,14 @@ export async function POST(req) {
         partnerEmails.push(...extractEmailsFromPartnerContact(p?.contact));
       }
     }
-    // Kumpulkan email merchant
+    // Kumpulkan email Mitra Dalam Negeri
     let merchantEmails = [];
     if (Array.isArray(merchantIds) && merchantIds.length) {
-      const merchants = await prisma.merchants.findMany({
+      const mitraList = await prisma.mitra_dalam_negeri.findMany({
         where: { id: { in: merchantIds.map(String) } },
         select: { id: true, email: true },
       });
-      for (const m of merchants) {
+      for (const m of mitraList) {
         if (m?.email) merchantEmails.push(...splitMaybeList(m.email));
       }
     }
@@ -178,6 +178,7 @@ export async function POST(req) {
         sources: {
           partners: partnerEmails,
           merchants: merchantEmails,
+          mitraDalamNegeri: merchantEmails,
           manual: Array.isArray(emails) ? emails : [],
         },
       });
@@ -260,3 +261,4 @@ export async function POST(req) {
     return NextResponse.json({ ok: false, error: msg }, { status });
   }
 }
+

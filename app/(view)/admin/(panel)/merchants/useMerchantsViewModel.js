@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/lib/swr/fetcher";
 
@@ -37,7 +37,13 @@ export default function useMerchantsViewModel() {
     isLoading: listLoading,
     mutate,
   } = useSWR(listKey, fetcher);
-  const merchants = listJson?.data || [];
+  const merchants = useMemo(() => {
+    const items = Array.isArray(listJson?.data) ? listJson.data : [];
+    return items.map((item) => ({
+      ...item,
+      locale_used: item?.locale_used || DEFAULT_LOCALE,
+    }));
+  }, [listJson?.data]);
   useEffect(() => {
     if (listJson?.total !== undefined) {
       setTotal(listJson.total);
@@ -54,51 +60,51 @@ export default function useMerchantsViewModel() {
   }, []);
 
   /** CREATE */
-  const createMerchant = async (payload) => {
+  const createMerchant = async (payload, locale = DEFAULT_LOCALE) => {
     setError("");
     setMessage("");
     try {
       const res = await fetch("/api/merchants", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...payload, locale: DEFAULT_LOCALE }),
+        body: JSON.stringify({ ...payload, locale }),
       });
       if (!res.ok)
         throw new Error(
           (await res.json().catch(() => null))?.message ||
-            "Gagal menambah merchant"
+            "Gagal menambah Mitra Dalam Negeri"
         );
-      setMessage("Merchant berhasil ditambahkan");
+      setMessage("Mitra Dalam Negeri berhasil ditambahkan");
       await fetchMerchants({ page: 1 });
       await mutate();
       return { ok: true };
     } catch (e) {
-      const msg = e?.message || "Gagal menambah merchant";
+      const msg = e?.message || "Gagal menambah Mitra Dalam Negeri";
       setError(msg);
       return { ok: false, error: msg };
     }
   };
 
   /** UPDATE */
-  const updateMerchant = async (id, payload) => {
+  const updateMerchant = async (id, payload, locale = DEFAULT_LOCALE) => {
     setError("");
     setMessage("");
     try {
       const res = await fetch(`/api/merchants/${encodeURIComponent(id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...payload, locale: DEFAULT_LOCALE }),
+        body: JSON.stringify({ ...payload, locale }),
       });
       if (!res.ok)
         throw new Error(
           (await res.json().catch(() => null))?.message ||
-            "Gagal memperbarui merchant"
+            "Gagal memperbarui Mitra Dalam Negeri"
         );
-      setMessage("Merchant berhasil diperbarui");
+      setMessage("Mitra Dalam Negeri berhasil diperbarui");
       await mutate();
       return { ok: true };
     } catch (e) {
-      const msg = e?.message || "Gagal memperbarui merchant";
+      const msg = e?.message || "Gagal memperbarui Mitra Dalam Negeri";
       setError(msg);
       return { ok: false, error: msg };
     }
@@ -115,13 +121,13 @@ export default function useMerchantsViewModel() {
       if (!res.ok)
         throw new Error(
           (await res.json().catch(() => null))?.message ||
-            "Gagal menghapus merchant"
+            "Gagal menghapus Mitra Dalam Negeri"
         );
-      setMessage("Merchant dihapus");
+      setMessage("Mitra Dalam Negeri dihapus");
       await mutate();
       return { ok: true };
     } catch (e) {
-      const msg = e?.message || "Gagal menghapus merchant";
+      const msg = e?.message || "Gagal menghapus Mitra Dalam Negeri";
       setError(msg);
       return { ok: false, error: msg };
     }
@@ -146,3 +152,4 @@ export default function useMerchantsViewModel() {
     deleteMerchant,
   };
 }
+

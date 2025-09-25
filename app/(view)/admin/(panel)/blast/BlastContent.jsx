@@ -17,7 +17,7 @@ export default function BlastContent(vm) {
           Blast Email
         </Typography.Title>
         <Typography.Text style={{ color: "#9fb1d1" }}>
-          Kirim email massal ke pilihan Partners / Merchants tanpa input manual.
+          Kirim email massal ke pilihan Partners / Mitra Dalam Negeri tanpa input manual.
         </Typography.Text>
       </Card>
 
@@ -270,7 +270,7 @@ export default function BlastContent(vm) {
                     label={
                       <Space size={6}>
                         <Building2 size={16} />
-                        <span>Pilih Merchants</span>
+                        <span>Pilih Mitra Dalam Negeri</span>
                       </Space>
                     }
                   >
@@ -279,7 +279,7 @@ export default function BlastContent(vm) {
                       allowClear
                       showSearch
                       filterOption={false}
-                      placeholder="Cari & pilih merchants…"
+                      placeholder="Cari & pilih Mitra Dalam Negeri…"
                       value={vm.merchantIds}
                       options={vm.merchantOptions}
                       onSearch={vm.searchMerchants}
@@ -473,3 +473,4 @@ export default function BlastContent(vm) {
     </div>
   );
 }
+

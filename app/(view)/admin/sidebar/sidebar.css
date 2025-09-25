@@ -44,6 +44,8 @@
   height: 100dvh;
   overflow-y: auto;
   overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.25) transparent;
   width: var(--sidebar-w);
   min-width: var(--sidebar-w);
   transition: width 0.25s ease, min-width 0.25s ease;
@@ -51,6 +53,20 @@
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
+}
+/* Sidebar scroll styling */
+.sidebar::-webkit-scrollbar {
+  width: 8px;
+}
+.sidebar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.25);
+  border-radius: 9999px;
+}
+.sidebar:hover::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.4);
 }
 .sidebar.is-collapsed {
   width: var(--sidebar-w-collapsed);
@@ -73,7 +89,7 @@
 }
 .sidebar-logo-img {
   display: block;
-  width: 140px;
+  width: 110px;
   height: auto;
   object-fit: contain;
   transition: width 0.25s ease;

@@ -7,7 +7,7 @@ import { fetcher } from "@/lib/swr/fetcher";
 /**
  * ViewModel Testimonials
  * - Client-side search & pagination (karena GET /api/testimonials belum paging)
- * - Admin-only actions (create/update/delete) mengandalkan cookie session
+ * - Admin-only actions (create/update/delete) menggunakan cookie session
  */
 export default function useTestimonialsViewModel() {
   const [loading, setLoading] = useState(false); // non-GET ops
@@ -22,9 +22,18 @@ export default function useTestimonialsViewModel() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
-  // SWR all testimonials
-  const { data: rawJson, error: rawErr, isLoading: listLoading, mutate } = useSWR(`/api/testimonials`, fetcher);
-  const rawList = useMemo(() => (rawJson?.data || []).filter((it) => !it.deleted_at), [rawJson]);
+  // SWR all testimonials (server will return latest shape incl. star & youtube_url)
+  const {
+    data: rawJson,
+    error: rawErr,
+    isLoading: listLoading,
+    mutate,
+  } = useSWR(`/api/testimonials`, fetcher);
+
+  const rawList = useMemo(
+    () => (rawJson?.data || []).filter((it) => !it.deleted_at),
+    [rawJson]
+  );
 
   const computePaged = useCallback(() => {
     const qv = (q || "").trim().toLowerCase();
@@ -49,6 +58,7 @@ export default function useTestimonialsViewModel() {
   }, [rawList, q, page, perPage]);
 
   const { list: testimonials, ttl, ttlPages, pg, pp } = computePaged();
+
   // sync derived paging numbers when data or filters change
   useEffect(() => {
     setTotal(ttl);
@@ -62,10 +72,10 @@ export default function useTestimonialsViewModel() {
     if ("q" in opts) setQ(opts.q || "");
     if ("page" in opts) setPage(Math.max(1, opts.page));
     if ("perPage" in opts) setPerPage(opts.perPage);
-    // SWR will refetch raw list as needed
+    // SWR akan revalidate sesuai key bila diperlukan
   }, []);
 
-  // CREATE (admin)
+  // CREATE (admin) — payload boleh: { name, photo_url, message, star, youtube_url }
   const createTestimonial = async (payload) => {
     setError("");
     setMessage("");
@@ -73,9 +83,19 @@ export default function useTestimonialsViewModel() {
       const res = await fetch("/api/testimonials", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          name: payload.name,
+          photo_url: payload.photo_url,
+          message: payload.message,
+          star: typeof payload.star === "number" ? payload.star : undefined,
+          youtube_url: payload.youtube_url || undefined,
+        }),
       });
-      if (!res.ok) throw new Error((await res.json().catch(()=>null))?.message || "Gagal menambah testimonial");
+      if (!res.ok)
+        throw new Error(
+          (await res.json().catch(() => null))?.message ||
+            "Gagal menambah testimonial"
+        );
       setMessage("Testimonial berhasil ditambahkan");
       await fetchTestimonials({ page: 1 });
       await mutate();
@@ -92,13 +112,26 @@ export default function useTestimonialsViewModel() {
     setError("");
     setMessage("");
     try {
-      // Jika crudService tidak punya method put, ganti ke: crudService.request("PUT", url, payload)
       const res = await fetch(`/api/testimonials/${encodeURIComponent(id)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          ...(payload.name != null ? { name: payload.name } : {}),
+          ...(payload.photo_url != null
+            ? { photo_url: payload.photo_url }
+            : {}),
+          ...(payload.message != null ? { message: payload.message } : {}),
+          ...(typeof payload.star === "number" ? { star: payload.star } : {}),
+          ...(payload.youtube_url != null
+            ? { youtube_url: payload.youtube_url }
+            : {}),
+        }),
       });
-      if (!res.ok) throw new Error((await res.json().catch(()=>null))?.message || "Gagal memperbarui testimonial");
+      if (!res.ok)
+        throw new Error(
+          (await res.json().catch(() => null))?.message ||
+            "Gagal memperbarui testimonial"
+        );
       setMessage("Testimonial berhasil diperbarui");
       await mutate();
       return { ok: true };
@@ -114,8 +147,14 @@ export default function useTestimonialsViewModel() {
     setError("");
     setMessage("");
     try {
-      const res = await fetch(`/api/testimonials/${encodeURIComponent(id)}`, { method: "DELETE" });
-      if (!res.ok) throw new Error((await res.json().catch(()=>null))?.message || "Gagal menghapus testimonial");
+      const res = await fetch(`/api/testimonials/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      if (!res.ok)
+        throw new Error(
+          (await res.json().catch(() => null))?.message ||
+            "Gagal menghapus testimonial"
+        );
       setMessage("Testimonial dihapus");
       await mutate();
       return { ok: true };
@@ -137,7 +176,7 @@ export default function useTestimonialsViewModel() {
     setPerPage,
     total,
     totalPages,
-    error: error || (rawErr?.message || ""),
+    error: error || rawErr?.message || "",
     message,
     fetchTestimonials,
     createTestimonial,

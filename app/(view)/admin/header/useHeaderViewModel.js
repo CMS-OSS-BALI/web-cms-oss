@@ -9,7 +9,7 @@ const TITLE_MAP = {
   "/admin/scanner": "Scanner",
   "/admin/partners": "Partners",
   "/admin/testimonials": "Testimonials",
-  "/admin/merchants": "Merchants",
+  "/admin/merchants": "Mitra Dalam Negeri",
   "/admin/profile": "Profile",
 };
 
@@ -25,3 +25,4 @@ export default function useHeaderViewModel() {
   const title = TITLE_MAP[base] ?? "Dashboard";
   return { title };
 }
+

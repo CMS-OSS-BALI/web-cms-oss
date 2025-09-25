@@ -7,11 +7,14 @@ import {
   Layers,
   CalendarDays,
   Handshake,
+  Users,
+  UserCog,
   User,
   Store,
   MessageSquareText,
   QrCode,
   Megaphone,
+  FileText, // ⟵ tambahkan ikon untuk Blog
 } from "lucide-react";
 
 export const MENU = [
@@ -19,12 +22,15 @@ export const MENU = [
   { label: "Programs", href: "/admin/programs", icon: Layers },
   { label: "Events", href: "/admin/events", icon: CalendarDays },
   { label: "Partners", href: "/admin/partners", icon: Handshake },
+  { label: "Leads", href: "/admin/leads", icon: Users },
+  { label: "Consultant", href: "/admin/consultants", icon: UserCog },
   {
     label: "Testimonials",
     href: "/admin/testimonials",
     icon: MessageSquareText,
   },
-  { label: "Merchants", href: "/admin/merchants", icon: Store },
+  { label: "Blog", href: "/admin/blog", icon: FileText }, // ⟵ item baru
+  { label: "Mitra Dalam Negeri", href: "/admin/merchants", icon: Store },
   { label: "Blast", href: "/admin/blast", icon: Megaphone },
   { label: "Profile", href: "/admin/profile", icon: User },
 ];

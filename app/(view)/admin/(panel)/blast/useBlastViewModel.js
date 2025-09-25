@@ -12,7 +12,7 @@ function mapPartner(p) {
   return { label: name, value: String(p.id) };
 }
 function mapMerchant(m) {
-  const name = m?.merchant_name || m?.name || "Merchant";
+  const name = m?.merchant_name || m?.name || "Mitra Dalam Negeri";
   return { label: name, value: String(m.id) };
 }
 
@@ -55,7 +55,7 @@ export default function useBlastViewModel() {
     setLoadingPartners(true);
     try {
       const url = `/api/partners?perPage=50${
-        q ? `&search=${encodeURIComponent(q)}` : ""
+        q ? `&q=${encodeURIComponent(q)}` : ""
       }`;
       const r = await fetch(url, { cache: "no-store" });
       const j = await r.json().catch(() => ({}));
@@ -72,7 +72,7 @@ export default function useBlastViewModel() {
     setLoadingMerchants(true);
     try {
       const url = `/api/merchants?perPage=50${
-        q ? `&search=${encodeURIComponent(q)}` : ""
+        q ? `&q=${encodeURIComponent(q)}` : ""
       }`;
       const r = await fetch(url, { cache: "no-store" });
       const j = await r.json().catch(() => ({}));

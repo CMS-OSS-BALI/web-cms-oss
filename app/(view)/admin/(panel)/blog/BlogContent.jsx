@@ -14,16 +14,15 @@ import {
   notification,
   Pagination,
   Popconfirm,
-  Rate,
   Row,
   Select,
   Space,
-  Spin,
+  Tag,
   Typography,
   theme as antdTheme,
 } from "antd";
-import { PlusOutlined, EyeOutlined, YoutubeOutlined } from "@ant-design/icons";
-import HtmlEditor from "@/../app/components/editor/HtmlEditor";
+import { EyeOutlined, PlusOutlined } from "@ant-design/icons";
+import HtmlEditor from "@/app/components/editor/HtmlEditor";
 import { sanitizeHtml } from "@/app/utils/dompurify";
 
 const { Title, Text, Paragraph } = Typography;
@@ -40,7 +39,7 @@ const darkCardStyle = {
 };
 
 /* ===== Form Modal ===== */
-function TestimonialFormModal({
+function BlogFormModal({
   open,
   mode,
   initialValues,
@@ -66,21 +65,22 @@ function TestimonialFormModal({
   };
 
   const handleFinish = (values) => {
-    onSubmit({
-      name: values.name?.trim(),
-      photo_url: values.photo_url?.trim(),
-      message: values.message?.trim(),
-      star: typeof values.star === "number" ? values.star : undefined,
-      youtube_url: values.youtube_url?.trim() || undefined,
-    });
+    // kirim field versi Indonesia dan minta auto translate ke English
+    const payload = {
+      image_url: values.image_url?.trim(),
+      name_id: values.name_id?.trim(),
+      description_id: values.description_id?.trim() || "",
+      autoTranslate: true,
+    };
+    onSubmit(payload);
   };
 
   return (
     <Modal
-      title={mode === "edit" ? "Edit Testimonial" : "Add Testimonial"}
+      title={mode === "edit" ? "Edit Blog" : "Add Blog"}
       open={open}
       centered
-      width={720}
+      width={840}
       onCancel={onCancel}
       footer={
         <Space style={{ width: "100%", justifyContent: "flex-end" }}>
@@ -114,21 +114,20 @@ function TestimonialFormModal({
             <Row gutter={[12, 8]}>
               <Col xs={24} md={12}>
                 <Form.Item
-                  name="name"
-                  label="Name"
+                  name="name_id"
+                  label="Judul (Bahasa Indonesia)"
                   required={isCreate}
-                  rules={req("Name wajib diisi")}
+                  rules={req("Judul (ID) wajib diisi")}
                 >
-                  <Input maxLength={150} style={ctrlStyle} />
+                  <Input maxLength={190} style={ctrlStyle} />
                 </Form.Item>
               </Col>
-
               <Col xs={24} md={12}>
                 <Form.Item
-                  name="photo_url"
-                  label="Photo URL"
+                  name="image_url"
+                  label="Cover Image URL"
                   required={isCreate}
-                  rules={req("Photo URL wajib diisi")}
+                  rules={req("Cover URL wajib diisi")}
                 >
                   <Input
                     placeholder="/uploads/xx.jpg atau https://..."
@@ -137,32 +136,17 @@ function TestimonialFormModal({
                 </Form.Item>
               </Col>
 
-              <Col xs={24} md={12}>
-                <Form.Item name="star" label="Rating (1–5)">
-                  <Rate allowClear count={5} />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={12}>
-                <Form.Item name="youtube_url" label="YouTube URL (opsional)">
-                  <Input placeholder="https://youtu.be/xxxx atau https://www.youtube.com/watch?v=xxxx" />
-                </Form.Item>
-              </Col>
-
               <Col span={24}>
                 <Form.Item
-                  name="message"
-                  label="Testimonial"
+                  name="description_id"
+                  label="Konten (Bahasa Indonesia)"
                   required={isCreate}
-                  rules={req("Testimonial wajib diisi")}
+                  rules={req("Konten (ID) wajib diisi")}
                 >
-                  <HtmlEditor
-                    className="editor-dark"
-                    variant="mini"
-                    minHeight={200}
-                  />
+                  <HtmlEditor className="editor-dark" minHeight={220} />
                 </Form.Item>
               </Col>
+
             </Row>
           </Form>
         </div>
@@ -196,14 +180,14 @@ function TestimonialFormModal({
 }
 
 /* ===== View Modal ===== */
-function TestimonialViewModal({ open, data, onClose }) {
+function BlogViewModal({ open, data, onClose }) {
   return (
     <Modal
       open={open}
       onCancel={onClose}
       centered
-      width={840}
-      title={data?.name || "Detail Testimonial"}
+      width={900}
+      title={data?.name || "Detail Blog"}
       footer={
         <Button shape="round" type="primary" onClick={onClose}>
           Close
@@ -223,7 +207,7 @@ function TestimonialViewModal({ open, data, onClose }) {
       <div className="view-scroll">
         <div style={{ padding: 16 }}>
           <Image
-            src={data?.photo_url || PLACEHOLDER}
+            src={data?.image_url || PLACEHOLDER}
             alt={data?.name}
             style={{
               width: "100%",
@@ -238,33 +222,21 @@ function TestimonialViewModal({ open, data, onClose }) {
               e.currentTarget.src = PLACEHOLDER;
             }}
           />
-
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <Title level={4} style={{ marginTop: 0 }}>
-              {data?.name || "—"}
-            </Title>
-            {typeof data?.star === "number" && data.star > 0 ? (
-              <Rate disabled value={data.star} />
+          <Title level={4} style={{ marginTop: 0 }}>
+            {data?.name || "—"}
+          </Title>
+          <Space size={8} wrap style={{ marginBottom: 12 }}>
+            <Tag>Views: {data?.views_count ?? 0}</Tag>
+            <Tag color="blue">Likes: {data?.likes_count ?? 0}</Tag>
+            {data?.locale_used ? (
+              <Tag color="purple">{data.locale_used.toUpperCase()}</Tag>
             ) : null}
-            {data?.youtube_url ? (
-              <Button
-                icon={<YoutubeOutlined />}
-                size="small"
-                shape="round"
-                href={data.youtube_url}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Watch
-              </Button>
-            ) : null}
-          </div>
-
-          {data?.message ? (
+          </Space>
+          {data?.description ? (
             <div
               style={{ marginBottom: 0 }}
               dangerouslySetInnerHTML={{
-                __html: sanitizeHtml(data.message ?? ""),
+                __html: sanitizeHtml(data.description ?? ""),
               }}
             />
           ) : (
@@ -301,7 +273,7 @@ function TestimonialViewModal({ open, data, onClose }) {
 }
 
 /* ===== Card ===== */
-function TestimonialCard({ t, onView, onEdit, onDelete }) {
+function BlogCard({ b, onView, onEdit, onDelete }) {
   return (
     <Card
       hoverable
@@ -319,8 +291,8 @@ function TestimonialCard({ t, onView, onEdit, onDelete }) {
           onClick={onView}
         >
           <img
-            alt={t.name}
-            src={t.photo_url || PLACEHOLDER}
+            alt={b.name}
+            src={b.image_url || PLACEHOLDER}
             style={{ width: "100%", height: "100%", objectFit: "cover" }}
             onError={(e) => {
               e.currentTarget.onerror = null;
@@ -334,40 +306,30 @@ function TestimonialCard({ t, onView, onEdit, onDelete }) {
         style={{
           display: "flex",
           flexDirection: "column",
-          rowGap: 4,
-          minHeight: 122,
+          rowGap: 6,
+          minHeight: 120,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <Text
-            strong
-            style={{
-              fontSize: 14,
-              lineHeight: 1.2,
-              margin: 0,
-              display: "block",
-            }}
-          >
-            {t.name}
-          </Text>
-          {typeof t.star === "number" && t.star > 0 ? (
-            <Rate disabled value={t.star} style={{ fontSize: 14 }} />
-          ) : null}
-        </div>
+        <Text
+          strong
+          style={{ fontSize: 14, lineHeight: 1.2, margin: 0, display: "block" }}
+        >
+          {b.name || "(no title)"}
+        </Text>
 
-        {t.message ? (
+        {b.description ? (
           <div
             style={{
               margin: 0,
               lineHeight: 1.45,
               color: "#94a3b8",
               display: "-webkit-box",
-              WebkitLineClamp: 4,
+              WebkitLineClamp: 3,
               WebkitBoxOrient: "vertical",
               overflow: "hidden",
             }}
             dangerouslySetInnerHTML={{
-              __html: sanitizeHtml(t.message || ""),
+              __html: sanitizeHtml(b.description || ""),
             }}
           />
         ) : (
@@ -376,23 +338,16 @@ function TestimonialCard({ t, onView, onEdit, onDelete }) {
           </Paragraph>
         )}
 
-        {t.youtube_url ? (
-          <div style={{ marginTop: 6 }}>
-            <Button
-              icon={<YoutubeOutlined />}
-              size="small"
-              shape="round"
-              href={t.youtube_url}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Watch
-            </Button>
-          </div>
-        ) : null}
+        <Space size={6} wrap style={{ marginTop: 6 }}>
+          <Tag>Views: {b.views_count ?? 0}</Tag>
+          <Tag color="blue">Likes: {b.likes_count ?? 0}</Tag>
+          {b.locale_used ? (
+            <Tag color="purple">{b.locale_used.toUpperCase()}</Tag>
+          ) : null}
+        </Space>
       </div>
 
-      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+      <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
         <Button
           type="primary"
           size="small"
@@ -406,7 +361,7 @@ function TestimonialCard({ t, onView, onEdit, onDelete }) {
           Edit
         </Button>
         <Popconfirm
-          title="Hapus testimonial?"
+          title="Hapus blog?"
           description="Tindakan ini tidak dapat dibatalkan."
           okText="Hapus"
           okButtonProps={{ danger: true }}
@@ -423,10 +378,10 @@ function TestimonialCard({ t, onView, onEdit, onDelete }) {
 }
 
 /* ===== Main ===== */
-export default function TestimonialsContent(props) {
+export default function BlogContent(props) {
   const {
-    loading,
-    testimonials = [],
+    // data + filters
+    blogs = [],
     q,
     setQ,
     page,
@@ -434,11 +389,23 @@ export default function TestimonialsContent(props) {
     perPage,
     setPerPage,
     total = 0,
-    error,
-    fetchTestimonials,
-    createTestimonial,
-    updateTestimonial,
-    deleteTestimonial,
+    sort,
+    setSort,
+    locale,
+    setLocale,
+    fallback,
+    setFallback,
+
+    // states
+    loading,
+    opLoading,
+    listError,
+
+    // actions
+    createBlog,
+    updateBlog,
+    deleteBlog,
+    bumpStat,
   } = props;
 
   const [api, contextHolder] = notification.useNotification();
@@ -449,26 +416,25 @@ export default function TestimonialsContent(props) {
   const [editing, setEditing] = useState(null);
   const [view, setView] = useState(null);
 
-  // tampilkan error global
   useEffect(() => {
-    if (error) {
+    if (listError) {
       api.error({
-        key: "testimonial-error",
+        key: "blog-error",
         message: "Terjadi kesalahan",
-        description: error,
+        description: listError,
         placement: "topRight",
       });
     }
-  }, [error, api]);
+  }, [listError, api]);
 
   const openCreate = () => {
     setMode("create");
     setEditing(null);
     setModalOpen(true);
   };
-  const openEdit = (t) => {
+  const openEdit = (b) => {
     setMode("edit");
-    setEditing(t);
+    setEditing(b);
     setModalOpen(true);
   };
 
@@ -476,17 +442,14 @@ export default function TestimonialsContent(props) {
     setSaving(true);
     const res =
       mode === "edit"
-        ? await updateTestimonial(editing.id, payload)
-        : await createTestimonial(payload);
+        ? await updateBlog(editing.id, payload)
+        : await createBlog(payload);
     setSaving(false);
 
     if (res?.ok) {
       api.success({
-        key: "testimonial-save",
-        message:
-          mode === "edit"
-            ? "Testimonial diperbarui"
-            : "Testimonial ditambahkan",
+        key: "blog-save",
+        message: mode === "edit" ? "Blog diperbarui" : "Blog ditambahkan",
         description: "Data telah tersimpan.",
         placement: "topRight",
       });
@@ -494,7 +457,7 @@ export default function TestimonialsContent(props) {
       setEditing(null);
     } else {
       api.error({
-        key: "testimonial-save",
+        key: "blog-save",
         message: "Gagal menyimpan",
         description: res?.error || "Silakan coba lagi.",
         placement: "topRight",
@@ -502,24 +465,28 @@ export default function TestimonialsContent(props) {
     }
   };
 
-  const onSearch = () => fetchTestimonials({ page: 1, q, perPage });
+  const onSearch = () => {
+    // hanya set page 1; SWR key dari parent hook yang handle
+    setPage(1);
+  };
   const onReset = () => {
     setQ("");
-    fetchTestimonials({ page: 1, q: "", perPage });
+    setPage(1);
   };
-  const onPageChange = (p) => {
-    setPage(p);
-    fetchTestimonials({ page: p, perPage, q });
-  };
+  const onPageChange = (p) => setPage(p);
 
   const initialValues = useMemo(() => {
-    if (!editing) return { star: undefined, youtube_url: "" };
+    if (!editing) {
+      return {
+        image_url: "",
+        name_id: "",
+        description_id: "",
+      };
+    }
     return {
-      name: editing.name || "",
-      photo_url: editing.photo_url || "",
-      message: editing.message || "",
-      star: typeof editing.star === "number" ? editing.star : undefined,
-      youtube_url: editing.youtube_url || "",
+      image_url: editing.image_url || "",
+      name_id: editing.name || "", // tampilkan judul yang sedang dipakai (locale_used)
+      description_id: editing.description || "",
     };
   }, [editing]);
 
@@ -558,6 +525,7 @@ export default function TestimonialsContent(props) {
       <div style={pageWrapStyle}>
         {contextHolder}
 
+        {/* Header */}
         <Card
           style={{ ...darkCardStyle, marginBottom: 12 }}
           styles={{ body: { padding: 16 } }}
@@ -568,10 +536,10 @@ export default function TestimonialsContent(props) {
           >
             <div>
               <Title level={3} style={{ margin: 0 }}>
-                Testimonials
+                Blog
               </Title>
               <Text type="secondary">
-                Kelola testimoni dari klien/pengguna. Total {total} records.
+                Kelola artikel blog. Total {total} records.
               </Text>
             </div>
             <Button
@@ -580,11 +548,12 @@ export default function TestimonialsContent(props) {
               shape="round"
               onClick={openCreate}
             >
-              Add Testimonial
+              Add Blog
             </Button>
           </Space>
         </Card>
 
+        {/* Filters */}
         <Card
           style={{ ...darkCardStyle, marginBottom: 12 }}
           styles={{ body: { padding: 12 } }}
@@ -595,29 +564,80 @@ export default function TestimonialsContent(props) {
             style={{ display: "block" }}
           >
             <Row gutter={[8, 8]} align="middle" wrap>
-              <Col xs={24} md={16} style={{ flex: "1 1 auto" }}>
+              {/* Search — fleksibel, jadi porsi terbesar */}
+              <Col flex="1 1 420px" style={{ minWidth: 260 }}>
                 <Input.Search
                   allowClear
                   value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  placeholder="Cari nama/isi testimoni…"
+                  onChange={(e) => props.setQ(e.target.value)}
+                  placeholder="Cari judul/konten…"
                   enterButton
+                  style={{ width: "100%" }}
                 />
               </Col>
-              <Col xs={24} sm={12} md={8} lg={6} xl={4}>
-                <SelectPerPage
-                  perPage={perPage}
-                  setPerPage={setPerPage}
-                  fetch={fetchTestimonials}
-                  q={q}
+
+              {/* Per Page — ukuran nyaman dan responsif */}
+              <Col
+                xs={12}
+                sm={8}
+                md={6}
+                lg={5}
+                xl={4}
+                xxl={3}
+                style={{ minWidth: 160 }}
+              >
+                <Select
+                  value={perPage}
+                  onChange={(v) => {
+                    setPerPage(v);
+                    setPage(1);
+                  }}
+                  options={[8, 12, 16, 24, 32, 64].map((n) => ({
+                    value: n,
+                    label: `${n} / page`,
+                  }))}
+                  style={{ width: "100%" }}
                 />
               </Col>
-              <Col xs="auto">
-                <Space>
+
+              {/* Sort — ukuran nyaman dan responsif */}
+              <Col
+                xs={12}
+                sm={8}
+                md={6}
+                lg={5}
+                xl={4}
+                xxl={3}
+                style={{ minWidth: 180 }}
+              >
+                <Select
+                  value={sort}
+                  onChange={(v) => {
+                    setSort(v);
+                    setPage(1);
+                  }}
+                  options={[
+                    { value: "created_at:desc", label: "Terbaru" },
+                    { value: "created_at:asc", label: "Terlama" },
+                    { value: "views_count:desc", label: "View terbanyak" },
+                    { value: "likes_count:desc", label: "Like terbanyak" },
+                  ]}
+                  style={{ width: "100%" }}
+                />
+              </Col>
+
+              {/* Tombol — lebar tetap biar rapi */}
+              <Col flex="0 0 200px">
+                <Space wrap>
                   <Button shape="round" onClick={onReset}>
                     Reset
                   </Button>
-                  <Button shape="round" type="primary" htmlType="submit">
+                  <Button
+                    shape="round"
+                    type="primary"
+                    htmlType="submit"
+                    loading={loading}
+                  >
                     Search
                   </Button>
                 </Space>
@@ -626,33 +646,37 @@ export default function TestimonialsContent(props) {
           </Form>
         </Card>
 
+        {/* List */}
         <Card style={{ ...darkCardStyle }} styles={{ body: { padding: 16 } }}>
           {loading ? (
             <div style={{ textAlign: "center", padding: "48px 0" }}>
-              <Spin />
+              Loading…
             </div>
-          ) : testimonials.length === 0 ? (
-            <Empty description="Belum ada data testimonial" />
+          ) : blogs.length === 0 ? (
+            <Empty description="Belum ada data blog" />
           ) : (
             <Row gutter={[16, 16]}>
-              {testimonials.map((t) => (
-                <Col key={t.id} xs={24} sm={12} md={12} lg={8} xl={6}>
-                  <TestimonialCard
-                    t={t}
-                    onView={() => setView(t)}
-                    onEdit={() => openEdit(t)}
+              {blogs.map((b) => (
+                <Col key={b.id} xs={24} sm={12} md={12} lg={8} xl={6}>
+                  <BlogCard
+                    b={b}
+                    onView={async () => {
+                      setView(b);
+                      await bumpStat(b.id, "view", 1);
+                    }}
+                    onEdit={() => openEdit(b)}
                     onDelete={async () => {
-                      const { ok, error: err } = await deleteTestimonial(t.id);
+                      const { ok, error } = await deleteBlog(b.id);
                       if (ok) {
                         notification.success({
-                          message: "Testimonial dihapus",
+                          message: "Blog dihapus",
                           description: "Data berhasil dihapus.",
                           placement: "topRight",
                         });
                       } else {
                         notification.error({
                           message: "Gagal menghapus",
-                          description: err || "Silakan coba lagi.",
+                          description: error || "Silakan coba lagi.",
                           placement: "topRight",
                         });
                       }
@@ -664,8 +688,9 @@ export default function TestimonialsContent(props) {
           )}
         </Card>
 
+        {/* Pagination */}
         <Card
-          style={{ ...darkCardStyle, marginTop: 12, marginBottom: 0 }}
+          style={{ ...darkCardStyle, marginTop: 12 }}
           styles={{ body: { padding: 12 } }}
         >
           <div
@@ -681,16 +706,17 @@ export default function TestimonialsContent(props) {
           </div>
         </Card>
 
-        <TestimonialViewModal
+        {/* Modals */}
+        <BlogViewModal
           open={!!view}
           data={view}
           onClose={() => setView(null)}
         />
-        <TestimonialFormModal
+        <BlogFormModal
           open={modalOpen}
           mode={mode}
           initialValues={initialValues}
-          saving={saving}
+          saving={saving || opLoading}
           onCancel={() => {
             setModalOpen(false);
             setEditing(null);
@@ -699,21 +725,5 @@ export default function TestimonialsContent(props) {
         />
       </div>
     </ConfigProvider>
-  );
-}
-
-/* ===== Small helper component ===== */
-function SelectPerPage({ perPage, setPerPage, fetch, q }) {
-  return (
-    <Select
-      value={perPage}
-      onChange={(v) => {
-        setPerPage(v);
-        fetch({ page: 1, perPage: v, q });
-      }}
-      options={[8, 12, 16, 24, 32, 64].map((n) => ({ value: n, label: n }))}
-      style={{ width: "100%" }}
-      placeholder="Per page"
-    />
   );
 }

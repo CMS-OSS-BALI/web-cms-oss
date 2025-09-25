@@ -42,8 +42,8 @@ export default function useDashboardViewModel() {
         hint: "",
       },
       {
-        key: "Total Merchants",
-        label: "Total Merchants",
+        key: "Total Mitra Dalam Negeri",
+        label: "Total Mitra Dalam Negeri",
         value: fmt(merchantsCount),
         hint: "",
       },
@@ -65,3 +65,4 @@ export default function useDashboardViewModel() {
 
   return { status, email, kpis, upcomingEvents };
 }
+

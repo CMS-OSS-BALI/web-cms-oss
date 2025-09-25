@@ -60,6 +60,7 @@ function MerchantFormModal({
   onSubmit,
 }) {
   const [form] = Form.useForm();
+  const isEdit = mode === "edit";
 
   useEffect(() => {
     if (!open) return;
@@ -105,7 +106,7 @@ function MerchantFormModal({
 
   return (
     <Modal
-      title={mode === "edit" ? "Edit Merchant" : "Add Merchant"}
+      title={mode === "edit" ? "Edit Mitra Dalam Negeri" : "Add Mitra Dalam Negeri"}
       open={open}
       centered
       width={900}
@@ -145,13 +146,17 @@ function MerchantFormModal({
                 <Form.Item
                   name="merchant_name"
                   label="Name"
-                  rules={[
-                    {
-                      required: true,
-                      whitespace: true,
-                      message: "Name wajib diisi",
-                    },
-                  ]}
+                  rules={
+                    isEdit
+                      ? []
+                      : [
+                          {
+                            required: true,
+                            whitespace: true,
+                            message: "Name wajib diisi",
+                          },
+                        ]
+                  }
                 >
                   <Input maxLength={191} style={ctrlStyle} />
                 </Form.Item>
@@ -163,7 +168,9 @@ function MerchantFormModal({
                   name="email"
                   label="Email"
                   rules={[
-                    { required: true, message: "Email wajib diisi" },
+                    ...(!isEdit
+                      ? [{ required: true, message: "Email wajib diisi" }]
+                      : []),
                     { type: "email", message: "Email tidak valid" },
                   ]}
                 >
@@ -176,15 +183,19 @@ function MerchantFormModal({
                 <Form.Item
                   name="phone"
                   label="Phone"
-                  rules={[
-                    {
-                      required: true,
-                      whitespace: true,
-                      message: "Phone wajib diisi",
-                    },
-                  ]}
+                  rules={
+                    isEdit
+                      ? []
+                      : [
+                          {
+                            required: true,
+                            whitespace: true,
+                            message: "Phone wajib diisi",
+                          },
+                        ]
+                  }
                 >
-                  <Input placeholder="+62…" style={ctrlStyle} />
+                  <Input placeholder="+62..." style={ctrlStyle} />
                 </Form.Item>
               </Col>
 
@@ -193,13 +204,17 @@ function MerchantFormModal({
                 <Form.Item
                   name="instagram"
                   label="Instagram (handle atau URL)"
-                  rules={[
-                    {
-                      required: true,
-                      whitespace: true,
-                      message: "Instagram wajib diisi",
-                    },
-                  ]}
+                  rules={
+                    isEdit
+                      ? []
+                      : [
+                          {
+                            required: true,
+                            whitespace: true,
+                            message: "Instagram wajib diisi",
+                          },
+                        ]
+                  }
                 >
                   <Input
                     placeholder="@brand atau https://instagram.com/brand"
@@ -213,13 +228,17 @@ function MerchantFormModal({
                 <Form.Item
                   name="twitter"
                   label="Twitter/X (handle atau URL)"
-                  rules={[
-                    {
-                      required: true,
-                      whitespace: true,
-                      message: "Twitter/X wajib diisi",
-                    },
-                  ]}
+                  rules={
+                    isEdit
+                      ? []
+                      : [
+                          {
+                            required: true,
+                            whitespace: true,
+                            message: "Twitter/X wajib diisi",
+                          },
+                        ]
+                  }
                 >
                   <Input
                     placeholder="@brand atau https://twitter.com/brand"
@@ -234,7 +253,9 @@ function MerchantFormModal({
                   name="website"
                   label="Website"
                   rules={[
-                    { required: true, message: "Website wajib diisi" },
+                    ...(!isEdit
+                      ? [{ required: true, message: "Website wajib diisi" }]
+                      : []),
                     {
                       type: "url",
                       message:
@@ -252,11 +273,13 @@ function MerchantFormModal({
                   name="image_url"
                   label="Image URL"
                   rules={[
-                    { required: true, message: "Image URL wajib diisi" },
+                    ...(!isEdit
+                      ? [{ required: true, message: "Image URL wajib diisi" }]
+                      : []),
                     { type: "url", message: "URL gambar tidak valid" },
                   ]}
                 >
-                  <Input placeholder="https://…" style={ctrlStyle} />
+                  <Input placeholder="https://..." style={ctrlStyle} />
                 </Form.Item>
               </Col>
 
@@ -266,11 +289,13 @@ function MerchantFormModal({
                   name="mou_url"
                   label="MOU URL"
                   rules={[
-                    { required: true, message: "MOU URL wajib diisi" },
+                    ...(!isEdit
+                      ? [{ required: true, message: "MOU URL wajib diisi" }]
+                      : []),
                     { type: "url", message: "URL MOU tidak valid" },
                   ]}
                 >
-                  <Input placeholder="https://…" style={ctrlStyle} />
+                  <Input placeholder="https://..." style={ctrlStyle} />
                 </Form.Item>
               </Col>
 
@@ -279,13 +304,17 @@ function MerchantFormModal({
                 <Form.Item
                   name="about"
                   label="About"
-                  rules={[
-                    {
-                      required: true,
-                      whitespace: true,
-                      message: "About wajib diisi",
-                    },
-                  ]}
+                  rules={
+                    isEdit
+                      ? []
+                      : [
+                          {
+                            required: true,
+                            whitespace: true,
+                            message: "About wajib diisi",
+                          },
+                        ]
+                  }
                 >
                   <HtmlEditor
                     className="editor-dark"
@@ -300,13 +329,17 @@ function MerchantFormModal({
                 <Form.Item
                   name="address"
                   label="Address"
-                  rules={[
-                    {
-                      required: true,
-                      whitespace: true,
-                      message: "Address wajib diisi",
-                    },
-                  ]}
+                  rules={
+                    isEdit
+                      ? []
+                      : [
+                          {
+                            required: true,
+                            whitespace: true,
+                            message: "Address wajib diisi",
+                          },
+                        ]
+                  }
                 >
                   <Input.TextArea
                     rows={3}
@@ -345,8 +378,6 @@ function MerchantFormModal({
     </Modal>
   );
 }
-
-/* ===== View Modal ===== */
 function MerchantViewModal({ open, data, onClose }) {
   const rows = [];
   if (data?.about)
@@ -439,7 +470,7 @@ function MerchantViewModal({ open, data, onClose }) {
       onCancel={onClose}
       centered
       width={900}
-      title={data?.merchant_name || "Detail Merchant"}
+      title={data?.merchant_name || "Detail Mitra Dalam Negeri"}
       footer={
         <Button shape="round" type="primary" onClick={onClose}>
           Close
@@ -711,7 +742,7 @@ function MerchantCard({ m, onView, onEdit, onDelete }) {
           Edit
         </Button>
         <Popconfirm
-          title="Hapus merchant?"
+          title="Hapus Mitra Dalam Negeri?"
           description="Tindakan ini tidak dapat dibatalkan."
           okText="Hapus"
           okButtonProps={{ danger: true }}
@@ -780,7 +811,7 @@ export default function MerchantsContent(props) {
     setSaving(true);
     const res =
       mode === "edit"
-        ? await updateMerchant(editing.id, payload)
+        ? await updateMerchant(editing.id, payload, editing?.locale_used ?? undefined)
         : await createMerchant(payload);
     setSaving(false);
 
@@ -788,7 +819,7 @@ export default function MerchantsContent(props) {
       api.success({
         key: "merchant-save",
         message:
-          mode === "edit" ? "Merchant diperbarui" : "Merchant ditambahkan",
+          mode === "edit" ? "Mitra Dalam Negeri diperbarui" : "Mitra Dalam Negeri ditambahkan",
         description: "Data telah tersimpan.",
         placement: "topRight",
       });
@@ -880,10 +911,10 @@ export default function MerchantsContent(props) {
           >
             <div>
               <Title level={3} style={{ margin: 0 }}>
-                Merchants
+                Mitra Dalam Negeri
               </Title>
               <Text type="secondary">
-                Kelola data merchant. Total {total} records.
+                Kelola data Mitra Dalam Negeri. Total {total} records.
               </Text>
             </div>
             <Button
@@ -896,7 +927,7 @@ export default function MerchantsContent(props) {
                 setModalOpen(true);
               }}
             >
-              Add Merchant
+              Add Mitra Dalam Negeri
             </Button>
           </Space>
         </Card>
@@ -961,7 +992,7 @@ export default function MerchantsContent(props) {
               <Spin />
             </div>
           ) : merchants.length === 0 ? (
-            <Empty description="Belum ada data merchant" />
+            <Empty description="Belum ada data Mitra Dalam Negeri" />
           ) : (
             <Row gutter={[16, 16]}>
               {merchants.map((m) => (
@@ -978,7 +1009,7 @@ export default function MerchantsContent(props) {
                       const { ok, error: err } = await deleteMerchant(m.id);
                       if (ok) {
                         notification.success({
-                          message: "Merchant dihapus",
+                          message: "Mitra Dalam Negeri dihapus",
                           description: "Data berhasil dihapus.",
                           placement: "topRight",
                         });
@@ -1051,4 +1082,17 @@ export default function MerchantsContent(props) {
     </ConfigProvider>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
 

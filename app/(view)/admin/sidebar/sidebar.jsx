@@ -78,7 +78,7 @@ export default function Sidebar({ collapsed }) {
             src={logo}
             alt="Logo"
             priority
-            sizes="140px"
+            sizes="110px"
             className="sidebar-logo-img"
           />
         </Link>

@@ -43,7 +43,7 @@ export async function GET(req) {
       and.push({
         OR: [
           {
-            merchants_translate: {
+            mitra_dalam_negeri_translate: {
               some: {
                 locale: { in: locales },
                 name: { contains: q, mode: "insensitive" },
@@ -51,7 +51,7 @@ export async function GET(req) {
             },
           },
           {
-            merchants_translate: {
+            mitra_dalam_negeri_translate: {
               some: {
                 locale: { in: locales },
                 description: { contains: q, mode: "insensitive" },
@@ -68,11 +68,11 @@ export async function GET(req) {
       });
     }
     if (and.length) where.AND = and;
-    where.merchants_translate = { some: { locale: { in: locales } } };
+    where.mitra_dalam_negeri_translate = { some: { locale: { in: locales } } };
 
     const [total, rows] = await Promise.all([
-      prisma.merchants.count({ where }),
-      prisma.merchants.findMany({
+      prisma.mitra_dalam_negeri.count({ where }),
+      prisma.mitra_dalam_negeri.findMany({
         where,
         orderBy: { created_at: "desc" },
         skip: (page - 1) * perPage,
@@ -91,7 +91,7 @@ export async function GET(req) {
           created_at: true,
           updated_at: true,
           deleted_at: true,
-          merchants_translate: {
+          mitra_dalam_negeri_translate: {
             where: { locale: { in: locales } },
             select: { locale: true, name: true, description: true },
           },
@@ -100,7 +100,7 @@ export async function GET(req) {
     ]);
 
     const data = rows.map((row) => {
-      const translation = pickTrans(row.merchants_translate || [], locale, fallback);
+      const translation = pickTrans(row.mitra_dalam_negeri_translate || [], locale, fallback);
       return {
         id: row.id,
         admin_user_id: row.admin_user_id,
@@ -152,7 +152,7 @@ export async function POST(req) {
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      const merchant = await tx.merchants.create({
+      const merchant = await tx.mitra_dalam_negeri.create({
         data: {
           admin_user_id: admin.id,
           address: String(body.address || ""),
@@ -170,7 +170,7 @@ export async function POST(req) {
 
       const about = body.about !== undefined && body.about !== null ? String(body.about) : null;
 
-      await tx.merchants_translate.create({
+      await tx.mitra_dalam_negeri_translate.create({
         data: {
           id_merchants: merchant.id,
           locale,
@@ -185,7 +185,7 @@ export async function POST(req) {
           about ? translate(about, locale, EN_LOCALE) : Promise.resolve(about),
         ]);
 
-        await tx.merchants_translate.upsert({
+        await tx.mitra_dalam_negeri_translate.upsert({
           where: { id_merchants_locale: { id_merchants: merchant.id, locale: EN_LOCALE } },
           update: {
             ...(nameEn ? { name: nameEn } : {}),

@@ -16,8 +16,9 @@ model admin_users {
   deleted_at            DateTime?               @db.DateTime(6)
   password_changed_at   DateTime                @default(now()) @db.DateTime(6)
   name                  String?
+  blog                  blog[]
   events                events[]
-  merchants             merchants[]
+  mitra_dalam_negeri    mitra_dalam_negeri[]
   partners              partners[]
   programs              programs[]
   reset_password_tokens reset_password_tokens[]
@@ -49,27 +50,6 @@ model events {
   @@index([start_at, end_at], map: "idx_events_dates")
   @@index([is_published, start_at], map: "idx_events_published_start")
   @@map("events")
-}
-
-model merchants {
-  id                  String                @id @default(uuid()) @db.VarChar(36)
-  admin_user_id       String                @db.VarChar(36)
-  address             String                @db.Text
-  email               String
-  phone               String                @db.VarChar(64)
-  created_at          DateTime              @default(now()) @db.DateTime(6)
-  updated_at          DateTime              @updatedAt @db.DateTime(6)
-  deleted_at          DateTime?             @db.DateTime(6)
-  mou_url             String?
-  instagram           String?
-  twitter             String?
-  website             String?
-  image_url           String?               @db.VarChar(1024)
-  admin_users         admin_users           @relation(fields: [admin_user_id], references: [id], map: "fk_merchants_admin")
-  merchants_translate merchants_translate[]
-
-  @@index([admin_user_id], map: "idx_merchants_admin")
-  @@map("merchants")
 }
 
 model partners {
@@ -188,9 +168,11 @@ model testimonials {
   id                     String                   @id @default(uuid()) @db.VarChar(36)
   admin_user_id          String                   @db.VarChar(36)
   photo_url              String                   @db.VarChar(255)
+  youtube_url            String?                  @db.VarChar(255)
   created_at             DateTime                 @default(now()) @db.DateTime(6)
   updated_at             DateTime                 @updatedAt @db.DateTime(6)
   deleted_at             DateTime?                @db.DateTime(6)
+  star                   Int                      @default(5) @db.UnsignedTinyInt
   admin_user             admin_users              @relation(fields: [admin_user_id], references: [id])
   testimonials_translate testimonials_translate[]
 
@@ -255,20 +237,6 @@ model events_translate {
   @@index([locale], map: "idx_locale")
 }
 
-model merchants_translate {
-  id           BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
-  id_merchants String    @db.VarChar(36)
-  locale       String    @db.Char(5)
-  name         String
-  description  String?   @db.Text
-  created_at   DateTime? @default(now()) @db.DateTime(6)
-  updated_at   DateTime? @default(now()) @db.DateTime(6)
-  merchants    merchants @relation(fields: [id_merchants], references: [id], onDelete: Cascade, map: "fk_merchants_translate_merchants")
-
-  @@unique([id_merchants, locale], map: "uniq_merchants_locale")
-  @@index([locale], map: "idx_locale")
-}
-
 model partners_translate {
   id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
   id_partners String    @db.VarChar(36)
@@ -281,6 +249,106 @@ model partners_translate {
 
   @@unique([id_partners, locale], map: "uniq_partners_locale")
   @@index([locale], map: "idx_locale")
+}
+
+model consultants {
+  id         BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  name       String   @db.VarChar(150)
+  whatsapp   String?  @unique(map: "uq_consultants_whatsapp") @db.VarChar(30)
+  email      String?  @unique(map: "uq_consultants_email")
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  updated_at DateTime @default(now()) @db.Timestamp(0)
+  leads      leads[]
+
+  @@index([email], map: "idx_consultants_email")
+  @@index([whatsapp], map: "idx_consultants_whatsapp")
+}
+
+model leads {
+  id             BigInt       @id @default(autoincrement()) @db.UnsignedBigInt
+  full_name      String       @db.VarChar(150)
+  domicile       String?      @db.VarChar(100)
+  whatsapp       String?      @db.VarChar(30)
+  email          String?
+  education_last String?      @db.VarChar(50)
+  assigned_to    BigInt?      @db.UnsignedBigInt
+  assigned_at    DateTime?    @db.Timestamp(0)
+  created_at     DateTime     @default(now()) @db.Timestamp(0)
+  updated_at     DateTime     @default(now()) @db.Timestamp(0)
+  deleted_at     DateTime?    @db.Timestamp(0)
+  consultants    consultants? @relation(fields: [assigned_to], references: [id], map: "fk_leads_assigned_to_consultants")
+
+  @@index([assigned_at], map: "idx_leads_assigned_at")
+  @@index([assigned_to], map: "idx_leads_assigned_to")
+  @@index([created_at], map: "idx_leads_created_at")
+  @@index([deleted_at], map: "idx_leads_deleted_at")
+  @@index([email], map: "idx_leads_email")
+  @@index([whatsapp], map: "idx_leads_whatsapp")
+}
+
+model mitra_dalam_negeri {
+  id                           String                         @id @db.VarChar(36)
+  admin_user_id                String                         @db.VarChar(36)
+  address                      String                         @db.Text
+  email                        String
+  phone                        String                         @db.VarChar(64)
+  created_at                   DateTime                       @default(now()) @db.DateTime(6)
+  updated_at                   DateTime                       @db.DateTime(6)
+  deleted_at                   DateTime?                      @db.DateTime(6)
+  mou_url                      String?
+  instagram                    String?
+  twitter                      String?
+  website                      String?
+  image_url                    String?                        @db.VarChar(1024)
+  admin_users                  admin_users                    @relation(fields: [admin_user_id], references: [id], map: "fk_merchants_admin")
+  mitra_dalam_negeri_translate mitra_dalam_negeri_translate[]
+
+  @@index([admin_user_id], map: "idx_merchants_admin")
+}
+
+model mitra_dalam_negeri_translate {
+  id                 BigInt             @id @default(autoincrement()) @db.UnsignedBigInt
+  id_merchants       String             @db.VarChar(36)
+  locale             String             @db.Char(5)
+  name               String
+  description        String?            @db.Text
+  created_at         DateTime?          @default(now()) @db.DateTime(6)
+  updated_at         DateTime?          @default(now()) @db.DateTime(6)
+  mitra_dalam_negeri mitra_dalam_negeri @relation(fields: [id_merchants], references: [id], onDelete: Cascade, map: "fk_merchants_translate_merchants")
+
+  @@unique([id_merchants, locale], map: "uniq_merchants_locale")
+  @@index([locale], map: "idx_locale")
+}
+
+model blog {
+  id             String           @id @db.VarChar(36)
+  admin_user_id  String           @db.VarChar(36)
+  image_url      String           @db.VarChar(255)
+  views_count    BigInt           @default(0) @db.UnsignedBigInt
+  likes_count    BigInt           @default(0) @db.UnsignedBigInt
+  created_at     DateTime         @default(now()) @db.DateTime(6)
+  updated_at     DateTime         @default(now()) @db.DateTime(6)
+  deleted_at     DateTime?        @db.DateTime(6)
+  admin_users    admin_users      @relation(fields: [admin_user_id], references: [id], map: "fk_blog_admin_users")
+  blog_translate blog_translate[]
+
+  @@index([admin_user_id], map: "idx_blog_admin_user")
+  @@index([created_at], map: "idx_blog_created_at")
+  @@index([deleted_at], map: "idx_blog_deleted_at")
+}
+
+model blog_translate {
+  id          BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  id_blog     String   @db.VarChar(36)
+  locale      String   @db.Char(5)
+  name        String
+  description String?  @db.MediumText
+  created_at  DateTime @default(now()) @db.DateTime(6)
+  updated_at  DateTime @default(now()) @db.DateTime(6)
+  blog        blog     @relation(fields: [id_blog], references: [id], onDelete: Cascade, map: "fk_blogtr_blog")
+
+  @@unique([id_blog, locale], map: "uniq_blog_locale")
+  @@index([locale], map: "idx_blogtr_locale")
 }
 
 enum events_pricing_type {
@@ -308,4 +376,3 @@ enum tickets_checkin_status {
   NOT_CHECKED_IN
   CHECKED_IN
 }
-

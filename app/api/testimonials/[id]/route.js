@@ -8,9 +8,9 @@ export const dynamic = "force-dynamic";
 async function assertAdmin() {
   const session = await getServerSession(authOptions);
   const email = session?.user?.email;
-  if (!email) throw new Response("Unauthorized", { status: 401 });
+  if (!email) throw new Error("UNAUTHORIZED");
   const admin = await prisma.admin_users.findUnique({ where: { email } });
-  if (!admin) throw new Response("Forbidden", { status: 403 });
+  if (!admin) throw new Error("FORBIDDEN");
   return admin;
 }
 
@@ -23,42 +23,87 @@ function pickLocaleParam(req) {
   }
 }
 
-// PUBLIC: detail (ikut locale & fallback 'id')
-export async function GET(req, { params }) {
-  const { id } = params;
-  const locale = pickLocaleParam(req);
-
-  const item = await prisma.testimonials.findUnique({ where: { id } });
-  if (!item || item.deleted_at) {
-    return NextResponse.json({ message: "Not found" }, { status: 404 });
-  }
-
-  // ambil translate utk locale & fallback 'id'
-  const tr = await prisma.testimonials_translate.findMany({
-    where: {
-      id_testimonials: id,
-      locale: locale === "id" ? "id" : { in: [locale, "id"] },
-    },
-  });
-
-  // pilih terbaik
-  let picked =
-    tr.find((t) => t.locale === locale) ||
-    tr.find((t) => t.locale === "id") ||
-    null;
-
-  return NextResponse.json({
-    id: item.id,
-    photo_url: item.photo_url,
-    created_at: item.created_at,
-    updated_at: item.updated_at,
-    name: picked?.name || null,
-    message: picked?.message || null,
-    locale: picked?.locale || null,
-  });
+function parseStar(input) {
+  if (input === null || input === undefined || input === "") return null;
+  const n = Number(input);
+  if (!Number.isFinite(n)) return null;
+  const i = Math.trunc(n);
+  if (i < 1 || i > 5) return null;
+  return i;
 }
 
-// ADMIN: update photo_url + upsert terjemahan utk locale
+function normalizeYoutubeUrl(u) {
+  // Kembalikan:
+  //  - undefined: tidak mengubah field
+  //  - null: kosongkan field
+  //  - string: set field
+  if (u === undefined) return undefined;
+  if (u === null) return null;
+  if (typeof u !== "string") return null;
+  const s = u.trim();
+  if (!s) return null;
+  try {
+    const url = new URL(s);
+    if (!url.protocol.startsWith("http")) return null;
+    return url.toString().slice(0, 255);
+  } catch {
+    return null;
+  }
+}
+
+// PUBLIC: detail
+export async function GET(req, { params }) {
+  try {
+    const { id } = params;
+    const locale = pickLocaleParam(req);
+
+    const item = await prisma.testimonials.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        photo_url: true,
+        star: true,
+        youtube_url: true,
+        created_at: true,
+        updated_at: true,
+        deleted_at: true,
+      },
+    });
+
+    if (!item || item.deleted_at) {
+      return NextResponse.json({ message: "Not found" }, { status: 404 });
+    }
+
+    const tr = await prisma.testimonials_translate.findMany({
+      where: {
+        id_testimonials: id,
+        locale: locale === "id" ? "id" : { in: [locale, "id"] },
+      },
+    });
+
+    const picked =
+      tr.find((t) => t.locale === locale) ||
+      tr.find((t) => t.locale === "id") ||
+      null;
+
+    return NextResponse.json({
+      id: item.id,
+      photo_url: item.photo_url,
+      star: item.star ?? null,
+      youtube_url: item.youtube_url ?? null,
+      created_at: item.created_at,
+      updated_at: item.updated_at,
+      name: picked?.name || null,
+      message: picked?.message || null,
+      locale: picked?.locale || null,
+    });
+  } catch (e) {
+    console.error("GET /api/testimonials/[id] error:", e);
+    return NextResponse.json({ message: "Server error" }, { status: 500 });
+  }
+}
+
+// ADMIN: update parent + upsert translate
 export async function PUT(req, { params }) {
   try {
     await assertAdmin();
@@ -68,25 +113,38 @@ export async function PUT(req, { params }) {
     const locale = (body.locale || "id").slice(0, 5);
     const photo_url =
       typeof body.photo_url === "string" ? body.photo_url.trim() : undefined;
+
+    const star = body.star === undefined ? undefined : parseStar(body.star);
+    if (body.star !== undefined && star === null) {
+      return NextResponse.json(
+        { message: "star harus integer 1–5" },
+        { status: 422 }
+      );
+    }
+
+    const youtube_url = normalizeYoutubeUrl(body.youtube_url);
+
     const name = typeof body.name === "string" ? body.name.trim() : undefined;
     const message =
       typeof body.message === "string" ? body.message.trim() : undefined;
 
-    // pastikan induk ada & belum soft-deleted
     const base = await prisma.testimonials.findUnique({ where: { id } });
     if (!base || base.deleted_at) {
       return NextResponse.json({ message: "Not found" }, { status: 404 });
     }
 
-    // update parent bila perlu
-    if (typeof photo_url !== "undefined") {
+    const parentPatch = {};
+    if (photo_url !== undefined) parentPatch.photo_url = photo_url;
+    if (star !== undefined) parentPatch.star = star; // null untuk kosongkan
+    if (youtube_url !== undefined) parentPatch.youtube_url = youtube_url;
+
+    if (Object.keys(parentPatch).length) {
       await prisma.testimonials.update({
         where: { id },
-        data: { photo_url },
+        data: parentPatch,
       });
     }
 
-    // upsert translate jika ada name/message
     if (typeof name !== "undefined" || typeof message !== "undefined") {
       const exist = await prisma.testimonials_translate.findFirst({
         where: { id_testimonials: id, locale },
@@ -101,7 +159,6 @@ export async function PUT(req, { params }) {
           },
         });
       } else {
-        // butuh keduanya untuk create; kalau salah satu kosong, isi string kosong
         await prisma.testimonials_translate.create({
           data: {
             id_testimonials: id,
@@ -113,7 +170,17 @@ export async function PUT(req, { params }) {
       }
     }
 
-    // kembalikan detail terbaru (pakai locale yg diminta, fallback 'id')
+    const latest = await prisma.testimonials.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        photo_url: true,
+        star: true,
+        youtube_url: true,
+        updated_at: true,
+      },
+    });
+
     const tr = await prisma.testimonials_translate.findMany({
       where: {
         id_testimonials: id,
@@ -125,25 +192,28 @@ export async function PUT(req, { params }) {
       tr.find((t) => t.locale === "id") ||
       null;
 
-    const latest = await prisma.testimonials.findUnique({ where: { id } });
-
     return NextResponse.json({
       id,
       photo_url: latest?.photo_url ?? null,
+      star: latest?.star ?? null,
+      youtube_url: latest?.youtube_url ?? null,
       name: picked?.name ?? null,
       message: picked?.message ?? null,
       locale: picked?.locale ?? null,
       updated_at: latest?.updated_at ?? new Date(),
     });
   } catch (e) {
-    if (e instanceof Response) return e;
-    console.error("PUT /testimonials/:id error:", e);
+    if (e?.message === "UNAUTHORIZED")
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    if (e?.message === "FORBIDDEN")
+      return NextResponse.json({ message: "Forbidden" }, { status: 403 });
+    console.error("PUT /api/testimonials/[id] error:", e);
     return NextResponse.json({ message: "Server error" }, { status: 500 });
   }
 }
 
-// ADMIN: soft delete parent (translate tetap ada; query akan filter deleted_at)
-export async function DELETE(_, { params }) {
+// ADMIN: soft delete
+export async function DELETE(_req, { params }) {
   try {
     await assertAdmin();
     const { id } = params;
@@ -153,8 +223,11 @@ export async function DELETE(_, { params }) {
     });
     return NextResponse.json(deleted);
   } catch (e) {
-    if (e instanceof Response) return e;
-    console.error("DELETE /testimonials/:id error:", e);
+    if (e?.message === "UNAUTHORIZED")
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    if (e?.message === "FORBIDDEN")
+      return NextResponse.json({ message: "Forbidden" }, { status: 403 });
+    console.error("DELETE /api/testimonials/[id] error:", e);
     return NextResponse.json({ message: "Server error" }, { status: 500 });
   }
 }

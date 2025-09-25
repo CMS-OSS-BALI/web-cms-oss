@@ -133,7 +133,7 @@ export default function DashboardContent({
   // ===== KPI Cards =====
   const kpiCards = useMemo(() => {
     const totalEvents = pickKpi("Total Events");
-    const totalMerchants = pickKpi("Total Merchants");
+    const totalMerchants = pickKpi("Total Mitra Dalam Negeri");
     const totalPartners = pickKpi("Total Partners");
 
     const baseActive = pickKpi(
@@ -150,7 +150,7 @@ export default function DashboardContent({
 
     return [
       { title: "Total Events", data: totalEvents },
-      { title: "Total Merchants", data: totalMerchants },
+      { title: "Total Mitra Dalam Negeri", data: totalMerchants },
       { title: "Total Partners", data: totalPartners },
       {
         title: "Active Programs",
@@ -363,3 +363,4 @@ export default function DashboardContent({
     </div>
   );
 }
+

@@ -40,6 +40,9 @@ function buildUpdateData(payload) {
       data[key] = value === null ? null : String(value);
     }
   }
+  if (Object.keys(data).length) {
+    data.updated_at = new Date();
+  }
   return data;
 }
 
@@ -56,7 +59,7 @@ export async function GET(req, { params }) {
     const fallback = normalizeLocale(searchParams.get("fallback") || EN_LOCALE);
     const locales = locale === fallback ? [locale] : [locale, fallback];
 
-    const merchant = await prisma.merchants.findFirst({
+    const merchant = await prisma.mitra_dalam_negeri.findFirst({
       where: { id },
       select: {
         id: true,
@@ -72,7 +75,7 @@ export async function GET(req, { params }) {
         created_at: true,
         updated_at: true,
         deleted_at: true,
-        merchants_translate: {
+        mitra_dalam_negeri_translate: {
           where: { locale: { in: locales } },
           select: { locale: true, name: true, description: true },
         },
@@ -82,8 +85,8 @@ export async function GET(req, { params }) {
       return NextResponse.json({ message: "Not found" }, { status: 404 });
     }
 
-    const translation = pickTrans(merchant.merchants_translate || [], locale, fallback);
-    const { merchants_translate: _translations, ...base } = merchant;
+    const translation = pickTrans(merchant.mitra_dalam_negeri_translate || [], locale, fallback);
+    const { mitra_dalam_negeri_translate: _translations, ...base } = merchant;
 
     return NextResponse.json({
       ...base,
@@ -113,6 +116,9 @@ export async function PATCH(req, { params }) {
     const data = buildUpdateData(payload);
     const locale = normalizeLocale(payload.locale);
 
+    let baseUpdated = false;
+    let translationUpdated = false;
+
     if (!id) {
       return NextResponse.json({ message: "id kosong" }, { status: 400 });
     }
@@ -129,18 +135,21 @@ export async function PATCH(req, { params }) {
 
     await prisma.$transaction(async (tx) => {
       if (Object.keys(data).length) {
-        await tx.merchants.update({ where: { id }, data });
+        await tx.mitra_dalam_negeri.update({ where: { id }, data });
+        baseUpdated = true;
       }
 
       if (hasName || hasAbout) {
+        translationUpdated = true;
         const translationUpdate = {};
+
         if (hasName) translationUpdate.name = payload.merchant_name;
         if (hasAbout) {
           translationUpdate.description =
             payload.about === null ? null : String(payload.about);
         }
 
-        await tx.merchants_translate.upsert({
+        await tx.mitra_dalam_negeri_translate.upsert({
           where: { id_merchants_locale: { id_merchants: id, locale } },
           update: translationUpdate,
           create: {
@@ -172,7 +181,7 @@ export async function PATCH(req, { params }) {
           if (sourceAbout !== undefined) enUpdate.description = aboutEn ?? sourceAbout ?? null;
 
           if (Object.keys(enUpdate).length) {
-            await tx.merchants_translate.upsert({
+            await tx.mitra_dalam_negeri_translate.upsert({
               where: { id_merchants_locale: { id_merchants: id, locale: EN_LOCALE } },
               update: enUpdate,
               create: {
@@ -187,6 +196,12 @@ export async function PATCH(req, { params }) {
             });
           }
         }
+      }
+      if (!baseUpdated && translationUpdated) {
+        await tx.mitra_dalam_negeri.update({
+          where: { id },
+          data: { updated_at: new Date() },
+        });
       }
     });
 
@@ -216,21 +231,21 @@ export async function DELETE(req, { params }) {
     }
 
     if (restore) {
-      const restored = await prisma.merchants.update({
+      const restored = await prisma.mitra_dalam_negeri.update({
         where: { id },
-        data: { deleted_at: null },
+        data: { deleted_at: null, updated_at: new Date() },
       });
       return NextResponse.json(restored);
     }
 
     if (hard) {
-      await prisma.merchants.delete({ where: { id } });
+      await prisma.mitra_dalam_negeri.delete({ where: { id } });
       return NextResponse.json({ success: true });
     }
 
-    const deleted = await prisma.merchants.update({
+    const deleted = await prisma.mitra_dalam_negeri.update({
       where: { id },
-      data: { deleted_at: new Date() },
+      data: { deleted_at: new Date(), updated_at: new Date() },
     });
     return NextResponse.json(deleted);
   } catch (err) {
@@ -241,3 +256,7 @@ export async function DELETE(req, { params }) {
     return NextResponse.json({ message: "Server error" }, { status: 500 });
   }
 }
+
+
+
+
