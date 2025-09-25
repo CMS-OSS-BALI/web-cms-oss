@@ -209,7 +209,7 @@ export default function DashboardContent({
       <Card
         className="card-dark card-hover"
         variant="outlined"
-        bodyStyle={{ padding: 16 }}
+        styles={{ body: { padding: 16 } }}
         style={{ marginBottom: 20 }}
       >
         <Typography.Title level={2} style={{ margin: 0, color: "#e5e7eb" }}>
@@ -231,7 +231,7 @@ export default function DashboardContent({
             className="card-dark card-hover"
             variant="outlined"
             style={{ height: "100%" }}
-            bodyStyle={{ padding: 16 }}
+            styles={{ body: { padding: 16 } }}
           >
             <VisitorsSection />
           </Card>
@@ -242,12 +242,12 @@ export default function DashboardContent({
             className="card-dark card-hover"
             variant="outlined"
             style={{ height: "100%", width: "100%" }}
-            bodyStyle={{
+            styles={{ body: {
               padding: 16,
               display: "flex",
               flexDirection: "column",
               height: "100%",
-            }}
+            } }}
           >
             <div
               style={{
@@ -334,13 +334,13 @@ export default function DashboardContent({
               className="card-dark card-hover"
               variant="outlined"
               style={{ height: "100%" }}
-              bodyStyle={{
+              styles={{ body: {
                 padding: 16,
                 minHeight: 120,
                 display: "flex",
                 flexDirection: "column",
                 justifyContent: "center",
-              }}
+              } }}
             >
               <Typography.Text style={{ color: "#cbd5e1", fontSize: 12 }}>
                 {k.title}

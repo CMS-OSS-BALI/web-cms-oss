@@ -275,7 +275,7 @@ export default function ConsultantsContent(props) {
     >
       <div style={pageWrapStyle}>
         <Space direction="vertical" size={16} style={{ width: "100%" }}>
-          <Card bodyStyle={{ padding: 16 }} style={darkCardStyle}>
+          <Card styles={{ body: { padding: 16 } }} style={darkCardStyle}>
             <Space
               align="center"
               style={{ width: "100%", justifyContent: "space-between" }}
@@ -300,7 +300,7 @@ export default function ConsultantsContent(props) {
             </Space>
           </Card>
 
-          <Card bodyStyle={{ padding: 16 }} style={darkCardStyle}>
+          <Card styles={{ body: { padding: 16 } }} style={darkCardStyle}>
             <Form
               layout="inline"
               onFinish={handleSearch}
@@ -333,7 +333,7 @@ export default function ConsultantsContent(props) {
             </Form>
           </Card>
 
-          <Card bodyStyle={{ padding: 0 }} style={darkCardStyle}>
+          <Card styles={{ body: { padding: 0 } }} style={darkCardStyle}>
             <Table
               rowKey={(record) => String(record.id)}
               columns={columns}

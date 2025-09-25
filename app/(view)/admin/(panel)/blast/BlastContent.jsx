@@ -10,7 +10,7 @@ export default function BlastContent(vm) {
     <div className="page-wrap blast-page">
       <Card
         className="card-dark card-hover"
-        bodyStyle={{ padding: 16 }}
+        styles={{ body: { padding: 16 } }}
         style={{ marginBottom: 20 }}
       >
         <Typography.Title level={2} style={{ margin: 0, color: "#e5e7eb" }}>
@@ -23,7 +23,7 @@ export default function BlastContent(vm) {
 
       <Row gutter={[20, 20]}>
         <Col xs={24} lg={16}>
-          <Card className="card-dark card-hover" bodyStyle={{ padding: 16 }}>
+          <Card className="card-dark card-hover" styles={{ body: { padding: 16 } }}>
             <Form layout="vertical" onFinish={vm.onSend} colon={false}>
               <Row gutter={12}>
                 <Col span={24}>
@@ -427,7 +427,7 @@ export default function BlastContent(vm) {
         </Col>
 
         <Col xs={24} lg={8}>
-          <Card className="card-dark card-hover" bodyStyle={{ padding: 16 }}>
+          <Card className="card-dark card-hover" styles={{ body: { padding: 16 } }}>
             <Typography.Text strong style={{ color: "#e5e7eb" }}>
               Preview Penerima
             </Typography.Text>

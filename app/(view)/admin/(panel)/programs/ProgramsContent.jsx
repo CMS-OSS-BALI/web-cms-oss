@@ -433,7 +433,7 @@ function ProgramCard({ p, onView, onEdit, onDelete }) {
     <Card
       hoverable
       style={{ ...darkCardStyle, overflow: "hidden" }}
-      bodyStyle={{ padding: 12 }}
+      styles={{ body: { padding: 12 } }}
       cover={
         <div
           style={{
@@ -727,7 +727,7 @@ export default function ProgramsContent(props) {
 
         {/* Header */}
         <Card
-          bodyStyle={{ padding: 16 }}
+          styles={{ body: { padding: 16 } }}
           style={{ ...darkCardStyle, marginBottom: 12 }}
         >
           <Space
@@ -755,7 +755,7 @@ export default function ProgramsContent(props) {
 
         {/* Filters */}
         <Card
-          bodyStyle={{ padding: 12 }}
+          styles={{ body: { padding: 12 } }}
           style={{ ...darkCardStyle, marginBottom: 12 }}
         >
           <Form
@@ -840,7 +840,7 @@ export default function ProgramsContent(props) {
         </Card>
 
         {/* Cards */}
-        <Card bodyStyle={{ padding: 16 }} style={{ ...darkCardStyle }}>
+        <Card styles={{ body: { padding: 16 } }} style={{ ...darkCardStyle }}>
           {loading ? (
             <div style={{ textAlign: "center", padding: "48px 0" }}>
               <Spin />
@@ -882,7 +882,7 @@ export default function ProgramsContent(props) {
 
         {/* Pagination */}
         <Card
-          bodyStyle={{ padding: 12 }}
+          styles={{ body: { padding: 12 } }}
           style={{ ...darkCardStyle, marginTop: 12, marginBottom: 0 }}
         >
           <div style={{ display: "flex", justifyContent: "center" }}>
