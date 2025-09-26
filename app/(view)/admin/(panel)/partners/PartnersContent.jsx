@@ -73,7 +73,7 @@ function PartnerFormModal({
   useEffect(() => {
     if (!open) return;
     form.resetFields();
-    form.setFieldsValue({ currency: "USD", ...initialValues });
+    form.setFieldsValue({ currency: "IDR", ...initialValues });
   }, [open, initialValues, form]);
 
   const handleFinish = (values) => {
@@ -88,7 +88,7 @@ function PartnerFormModal({
       website: clean(values.website),
       logo_url: clean(values.logo_url),
       mou_url: clean(values.mou_url),
-      currency: (clean(values.currency) || "USD").toUpperCase().slice(0, 3),
+      currency: (clean(values.currency) || "IDR").toUpperCase().slice(0, 3),
       tuition_min: toNum(values.tuition_min),
       tuition_max: toNum(values.tuition_max),
       living_cost_estimate: toNum(values.living_cost_estimate),
@@ -284,7 +284,7 @@ function PartnerFormModal({
                 >
                   <Input
                     maxLength={3}
-                    placeholder="USD"
+                    placeholder="IDR"
                     style={ctrlStyle}
                     onChange={(e) =>
                       form.setFieldsValue({
@@ -468,7 +468,7 @@ function PartnerViewModal({ open, data, onClose }) {
     rows.push({
       label: "Tuition",
       content: `${(
-        data?.currency || "USD"
+        data?.currency || "IDR"
       ).toUpperCase()} ${new Intl.NumberFormat("id-ID").format(
         data?.tuition_min ?? 0
       )} – ${new Intl.NumberFormat("id-ID").format(data?.tuition_max ?? 0)}`,
@@ -478,7 +478,7 @@ function PartnerViewModal({ open, data, onClose }) {
     rows.push({
       label: "Living Cost Estimate",
       content: `${(
-        data?.currency || "USD"
+        data?.currency || "IDR"
       ).toUpperCase()} ${new Intl.NumberFormat("id-ID").format(
         data?.living_cost_estimate ?? 0
       )}`,
@@ -693,7 +693,7 @@ function PartnerCard({ p, onView, onEdit, onDelete }) {
           </Text>
           <Text style={{ fontSize: 12 }}>
             {p.tuition_min != null || p.tuition_max != null
-              ? `${(p.currency || "USD").toUpperCase()} ${new Intl.NumberFormat(
+              ? `${(p.currency || "IDR").toUpperCase()} ${new Intl.NumberFormat(
                   "id-ID"
                 ).format(p.tuition_min ?? 0)} – ${new Intl.NumberFormat(
                   "id-ID"
@@ -845,7 +845,7 @@ export default function PartnersContent(props) {
   };
 
   const initialValues = useMemo(() => {
-    if (!editing) return { currency: "USD" };
+    if (!editing) return { currency: "IDR" };
     return {
       name: editing.name || "",
       type: editing.type || undefined,
@@ -857,7 +857,7 @@ export default function PartnersContent(props) {
       website: editing.website || "",
       logo_url: editing.logo_url || "",
       mou_url: editing.mou_url || "",
-      currency: (editing.currency || "USD").toUpperCase(),
+      currency: (editing.currency || "IDR").toUpperCase(),
       tuition_min:
         editing.tuition_min == null ? null : Number(editing.tuition_min),
       tuition_max:

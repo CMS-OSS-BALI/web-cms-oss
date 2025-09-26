@@ -14,7 +14,8 @@ import {
   MessageSquareText,
   QrCode,
   Megaphone,
-  FileText, // ⟵ tambahkan ikon untuk Blog
+  FileText,
+  GraduationCap,
 } from "lucide-react";
 
 export const MENU = [
@@ -23,6 +24,7 @@ export const MENU = [
   { label: "Events", href: "/admin/events", icon: CalendarDays },
   { label: "Partners", href: "/admin/partners", icon: Handshake },
   { label: "Leads", href: "/admin/leads", icon: Users },
+  { label: "Jurusan", href: "/admin/jurusan", icon: GraduationCap },
   { label: "Consultant", href: "/admin/consultants", icon: UserCog },
   {
     label: "Testimonials",
