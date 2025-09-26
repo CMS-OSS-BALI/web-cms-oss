@@ -20,8 +20,6 @@ export default function useLoginViewModel() {
     return "";
   }, [errorQ, reason]);
 
-  const nextParam = qs.get("next") || "/admin/dashboard";
-
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -56,13 +54,6 @@ export default function useLoginViewModel() {
     }
   }
 
-  function goToForgot() {
-    const q = email
-      ? `?email=${encodeURIComponent(email.trim().toLowerCase())}`
-      : "";
-    router.push(`/admin/forgot-password${q}`);
-  }
-
   return {
     email,
     setEmail,
@@ -71,6 +62,5 @@ export default function useLoginViewModel() {
     loading,
     msg,
     onSubmit,
-    goToForgot,
   };
 }

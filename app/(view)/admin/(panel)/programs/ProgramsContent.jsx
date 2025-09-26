@@ -25,12 +25,26 @@ import {
   theme as antdTheme,
 } from "antd";
 import { PlusOutlined, EyeOutlined } from "@ant-design/icons";
-import HtmlEditor from "@/../app/components/editor/HtmlEditor";
+import HtmlEditor from "@/app/components/editor/HtmlEditor";
 import { sanitizeHtml } from "@/app/utils/dompurify";
 
 const { Title, Text, Paragraph } = Typography;
 
-const CATEGORIES = ["B2B", "B2C"];
+/** Enums */
+const PROGRAM_TYPES = ["B2B", "B2C"];
+const PROGRAM_CATEGORIES = [
+  "STUDY_ABROAD",
+  "WORK_ABROAD",
+  "LANGUAGE_COURSE",
+  "CONSULTANT_VISA",
+];
+const CATEGORY_LABEL = {
+  STUDY_ABROAD: "Study Abroad",
+  WORK_ABROAD: "Work Abroad",
+  LANGUAGE_COURSE: "Language Course",
+  CONSULTANT_VISA: "Consultant Visa",
+};
+
 const PLACEHOLDER =
   "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=1200&auto=format&fit=crop";
 
@@ -44,8 +58,6 @@ const fmtThousands = (value) => {
 const parseThousands = (value = "") =>
   value.replace(/\./g, "").replace(/,/g, ".");
 const clean = (v) => (v === "" || v === undefined ? null : v);
-const toNum = (v) =>
-  v === "" || v === undefined || v === null ? null : Number(v);
 
 /* ===== Theme constants ===== */
 const CARD_BG = "rgba(11, 18, 35, 0.94)";
@@ -73,7 +85,8 @@ function ProgramFormModal({
     form.resetFields();
     form.setFieldsValue({
       is_published: true,
-      program_category: "B2B",
+      program_type: "B2B",
+      program_category: "STUDY_ABROAD",
       price: 0,
       ...initialValues,
     });
@@ -81,13 +94,23 @@ function ProgramFormModal({
 
   const handleFinish = (values) => {
     const payload = {
-      name: values.name?.trim(),
-      description: values.description?.trim(),
-      image_url: values.image_url?.trim(),
-      program_category: values.program_category,
-      price: Number(values.price),
-      phone: values.phone?.trim(),
+      // kolom utama
+      image_url: values.image_url?.trim() || null,
+      program_type: values.program_type, // "B2B" | "B2C"
+      program_category: values.program_category, // enum kategori
+      price:
+        values.price === "" ||
+        values.price === null ||
+        values.price === undefined
+          ? null
+          : Number(parseThousands(String(values.price))),
+      phone: values.phone?.trim() || null,
       is_published: !!values.is_published,
+      // trans indonesia (API: name_id & description_id)
+      name_id: values.name_id?.trim(),
+      description_id: values.description_id || "",
+      // biar auto EN aktif default (server: autoTranslate default true saat POST)
+      autoTranslate: true,
     };
     onSubmit(payload);
   };
@@ -111,13 +134,13 @@ function ProgramFormModal({
           { type: "number", min: 0, message: `${label} harus ≥ 0` },
         ]
       : [];
-  const reqCategory = (label) =>
+  const reqSelect = (label, list) =>
     isCreate
       ? [
           { required: true, message: `${label} wajib diisi` },
           {
             validator: (_, v) =>
-              typeof v === "string" && CATEGORIES.includes(v)
+              typeof v === "string" && list.includes(v)
                 ? Promise.resolve()
                 : Promise.reject(new Error(`${label} tidak valid`)),
           },
@@ -172,26 +195,51 @@ function ProgramFormModal({
         <div style={{ padding: 16 }}>
           <Form layout="vertical" form={form} onFinish={handleFinish}>
             <Row gutter={[12, 8]}>
+              {/* Name (ID) */}
               <Col xs={24} md={12}>
-                <Form.Item name="name" label="Name" rules={reqText("Name")}>
+                <Form.Item
+                  name="name_id"
+                  label="Name (Bahasa Indonesia)"
+                  rules={reqText("Name (ID)")}
+                >
                   <Input maxLength={191} style={ctrlStyle} />
                 </Form.Item>
               </Col>
 
+              {/* Program Type */}
               <Col xs={24} md={12}>
                 <Form.Item
-                  name="program_category"
-                  label="Category"
-                  rules={reqCategory("Category")}
+                  name="program_type"
+                  label="Program Type"
+                  rules={reqSelect("Program Type", PROGRAM_TYPES)}
                 >
                   <Select
                     placeholder="—"
-                    options={CATEGORIES.map((t) => ({ value: t, label: t }))}
+                    options={PROGRAM_TYPES.map((t) => ({ value: t, label: t }))}
                     style={ctrlStyle}
                   />
                 </Form.Item>
               </Col>
 
+              {/* Program Category */}
+              <Col xs={24} md={12}>
+                <Form.Item
+                  name="program_category"
+                  label="Program Category"
+                  rules={reqSelect("Program Category", PROGRAM_CATEGORIES)}
+                >
+                  <Select
+                    placeholder="—"
+                    options={PROGRAM_CATEGORIES.map((c) => ({
+                      value: c,
+                      label: CATEGORY_LABEL[c],
+                    }))}
+                    style={ctrlStyle}
+                  />
+                </Form.Item>
+              </Col>
+
+              {/* Price */}
               <Col xs={24} md={12}>
                 <Form.Item
                   name="price"
@@ -208,13 +256,15 @@ function ProgramFormModal({
                 </Form.Item>
               </Col>
 
+              {/* Phone */}
               <Col xs={24} md={12}>
                 <Form.Item name="phone" label="Phone" rules={reqText("Phone")}>
                   <Input placeholder="0812xxxxxxx" style={ctrlStyle} />
                 </Form.Item>
               </Col>
 
-              <Col span={24}>
+              {/* Image URL */}
+              <Col xs={24} md={12}>
                 <Form.Item
                   name="image_url"
                   label="Image URL"
@@ -224,11 +274,12 @@ function ProgramFormModal({
                 </Form.Item>
               </Col>
 
+              {/* Description (ID) */}
               <Col span={24}>
                 <Form.Item
-                  name="description"
-                  label="Description"
-                  rules={reqText("Description")}
+                  name="description_id"
+                  label="Description (Bahasa Indonesia)"
+                  rules={reqText("Description (ID)")}
                   valuePropName="value"
                   getValueFromEvent={(val) => val}
                 >
@@ -240,6 +291,7 @@ function ProgramFormModal({
                 </Form.Item>
               </Col>
 
+              {/* Status */}
               <Col span={24}>
                 <Form.Item
                   name="is_published"
@@ -364,11 +416,16 @@ function ProgramViewModal({ open, data, onClose }) {
               maxHeight: 320,
               objectFit: "cover",
             }}
+            fallback={PLACEHOLDER}
+            preview={!!data?.image_url}
           />
 
           <Space size={[8, 8]} wrap style={{ marginBottom: 16 }}>
+            {data?.program_type && <Tag style={chip}>{data.program_type}</Tag>}
             {data?.program_category && (
-              <Tag style={chip}>{data.program_category}</Tag>
+              <Tag style={chip}>
+                {CATEGORY_LABEL[data.program_category] || data.program_category}
+              </Tag>
             )}
             <Tag style={chip}>{data?.is_published ? "Published" : "Draft"}</Tag>
           </Space>
@@ -454,8 +511,13 @@ function ProgramCard({ p, onView, onEdit, onDelete }) {
               e.currentTarget.src = PLACEHOLDER;
             }}
           />
+          {p.program_type && (
+            <span style={{ ...badgeStyle, right: 8 }}>{p.program_type}</span>
+          )}
           {p.program_category && (
-            <span style={badgeStyle}>{p.program_category}</span>
+            <span style={{ ...badgeStyle, right: 8, top: 36 }}>
+              {CATEGORY_LABEL[p.program_category] || p.program_category}
+            </span>
           )}
         </div>
       }
@@ -483,7 +545,7 @@ function ProgramCard({ p, onView, onEdit, onDelete }) {
               overflow: "hidden",
             }}
             dangerouslySetInnerHTML={{
-              __html: sanitizeHtml(p.description || ""),
+              __html: sanitizeHtml(desc),
             }}
           />
         </div>
@@ -567,8 +629,10 @@ export default function ProgramsContent(props) {
     programs = [],
     q,
     setQ,
-    category,
-    setCategory,
+    programType,
+    setProgramType,
+    programCategory,
+    setProgramCategory,
     published,
     setPublished,
     page,
@@ -577,7 +641,6 @@ export default function ProgramsContent(props) {
     setPerPage,
     total = 0,
     error,
-    // message,  // ← tidak dipakai agar tidak dobel notif
     fetchPrograms,
     createProgram,
     updateProgram,
@@ -592,7 +655,6 @@ export default function ProgramsContent(props) {
   const [editing, setEditing] = useState(null);
   const [view, setView] = useState(null);
 
-  // hanya tampilkan error global (sukses ditangani lokal di handler)
   useEffect(() => {
     if (error) {
       api.error({
@@ -637,7 +699,6 @@ export default function ProgramsContent(props) {
       }
       setModalOpen(false);
       setEditing(null);
-      // tidak perlu fetchPrograms di sini; view model sudah re-fetch
     } catch (e) {
       api.error({
         key: "program-save",
@@ -650,42 +711,59 @@ export default function ProgramsContent(props) {
     }
   };
 
-  const onSearch = () =>
+  const triggerSearch = (nextQ = q) => {
+    const normalized = (nextQ ?? "").trim();
+    if (normalized !== q) setQ(normalized);
     fetchPrograms({
       page: 1,
-      q,
-      category,
+      q: normalized,
+      programType,
+      programCategory,
       published,
       perPage,
     });
+  };
+
+  const onSearch = () => triggerSearch();
+
   const onReset = () => {
     setQ("");
-    setCategory(undefined);
+    setProgramType(undefined);
+    setProgramCategory(undefined);
     setPublished(undefined);
-    fetchPrograms({
-      page: 1,
-      q: "",
-      category: undefined,
-      published: undefined,
-      perPage,
-    });
+    triggerSearch("");
   };
 
   const onPageChange = (p) => {
     setPage(p);
-    fetchPrograms({ page: p, perPage, q, category, published });
+    fetchPrograms({
+      page: p,
+      perPage,
+      q,
+      programType,
+      programCategory,
+      published,
+    });
   };
 
   const initialValues = useMemo(() => {
     if (!editing)
-      return { is_published: true, program_category: "B2B", price: 0 };
+      return {
+        is_published: true,
+        program_type: "B2B",
+        program_category: "STUDY_ABROAD",
+        price: 0,
+      };
     return {
-      name: editing.name || "",
-      program_category: editing.program_category || "B2B",
+      // indonesia (untuk edit, ambil dari name/description terpilih di list)
+      name_id: editing.name || "",
+      description_id: editing.description || "",
+      // utama
+      program_type: editing.program_type || "B2B",
+      program_category: editing.program_category || "STUDY_ABROAD",
       price: editing.price == null ? null : Number(editing.price),
       phone: editing.phone || "",
       image_url: editing.image_url || "",
-      description: editing.description || "",
       is_published: !!editing.is_published,
     };
   }, [editing]);
@@ -755,38 +833,69 @@ export default function ProgramsContent(props) {
 
         {/* Filters */}
         <Card
-          styles={{ body: { padding: 12 } }}
+          styles={{ body: { padding: 10 } }}
           style={{ ...darkCardStyle, marginBottom: 12 }}
         >
           <Form
             layout="inline"
+            size="small"
             onFinish={onSearch}
             style={{ display: "block" }}
           >
-            <Row gutter={[8, 8]} align="middle" wrap>
-              <Col xs={24} md={12} style={{ flex: "1 1 auto" }}>
+            <Row
+              gutter={[8, 8]}
+              align="middle"
+              wrap={false} // ⬅ penting: jangan bungkus ke baris baru
+              style={{ overflowX: "auto", paddingBottom: 2 }} // ⬅ kalau layar sempit: bisa geser horizontal
+            >
+              {/* Search */}
+              <Col flex="1 1 360px" style={{ minWidth: 260 }}>
                 <Input.Search
                   allowClear
+                  size="small"
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
+                  onSearch={triggerSearch}
                   placeholder="Cari nama/desc/phone…"
                   enterButton
                 />
               </Col>
-              <Col xs={24} sm={12} md={8} lg={6} xl={5}>
+
+              {/* Program Type */}
+              <Col flex="0 0 160px">
                 <Select
                   allowClear
-                  placeholder="Category"
-                  value={category}
-                  onChange={(v) => setCategory(v)}
-                  options={CATEGORIES.map((t) => ({ value: t, label: t }))}
+                  size="small"
+                  placeholder="Type"
+                  value={programType}
+                  onChange={(v) => setProgramType(v)}
+                  options={PROGRAM_TYPES.map((t) => ({ value: t, label: t }))}
                   style={{ width: "100%" }}
                 />
               </Col>
-              <Col xs={24} sm={12} md={8} lg={6} xl={5}>
+
+              {/* Program Category */}
+              <Col flex="0 0 200px">
                 <Select
                   allowClear
-                  placeholder="Published"
+                  size="small"
+                  placeholder="Category"
+                  value={programCategory}
+                  onChange={(v) => setProgramCategory(v)}
+                  options={PROGRAM_CATEGORIES.map((c) => ({
+                    value: c,
+                    label: CATEGORY_LABEL[c],
+                  }))}
+                  style={{ width: "100%" }}
+                />
+              </Col>
+
+              {/* Published */}
+              <Col flex="0 0 140px">
+                <Select
+                  allowClear
+                  size="small"
+                  placeholder="Status"
                   value={
                     published === undefined ? undefined : published ? "1" : "0"
                   }
@@ -801,9 +910,10 @@ export default function ProgramsContent(props) {
                 />
               </Col>
 
-              {/* Per page selector */}
-              <Col xs={24} sm={8} md={6} lg={4} xl={3}>
+              {/* Per page */}
+              <Col flex="0 0 110px">
                 <Select
+                  size="small"
                   value={perPage}
                   onChange={(v) => {
                     setPerPage(v);
@@ -812,7 +922,8 @@ export default function ProgramsContent(props) {
                       page: 1,
                       perPage: v,
                       q,
-                      category,
+                      programType,
+                      programCategory,
                       published,
                     });
                   }}
@@ -825,12 +936,18 @@ export default function ProgramsContent(props) {
                 />
               </Col>
 
-              <Col xs="auto">
+              {/* Actions */}
+              <Col flex="0 0 auto">
                 <Space>
-                  <Button shape="round" onClick={onReset}>
+                  <Button size="small" shape="round" onClick={onReset}>
                     Reset
                   </Button>
-                  <Button shape="round" type="primary" htmlType="submit">
+                  <Button
+                    size="small"
+                    shape="round"
+                    type="primary"
+                    htmlType="submit"
+                  >
                     Search
                   </Button>
                 </Space>

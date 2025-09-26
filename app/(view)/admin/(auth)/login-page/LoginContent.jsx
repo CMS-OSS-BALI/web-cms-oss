@@ -39,7 +39,7 @@ export default function LoginContent({
         <Row className="login-row" gutter={[0, 0]} align="middle" wrap={false}>
           {/* KIRI: gambar */}
           <Col xs={0} md={12} className="login-left">
-            <img src="/images/maskot.png" alt="Maskot" className="login-img" />
+            <img src="/images/loading.png" alt="Maskot" className="login-img" />
           </Col>
 
           {/* KANAN: card */}

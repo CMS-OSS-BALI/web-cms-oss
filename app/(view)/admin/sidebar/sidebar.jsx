@@ -6,7 +6,7 @@ import { useMemo } from "react";
 import { Button, Menu, Tooltip, ConfigProvider, Grid, Popconfirm } from "antd";
 import { LogOut } from "lucide-react";
 import useSidebarViewModel from "./useSidebarViewModel";
-import logo from "@/public/images/logo-removebg-preview.png";
+import logo from "@/public/images/loading.png";
 import "./sidebar.css";
 
 export default function Sidebar({ collapsed }) {

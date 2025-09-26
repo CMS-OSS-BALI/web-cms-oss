@@ -109,8 +109,8 @@ export async function GET(req, { params }) {
       return NextResponse.json({ message: "Not found" }, { status: 404 });
     }
 
-    const translation = pickTrans(row.partners_translate || [], locale, fallback);
-    const { partners_translate: _translations, ...base } = row;
+    const { partners_translate, ...base } = row;
+    const translation = pickTrans(partners_translate || [], locale, fallback);
 
     return NextResponse.json({
       ...base,

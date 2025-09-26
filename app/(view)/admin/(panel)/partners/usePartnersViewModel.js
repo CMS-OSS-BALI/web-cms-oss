@@ -8,8 +8,6 @@ const DEFAULT_LOCALE = "id";
 const FALLBACK_LOCALE = "en";
 
 export default function usePartnersViewModel() {
-  const [loading, setLoading] = useState(false); // for non-GET ops
-
   const [q, setQ] = useState("");
   const [country, setCountry] = useState("");
   const [type, setType] = useState("");
@@ -130,7 +128,7 @@ export default function usePartnersViewModel() {
   };
 
   return {
-    loading: listLoading || loading,
+    loading: listLoading,
     partners,
     q,
     setQ,

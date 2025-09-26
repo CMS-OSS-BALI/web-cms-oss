@@ -10,6 +10,14 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 /* ========= Helpers ========= */
+const PROGRAM_TYPE_VALUES = new Set(["B2B", "B2C"]);
+const PROGRAM_CATEGORY_VALUES = new Set([
+  "STUDY_ABROAD",
+  "WORK_ABROAD",
+  "LANGUAGE_COURSE",
+  "CONSULTANT_VISA",
+]);
+
 function parseBool(v) {
   if (v === undefined || v === null) return undefined;
   return v === true || v === "true" || v === "1";
@@ -19,7 +27,6 @@ function asInt(v, dflt) {
   return Number.isFinite(n) ? n : dflt;
 }
 function getOrderBy(param) {
-  // name di tabel utama sudah dihapus; hanya izinkan kolom nyata
   const allowed = new Set(["created_at", "updated_at", "price"]);
   const [field = "created_at", dir = "desc"] = String(param || "").split(":");
   const key = allowed.has(field) ? field : "created_at";
@@ -38,20 +45,46 @@ async function getAdminUserId(req, body) {
 function badRequest(message) {
   return NextResponse.json({ message }, { status: 400 });
 }
-// helper untuk pilih terjemahan terbaik (locale utama lalu fallback)
 function pickTrans(trans, primary, fallback) {
   const by = (loc) => trans?.find((t) => t.locale === loc);
   return by(primary) || by(fallback) || null;
 }
+function ensureProgramType(v) {
+  const val = String(v || "")
+    .trim()
+    .toUpperCase();
+  if (!PROGRAM_TYPE_VALUES.has(val)) {
+    throw new Error("program_type harus 'B2B' atau 'B2C'");
+  }
+  return val;
+}
+function ensureProgramCategory(v, allowNull = true) {
+  if (v == null || v === "") return allowNull ? null : undefined;
+  const val = String(v).trim().toUpperCase();
+  if (!PROGRAM_CATEGORY_VALUES.has(val)) {
+    throw new Error(
+      "program_category tidak valid (STUDY_ABROAD|WORK_ABROAD|LANGUAGE_COURSE|CONSULTANT_VISA)"
+    );
+  }
+  return val;
+}
 
-/* ========= GET /api/programs  (LIST) ========= */
-// Query: q, category, published, page, perPage, sort, locale, fallback (default id)
+/* ========= GET /api/programs (LIST) =========
+Query:
+- q
+- program_type = B2B|B2C
+- program_category = STUDY_ABROAD|WORK_ABROAD|LANGUAGE_COURSE|CONSULTANT_VISA
+- published = true|false
+- page, perPage, sort = (created_at|updated_at|price):(asc|desc)
+- locale (default id), fallback (default id)
+*/
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
 
     const q = searchParams.get("q")?.trim();
-    const category = searchParams.get("category") || undefined;
+    const program_type = searchParams.get("program_type") || undefined;
+    const program_category = searchParams.get("program_category") || undefined;
     const published = parseBool(searchParams.get("published"));
     const page = Math.max(1, asInt(searchParams.get("page"), 1));
     const perPage = Math.min(
@@ -63,10 +96,21 @@ export async function GET(req) {
     const locale = (searchParams.get("locale") || "id").toLowerCase();
     const fallback = (searchParams.get("fallback") || "id").toLowerCase();
 
-    // WHERE di tabel utama + filter q di translations untuk locale relevan
+    // Validasi ringan filter enum (abaikan jika tidak valid)
+    const typeFilter =
+      program_type && PROGRAM_TYPE_VALUES.has(program_type.toUpperCase())
+        ? program_type.toUpperCase()
+        : undefined;
+    const categoryFilter =
+      program_category &&
+      PROGRAM_CATEGORY_VALUES.has(program_category.toUpperCase())
+        ? program_category.toUpperCase()
+        : undefined;
+
     const where = {
       deleted_at: null,
-      ...(category ? { program_category: category } : {}),
+      ...(typeFilter ? { program_type: typeFilter } : {}),
+      ...(categoryFilter ? { program_category: categoryFilter } : {}),
       ...(published !== undefined ? { is_published: published } : {}),
       ...(q
         ? {
@@ -74,8 +118,8 @@ export async function GET(req) {
               some: {
                 locale: { in: [locale, fallback] },
                 OR: [
-                  { name: { contains: q, mode: "insensitive" } },
-                  { description: { contains: q, mode: "insensitive" } },
+                  { name: { contains: q } },
+                  { description: { contains: q } },
                 ],
               },
             },
@@ -94,6 +138,7 @@ export async function GET(req) {
           id: true,
           admin_user_id: true,
           image_url: true,
+          program_type: true,
           program_category: true,
           price: true,
           phone: true,
@@ -108,13 +153,13 @@ export async function GET(req) {
       }),
     ]);
 
-    // bentuk DTO dengan name/description terpilih
     const items = rows.map((p) => {
       const t = pickTrans(p.programs_translate, locale, fallback);
       return {
         id: p.id,
         admin_user_id: p.admin_user_id,
         image_url: p.image_url,
+        program_type: p.program_type,
         program_category: p.program_category,
         price: p.price,
         phone: p.phone,
@@ -147,27 +192,35 @@ export async function GET(req) {
   }
 }
 
-/* ========= POST /api/programs  (CREATE + auto-translate) ========= */
-/**
- * Body:
- *  admin_user_id? (auto dari session jika ada),
- *  image_url?, program_category ('B2B'|'B2C'), price?, phone?, is_published?,
- *  name_id (required), description_id?,
- *  name_en?, description_en?, autoTranslate?=true
- */
+/* ========= POST /api/programs (CREATE + auto-translate) =========
+Body:
+- admin_user_id? (auto dari session jika ada)
+- image_url?
+- program_type        : 'B2B' | 'B2C'                (required)
+- program_category    : 'STUDY_ABROAD' | 'WORK_ABROAD' | 'LANGUAGE_COURSE' | 'CONSULTANT_VISA' (optional/required sesuai kebijakan)
+- price? (int >= 0), phone?, is_published?
+- name_id (required), description_id?
+- name_en?, description_en?, autoTranslate?=true
+*/
 export async function POST(req) {
   try {
     const body = await req.json();
 
-    // Accept legacy/panel fields: `name` and `description` as Indonesian defaults
-    const name_id = String(
-      body?.name_id ?? body?.name ?? ""
-    ).trim();
+    const name_id = String(body?.name_id ?? body?.name ?? "").trim();
     if (!name_id) return badRequest("name_id (Bahasa Indonesia) wajib diisi");
 
-    const program_category = body?.program_category;
-    if (!["B2B", "B2C"].includes(program_category)) {
-      return badRequest("program_category harus 'B2B' atau 'B2C'");
+    let program_type;
+    try {
+      program_type = ensureProgramType(body?.program_type);
+    } catch (e) {
+      return badRequest(e.message);
+    }
+
+    let program_category = null;
+    try {
+      program_category = ensureProgramCategory(body?.program_category, true);
+    } catch (e) {
+      return badRequest(e.message);
     }
 
     const price =
@@ -195,13 +248,13 @@ export async function POST(req) {
     );
 
     const result = await prisma.$transaction(async (tx) => {
-      // a) create program (tanpa name/description)
       const program = await tx.programs.create({
         data: {
           id: randomUUID(),
           admin_user_id: adminUserId,
           image_url: body?.image_url ?? null,
-          program_category,
+          program_type,
+          program_category, // boleh null
           price,
           phone: body?.phone ?? null,
           is_published: Boolean(body?.is_published ?? false),
@@ -211,7 +264,6 @@ export async function POST(req) {
         },
       });
 
-      // b) simpan 'id'
       await tx.programs_translate.create({
         data: {
           id_programs: program.id,
@@ -221,7 +273,6 @@ export async function POST(req) {
         },
       });
 
-      // c) siapkan 'en' → pakai input jika ada, kalau kosong translate dari 'id'
       let name_en = String(body?.name_en || "").trim();
       let description_en = String(body?.description_en || "").trim();
 

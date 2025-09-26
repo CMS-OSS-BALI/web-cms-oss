@@ -8,15 +8,11 @@ const DEFAULT_LOCALE = "id";
 const FALLBACK_LOCALE = "en";
 
 export default function useEventsViewModel() {
-  const [loading, setLoading] = useState(false); // for non-GET ops
-
   const [q, setQ] = useState("");
   const [isPublished, setIsPublished] = useState("");
   const [status, setStatus] = useState(""); // "done" | ""
   const [from, setFrom] = useState(null);
   const [to, setTo] = useState(null);
-  const [exporting, setExporting] = useState(false);
-
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(6);
   const [total, setTotal] = useState(0); // kept for compatibility (derived)
@@ -168,9 +164,8 @@ export default function useEventsViewModel() {
   // keep default perPage 8
 
   return {
-    loading: listLoading || loading,
+    loading: listLoading,
     events,
-    exporting,
     q,
     setQ,
     isPublished,

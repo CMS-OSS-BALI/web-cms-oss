@@ -10,8 +10,6 @@ import { fetcher } from "@/lib/swr/fetcher";
  * - Admin-only actions (create/update/delete) menggunakan cookie session
  */
 export default function useTestimonialsViewModel() {
-  const [loading, setLoading] = useState(false); // non-GET ops
-
   // filter & paging (client-side)
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
@@ -166,7 +164,7 @@ export default function useTestimonialsViewModel() {
   };
 
   return {
-    loading: listLoading || loading,
+    loading: listLoading,
     testimonials,
     q,
     setQ,

@@ -85,8 +85,8 @@ export async function GET(req, { params }) {
       return NextResponse.json({ message: "Not found" }, { status: 404 });
     }
 
-    const translation = pickTrans(merchant.mitra_dalam_negeri_translate || [], locale, fallback);
-    const { mitra_dalam_negeri_translate: _translations, ...base } = merchant;
+    const { mitra_dalam_negeri_translate, ...base } = merchant;
+    const translation = pickTrans(mitra_dalam_negeri_translate || [], locale, fallback);
 
     return NextResponse.json({
       ...base,

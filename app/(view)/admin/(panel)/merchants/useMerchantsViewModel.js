@@ -8,8 +8,6 @@ const DEFAULT_LOCALE = "id";
 const FALLBACK_LOCALE = "en";
 
 export default function useMerchantsViewModel() {
-  const [loading, setLoading] = useState(false); // non-GET ops
-
   // filters
   const [q, setQ] = useState("");
 
@@ -134,7 +132,7 @@ export default function useMerchantsViewModel() {
   };
 
   return {
-    loading: listLoading || loading,
+    loading: listLoading,
     merchants,
     q,
     setQ,
@@ -152,4 +150,3 @@ export default function useMerchantsViewModel() {
     deleteMerchant,
   };
 }
-

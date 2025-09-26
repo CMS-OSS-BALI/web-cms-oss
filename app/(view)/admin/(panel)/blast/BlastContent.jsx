@@ -60,7 +60,6 @@ export default function BlastContent(vm) {
                   <Form.Item label="Lampiran">
                     <Upload.Dragger
                       name="attachment"
-                      multiple={false}
                       maxCount={1}
                       accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.txt"
                       customRequest={({ onSuccess }) => {
@@ -144,28 +143,6 @@ export default function BlastContent(vm) {
                       .blast-page
                         .ant-upload-list-item
                         .ant-upload-list-item-action
-                        .anticon,
-                      .blast-page
-                        .ant-upload-list-item
-                        .ant-upload-list-item-actions
-                        .anticon-delete,
-                      .blast-page
-                        .ant-upload-list-item
-                        .ant-upload-list-item-actions
-                        .ant-btn,
-                      .blast-page
-                        .ant-upload-list-item
-                        .ant-upload-list-item-actions
-                        .ant-btn
-                        .anticon,
-                      .blast-page
-                        .ant-upload-list-item
-                        .ant-upload-list-item-action
-                        .ant-btn,
-                      .blast-page
-                        .ant-upload-list-item
-                        .ant-upload-list-item-action
-                        .ant-btn
                         .anticon {
                         color: #ef4444 !important;
                       }
@@ -180,7 +157,6 @@ export default function BlastContent(vm) {
                         .anticon
                         svg {
                         fill: currentColor;
-                        color: #ef4444 !important;
                       }
                       .blast-page
                         .ant-upload-list-item
@@ -215,7 +191,6 @@ export default function BlastContent(vm) {
                       onSearch={vm.searchPartners}
                       onChange={vm.setPartnerIds}
                       loading={vm.loadingPartners}
-                      optionFilterProp="label"
                       maxTagCount="responsive"
                       dropdownRender={(menu) => (
                         <div>
@@ -285,7 +260,6 @@ export default function BlastContent(vm) {
                       onSearch={vm.searchMerchants}
                       onChange={vm.setMerchantIds}
                       loading={vm.loadingMerchants}
-                      optionFilterProp="label"
                       maxTagCount="responsive"
                       dropdownRender={(menu) => (
                         <div>

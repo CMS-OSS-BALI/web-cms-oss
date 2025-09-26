@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /** util kecil */
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i;
 
 function mapPartner(p) {
   // p.contact bisa JSON string, tidak dipakai di opsi — hanya label nama
@@ -282,7 +281,6 @@ export default function useBlastViewModel() {
     logs,
     summary,
     error,
-    setError,
 
     canSend,
     onPreview,
@@ -298,12 +296,4 @@ function debounce(fn, wait = 300) {
     clearTimeout(t);
     t = setTimeout(() => fn(...args), wait);
   };
-}
-
-async function safeJson(res) {
-  try {
-    return await res.json();
-  } catch {
-    return null;
-  }
 }
