@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
@@ -7,21 +7,40 @@ import { translate } from "@/app/utils/geminiTranslator";
 
 export const dynamic = "force-dynamic";
 
-async function getAdmin() {
+/* ===================== Helpers ===================== */
+const MAX_NAME_LENGTH = 191;
+const MAX_TEXT_LENGTH = 10000;
+
+async function getAdminOrNull() {
   const session = await getServerSession(authOptions);
   const email = session?.user?.email;
   if (!email) return null;
-  const admin = await prisma.admin_users.findUnique({ where: { email } });
-  return admin || null;
+  return prisma.admin_users.findUnique({ where: { email } });
 }
 
-function pickLocaleParam(req) {
+function getLocaleFromReq(req) {
   try {
     const url = new URL(req.url);
-    return (url.searchParams.get("locale") || "id").slice(0, 5);
+    return (url.searchParams.get("locale") || "id").slice(0, 5).toLowerCase();
   } catch {
     return "id";
   }
+}
+
+function getLimitFromReq(req, fallback = 12) {
+  try {
+    const n = Number(new URL(req.url).searchParams.get("limit"));
+    return Number.isFinite(n) && n > 0 && n <= 100 ? Math.trunc(n) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function trimOrNull(v, max = 255) {
+  if (typeof v !== "string") return null;
+  const s = v.trim();
+  if (!s) return null;
+  return s.slice(0, max);
 }
 
 function parseStar(input) {
@@ -29,36 +48,38 @@ function parseStar(input) {
   const n = Number(input);
   if (!Number.isFinite(n)) return null;
   const i = Math.trunc(n);
-  if (i < 1 || i > 5) return null;
-  return i;
+  return i >= 1 && i <= 5 ? i : null;
 }
 
 function normalizeYoutubeUrl(u) {
-  if (!u || typeof u !== "string") return null;
-  const s = u.trim();
+  if (u === undefined) return undefined; // khusus PUT
+  const s = trimOrNull(u, 255);
   if (!s) return null;
   try {
     const url = new URL(s);
-    if (!url.protocol.startsWith("http")) return null;
+    if (!/^https?:/.test(url.protocol)) return null;
     return url.toString().slice(0, 255);
   } catch {
     return null;
   }
 }
 
-// PUBLIC: list testimonials (ikut locale, fallback 'id')
+/* ===================== GET (list) ===================== */
 export async function GET(req) {
   try {
-    const locale = pickLocaleParam(req);
+    const locale = getLocaleFromReq(req);
+    const limit = getLimitFromReq(req, 12);
 
     const rows = await prisma.testimonials.findMany({
       where: { deleted_at: null },
       orderBy: { created_at: "desc" },
+      take: limit,
       select: {
         id: true,
         photo_url: true,
         star: true,
         youtube_url: true,
+        kampus_negara_tujuan: true,
         created_at: true,
         updated_at: true,
       },
@@ -67,39 +88,38 @@ export async function GET(req) {
     if (!rows.length) return NextResponse.json({ data: [] });
 
     const ids = rows.map((r) => r.id);
-
-    // ambil translate utk locale target + fallback id
-    const trans = await prisma.testimonials_translate.findMany({
+    const translations = await prisma.testimonials_translate.findMany({
       where: {
         id_testimonials: { in: ids },
         locale: locale === "id" ? "id" : { in: [locale, "id"] },
       },
     });
 
-    // pilih yang paling sesuai (locale target > id)
-    const best = new Map();
-    for (const tr of trans) {
+    // Pilih terjemahan paling cocok (locale target > id)
+    const pick = new Map();
+    for (const tr of translations) {
       const key = tr.id_testimonials;
       if (
-        !best.has(key) ||
-        (best.get(key).locale !== locale && tr.locale === locale)
+        !pick.has(key) ||
+        (pick.get(key).locale !== locale && tr.locale === locale)
       ) {
-        best.set(key, tr);
+        pick.set(key, tr);
       }
     }
 
     const data = rows.map((r) => {
-      const t = best.get(r.id);
+      const t = pick.get(r.id);
       return {
         id: r.id,
         photo_url: r.photo_url,
         star: r.star ?? null,
         youtube_url: r.youtube_url ?? null,
+        kampus_negara_tujuan: r.kampus_negara_tujuan ?? null,
         created_at: r.created_at,
         updated_at: r.updated_at,
-        name: t?.name || null,
-        message: t?.message || null,
-        locale: t?.locale || null,
+        name: t?.name ?? null,
+        message: t?.message ?? null,
+        locale: t?.locale ?? null,
       };
     });
 
@@ -110,86 +130,99 @@ export async function GET(req) {
   }
 }
 
-// ADMIN: create testimonial + translate (ikut kolom star & youtube_url)
+/* ===================== POST (create) ===================== */
 export async function POST(req) {
   try {
-    const admin = await getAdmin();
-    if (!admin) {
+    const admin = await getAdminOrNull();
+    if (!admin)
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+
+    const raw = await req.json().catch(() => ({}));
+    const items = Array.isArray(raw) ? raw : [raw];
+
+    // Validasi awal untuk semua item
+    for (let i = 0; i < items.length; i++) {
+      const body = items[i] ?? {};
+      const photo_url = trimOrNull(body.photo_url, 255);
+      const name = trimOrNull(body.name, MAX_NAME_LENGTH) || "";
+      const message = trimOrNull(body.message, MAX_TEXT_LENGTH) || "";
+      if (!photo_url || !name || !message) {
+        return NextResponse.json(
+          {
+            message: `photo_url, name, dan message wajib diisi (item index ${i})`,
+          },
+          { status: 400 }
+        );
+      }
+      if (body.star !== undefined && parseStar(body.star) === null) {
+        return NextResponse.json(
+          { message: `star harus integer 1–5 (item index ${i})` },
+          { status: 422 }
+        );
+      }
     }
 
-    const body = await req.json().catch(() => ({}));
-    const locale = (body.locale || "id").slice(0, 5).toLowerCase();
-    const photo_url = (body.photo_url || "").trim();
-    const name = (body.name || "").trim();
-    const message = (body.message || "").trim();
+    const results = [];
 
-    const star = parseStar(body.star);
-    const youtube_url = normalizeYoutubeUrl(body.youtube_url);
+    for (const body of items) {
+      const locale = (body.locale || "id").slice(0, 5).toLowerCase();
 
-    if (!photo_url || !name || !message) {
-      return NextResponse.json(
-        { message: "photo_url, name, dan message wajib diisi" },
-        { status: 400 }
+      const photo_url = trimOrNull(body.photo_url, 255);
+      const name = trimOrNull(body.name, MAX_NAME_LENGTH) || "";
+      const message = trimOrNull(body.message, MAX_TEXT_LENGTH) || "";
+      const youtube_url = normalizeYoutubeUrl(body.youtube_url);
+      const kampus_negara_tujuan = trimOrNull(
+        body.kampus_negara_tujuan ?? body.campusCountry,
+        255
       );
-    }
-    if (body.star !== undefined && star === null) {
-      return NextResponse.json(
-        { message: "star harus integer 1–5" },
-        { status: 422 }
-      );
-    }
+      const star = parseStar(body.star);
 
-    const id = randomUUID();
+      const id = randomUUID();
 
-    await prisma.testimonials.create({
-      data: {
-        id,
-        admin_user_id: admin.id,
-        photo_url,
-        star,
-        youtube_url,
-      },
-    });
-
-    await prisma.testimonials_translate.create({
-      data: {
-        id_testimonials: id,
-        locale,
-        name,
-        message,
-      },
-    });
-
-    if (locale !== "en") {
-      const source = locale || "id";
-      const [nameEn, messageEn] = await Promise.all([
-        translate(name, source, "en"),
-        translate(message, source, "en"),
-      ]);
-
-      await prisma.testimonials_translate.create({
+      await prisma.testimonials.create({
         data: {
-          id_testimonials: id,
-          locale: "en",
-          name: nameEn || name,
-          message: messageEn || message,
+          id,
+          admin_user_id: admin.id,
+          photo_url,
+          star,
+          youtube_url,
+          kampus_negara_tujuan: kampus_negara_tujuan ?? null,
         },
       });
-    }
 
-    return NextResponse.json(
-      {
+      await prisma.testimonials_translate.create({
+        data: { id_testimonials: id, locale, name, message },
+      });
+
+      if (locale !== "en") {
+        const [nameEn, messageEn] = await Promise.all([
+          translate(name, locale || "id", "en"),
+          translate(message, locale || "id", "en"),
+        ]);
+        await prisma.testimonials_translate.create({
+          data: {
+            id_testimonials: id,
+            locale: "en",
+            name: (nameEn || name).slice(0, MAX_NAME_LENGTH),
+            message: messageEn || message,
+          },
+        });
+      }
+
+      results.push({
         id,
         photo_url,
         star: star ?? null,
         youtube_url: youtube_url ?? null,
+        kampus_negara_tujuan: kampus_negara_tujuan ?? null,
         locale,
         name,
         message,
-      },
-      { status: 201 }
-    );
+      });
+    }
+
+    const payload = Array.isArray(raw) ? results : results[0];
+    return NextResponse.json({ data: payload }, { status: 201 });
   } catch (e) {
     console.error("POST /api/testimonials error:", e);
     return NextResponse.json({ message: "Server error" }, { status: 500 });

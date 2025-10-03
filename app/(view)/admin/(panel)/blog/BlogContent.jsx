@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useRef, useEffect, useMemo, useState } from "react";
 import {
   Button,
   Card,
@@ -21,7 +21,7 @@ import {
   Typography,
   theme as antdTheme,
 } from "antd";
-import { EyeOutlined, PlusOutlined } from "@ant-design/icons";
+import { EyeOutlined, PlusOutlined, DeleteOutlined } from "@ant-design/icons";
 import HtmlEditor from "@/app/components/editor/HtmlEditor";
 import { sanitizeHtml } from "@/app/utils/dompurify";
 
@@ -38,7 +38,7 @@ const darkCardStyle = {
   boxShadow: "0 10px 24px rgba(2,6,23,.35)",
 };
 
-/* ===== Form Modal ===== */
+/* ===== Form Modal (with file upload) ===== */
 function BlogFormModal({
   open,
   mode,
@@ -51,10 +51,23 @@ function BlogFormModal({
   const isCreate = mode !== "edit";
   const req = (msg) => (isCreate ? [{ required: true, message: msg }] : []);
 
+  // local state untuk file & preview
+  const fileInputRef = useRef(null);
+  const [coverFile, setCoverFile] = useState(null);
+  const [coverPreview, setCoverPreview] = useState("");
+
   useEffect(() => {
     if (!open) return;
     form.resetFields();
     form.setFieldsValue({ ...initialValues });
+    // preview dari initial values (edit) → pakai image_src/public/url
+    setCoverFile(null);
+    setCoverPreview(
+      initialValues?.image_src ||
+        initialValues?.image_public_url ||
+        initialValues?.image_url ||
+        ""
+    );
   }, [open, initialValues, form]);
 
   const ctrlStyle = {
@@ -65,15 +78,119 @@ function BlogFormModal({
   };
 
   const handleFinish = (values) => {
-    // kirim field versi Indonesia dan minta auto translate ke English
     const payload = {
-      image_url: values.image_url?.trim(),
+      file: coverFile || undefined, // kirim file kalau ada
       name_id: values.name_id?.trim(),
       description_id: values.description_id?.trim() || "",
       autoTranslate: true,
     };
+
+    if (isCreate && !coverFile) {
+      Modal.warning({
+        title: "Cover belum dipilih",
+        content: "Silakan unggah cover image untuk blog.",
+      });
+      return;
+    }
+
     onSubmit(payload);
   };
+
+  function openPicker() {
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    fileInputRef.current?.click();
+  }
+
+  function handleFileChange(e) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const allowed = ["image/jpeg", "image/png", "image/webp"];
+    if (!allowed.includes(f.type)) {
+      Modal.error({
+        title: "Format tidak didukung",
+        content: "Gunakan JPEG/PNG/WebP.",
+      });
+      e.target.value = "";
+      return;
+    }
+    if (f.size > 10 * 1024 * 1024) {
+      Modal.error({
+        title: "Ukuran terlalu besar",
+        content: "Maksimal 10MB.",
+      });
+      e.target.value = "";
+      return;
+    }
+    setCoverFile(f);
+    setCoverPreview(URL.createObjectURL(f));
+  }
+
+  function removeCover() {
+    setCoverFile(null);
+    setCoverPreview("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  const UploadBox = (
+    <div style={{ display: "grid", gap: 8 }}>
+      {!coverPreview ? (
+        <div
+          style={{
+            border: "2px dashed #3a5794",
+            borderRadius: 12,
+            padding: 18,
+            display: "grid",
+            placeItems: "center",
+            cursor: "pointer",
+            background:
+              "repeating-linear-gradient(-45deg,rgba(17,24,39,.3),rgba(17,24,39,.3) 10px,rgba(17,24,39,.24) 10px,rgba(17,24,39,.24) 20px)",
+          }}
+          onClick={openPicker}
+        >
+          <Space direction="vertical" align="center" size={4}>
+            <EyeOutlined style={{ fontSize: 28, color: "#8fb3ff" }} />
+            <Text strong>Ketuk untuk unggah cover</Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              Disarankan rasio 16:9 • Maks 10MB • JPG/PNG/WebP
+            </Text>
+          </Space>
+        </div>
+      ) : (
+        <div style={{ position: "relative" }}>
+          <img
+            src={coverPreview}
+            alt="Preview cover"
+            style={{
+              width: "100%",
+              maxHeight: 300,
+              objectFit: "cover",
+              borderRadius: 12,
+              border: "1px solid #2f3f60",
+            }}
+          />
+          <div style={{ marginTop: 8 }}>
+            <Button danger shape="round" onClick={removeCover}>
+              <DeleteOutlined /> Hapus Cover
+            </Button>
+            <Button
+              shape="round"
+              style={{ marginLeft: 8 }}
+              onClick={openPicker}
+            >
+              Ganti Cover
+            </Button>
+          </div>
+        </div>
+      )}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        style={{ display: "none" }}
+        onChange={handleFileChange}
+      />
+    </div>
+  );
 
   return (
     <Modal
@@ -122,17 +239,11 @@ function BlogFormModal({
                   <Input maxLength={190} style={ctrlStyle} />
                 </Form.Item>
               </Col>
+
+              {/* COVER UPLOAD (replaces image_url field) */}
               <Col xs={24} md={12}>
-                <Form.Item
-                  name="image_url"
-                  label="Cover Image URL"
-                  required={isCreate}
-                  rules={req("Cover URL wajib diisi")}
-                >
-                  <Input
-                    placeholder="/uploads/xx.jpg atau https://..."
-                    style={ctrlStyle}
-                  />
+                <Form.Item label="Cover Image" required={isCreate}>
+                  {UploadBox}
                 </Form.Item>
               </Col>
 
@@ -146,7 +257,6 @@ function BlogFormModal({
                   <HtmlEditor className="editor-dark" minHeight={220} />
                 </Form.Item>
               </Col>
-
             </Row>
           </Form>
         </div>
@@ -207,7 +317,7 @@ function BlogViewModal({ open, data, onClose }) {
       <div className="view-scroll">
         <div style={{ padding: 16 }}>
           <Image
-            src={data?.image_url || PLACEHOLDER}
+            src={data?.image_public_url || data?.image_url || PLACEHOLDER}
             alt={data?.name}
             style={{
               width: "100%",
@@ -292,7 +402,7 @@ function BlogCard({ b, onView, onEdit, onDelete }) {
         >
           <img
             alt={b.name}
-            src={b.image_url || PLACEHOLDER}
+            src={b.image_src || PLACEHOLDER}
             style={{ width: "100%", height: "100%", objectFit: "cover" }}
             onError={(e) => {
               e.currentTarget.onerror = null;
@@ -466,7 +576,6 @@ export default function BlogContent(props) {
   };
 
   const onSearch = () => {
-    // hanya set page 1; SWR key dari parent hook yang handle
     setPage(1);
   };
   const onReset = () => {
@@ -478,14 +587,18 @@ export default function BlogContent(props) {
   const initialValues = useMemo(() => {
     if (!editing) {
       return {
-        image_url: "",
+        image_src: "",
         name_id: "",
         description_id: "",
       };
     }
     return {
-      image_url: editing.image_url || "",
-      name_id: editing.name || "", // tampilkan judul yang sedang dipakai (locale_used)
+      image_src:
+        editing.image_src ||
+        editing.image_public_url ||
+        editing.image_url ||
+        "",
+      name_id: editing.name || "",
       description_id: editing.description || "",
     };
   }, [editing]);
@@ -564,19 +677,19 @@ export default function BlogContent(props) {
             style={{ display: "block" }}
           >
             <Row gutter={[8, 8]} align="middle" wrap>
-              {/* Search — fleksibel, jadi porsi terbesar */}
+              {/* Search */}
               <Col flex="1 1 420px" style={{ minWidth: 260 }}>
                 <Input.Search
                   allowClear
                   value={q}
-                  onChange={(e) => props.setQ(e.target.value)}
+                  onChange={(e) => setQ(e.target.value)}
                   placeholder="Cari judul/konten…"
                   enterButton
                   style={{ width: "100%" }}
                 />
               </Col>
 
-              {/* Per Page — ukuran nyaman dan responsif */}
+              {/* Per Page */}
               <Col
                 xs={12}
                 sm={8}
@@ -600,7 +713,7 @@ export default function BlogContent(props) {
                 />
               </Col>
 
-              {/* Sort — ukuran nyaman dan responsif */}
+              {/* Sort */}
               <Col
                 xs={12}
                 sm={8}
@@ -626,7 +739,7 @@ export default function BlogContent(props) {
                 />
               </Col>
 
-              {/* Tombol — lebar tetap biar rapi */}
+              {/* Buttons */}
               <Col flex="0 0 200px">
                 <Space wrap>
                   <Button shape="round" onClick={onReset}>

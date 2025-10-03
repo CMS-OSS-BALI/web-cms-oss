@@ -4,11 +4,6 @@ import { useCallback, useMemo, useState, useEffect } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/lib/swr/fetcher";
 
-/**
- * ViewModel Testimonials
- * - Client-side search & pagination (karena GET /api/testimonials belum paging)
- * - Admin-only actions (create/update/delete) menggunakan cookie session
- */
 export default function useTestimonialsViewModel() {
   const [loading, setLoading] = useState(false); // non-GET ops
 
@@ -22,7 +17,7 @@ export default function useTestimonialsViewModel() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
-  // SWR all testimonials (server will return latest shape incl. star & youtube_url)
+  // SWR all testimonials (server returns latest shape incl. star, youtube_url, kampus_negara_tujuan)
   const {
     data: rawJson,
     error: rawErr,
@@ -42,11 +37,12 @@ export default function useTestimonialsViewModel() {
 
     let filtered = rawList;
     if (qv) {
-      filtered = filtered.filter(
-        (it) =>
-          (it.name || "").toLowerCase().includes(qv) ||
-          (it.message || "").toLowerCase().includes(qv)
-      );
+      filtered = filtered.filter((it) => {
+        const name = (it.name || "").toLowerCase();
+        const message = (it.message || "").toLowerCase();
+        const campus = (it.kampus_negara_tujuan || "").toLowerCase();
+        return name.includes(qv) || message.includes(qv) || campus.includes(qv);
+      });
     }
 
     const ttl = filtered.length;
@@ -59,23 +55,21 @@ export default function useTestimonialsViewModel() {
 
   const { list: testimonials, ttl, ttlPages, pg, pp } = computePaged();
 
-  // sync derived paging numbers when data or filters change
   useEffect(() => {
     setTotal(ttl);
     setTotalPages(ttlPages);
     if (pg !== page) setPage(pg);
     if (pp !== perPage) setPerPage(pp);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ttl, ttlPages, pg, pp]);
+  }, [ttl, ttlPages, pg, pp]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchTestimonials = useCallback(async (opts = {}) => {
     if ("q" in opts) setQ(opts.q || "");
     if ("page" in opts) setPage(Math.max(1, opts.page));
     if ("perPage" in opts) setPerPage(opts.perPage);
-    // SWR akan revalidate sesuai key bila diperlukan
   }, []);
 
-  // CREATE (admin) — payload boleh: { name, photo_url, message, star, youtube_url }
+  // CREATE (admin)
+  // payload boleh: { name, photo_url, message, star, youtube_url, kampus_negara_tujuan }
   const createTestimonial = async (payload) => {
     setError("");
     setMessage("");
@@ -89,6 +83,10 @@ export default function useTestimonialsViewModel() {
           message: payload.message,
           star: typeof payload.star === "number" ? payload.star : undefined,
           youtube_url: payload.youtube_url || undefined,
+          kampus_negara_tujuan:
+            payload.kampus_negara_tujuan != null
+              ? payload.kampus_negara_tujuan
+              : undefined,
         }),
       });
       if (!res.ok)
@@ -124,6 +122,9 @@ export default function useTestimonialsViewModel() {
           ...(typeof payload.star === "number" ? { star: payload.star } : {}),
           ...(payload.youtube_url != null
             ? { youtube_url: payload.youtube_url }
+            : {}),
+          ...(payload.kampus_negara_tujuan != null
+            ? { kampus_negara_tujuan: payload.kampus_negara_tujuan }
             : {}),
         }),
       });

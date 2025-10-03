@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { translate } from "@/app/utils/geminiTranslator";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -50,7 +51,39 @@ async function assertAdmin() {
   return admin;
 }
 
-/* ========= GET /api/blog/:id (DETAIL) ========= */
+/* ========= Supabase ========= */
+const BUCKET = process.env.SUPABASE_BUCKET;
+function getPublicUrl(path) {
+  if (!path) return null;
+  const { data } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path);
+  return data?.publicUrl || null;
+}
+async function uploadBlogToSupabase(file) {
+  if (!(file instanceof File)) throw new Error("NO_FILE");
+  const MAX = 10 * 1024 * 1024;
+  const allowed = ["image/jpeg", "image/png", "image/webp"];
+  if ((file.size || 0) > MAX) throw new Error("PAYLOAD_TOO_LARGE");
+  if (!allowed.includes(file.type)) throw new Error("UNSUPPORTED_TYPE");
+
+  const ext = (file.name?.split(".").pop() || "").toLowerCase();
+  const safe = `${Date.now()}-${Math.random().toString(36).slice(2)}${
+    ext ? "." + ext : ""
+  }`;
+  const objectPath = `blog/${new Date().toISOString().slice(0, 10)}/${safe}`;
+  const bytes = new Uint8Array(await file.arrayBuffer());
+
+  const { error } = await supabaseAdmin.storage
+    .from(BUCKET)
+    .upload(objectPath, bytes, {
+      contentType: file.type || "application/octet-stream",
+      upsert: false,
+    });
+  if (error) throw new Error(error.message);
+
+  return objectPath;
+}
+
+/* ========= GET /api/blog/:id ========= */
 export async function GET(req, { params }) {
   try {
     const id = params?.id;
@@ -75,15 +108,25 @@ export async function GET(req, { params }) {
     if (!item) return notFound();
 
     const t = pickTrans(item.blog_translate, locale, fallback);
+    const image_public_url = getPublicUrl(item.image_url);
+    const created_ts = item?.created_at
+      ? new Date(item.created_at).getTime()
+      : null;
+    const updated_ts = item?.updated_at
+      ? new Date(item.updated_at).getTime()
+      : null;
 
     return json({
       data: {
         id: item.id,
         image_url: item.image_url,
+        image_public_url,
         views_count: item.views_count,
         likes_count: item.likes_count,
         created_at: item.created_at,
         updated_at: item.updated_at,
+        created_ts, // <-- NEW
+        updated_ts, // <-- NEW
         name: t?.name ?? null,
         description: t?.description ?? null,
         locale_used: t?.locale ?? null,
@@ -98,15 +141,7 @@ export async function GET(req, { params }) {
   }
 }
 
-/* ========= PUT/PATCH /api/blog/:id (UPDATE + upsert translate + optional auto-translate) ========= */
-/**
- * Body (opsional):
- *  - image_url?
- *  - name_id?, description_id?   (update/insert locale 'id')
- *  - name_en?, description_en?   (update/insert locale 'en')
- *  - autoTranslate? (boolean)    default false; kalau true dan ada perubahan 'id', EN di-generate via Gemini
- *  - views_count?, likes_count?  (bilangan >= 0) — untuk admin panel manual set
- */
+/* ========= PUT/PATCH /api/blog/:id ========= */
 export async function PUT(req, ctx) {
   return PATCH(req, ctx);
 }
@@ -118,102 +153,240 @@ export async function PATCH(req, { params }) {
     const id = params?.id;
     if (!id) return badRequest("id wajib disertakan");
 
-    const body = await req.json().catch(() => ({}));
-
-    // 1) update parent
+    const ct = req.headers.get("content-type") || "";
     const data = {};
-    if (body.image_url !== undefined) data.image_url = body.image_url ?? null;
+    const ops = [];
+    let name_id_new, desc_id_new;
+    let autoTranslate = false;
 
-    if (body.views_count !== undefined) {
-      const v = parseInt(body.views_count, 10);
-      if (!Number.isFinite(v) || v < 0)
-        return badRequest("views_count harus bilangan >= 0");
-      data.views_count = v;
+    if (ct.includes("multipart/form-data")) {
+      const form = await req.formData();
+
+      const file = form.get("file");
+      if (file && typeof file !== "string") {
+        try {
+          const path = await uploadBlogToSupabase(file);
+          data.image_url = path;
+        } catch (e) {
+          if (e?.message === "PAYLOAD_TOO_LARGE")
+            return NextResponse.json(
+              { message: "Maksimal 10MB" },
+              { status: 413 }
+            );
+          if (e?.message === "UNSUPPORTED_TYPE")
+            return NextResponse.json(
+              { message: "Format harus JPEG/PNG/WebP" },
+              { status: 415 }
+            );
+          console.error("upload error:", e);
+          return NextResponse.json(
+            { message: "Upload gagal" },
+            { status: 500 }
+          );
+        }
+      }
+
+      if (form.get("image_url") !== null) {
+        const v = String(form.get("image_url") || "").trim();
+        data.image_url = v || null;
+      }
+
+      if (form.get("views_count") !== null) {
+        const v = parseInt(form.get("views_count"), 10);
+        if (!Number.isFinite(v) || v < 0)
+          return NextResponse.json(
+            { message: "views_count harus bilangan >= 0" },
+            { status: 400 }
+          );
+        data.views_count = v;
+      }
+      if (form.get("likes_count") !== null) {
+        const v = parseInt(form.get("likes_count"), 10);
+        if (!Number.isFinite(v) || v < 0)
+          return NextResponse.json(
+            { message: "likes_count harus bilangan >= 0" },
+            { status: 400 }
+          );
+        data.likes_count = v;
+      }
+
+      if (form.get("name_id") !== null || form.get("description_id") !== null) {
+        name_id_new =
+          form.get("name_id") != null ? String(form.get("name_id")) : undefined;
+        desc_id_new =
+          form.get("description_id") != null
+            ? String(form.get("description_id"))
+            : undefined;
+
+        ops.push(
+          prisma.blog_translate.upsert({
+            where: { id_blog_locale: { id_blog: id, locale: "id" } },
+            update: {
+              ...(name_id_new !== undefined
+                ? { name: (name_id_new || "(no title)").slice(0, 191) }
+                : {}),
+              ...(desc_id_new !== undefined
+                ? { description: desc_id_new || null }
+                : {}),
+            },
+            create: {
+              id_blog: id,
+              locale: "id",
+              name: (name_id_new || "(no title)").slice(0, 191),
+              description: desc_id_new || null,
+            },
+          })
+        );
+      }
+
+      if (form.get("name_en") !== null || form.get("description_en") !== null) {
+        const name_en =
+          form.get("name_en") != null ? String(form.get("name_en")) : undefined;
+        const desc_en =
+          form.get("description_en") != null
+            ? String(form.get("description_en"))
+            : undefined;
+
+        ops.push(
+          prisma.blog_translate.upsert({
+            where: { id_blog_locale: { id_blog: id, locale: "en" } },
+            update: {
+              ...(name_en !== undefined
+                ? { name: (name_en || "(no title)").slice(0, 191) }
+                : {}),
+              ...(desc_en !== undefined
+                ? { description: desc_en || null }
+                : {}),
+            },
+            create: {
+              id_blog: id,
+              locale: "en",
+              name: (name_en || "(no title)").slice(0, 191),
+              description: desc_en || null,
+            },
+          })
+        );
+      }
+
+      autoTranslate = String(form.get("autoTranslate") ?? "false") === "true";
+    } else {
+      const body = await req.json().catch(() => ({}));
+
+      if (body.image_url !== undefined) data.image_url = body.image_url ?? null;
+      if (body.views_count !== undefined) {
+        const v = parseInt(body.views_count, 10);
+        if (!Number.isFinite(v) || v < 0)
+          return NextResponse.json(
+            { message: "views_count harus bilangan >= 0" },
+            { status: 400 }
+          );
+        data.views_count = v;
+      }
+      if (body.likes_count !== undefined) {
+        const v = parseInt(body.likes_count, 10);
+        if (!Number.isFinite(v) || v < 0)
+          return NextResponse.json(
+            { message: "likes_count harus bilangan >= 0" },
+            { status: 400 }
+          );
+        data.likes_count = v;
+      }
+
+      if (body.name_id !== undefined || body.description_id !== undefined) {
+        name_id_new =
+          body.name_id !== undefined ? String(body.name_id) : undefined;
+        desc_id_new =
+          body.description_id !== undefined
+            ? String(body.description_id)
+            : undefined;
+
+        ops.push(
+          prisma.blog_translate.upsert({
+            where: { id_blog_locale: { id_blog: id, locale: "id" } },
+            update: {
+              ...(name_id_new !== undefined
+                ? { name: (name_id_new || "(no title)").slice(0, 191) }
+                : {}),
+              ...(desc_id_new !== undefined
+                ? { description: desc_id_new || null }
+                : {}),
+            },
+            create: {
+              id_blog: id,
+              locale: "id",
+              name: (name_id_new || "(no title)").slice(0, 191),
+              description: desc_id_new || null,
+            },
+          })
+        );
+      }
+
+      if (body.name_en !== undefined || body.description_en !== undefined) {
+        const name_en =
+          body.name_en !== undefined ? String(body.name_en) : undefined;
+        const desc_en =
+          body.description_en !== undefined
+            ? String(body.description_en)
+            : undefined;
+
+        ops.push(
+          prisma.blog_translate.upsert({
+            where: { id_blog_locale: { id_blog: id, locale: "en" } },
+            update: {
+              ...(name_en !== undefined
+                ? { name: (name_en || "(no title)").slice(0, 191) }
+                : {}),
+              ...(desc_en !== undefined
+                ? { description: desc_en || null }
+                : {}),
+            },
+            create: {
+              id_blog: id,
+              locale: "en",
+              name: (name_en || "(no title)").slice(0, 191),
+              description: desc_en || null,
+            },
+          })
+        );
+      }
+
+      autoTranslate = Boolean(body?.autoTranslate);
     }
-    if (body.likes_count !== undefined) {
-      const v = parseInt(body.likes_count, 10);
-      if (!Number.isFinite(v) || v < 0)
-        return badRequest("likes_count harus bilangan >= 0");
-      data.likes_count = v;
-    }
+
     if (Object.keys(data).length) data.updated_at = new Date();
-
     if (Object.keys(data).length) {
       await prisma.blog.update({ where: { id }, data });
     } else {
-      // pastikan record ada
       const exists = await prisma.blog.findUnique({ where: { id } });
       if (!exists) return notFound();
     }
 
-    // 2) upsert translate
-    const ops = [];
-
-    if (body.name_id !== undefined || body.description_id !== undefined) {
-      ops.push(
-        prisma.blog_translate.upsert({
-          where: { id_blog_locale: { id_blog: id, locale: "id" } },
-          update: {
-            ...(body.name_id !== undefined
-              ? { name: String(body.name_id).slice(0, 191) }
-              : {}),
-            ...(body.description_id !== undefined
-              ? { description: body.description_id ?? null }
-              : {}),
-          },
-          create: {
-            id_blog: id,
-            locale: "id",
-            name: String(body.name_id ?? "(no title)").slice(0, 191),
-            description: body.description_id ?? null,
-          },
-        })
-      );
-    }
-
-    if (body.name_en !== undefined || body.description_en !== undefined) {
-      ops.push(
-        prisma.blog_translate.upsert({
-          where: { id_blog_locale: { id_blog: id, locale: "en" } },
-          update: {
-            ...(body.name_en !== undefined
-              ? { name: String(body.name_en).slice(0, 191) }
-              : {}),
-            ...(body.description_en !== undefined
-              ? { description: body.description_en ?? null }
-              : {}),
-          },
-          create: {
-            id_blog: id,
-            locale: "en",
-            name: String(body.name_en ?? "(no title)").slice(0, 191),
-            description: body.description_en ?? null,
-          },
-        })
-      );
-    }
-
-    // autoTranslate EN dari ID bila diminta
-    if (body.autoTranslate && (body.name_id || body.description_id)) {
-      const name_en = body.name_id
-        ? await translate(String(body.name_id), "id", "en")
+    if (
+      autoTranslate &&
+      (name_id_new !== undefined || desc_id_new !== undefined)
+    ) {
+      const name_en_auto = name_id_new
+        ? await translate(String(name_id_new), "id", "en")
         : undefined;
-      const desc_en = body.description_id
-        ? await translate(String(body.description_id), "id", "en")
-        : undefined;
+      const desc_en_auto =
+        desc_id_new !== undefined
+          ? await translate(String(desc_id_new || ""), "id", "en")
+          : undefined;
 
       ops.push(
         prisma.blog_translate.upsert({
           where: { id_blog_locale: { id_blog: id, locale: "en" } },
           update: {
-            ...(name_en ? { name: name_en.slice(0, 191) } : {}),
-            ...(desc_en !== undefined ? { description: desc_en ?? null } : {}),
+            ...(name_en_auto ? { name: name_en_auto.slice(0, 191) } : {}),
+            ...(desc_en_auto !== undefined
+              ? { description: desc_en_auto ?? null }
+              : {}),
           },
           create: {
             id_blog: id,
             locale: "en",
-            name: (name_en || "(no title)").slice(0, 191),
-            description: desc_en ?? null,
+            name: (name_en_auto || "(no title)").slice(0, 191),
+            description: desc_en_auto ?? null,
           },
         })
       );
@@ -221,7 +394,10 @@ export async function PATCH(req, { params }) {
 
     if (ops.length) await prisma.$transaction(ops);
 
-    return json({ data: { id } });
+    const updated = await prisma.blog.findUnique({ where: { id } });
+    const image_public_url = updated ? getPublicUrl(updated.image_url) : null;
+
+    return json({ data: { id, image_public_url } });
   } catch (err) {
     console.error(`PATCH /api/blog/${params?.id} error:`, err);
     if (err?.code === "P2025") return notFound();
@@ -232,7 +408,7 @@ export async function PATCH(req, { params }) {
   }
 }
 
-/* ========= DELETE /api/blog/:id (SOFT DELETE) ========= */
+/* ========= DELETE /api/blog/:id ========= */
 export async function DELETE(_req, { params }) {
   try {
     await assertAdmin();

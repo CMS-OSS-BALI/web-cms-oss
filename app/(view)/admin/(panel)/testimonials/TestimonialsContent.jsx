@@ -20,6 +20,7 @@ import {
   Space,
   Spin,
   Typography,
+  Tag,
   theme as antdTheme,
 } from "antd";
 import { PlusOutlined, EyeOutlined, YoutubeOutlined } from "@ant-design/icons";
@@ -72,6 +73,7 @@ function TestimonialFormModal({
       message: values.message?.trim(),
       star: typeof values.star === "number" ? values.star : undefined,
       youtube_url: values.youtube_url?.trim() || undefined,
+      kampus_negara_tujuan: values.kampus_negara_tujuan?.trim() ?? undefined, // kirim "" untuk clear saat edit
     });
   };
 
@@ -146,6 +148,16 @@ function TestimonialFormModal({
               <Col xs={24} md={12}>
                 <Form.Item name="youtube_url" label="YouTube URL (opsional)">
                   <Input placeholder="https://youtu.be/xxxx atau https://www.youtube.com/watch?v=xxxx" />
+                </Form.Item>
+              </Col>
+
+              <Col span={24}>
+                <Form.Item
+                  name="kampus_negara_tujuan"
+                  label="Kampus & Negara Tujuan (opsional)"
+                  tooltip="Contoh: Osaka University — Japan"
+                >
+                  <Input placeholder="Nama kampus — Negara" />
                 </Form.Item>
               </Col>
 
@@ -239,7 +251,14 @@ function TestimonialViewModal({ open, data, onClose }) {
             }}
           />
 
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
             <Title level={4} style={{ marginTop: 0 }}>
               {data?.name || "—"}
             </Title>
@@ -257,6 +276,11 @@ function TestimonialViewModal({ open, data, onClose }) {
               >
                 Watch
               </Button>
+            ) : null}
+            {data?.kampus_negara_tujuan ? (
+              <Tag color="blue" style={{ borderRadius: 999 }}>
+                {data.kampus_negara_tujuan}
+              </Tag>
             ) : null}
           </div>
 
@@ -335,25 +359,23 @@ function TestimonialCard({ t, onView, onEdit, onDelete }) {
           display: "flex",
           flexDirection: "column",
           rowGap: 4,
-          minHeight: 122,
+          minHeight: 130,
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <Text
-            strong
-            style={{
-              fontSize: 14,
-              lineHeight: 1.2,
-              margin: 0,
-              display: "block",
-            }}
-          >
+          <Text strong style={{ fontSize: 14, lineHeight: 1.2, margin: 0 }}>
             {t.name}
           </Text>
           {typeof t.star === "number" && t.star > 0 ? (
             <Rate disabled value={t.star} style={{ fontSize: 14 }} />
           ) : null}
         </div>
+
+        {t.kampus_negara_tujuan ? (
+          <Tag color="blue" style={{ borderRadius: 999, width: "fit-content" }}>
+            {t.kampus_negara_tujuan}
+          </Tag>
+        ) : null}
 
         {t.message ? (
           <div
@@ -513,13 +535,15 @@ export default function TestimonialsContent(props) {
   };
 
   const initialValues = useMemo(() => {
-    if (!editing) return { star: undefined, youtube_url: "" };
+    if (!editing)
+      return { star: undefined, youtube_url: "", kampus_negara_tujuan: "" };
     return {
       name: editing.name || "",
       photo_url: editing.photo_url || "",
       message: editing.message || "",
       star: typeof editing.star === "number" ? editing.star : undefined,
       youtube_url: editing.youtube_url || "",
+      kampus_negara_tujuan: editing.kampus_negara_tujuan || "",
     };
   }, [editing]);
 
@@ -600,7 +624,7 @@ export default function TestimonialsContent(props) {
                   allowClear
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
-                  placeholder="Cari nama/isi testimoni…"
+                  placeholder="Cari nama/isi testimoni/tujuan kampus…"
                   enterButton
                 />
               </Col>
