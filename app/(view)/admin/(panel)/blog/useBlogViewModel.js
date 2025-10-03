@@ -31,6 +31,26 @@ function buildQuery({
   return `/api/blog?${params.toString()}`;
 }
 
+// helper: buat FormData dari payload (untuk multipart)
+function toFormData(payload = {}) {
+  const fd = new FormData();
+  Object.entries(payload).forEach(([k, v]) => {
+    if (v === undefined || v === null) return;
+    // khusus file
+    if (k === "file" && v instanceof File) {
+      fd.append("file", v);
+      return;
+    }
+    // boolean → string agar konsisten dengan server
+    if (typeof v === "boolean") {
+      fd.append(k, v ? "true" : "false");
+      return;
+    }
+    fd.append(k, String(v));
+  });
+  return fd;
+}
+
 export default function useBlogViewModel() {
   // list filters
   const [q, setQ] = useState("");
@@ -64,7 +84,15 @@ export default function useBlogViewModel() {
     mutate: mutateList,
   } = useSWR(listKey, fetcher);
 
-  const blogs = listJson?.data ?? [];
+  // transform: tambah image_src (prioritaskan public URL)
+  const blogs = useMemo(() => {
+    const rows = listJson?.data ?? [];
+    return rows.map((b) => ({
+      ...b,
+      image_src: b.image_public_url || b.image_url || "", // untuk <img src=...>
+    }));
+  }, [listJson]);
+
   const total = listJson?.meta?.total ?? 0;
   const totalPages = useMemo(
     () => Math.max(1, Math.ceil(total / perPage)),
@@ -80,14 +108,29 @@ export default function useBlogViewModel() {
 
   // ===== CRUD =====
   async function createBlog(payload) {
-    // payload: { image_url, name_id, description_id?, name_en?, description_en?, autoTranslate? }
+    /**
+     * payload bisa:
+     * - JSON mode: { image_url (PATH), name_id, description_id?, name_en?, description_en?, autoTranslate? }
+     * - Multipart mode: { file: File, ...field lain opsional }
+     *   -> kalau ada payload.file, VM kirim multipart otomatis
+     */
     setOpLoading(true);
     try {
-      const res = await fetch("/api/blog", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      let res;
+      if (payload?.file instanceof File) {
+        const fd = toFormData(payload);
+        res = await fetch("/api/blog", {
+          method: "POST",
+          body: fd, // tanpa Content-Type, biar browser set boundary
+        });
+      } else {
+        res = await fetch("/api/blog", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      }
+
       if (!res.ok) {
         const info = await res.json().catch(() => null);
         throw new Error(info?.message || "Gagal menambah blog");
@@ -102,14 +145,28 @@ export default function useBlogViewModel() {
   }
 
   async function updateBlog(id, payload) {
-    // payload: { image_url?, name_id?, description_id?, name_en?, description_en?, autoTranslate?, views_count?, likes_count? }
+    /**
+     * payload bisa:
+     * - JSON mode: { image_url?, name_id?, description_id?, name_en?, description_en?, autoTranslate?, views_count?, likes_count? }
+     * - Multipart mode: { file?: File, ... } untuk ganti gambar + field lain
+     */
     setOpLoading(true);
     try {
-      const res = await fetch(`/api/blog/${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      let res;
+      if (payload?.file instanceof File) {
+        const fd = toFormData(payload);
+        res = await fetch(`/api/blog/${encodeURIComponent(id)}`, {
+          method: "PATCH",
+          body: fd,
+        });
+      } else {
+        res = await fetch(`/api/blog/${encodeURIComponent(id)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      }
+
       if (!res.ok) {
         const info = await res.json().catch(() => null);
         throw new Error(info?.message || "Gagal memperbarui blog");

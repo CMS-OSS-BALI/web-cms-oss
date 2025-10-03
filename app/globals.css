@@ -36,8 +36,10 @@
 ================================ */
 html,
 body {
+  margin: 0; /* ← buang gutter default 8px */
+  padding: 0;
   height: 100%;
-  overflow: hidden; /* window tidak scroll; kolom konten yang scroll */
+  overflow-x: hidden;
 }
 
 body {
@@ -418,7 +420,7 @@ body {
   font-size: 12.5px;
 }
 .seg-dark .ant-segmented-item:hover .ant-segmented-item-label {
-  color: #ffffff;
+  color: #0f172a;
 }
 .seg-dark .ant-segmented-thumb {
   background: linear-gradient(180deg, #60a5fa, #3b82f6);
@@ -709,7 +711,7 @@ body {
   border-bottom: none;
   border-top-left-radius: 12px;
   border-top-right-radius: 12px;
-  color: #ffffff;
+  color: #0f172a;
 }
 .blast-page .ql-container.ql-snow {
   background: #0b1223;
@@ -717,12 +719,12 @@ body {
   border-top: none;
   border-bottom-left-radius: 12px;
   border-bottom-right-radius: 12px;
-  color: #ffffff;
+  color: #0f172a;
 }
 .blast-page .ql-editor {
   min-height: 220px;
-  color: #ffffff;
-  caret-color: #ffffff;
+  color: #0f172a;
+  caret-color: #0f172a;
 }
 .blast-page .ql-editor.ql-blank::before {
   color: rgba(255, 255, 255, 0.55); /* placeholder */
@@ -734,9 +736,43 @@ body {
   fill: #cbd5e1;
 }
 .blast-page .ql-snow .ql-picker {
-  color: #ffffff;
+  color: #0f172a;
 }
 .blast-page .ql-editor a {
   color: #60a5fa;
   text-decoration: underline;
+}
+
+/* ================================
+   User public shell
+================================ */
+.user-shell {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  color: #0f172a;
+}
+
+.user-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.user-content {
+  flex: 1;
+  width: min(1280px, 100%);
+  margin: 0 auto;
+  padding: clamp(48px, 8vw, 84px) clamp(20px, 6vw, 48px) clamp(32px, 6vw, 64px);
+  display: flex;
+  flex-direction: column;
+  gap: clamp(32px, 5vw, 64px);
+}
+
+@media (max-width: 768px) {
+  .user-content {
+    padding-top: clamp(32px, 10vw, 60px);
+    padding-bottom: clamp(24px, 8vw, 48px);
+  }
 }

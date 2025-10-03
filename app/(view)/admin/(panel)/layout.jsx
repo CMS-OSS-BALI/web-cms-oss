@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Sidebar from "../sidebar/sidebar";
-import Header from "../header/header"; // ⟵ NEW
+import Header from "../header/header";
 import Footer from "../footer/footer";
 
 export default function PanelLayout({ children }) {

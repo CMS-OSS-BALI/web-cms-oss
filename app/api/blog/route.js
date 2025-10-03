@@ -5,6 +5,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { randomUUID } from "crypto";
 import { translate } from "@/app/utils/geminiTranslator";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -71,15 +72,39 @@ function pickTrans(list, primary, fallback) {
   return by(primary) || by(fallback) || null;
 }
 
+/* ========= Supabase helpers ========= */
+const BUCKET = process.env.SUPABASE_BUCKET;
+function getPublicUrl(path) {
+  if (!path) return null;
+  const { data } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path);
+  return data?.publicUrl || null;
+}
+async function uploadBlogToSupabase(file) {
+  if (!(file instanceof File)) throw new Error("NO_FILE");
+  const MAX = 10 * 1024 * 1024; // 10MB
+  const allowed = ["image/jpeg", "image/png", "image/webp"];
+  if ((file.size || 0) > MAX) throw new Error("PAYLOAD_TOO_LARGE");
+  if (!allowed.includes(file.type)) throw new Error("UNSUPPORTED_TYPE");
+
+  const ext = (file.name?.split(".").pop() || "").toLowerCase();
+  const safe = `${Date.now()}-${Math.random().toString(36).slice(2)}${
+    ext ? "." + ext : ""
+  }`;
+  const objectPath = `blog/${new Date().toISOString().slice(0, 10)}/${safe}`;
+  const bytes = new Uint8Array(await file.arrayBuffer());
+
+  const { error } = await supabaseAdmin.storage
+    .from(BUCKET)
+    .upload(objectPath, bytes, {
+      contentType: file.type || "application/octet-stream",
+      upsert: false,
+    });
+
+  if (error) throw new Error(error.message);
+  return objectPath;
+}
+
 /* ========= GET /api/blog (LIST) ========= */
-/**
- * Query:
- *  - q            : search pada blog_translate.name/description (locale|fallback)
- *  - locale       : default 'id'
- *  - fallback     : default 'id'
- *  - page, perPage, sort
- *  - with_deleted=1 | only_deleted=1
- */
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
@@ -107,7 +132,7 @@ export async function GET(req) {
               some: {
                 locale: { in: [locale, fallback] },
                 OR: [
-                  { name: { contains: q } }, // gunakan collation DB untuk CI
+                  { name: { contains: q } },
                   { description: { contains: q } },
                 ],
               },
@@ -138,21 +163,34 @@ export async function GET(req) {
       }),
     ]);
 
-    const data = rows.map((r) => {
-      const t = pickTrans(r.blog_translate, locale, fallback);
-      return {
-        id: r.id,
-        image_url: r.image_url,
-        views_count: r.views_count,
-        likes_count: r.likes_count,
-        created_at: r.created_at,
-        updated_at: r.updated_at,
-        deleted_at: r.deleted_at,
-        name: t?.name ?? null,
-        description: t?.description ?? null,
-        locale_used: t?.locale ?? null,
-      };
-    });
+    const data = await Promise.all(
+      rows.map(async (r) => {
+        const t = pickTrans(r.blog_translate, locale, fallback);
+        const image_public_url = getPublicUrl(r.image_url);
+        const created_ts = r?.created_at
+          ? new Date(r.created_at).getTime()
+          : null;
+        const updated_ts = r?.updated_at
+          ? new Date(r.updated_at).getTime()
+          : null;
+
+        return {
+          id: r.id,
+          image_url: r.image_url,
+          image_public_url,
+          views_count: r.views_count,
+          likes_count: r.likes_count,
+          created_at: r.created_at,
+          updated_at: r.updated_at,
+          deleted_at: r.deleted_at,
+          created_ts, // <-- NEW
+          updated_ts, // <-- NEW
+          name: t?.name ?? null,
+          description: t?.description ?? null,
+          locale_used: t?.locale ?? null,
+        };
+      })
+    );
 
     return json({
       data,
@@ -174,37 +212,9 @@ export async function GET(req) {
   }
 }
 
-/* ========= POST /api/blog (CREATE + auto-translate) ========= */
-/**
- * Body:
- *  - image_url (required)
- *  - name_id (required) | name (fallback sebagai ID)
- *  - description_id? | description?
- *  - name_en?, description_en?
- *  - autoTranslate? default true (ID → EN via Gemini bila field EN kosong)
- */
+/* ========= POST /api/blog ========= */
 export async function POST(req) {
   try {
-    const body = await req.json().catch(() => ({}));
-
-    const image_url = String(body?.image_url || "").trim();
-    if (!image_url) return badRequest("image_url wajib diisi");
-
-    // dukung fallback: name/description → dianggap versi Indonesia
-    const name_id = String(body?.name_id ?? body?.name ?? "").trim();
-    if (!name_id) return badRequest("name_id (Bahasa Indonesia) wajib diisi");
-    const description_id =
-      typeof body?.description_id === "string"
-        ? body.description_id
-        : typeof body?.description === "string"
-        ? body.description
-        : null;
-
-    const autoTranslate = body?.autoTranslate !== false; // default true
-    let name_en = String(body?.name_en || "").trim();
-    let description_en = String(body?.description_en || "").trim();
-
-    // cari admin_user_id dari session
     const admin_user_id = await getAdminUserId();
     if (!admin_user_id) {
       return NextResponse.json(
@@ -213,19 +223,77 @@ export async function POST(req) {
       );
     }
 
+    const ct = req.headers.get("content-type") || "";
+    let image_url = "";
+    let name_id = "";
+    let description_id = null;
+    let name_en = "";
+    let description_en = "";
+    let autoTranslate = true;
+
+    if (ct.includes("multipart/form-data")) {
+      const form = await req.formData();
+      const file = form.get("file");
+
+      image_url = String(form.get("image_url") || "").trim();
+      name_id = String(form.get("name_id") ?? form.get("name") ?? "").trim();
+      description_id =
+        form.get("description_id") != null
+          ? String(form.get("description_id"))
+          : form.get("description") != null
+          ? String(form.get("description"))
+          : null;
+      name_en = String(form.get("name_en") || "").trim();
+      description_en = String(form.get("description_en") || "").trim();
+      autoTranslate = String(form.get("autoTranslate") ?? "true") !== "false";
+
+      if (file && typeof file !== "string") {
+        try {
+          const path = await uploadBlogToSupabase(file);
+          image_url = path;
+        } catch (e) {
+          if (e?.message === "PAYLOAD_TOO_LARGE")
+            return NextResponse.json(
+              { message: "Maksimal 10MB" },
+              { status: 413 }
+            );
+          if (e?.message === "UNSUPPORTED_TYPE")
+            return NextResponse.json(
+              { message: "Format harus JPEG/PNG/WebP" },
+              { status: 415 }
+            );
+          console.error("upload error:", e);
+          return NextResponse.json(
+            { message: "Upload gagal" },
+            { status: 500 }
+          );
+        }
+      }
+    } else {
+      const body = await req.json().catch(() => ({}));
+      image_url = String(body?.image_url || "").trim();
+      name_id = String(body?.name_id ?? body?.name ?? "").trim();
+      description_id =
+        typeof body?.description_id === "string"
+          ? body.description_id
+          : typeof body?.description === "string"
+          ? body.description
+          : null;
+      autoTranslate = body?.autoTranslate !== false;
+      name_en = String(body?.name_en || "").trim();
+      description_en = String(body?.description_en || "").trim();
+    }
+
+    if (!image_url) return badRequest("image_url wajib diisi");
+    if (!name_id) return badRequest("name_id (Bahasa Indonesia) wajib diisi");
+
     const id = randomUUID();
 
     const created = await prisma.$transaction(async (tx) => {
-      // a) parent
       const parent = await tx.blog.create({
-        data: {
-          id,
-          admin_user_id,
-          image_url,
-        },
+        data: { id, admin_user_id, image_url },
       });
 
-      // b) translate ID
       await tx.blog_translate.create({
         data: {
           id_blog: id,
@@ -235,7 +303,6 @@ export async function POST(req) {
         },
       });
 
-      // c) siapkan EN (prioritas body, kalau kosong translate dari ID)
       if (autoTranslate) {
         if (!name_en && name_id) name_en = await translate(name_id, "id", "en");
         if (!description_en && description_id)
@@ -256,11 +323,14 @@ export async function POST(req) {
       return parent;
     });
 
+    const image_public_url = getPublicUrl(image_url);
+
     return json(
       {
         data: {
           id: created.id,
           image_url,
+          image_public_url,
           name_id,
           description_id,
           name_en: name_en || null,
