@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { FacebookFilled, InstagramOutlined, WhatsAppOutlined } from "@ant-design/icons";
 
 /** Gaya ringkas sesuai screenshot */
 const styles = {
@@ -92,7 +93,19 @@ const styles = {
     gap: 10,
     marginTop: 10,
   },
-  shareIcon: { width: 28, height: 28, objectFit: "contain", opacity: 0.9 },
+  shareLink: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 36,
+    height: 36,
+    borderRadius: "50%",
+    background: "#f1f5ff",
+    color: "#0B3E91",
+    textDecoration: "none",
+    transition: "transform .2s ease, opacity .2s ease",
+  },
+  shareIcon: { fontSize: 18, opacity: 0.9 },
 };
 
 export default function BlogDetailContent({
@@ -176,17 +189,29 @@ export default function BlogDetailContent({
         <div style={{ marginTop: 16 }}>
           <div style={styles.metaLabel}>SHARE BERITA</div>
           <div style={styles.shareWrap}>
-            <a href="#" title="Share to Facebook" aria-label="Facebook">
-              <img src="/icons/facebook.svg" alt="" style={styles.shareIcon} />
+            <a
+              href="#"
+              title="Share to Facebook"
+              aria-label="Facebook"
+              style={styles.shareLink}
+            >
+              <FacebookFilled style={styles.shareIcon} />
             </a>
-            <a href="#" title="Share to Twitter/X" aria-label="Twitter">
-              <img src="/icons/twitter.svg" alt="" style={styles.shareIcon} />
+            <a
+              href="#"
+              title="Share to Instagram"
+              aria-label="Instagram"
+              style={styles.shareLink}
+            >
+              <InstagramOutlined style={styles.shareIcon} />
             </a>
-            <a href="#" title="Share to Instagram" aria-label="Instagram">
-              <img src="/icons/instagram.svg" alt="" style={styles.shareIcon} />
-            </a>
-            <a href="#" title="Share to WhatsApp" aria-label="WhatsApp">
-              <img src="/icons/whatsapp.svg" alt="" style={styles.shareIcon} />
+            <a
+              href="#"
+              title="Share to WhatsApp"
+              aria-label="WhatsApp"
+              style={styles.shareLink}
+            >
+              <WhatsAppOutlined style={styles.shareIcon} />
             </a>
           </div>
         </div>

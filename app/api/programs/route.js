@@ -5,6 +5,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { randomUUID } from "crypto";
 import { translate } from "@/app/utils/geminiTranslator";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -69,6 +70,56 @@ function ensureProgramCategory(v, allowNull = true) {
   return val;
 }
 
+const BUCKET = process.env.SUPABASE_BUCKET;
+
+function isHttpUrl(path) {
+  return typeof path === "string" && /^https?:\/\//i.test(path);
+}
+
+function getPublicUrl(path) {
+  if (!path) return null;
+  if (isHttpUrl(path)) return path;
+  if (!BUCKET) return path;
+  const { data, error } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path);
+  if (error) {
+    console.error("supabase getPublicUrl error:", error);
+    return null;
+  }
+  return data?.publicUrl || null;
+}
+
+async function uploadProgramImage(file) {
+  if (typeof File === "undefined" || !(file instanceof File)) {
+    throw new Error("NO_FILE");
+  }
+  if (!BUCKET) throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
+
+  const MAX = 10 * 1024 * 1024;
+  const allowed = ["image/jpeg", "image/png", "image/webp"];
+  const size = file.size || 0;
+  const type = file.type || "";
+
+  if (size > MAX) throw new Error("PAYLOAD_TOO_LARGE");
+  if (type && !allowed.includes(type)) throw new Error("UNSUPPORTED_TYPE");
+
+  const ext = (file.name?.split(".").pop() || "").toLowerCase();
+  const safe = `${Date.now()}-${Math.random().toString(36).slice(2)}${
+    ext ? "." + ext : ""
+  }`;
+  const objectPath = `programs/${new Date().toISOString().slice(0, 10)}/${safe}`;
+  const bytes = new Uint8Array(await file.arrayBuffer());
+
+  const { error } = await supabaseAdmin.storage
+    .from(BUCKET)
+    .upload(objectPath, bytes, {
+      contentType: type || "application/octet-stream",
+      upsert: false,
+    });
+
+  if (error) throw new Error(error.message);
+  return objectPath;
+}
+
 /* ========= GET /api/programs (LIST) =========
 Query:
 - q
@@ -96,7 +147,6 @@ export async function GET(req) {
     const locale = (searchParams.get("locale") || "id").toLowerCase();
     const fallback = (searchParams.get("fallback") || "id").toLowerCase();
 
-    // Validasi ringan filter enum (abaikan jika tidak valid)
     const typeFilter =
       program_type && PROGRAM_TYPE_VALUES.has(program_type.toUpperCase())
         ? program_type.toUpperCase()
@@ -127,13 +177,12 @@ export async function GET(req) {
         : {}),
     };
 
-    const [total, rows] = await Promise.all([
-      prisma.programs.count({ where }),
+    const [rows, total] = await Promise.all([
       prisma.programs.findMany({
         where,
         orderBy,
-        skip: (page - 1) * perPage,
         take: perPage,
+        skip: (page - 1) * perPage,
         select: {
           id: true,
           admin_user_id: true,
@@ -151,14 +200,17 @@ export async function GET(req) {
           },
         },
       }),
+      prisma.programs.count({ where }),
     ]);
 
     const items = rows.map((p) => {
       const t = pickTrans(p.programs_translate, locale, fallback);
+      const image_public_url = getPublicUrl(p.image_url);
       return {
         id: p.id,
         admin_user_id: p.admin_user_id,
         image_url: p.image_url,
+        image_public_url,
         program_type: p.program_type,
         program_category: p.program_category,
         price: p.price,
@@ -193,45 +245,128 @@ export async function GET(req) {
 }
 
 /* ========= POST /api/programs (CREATE + auto-translate) =========
-Body:
+Body / FormData:
 - admin_user_id? (auto dari session jika ada)
-- image_url?
+- file? (image upload)
+- image_url? (optional, dipakai jika tidak ada file)
 - program_type        : 'B2B' | 'B2C'                (required)
-- program_category    : 'STUDY_ABROAD' | 'WORK_ABROAD' | 'LANGUAGE_COURSE' | 'CONSULTANT_VISA' (optional/required sesuai kebijakan)
+- program_category    : 'STUDY_ABROAD' | 'WORK_ABROAD' | 'LANGUAGE_COURSE' | 'CONSULTANT_VISA' (optional)
 - price? (int >= 0), phone?, is_published?
 - name_id (required), description_id?
 - name_en?, description_en?, autoTranslate?=true
 */
 export async function POST(req) {
   try {
-    const body = await req.json();
+    const contentType = req.headers.get("content-type") || "";
 
-    const name_id = String(body?.name_id ?? body?.name ?? "").trim();
-    if (!name_id) return badRequest("name_id (Bahasa Indonesia) wajib diisi");
+    let uploadFile = null;
+    let adminPayload = {};
+    let programTypeInput;
+    let programCategoryInput;
+    let priceInput;
+    let phoneInput;
+    let isPublishedInput;
+
+    let imagePath = "";
+    let name_id = "";
+    let description_id = null;
+    let name_en = "";
+    let description_en = "";
+    let autoTranslate = true;
+
+    if (contentType.includes("multipart/form-data")) {
+      const form = await req.formData();
+      uploadFile = form.get("file");
+
+      imagePath = String(form.get("image_url") || "").trim();
+      name_id = String(form.get("name_id") ?? form.get("name") ?? "").trim();
+
+      if (form.has("description_id")) {
+        const v = form.get("description_id");
+        description_id = v === null ? null : String(v);
+      } else if (form.has("description")) {
+        const v = form.get("description");
+        description_id = v === null ? null : String(v);
+      }
+
+      name_en = String(form.get("name_en") || "").trim();
+      const descEnForm = form.get("description_en");
+      description_en =
+        descEnForm === null || descEnForm === undefined
+          ? ""
+          : String(descEnForm).trim();
+
+      autoTranslate =
+        String(form.get("autoTranslate") ?? "true").toLowerCase() !== "false";
+
+      programTypeInput = form.get("program_type");
+      programCategoryInput = form.get("program_category");
+      priceInput = form.get("price");
+      phoneInput = form.get("phone");
+      isPublishedInput = form.get("is_published");
+
+      const adminId = form.get("admin_user_id");
+      if (adminId !== null && adminId !== undefined) {
+        adminPayload.admin_user_id = adminId;
+      }
+    } else {
+      const body = await req.json().catch(() => ({}));
+      adminPayload = body;
+
+      imagePath = String(body?.image_url || "").trim();
+      name_id = String(body?.name_id ?? body?.name ?? "").trim();
+
+      if (body?.description_id !== undefined) {
+        description_id =
+          body.description_id === null ? null : String(body.description_id);
+      } else if (body?.description !== undefined) {
+        description_id =
+          body.description === null ? null : String(body.description);
+      }
+
+      name_en = String(body?.name_en || "").trim();
+      description_en =
+        body?.description_en === null || body?.description_en === undefined
+          ? ""
+          : String(body.description_en).trim();
+
+      autoTranslate =
+        String(body?.autoTranslate ?? "true").toLowerCase() !== "false";
+
+      programTypeInput = body?.program_type;
+      programCategoryInput = body?.program_category;
+      priceInput = body?.price;
+      phoneInput = body?.phone;
+      isPublishedInput = body?.is_published;
+    }
+
+    if (!name_id) {
+      return badRequest("name_id (Bahasa Indonesia) wajib diisi");
+    }
 
     let program_type;
     try {
-      program_type = ensureProgramType(body?.program_type);
+      program_type = ensureProgramType(programTypeInput);
     } catch (e) {
       return badRequest(e.message);
     }
 
     let program_category = null;
     try {
-      program_category = ensureProgramCategory(body?.program_category, true);
+      program_category = ensureProgramCategory(programCategoryInput, true);
     } catch (e) {
       return badRequest(e.message);
     }
 
     const price =
-      body?.price === null || body?.price === undefined
+      priceInput === null || priceInput === undefined || priceInput === ""
         ? null
-        : asInt(body.price, NaN);
+        : asInt(priceInput, NaN);
     if (price !== null && (!Number.isFinite(price) || price < 0)) {
       return badRequest("price harus bilangan bulat >= 0");
     }
 
-    const adminUserId = await getAdminUserId(req, body);
+    const adminUserId = await getAdminUserId(req, adminPayload);
     if (!adminUserId) {
       return NextResponse.json(
         {
@@ -242,22 +377,61 @@ export async function POST(req) {
       );
     }
 
-    const autoTranslate = body?.autoTranslate !== false; // default true
-    const description_id = String(
-      body?.description_id ?? body?.description ?? ""
-    );
+    if (uploadFile && typeof uploadFile !== "string") {
+      try {
+        imagePath = await uploadProgramImage(uploadFile);
+      } catch (e) {
+        if (e?.message === "PAYLOAD_TOO_LARGE")
+          return NextResponse.json({ message: "Maksimal 10MB" }, { status: 413 });
+        if (e?.message === "UNSUPPORTED_TYPE")
+          return NextResponse.json(
+            { message: "Format harus JPEG/PNG/WebP" },
+            { status: 415 }
+          );
+        console.error("uploadProgramImage error:", e);
+        return NextResponse.json(
+          { message: "Upload gambar gagal" },
+          { status: 500 }
+        );
+      }
+    }
 
-    const result = await prisma.$transaction(async (tx) => {
+    const storedImage = imagePath && imagePath.trim() ? imagePath.trim() : null;
+    const phone =
+      phoneInput === null || phoneInput === undefined
+        ? null
+        : String(phoneInput).trim() || null;
+    const publishFlag = parseBool(isPublishedInput);
+    const is_published = publishFlag === undefined ? false : publishFlag;
+
+    const descriptionIdValue =
+      typeof description_id === "string" && description_id.trim() === ""
+        ? null
+        : description_id ?? null;
+
+    let nameEnValue = name_en.trim();
+    let descriptionEnValue = description_en.trim();
+
+    if (autoTranslate) {
+      if (!nameEnValue && name_id) {
+        nameEnValue = await translate(name_id, "id", "en");
+      }
+      if (!descriptionEnValue && descriptionIdValue) {
+        descriptionEnValue = await translate(descriptionIdValue, "id", "en");
+      }
+    }
+
+    const created = await prisma.$transaction(async (tx) => {
       const program = await tx.programs.create({
         data: {
           id: randomUUID(),
           admin_user_id: adminUserId,
-          image_url: body?.image_url ?? null,
+          image_url: storedImage,
           program_type,
-          program_category, // boleh null
+          program_category,
           price,
-          phone: body?.phone ?? null,
-          is_published: Boolean(body?.is_published ?? false),
+          phone,
+          is_published,
           created_at: new Date(),
           updated_at: new Date(),
           deleted_at: null,
@@ -269,26 +443,17 @@ export async function POST(req) {
           id_programs: program.id,
           locale: "id",
           name: name_id.slice(0, 191),
-          description: description_id || null,
+          description: descriptionIdValue,
         },
       });
 
-      let name_en = String(body?.name_en || "").trim();
-      let description_en = String(body?.description_en || "").trim();
-
-      if (autoTranslate) {
-        if (!name_en && name_id) name_en = await translate(name_id, "id", "en");
-        if (!description_en && description_id)
-          description_en = await translate(description_id, "id", "en");
-      }
-
-      if (name_en || description_en) {
+      if (nameEnValue || descriptionEnValue) {
         await tx.programs_translate.create({
           data: {
             id_programs: program.id,
             locale: "en",
-            name: (name_en || "(no title)").slice(0, 191),
-            description: description_en || null,
+            name: (nameEnValue || "(no title)").slice(0, 191),
+            description: descriptionEnValue || null,
           },
         });
       }
@@ -296,9 +461,35 @@ export async function POST(req) {
       return program;
     });
 
-    return NextResponse.json({ data: { id: result.id } }, { status: 201 });
+    const image_public_url = getPublicUrl(storedImage);
+
+    return NextResponse.json(
+      {
+        data: {
+          id: created.id,
+          image_url: storedImage,
+          image_public_url,
+          program_type,
+          program_category,
+          price,
+          phone,
+          is_published,
+          name_id,
+          description_id: descriptionIdValue,
+          name_en: nameEnValue || null,
+          description_en: descriptionEnValue || null,
+        },
+      },
+      { status: 201 }
+    );
   } catch (err) {
     console.error("POST /api/programs error:", err);
+    if (err?.message === "SUPABASE_BUCKET_NOT_CONFIGURED") {
+      return NextResponse.json(
+        { message: "Supabase bucket belum dikonfigurasi" },
+        { status: 500 }
+      );
+    }
     return NextResponse.json(
       { message: "Failed to create program" },
       { status: 500 }

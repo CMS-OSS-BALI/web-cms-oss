@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 
+/** ------- Nav config ------- */
 const NAV_ITEMS = [
   {
     id: "home",
@@ -12,41 +13,55 @@ const NAV_ITEMS = [
     isDefault: true,
   },
   {
-    id: "services",
+    id: "layanan",
     label: "Layanan",
-    href: "/user/services",
-    matchers: ["/user/services"],
+    href: "/user/layanan",
+    // Tambahkan semua path turunan layanan di sini
+    matchers: [
+      "/user/layanan",
+      "/user/english-course",
+      "/user/accommodation",
+      "/user/overseas",
+      "/user/visa-apply",
+      "/user/document-translation",
+      "/user/leads",
+    ],
   },
   {
     id: "event",
     label: "Event",
-    href: "/user/events",
-    matchers: ["/user/events"],
+    href: "/user/events?menu=events",
+    matchers: ["/user/events", "/user/leads"],
   },
   {
     id: "partners",
     label: "Mitra",
-    href: "/user/partners",
-    matchers: ["/user/partners"],
+    href: "/user/partners?menu=partners",
+    matchers: ["/user/partners", "/user/leads"],
   },
   {
     id: "majors",
     label: "Jurusan",
     href: "/user/majors",
-    matchers: ["/user/majors"],
+    matchers: ["/user/majors", "/user/leads"],
   },
-  { id: "blog", label: "Berita", href: "/user/blog", matchers: ["/user/blog"] },
+  {
+    id: "blog",
+    label: "Berita",
+    href: "/user/blog?menu=blog",
+    matchers: ["/user/blog", "/user/leads"],
+  },
   {
     id: "about",
     label: "About Us",
-    href: "/user/aboutus?menu=about", // <— optional: konsistenkan juga
-    matchers: ["/user/aboutus"],
+    href: "/user/aboutus?menu=about",
+    matchers: ["/user/aboutus", "/user/leads"],
   },
   {
     id: "career",
     label: "Career With Us",
-    href: "/user/career?menu=career", // <— tambahkan query agar force aktif
-    matchers: ["/user/career"],
+    href: "/user/career?menu=career",
+    matchers: ["/user/career", "/user/leads"],
   },
 ];
 
@@ -55,12 +70,12 @@ const LANG_OPTIONS = [
   { value: "en", label: "English", flag: "/images/inggris.png" },
 ];
 
+/** ------- helpers ------- */
 function cleanPath(s) {
   if (!s) return "/";
   if (s.length > 1 && s.endsWith("/")) return s.slice(0, -1);
   return s;
 }
-
 function isPathMatch(pathname, base) {
   if (!pathname || !base) return false;
   const p = cleanPath(pathname);
@@ -69,11 +84,14 @@ function isPathMatch(pathname, base) {
   return p === b || p.startsWith(b + "/");
 }
 
+/** ------- hook VM ------- */
 export function useHeaderUViewModel() {
   const pathname = usePathname();
   const search = useSearchParams();
+
   const [isMenuOpen, setMenuOpen] = useState(false);
 
+  // language (opsional)
   const [lang, setLang] = useState("id");
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -82,18 +100,18 @@ export function useHeaderUViewModel() {
   }, []);
   const changeLang = (val) => {
     setLang(val);
-    if (typeof window !== "undefined")
+    if (typeof window !== "undefined") {
       window.localStorage.setItem("oss.lang", val);
+    }
   };
 
-  useEffect(() => {
-    setMenuOpen(false);
-  }, [pathname]);
+  useEffect(() => setMenuOpen(false), [pathname]);
 
   const navItems = useMemo(() => {
     // 1) aktif via path terpanjang yang match
-    let activeId = NAV_ITEMS.find((i) => i.isDefault)?.id;
+    let activeId = NAV_ITEMS.find((i) => i.isDefault)?.id ?? "home";
     let bestLen = -1;
+
     for (const item of NAV_ITEMS) {
       for (const m of item.matchers || []) {
         if (isPathMatch(pathname, m) && m.length > bestLen) {

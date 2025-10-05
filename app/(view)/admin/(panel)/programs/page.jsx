@@ -9,7 +9,13 @@ const ProgramsContentLazy = lazy(() => import("./ProgramsContent"));
 export default function ProgramsPage() {
   const vm = useProgramsViewModel();
   return (
-    <Suspense fallback={<div className="page-wrap"><Loading /></div>}>
+    <Suspense
+      fallback={
+        <div className="page-wrap">
+          <Loading />
+        </div>
+      }
+    >
       <ProgramsContentLazy {...vm} />
     </Suspense>
   );

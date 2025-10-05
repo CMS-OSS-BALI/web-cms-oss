@@ -34,6 +34,7 @@ export const MENU = [
   { label: "Blog", href: "/admin/blog", icon: FileText }, // ⟵ item baru
   { label: "Mitra Dalam Negeri", href: "/admin/merchants", icon: Store },
   { label: "Blast", href: "/admin/blast", icon: Megaphone },
+  { label: "Master Data", href: "/admin/master-data", icon: Megaphone },
   { label: "Profile", href: "/admin/profile", icon: User },
 ];
 

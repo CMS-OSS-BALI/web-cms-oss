@@ -9,7 +9,13 @@ const TestimonialsContentLazy = lazy(() => import("./TestimonialsContent"));
 export default function TestimonialsPage() {
   const vm = useTestimonialsViewModel();
   return (
-    <Suspense fallback={<div className="page-wrap"><Loading /></div>}>
+    <Suspense
+      fallback={
+        <div className="page-wrap">
+          <Loading />
+        </div>
+      }
+    >
       <TestimonialsContentLazy {...vm} />
     </Suspense>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
   Card,
@@ -24,7 +24,12 @@ import {
   Typography,
   theme as antdTheme,
 } from "antd";
-import { PlusOutlined, EyeOutlined } from "@ant-design/icons";
+import {
+  PlusOutlined,
+  EyeOutlined,
+  DeleteOutlined,
+  PictureOutlined,
+} from "@ant-design/icons";
 import HtmlEditor from "@/app/components/editor/HtmlEditor";
 import { sanitizeHtml } from "@/app/utils/dompurify";
 
@@ -57,7 +62,6 @@ const fmtThousands = (value) => {
 };
 const parseThousands = (value = "") =>
   value.replace(/\./g, "").replace(/,/g, ".");
-const clean = (v) => (v === "" || v === undefined ? null : v);
 
 /* ===== Theme constants ===== */
 const CARD_BG = "rgba(11, 18, 35, 0.94)";
@@ -68,7 +72,7 @@ const darkCardStyle = {
   boxShadow: "0 10px 24px rgba(2,6,23,.35)",
 };
 
-/* ===== Form Modal ===== */
+/* ===== Form Modal (with file upload seperti BlogContent) ===== */
 function ProgramFormModal({
   open,
   mode,
@@ -80,6 +84,11 @@ function ProgramFormModal({
   const [form] = Form.useForm();
   const isCreate = mode === "create";
 
+  // file + preview
+  const fileInputRef = useRef(null);
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState("");
+
   useEffect(() => {
     if (!open) return;
     form.resetFields();
@@ -90,14 +99,22 @@ function ProgramFormModal({
       price: 0,
       ...initialValues,
     });
+
+    // set preview dari initialValues (edit)
+    setImageFile(null);
+    setImagePreview(
+      initialValues?.image_src ||
+        initialValues?.image_public_url ||
+        initialValues?.image_url ||
+        ""
+    );
   }, [open, initialValues, form]);
 
   const handleFinish = (values) => {
     const payload = {
       // kolom utama
-      image_url: values.image_url?.trim() || null,
-      program_type: values.program_type, // "B2B" | "B2C"
-      program_category: values.program_category, // enum kategori
+      program_type: values.program_type,
+      program_category: values.program_category,
       price:
         values.price === "" ||
         values.price === null ||
@@ -106,12 +123,24 @@ function ProgramFormModal({
           : Number(parseThousands(String(values.price))),
       phone: values.phone?.trim() || null,
       is_published: !!values.is_published,
-      // trans indonesia (API: name_id & description_id)
+      // trans indonesia
       name_id: values.name_id?.trim(),
       description_id: values.description_id || "",
-      // biar auto EN aktif default (server: autoTranslate default true saat POST)
+      // auto translate ke EN
       autoTranslate: true,
+      // kirim file jika ada
+      file: imageFile || undefined,
     };
+
+    if (isCreate && !imageFile) {
+      Modal.warning({
+        title: "Gambar belum dipilih",
+        content: "Silakan unggah gambar program terlebih dahulu.",
+      });
+      return;
+    }
+
+    // ❗ penting: biarkan parent yang memutuskan create vs edit
     onSubmit(payload);
   };
 
@@ -158,9 +187,104 @@ function ProgramFormModal({
         ]
       : [];
 
+  // file handlers
+  function openPicker() {
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    fileInputRef.current?.click();
+  }
+  function handleFileChange(e) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const allowed = ["image/jpeg", "image/png", "image/webp"];
+    if (!allowed.includes(f.type)) {
+      Modal.error({
+        title: "Format tidak didukung",
+        content: "Gunakan JPEG/PNG/WebP.",
+      });
+      e.target.value = "";
+      return;
+    }
+    if (f.size > 10 * 1024 * 1024) {
+      Modal.error({
+        title: "Ukuran terlalu besar",
+        content: "Maksimal 10MB.",
+      });
+      e.target.value = "";
+      return;
+    }
+    setImageFile(f);
+    setImagePreview(URL.createObjectURL(f));
+  }
+  function removeImage() {
+    setImageFile(null);
+    setImagePreview("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  const UploadBox = (
+    <div style={{ display: "grid", gap: 8 }}>
+      {!imagePreview ? (
+        <div
+          style={{
+            border: "2px dashed #3a5794",
+            borderRadius: 12,
+            padding: 18,
+            display: "grid",
+            placeItems: "center",
+            cursor: "pointer",
+            background:
+              "repeating-linear-gradient(-45deg,rgba(17,24,39,.3),rgba(17,24,39,.3) 10px,rgba(17,24,39,.24) 10px,rgba(17,24,39,.24) 20px)",
+          }}
+          onClick={openPicker}
+        >
+          <Space direction="vertical" align="center" size={4}>
+            <PictureOutlined style={{ fontSize: 28, color: "#8fb3ff" }} />
+            <Text strong>Ketuk untuk unggah gambar</Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              Rasio disarankan 16:9 • Maks 10MB • JPG/PNG/WebP
+            </Text>
+          </Space>
+        </div>
+      ) : (
+        <div style={{ position: "relative" }}>
+          <img
+            src={imagePreview}
+            alt="Preview"
+            style={{
+              width: "100%",
+              maxHeight: 300,
+              objectFit: "cover",
+              borderRadius: 12,
+              border: "1px solid #2f3f60",
+            }}
+          />
+          <div style={{ marginTop: 8 }}>
+            <Button danger shape="round" onClick={removeImage}>
+              <DeleteOutlined /> Hapus Gambar
+            </Button>
+            <Button
+              shape="round"
+              style={{ marginLeft: 8 }}
+              onClick={openPicker}
+            >
+              Ganti Gambar
+            </Button>
+          </div>
+        </div>
+      )}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        style={{ display: "none" }}
+        onChange={handleFileChange}
+      />
+    </div>
+  );
+
   return (
     <Modal
-      title={mode === "edit" ? "Edit Program" : "Add Program"}
+      title={isCreate ? "Add Program" : "Edit Program"}
       open={open}
       centered
       width={900}
@@ -176,7 +300,7 @@ function ProgramFormModal({
             loading={saving}
             onClick={() => form.submit()}
           >
-            {mode === "edit" ? "Update" : "Save"}
+            {isCreate ? "Save" : "Update"}
           </Button>
         </Space>
       }
@@ -263,14 +387,10 @@ function ProgramFormModal({
                 </Form.Item>
               </Col>
 
-              {/* Image URL */}
+              {/* IMAGE UPLOAD (replace image_url text) */}
               <Col xs={24} md={12}>
-                <Form.Item
-                  name="image_url"
-                  label="Image URL"
-                  rules={reqText("Image URL")}
-                >
-                  <Input placeholder="https://..." style={ctrlStyle} />
+                <Form.Item label="Program Image" required={isCreate}>
+                  {UploadBox}
                 </Form.Item>
               </Col>
 
@@ -339,7 +459,7 @@ function ProgramFormModal({
   );
 }
 
-/* ===== View Modal ===== */
+/* ===== View Modal (pakai image_public_url) ===== */
 function ProgramViewModal({ open, data, onClose }) {
   const chip = {
     borderColor: "#2f3f60",
@@ -407,7 +527,7 @@ function ProgramViewModal({ open, data, onClose }) {
       <div className="view-scroll">
         <div style={{ padding: 16 }}>
           <Image
-            src={data?.image_url || PLACEHOLDER}
+            src={data?.image_public_url || data?.image_url || PLACEHOLDER}
             alt={data?.name}
             width="100%"
             style={{
@@ -417,7 +537,7 @@ function ProgramViewModal({ open, data, onClose }) {
               objectFit: "cover",
             }}
             fallback={PLACEHOLDER}
-            preview={!!data?.image_url}
+            preview={!!(data?.image_public_url || data?.image_url)}
           />
 
           <Space size={[8, 8]} wrap style={{ marginBottom: 16 }}>
@@ -467,7 +587,7 @@ function ProgramViewModal({ open, data, onClose }) {
   );
 }
 
-/* ===== Program Card ===== */
+/* ===== Program Card (pakai public url) ===== */
 function ProgramCard({ p, onView, onEdit, onDelete }) {
   const badgeStyle = {
     position: "absolute",
@@ -504,7 +624,7 @@ function ProgramCard({ p, onView, onEdit, onDelete }) {
         >
           <img
             alt={p.name}
-            src={p.image_url || PLACEHOLDER}
+            src={p.image_public_url || p.image_url || PLACEHOLDER}
             style={{ width: "100%", height: "100%", objectFit: "cover" }}
             onError={(e) => {
               e.currentTarget.onerror = null;
@@ -681,7 +801,7 @@ export default function ProgramsContent(props) {
     setSaving(true);
     try {
       if (mode === "edit") {
-        await updateProgram(editing.id, payload);
+        await updateProgram(editing.id, payload); // VM akan kirim multipart bila payload.file ada
         api.success({
           key: "program-save",
           message: "Program diperbarui",
@@ -755,7 +875,7 @@ export default function ProgramsContent(props) {
         price: 0,
       };
     return {
-      // indonesia (untuk edit, ambil dari name/description terpilih di list)
+      // indonesia (untuk edit)
       name_id: editing.name || "",
       description_id: editing.description || "",
       // utama
@@ -763,7 +883,8 @@ export default function ProgramsContent(props) {
       program_category: editing.program_category || "STUDY_ABROAD",
       price: editing.price == null ? null : Number(editing.price),
       phone: editing.phone || "",
-      image_url: editing.image_url || "",
+      // preview
+      image_src: editing.image_public_url || editing.image_url || "",
       is_published: !!editing.is_published,
     };
   }, [editing]);
@@ -845,8 +966,8 @@ export default function ProgramsContent(props) {
             <Row
               gutter={[8, 8]}
               align="middle"
-              wrap={false} // ⬅ penting: jangan bungkus ke baris baru
-              style={{ overflowX: "auto", paddingBottom: 2 }} // ⬅ kalau layar sempit: bisa geser horizontal
+              wrap={false}
+              style={{ overflowX: "auto", paddingBottom: 2 }}
             >
               {/* Search */}
               <Col flex="1 1 360px" style={{ minWidth: 260 }}>

@@ -4,12 +4,83 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
 import { randomUUID } from "crypto";
 import { translate } from "@/app/utils/geminiTranslator";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 
 /* ===================== Helpers ===================== */
 const MAX_NAME_LENGTH = 191;
 const MAX_TEXT_LENGTH = 10000;
+
+const BUCKET = process.env.SUPABASE_BUCKET;
+
+function isHttpUrl(path) {
+  return typeof path === "string" && /^https?:\/\//i.test(path);
+}
+
+/** Pastikan aman untuk next/image: absolute URL, atau local path SELALU diawali "/" */
+function normalizeImageUrl(pathOrUrl) {
+  if (!pathOrUrl) return null;
+  if (isHttpUrl(pathOrUrl)) return pathOrUrl;
+  return pathOrUrl.startsWith("/") ? pathOrUrl : `/${pathOrUrl}`;
+}
+
+function getPublicUrl(path) {
+  if (!path) return null;
+  if (isHttpUrl(path)) return path;
+  if (!BUCKET) return normalizeImageUrl(path);
+  try {
+    if (!supabaseAdmin?.storage) {
+      console.warn("Supabase admin not initialized; returning normalized path");
+      return normalizeImageUrl(path);
+    }
+    const { data, error } = supabaseAdmin.storage
+      .from(BUCKET)
+      .getPublicUrl(path);
+    if (error) {
+      console.error("supabase getPublicUrl error:", error);
+      return normalizeImageUrl(path);
+    }
+    return data?.publicUrl || normalizeImageUrl(path);
+  } catch (err) {
+    console.error("supabase getPublicUrl exception:", err);
+    return normalizeImageUrl(path);
+  }
+}
+
+async function uploadTestimonialImage(file) {
+  if (typeof File === "undefined" || !(file instanceof File)) {
+    throw new Error("NO_FILE");
+  }
+  if (!BUCKET) throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
+
+  const MAX = 10 * 1024 * 1024;
+  const allowed = ["image/jpeg", "image/png", "image/webp"];
+  const size = file.size || 0;
+  const type = file.type || "";
+
+  if (size > MAX) throw new Error("PAYLOAD_TOO_LARGE");
+  if (type && !allowed.includes(type)) throw new Error("UNSUPPORTED_TYPE");
+
+  const ext = (file.name?.split(".").pop() || "").toLowerCase();
+  const safe = `${Date.now()}-${Math.random().toString(36).slice(2)}${
+    ext ? "." + ext : ""
+  }`;
+  const objectPath = `testimonials/${new Date()
+    .toISOString()
+    .slice(0, 10)}/${safe}`;
+  const bytes = new Uint8Array(await file.arrayBuffer());
+
+  const { error } = await supabaseAdmin.storage
+    .from(BUCKET)
+    .upload(objectPath, bytes, {
+      contentType: type || "application/octet-stream",
+      upsert: false,
+    });
+
+  if (error) throw new Error(error.message);
+  return objectPath;
+}
 
 async function getAdminOrNull() {
   const session = await getServerSession(authOptions);
@@ -33,6 +104,38 @@ function getLimitFromReq(req, fallback = 12) {
     return Number.isFinite(n) && n > 0 && n <= 100 ? Math.trunc(n) : fallback;
   } catch {
     return fallback;
+  }
+}
+
+/** Accepts: category_id | category_slug | category (alias of slug) */
+function getCategoryFilterFromReq(req) {
+  try {
+    const url = new URL(req.url);
+    const category_id = url.searchParams.get("category_id") || undefined;
+    const category_slug =
+      url.searchParams.get("category_slug") ||
+      url.searchParams.get("category") ||
+      undefined;
+    return { category_id, category_slug };
+  } catch {
+    return {};
+  }
+}
+
+/** fields=name,description,image,... -> Set */
+function parseFields(req) {
+  try {
+    const url = new URL(req.url);
+    const s = (url.searchParams.get("fields") || "").toLowerCase();
+    const set = new Set(
+      s
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean)
+    );
+    return set;
+  } catch {
+    return new Set();
   }
 }
 
@@ -64,25 +167,74 @@ function normalizeYoutubeUrl(u) {
   }
 }
 
+/** Resolve kategori dari {category_id|category_slug}, return id atau null (kalau unset). */
+async function resolveCategoryId({ category_id, category_slug }) {
+  // kosongkan kategori
+  if (category_id === null || category_id === "") return null;
+  if (category_slug === null || category_slug === "") return null;
+
+  if (typeof category_id === "string" && category_id.trim()) {
+    const found = await prisma.testimonial_categories.findUnique({
+      where: { id: category_id.trim() },
+      select: { id: true },
+    });
+    if (!found) throw new Error("CATEGORY_NOT_FOUND");
+    return found.id;
+  }
+  if (typeof category_slug === "string" && category_slug.trim()) {
+    const found = await prisma.testimonial_categories.findUnique({
+      where: { slug: category_slug.trim().toLowerCase() },
+      select: { id: true },
+    });
+    if (!found) throw new Error("CATEGORY_NOT_FOUND");
+    return found.id;
+  }
+  return undefined; // tidak diubah
+}
+
 /* ===================== GET (list) ===================== */
 export async function GET(req) {
   try {
     const locale = getLocaleFromReq(req);
     const limit = getLimitFromReq(req, 12);
+    const { category_id, category_slug } = getCategoryFilterFromReq(req);
+    const fields = parseFields(req);
+
+    // dukung ringkas: image/name/description (id selalu dibawa)
+    const allowedMinimal = new Set(["image", "name", "description"]);
+    const minimalOnly =
+      fields.size > 0 && [...fields].every((f) => allowedMinimal.has(f));
+
+    // Jika filter by slug, dapatkan id dulu
+    let categoryIdForFilter = category_id;
+    if (!categoryIdForFilter && category_slug) {
+      const cat = await prisma.testimonial_categories.findUnique({
+        where: { slug: category_slug.toLowerCase() },
+        select: { id: true },
+      });
+      if (!cat) return NextResponse.json({ data: [] });
+      categoryIdForFilter = cat.id;
+    }
 
     const rows = await prisma.testimonials.findMany({
-      where: { deleted_at: null },
+      where: {
+        deleted_at: null,
+        ...(categoryIdForFilter ? { category_id: categoryIdForFilter } : {}),
+      },
       orderBy: { created_at: "desc" },
       take: limit,
-      select: {
-        id: true,
-        photo_url: true,
-        star: true,
-        youtube_url: true,
-        kampus_negara_tujuan: true,
-        created_at: true,
-        updated_at: true,
-      },
+      select: minimalOnly
+        ? { id: true, photo_url: true } // minimal butuh image source
+        : {
+            id: true,
+            photo_url: true,
+            star: true,
+            youtube_url: true,
+            kampus_negara_tujuan: true,
+            category_id: true,
+            created_at: true,
+            updated_at: true,
+          },
     });
 
     if (!rows.length) return NextResponse.json({ data: [] });
@@ -93,25 +245,88 @@ export async function GET(req) {
         id_testimonials: { in: ids },
         locale: locale === "id" ? "id" : { in: [locale, "id"] },
       },
+      select: {
+        id_testimonials: true,
+        locale: true,
+        name: true,
+        message: true,
+      },
     });
 
     // Pilih terjemahan paling cocok (locale target > id)
     const pick = new Map();
     for (const tr of translations) {
       const key = tr.id_testimonials;
-      if (
-        !pick.has(key) ||
-        (pick.get(key).locale !== locale && tr.locale === locale)
-      ) {
+      const prev = pick.get(key);
+      if (!prev || (prev.locale !== locale && tr.locale === locale)) {
         pick.set(key, tr);
+      }
+    }
+
+    // === Mode minimal (image + name + description) ===
+    if (minimalOnly) {
+      const data = rows.map((r) => {
+        const t = pick.get(r.id);
+        const image = getPublicUrl(r.photo_url);
+        return {
+          id: r.id,
+          ...(fields.has("image") ? { image } : {}),
+          ...(fields.has("name") ? { name: t?.name ?? null } : {}),
+          ...(fields.has("description")
+            ? { description: t?.message ?? null }
+            : {}),
+        };
+      });
+      return NextResponse.json({ data });
+    }
+
+    // === Mode lengkap (back-compat) ===
+    // Ambil info kategori (id, slug, name by locale)
+    const categoryIds = Array.from(
+      new Set(rows.map((r) => r.category_id).filter(Boolean))
+    );
+    let categoriesById = new Map();
+    if (categoryIds.length) {
+      const cats = await prisma.testimonial_categories.findMany({
+        where: { id: { in: categoryIds } },
+        select: { id: true, slug: true },
+      });
+      const catTr = await prisma.testimonial_categories_translate.findMany({
+        where: {
+          category_id: { in: categoryIds },
+          locale: locale === "id" ? "id" : { in: [locale, "id"] },
+        },
+        select: { category_id: true, locale: true, name: true },
+      });
+      const pickName = new Map();
+      for (const t of catTr) {
+        const key = t.category_id;
+        if (
+          !pickName.has(key) ||
+          (pickName.get(key).locale !== locale && t.locale === locale)
+        ) {
+          pickName.set(key, t);
+        }
+      }
+      for (const c of cats) {
+        categoriesById.set(c.id, {
+          id: c.id,
+          slug: c.slug,
+          name: pickName.get(c.id)?.name ?? null,
+        });
       }
     }
 
     const data = rows.map((r) => {
       const t = pick.get(r.id);
+      const cat =
+        r.category_id && categoriesById.size
+          ? categoriesById.get(r.category_id) || null
+          : null;
       return {
         id: r.id,
         photo_url: r.photo_url,
+        photo_public_url: getPublicUrl(r.photo_url), // aman utk next/image
         star: r.star ?? null,
         youtube_url: r.youtube_url ?? null,
         kampus_negara_tujuan: r.kampus_negara_tujuan ?? null,
@@ -120,6 +335,7 @@ export async function GET(req) {
         name: t?.name ?? null,
         message: t?.message ?? null,
         locale: t?.locale ?? null,
+        category: cat,
       };
     });
 
@@ -137,26 +353,53 @@ export async function POST(req) {
     if (!admin)
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
-    const raw = await req.json().catch(() => ({}));
-    const items = Array.isArray(raw) ? raw : [raw];
+    const contentType = req.headers.get("content-type") || "";
+    const entries = [];
+    let inputWasArray = false;
 
-    // Validasi awal untuk semua item
-    for (let i = 0; i < items.length; i++) {
-      const body = items[i] ?? {};
-      const photo_url = trimOrNull(body.photo_url, 255);
+    if (contentType.includes("multipart/form-data")) {
+      const form = await req.formData();
+      const file = form.get("file");
+      const body = {};
+      for (const key of form.keys()) {
+        if (key === "file") continue;
+        body[key] = form.get(key);
+      }
+      entries.push({ body, file });
+    } else {
+      const raw = await req.json().catch(() => ({}));
+      inputWasArray = Array.isArray(raw);
+      const arr = inputWasArray ? raw : [raw];
+      for (const item of arr) {
+        entries.push({ body: item ?? {}, file: null });
+      }
+    }
+
+    if (!entries.length) {
+      return NextResponse.json(
+        { message: "Payload tidak boleh kosong" },
+        { status: 400 }
+      );
+    }
+
+    for (let i = 0; i < entries.length; i++) {
+      const { body, file } = entries[i];
+      const photoUrl = trimOrNull(body.photo_url, 255);
       const name = trimOrNull(body.name, MAX_NAME_LENGTH) || "";
       const message = trimOrNull(body.message, MAX_TEXT_LENGTH) || "";
-      if (!photo_url || !name || !message) {
+      const hasUpload =
+        typeof File !== "undefined" && file instanceof File ? true : false;
+      if ((!photoUrl && !hasUpload) || !name || !message) {
         return NextResponse.json(
           {
-            message: `photo_url, name, dan message wajib diisi (item index ${i})`,
+            message: `photo (file atau photo_url), name, dan message wajib diisi (item index ${i})`,
           },
           { status: 400 }
         );
       }
       if (body.star !== undefined && parseStar(body.star) === null) {
         return NextResponse.json(
-          { message: `star harus integer 1–5 (item index ${i})` },
+          { message: `star harus integer 1-5 (item index ${i})` },
           { status: 422 }
         );
       }
@@ -164,10 +407,8 @@ export async function POST(req) {
 
     const results = [];
 
-    for (const body of items) {
+    for (const { body, file } of entries) {
       const locale = (body.locale || "id").slice(0, 5).toLowerCase();
-
-      const photo_url = trimOrNull(body.photo_url, 255);
       const name = trimOrNull(body.name, MAX_NAME_LENGTH) || "";
       const message = trimOrNull(body.message, MAX_TEXT_LENGTH) || "";
       const youtube_url = normalizeYoutubeUrl(body.youtube_url);
@@ -177,16 +418,61 @@ export async function POST(req) {
       );
       const star = parseStar(body.star);
 
+      let categoryId;
+      try {
+        categoryId = await resolveCategoryId({
+          category_id: body.category_id,
+          category_slug: body.category_slug,
+        });
+      } catch (err) {
+        if (err?.message === "CATEGORY_NOT_FOUND") {
+          return NextResponse.json(
+            { message: "Kategori tidak ditemukan" },
+            { status: 422 }
+          );
+        }
+        throw err;
+      }
+
+      let storedPhotoPath = trimOrNull(body.photo_url, 255);
+      if (file && typeof File !== "undefined" && file instanceof File) {
+        try {
+          storedPhotoPath = await uploadTestimonialImage(file);
+        } catch (e) {
+          if (e?.message === "PAYLOAD_TOO_LARGE")
+            return NextResponse.json(
+              { message: "Maksimal 10MB" },
+              { status: 413 }
+            );
+          if (e?.message === "UNSUPPORTED_TYPE")
+            return NextResponse.json(
+              { message: "Format harus JPEG/PNG/WebP" },
+              { status: 415 }
+            );
+          if (e?.message === "SUPABASE_BUCKET_NOT_CONFIGURED")
+            return NextResponse.json(
+              { message: "Supabase bucket belum dikonfigurasi" },
+              { status: 500 }
+            );
+          console.error("uploadTestimonialImage error:", e);
+          return NextResponse.json(
+            { message: "Upload gambar gagal" },
+            { status: 500 }
+          );
+        }
+      }
+
       const id = randomUUID();
 
       await prisma.testimonials.create({
         data: {
           id,
           admin_user_id: admin.id,
-          photo_url,
+          photo_url: storedPhotoPath,
           star,
           youtube_url,
           kampus_negara_tujuan: kampus_negara_tujuan ?? null,
+          ...(categoryId !== undefined ? { category_id: categoryId } : {}),
         },
       });
 
@@ -211,17 +497,19 @@ export async function POST(req) {
 
       results.push({
         id,
-        photo_url,
+        photo_url: storedPhotoPath,
+        photo_public_url: getPublicUrl(storedPhotoPath), // siap dipakai di next/image
         star: star ?? null,
         youtube_url: youtube_url ?? null,
         kampus_negara_tujuan: kampus_negara_tujuan ?? null,
         locale,
         name,
         message,
+        category_id: categoryId ?? null,
       });
     }
 
-    const payload = Array.isArray(raw) ? results : results[0];
+    const payload = inputWasArray ? results : results[0];
     return NextResponse.json({ data: payload }, { status: 201 });
   } catch (e) {
     console.error("POST /api/testimonials error:", e);

@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { translate } from "@/app/utils/geminiTranslator";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -47,6 +48,57 @@ function ensureProgramCategoryOptional(v) {
   return val;
 }
 
+// ===== Supabase helpers (selaras dengan /api/programs) =====
+const BUCKET = process.env.SUPABASE_BUCKET;
+function isHttpUrl(path) {
+  return typeof path === "string" && /^https?:\/\//i.test(path);
+}
+function getPublicUrl(path) {
+  if (!path) return null;
+  if (isHttpUrl(path)) return path;
+  if (!BUCKET) return path;
+  const { data, error } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path);
+  if (error) {
+    console.error("supabase getPublicUrl error:", error);
+    return null;
+  }
+  return data?.publicUrl || null;
+}
+
+async function uploadProgramImage(file) {
+  if (typeof File === "undefined" || !(file instanceof File)) {
+    throw new Error("NO_FILE");
+  }
+  if (!BUCKET) throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
+
+  const MAX = 10 * 1024 * 1024;
+  const allowed = ["image/jpeg", "image/png", "image/webp"];
+  const size = file.size || 0;
+  const type = file.type || "";
+
+  if (size > MAX) throw new Error("PAYLOAD_TOO_LARGE");
+  if (type && !allowed.includes(type)) throw new Error("UNSUPPORTED_TYPE");
+
+  const ext = (file.name?.split(".").pop() || "").toLowerCase();
+  const safe = `${Date.now()}-${Math.random().toString(36).slice(2)}${
+    ext ? "." + ext : ""
+  }`;
+  const objectPath = `programs/${new Date()
+    .toISOString()
+    .slice(0, 10)}/${safe}`;
+  const bytes = new Uint8Array(await file.arrayBuffer());
+
+  const { error } = await supabaseAdmin.storage
+    .from(BUCKET)
+    .upload(objectPath, bytes, {
+      contentType: type || "application/octet-stream",
+      upsert: false,
+    });
+
+  if (error) throw new Error(error.message);
+  return objectPath;
+}
+
 /* ========= GET /api/programs/:id (DETAIL) ========= */
 // Query: locale=xx&fallback=id
 export async function GET(req, { params }) {
@@ -78,10 +130,13 @@ export async function GET(req, { params }) {
     if (!item) return notFound();
 
     const t = pickTrans(item.programs_translate, locale, fallback);
+    const image_public_url = getPublicUrl(item.image_url);
+
     const data = {
       id: item.id,
       admin_user_id: item.admin_user_id,
       image_url: item.image_url,
+      image_public_url,
       program_type: item.program_type,
       program_category: item.program_category,
       price: item.price,
@@ -104,7 +159,7 @@ export async function GET(req, { params }) {
   }
 }
 
-/* ========= PUT/PATCH /api/programs/:id (UPDATE + upsert translations) ========= */
+/* ========= PUT/PATCH /api/programs/:id ========= */
 export async function PUT(req, ctx) {
   return PATCH(req, ctx);
 }
@@ -114,45 +169,132 @@ export async function PATCH(req, { params }) {
     const id = params?.id;
     if (!id) return badRequest("id wajib disertakan");
 
-    const body = await req.json();
+    const contentType = req.headers.get("content-type") || "";
 
+    // values that may come from either JSON or form-data
+    let payload = {};
+    let uploadFile = null;
+
+    if (contentType.includes("multipart/form-data")) {
+      const form = await req.formData();
+
+      // file (optional)
+      uploadFile = form.get("file") || null;
+
+      // optional primitive fields
+      const toStr = (k) => (form.has(k) ? String(form.get(k)) : undefined);
+
+      payload.image_url = form.has("image_url")
+        ? toStr("image_url") || null
+        : undefined;
+
+      payload.program_type = toStr("program_type");
+      payload.program_category = toStr("program_category");
+      payload.phone = toStr("phone");
+
+      if (form.has("price")) {
+        const v = toStr("price");
+        payload.price =
+          v === undefined || v === null || v === "" ? null : parseInt(v, 10);
+      }
+
+      if (form.has("is_published")) {
+        const v = (toStr("is_published") || "").toLowerCase();
+        payload.is_published = v === "true" || v === "1";
+      }
+
+      // translations
+      if (form.has("name_id")) payload.name_id = toStr("name_id");
+      if (form.has("description_id"))
+        payload.description_id = form.get("description_id") ?? null;
+
+      if (form.has("name_en")) payload.name_en = toStr("name_en");
+      if (form.has("description_en"))
+        payload.description_en = form.get("description_en") ?? null;
+
+      if (form.has("autoTranslate")) {
+        payload.autoTranslate =
+          (toStr("autoTranslate") || "true").toLowerCase() !== "false";
+      }
+    } else {
+      // JSON
+      payload = await req.json().catch(() => ({}));
+    }
+
+    // Build update data
     const data = {};
 
-    if (body.image_url !== undefined) data.image_url = body.image_url ?? null;
-
-    // NEW: program_type (B2B/B2C)
-    if (body.program_type !== undefined) {
+    // Handle image upload first (if any)
+    let storedImagePath = undefined; // undefined => don't touch; null => clear; string => set
+    if (uploadFile) {
       try {
-        data.program_type = ensureProgramTypeOptional(body.program_type);
+        const objectPath = await uploadProgramImage(uploadFile);
+        storedImagePath = objectPath;
+      } catch (e) {
+        if (e?.message === "PAYLOAD_TOO_LARGE")
+          return NextResponse.json(
+            { message: "Maksimal 10MB" },
+            { status: 413 }
+          );
+        if (e?.message === "UNSUPPORTED_TYPE")
+          return NextResponse.json(
+            { message: "Format harus JPEG/PNG/WebP" },
+            { status: 415 }
+          );
+        if (e?.message === "SUPABASE_BUCKET_NOT_CONFIGURED")
+          return NextResponse.json(
+            { message: "Supabase bucket belum dikonfigurasi" },
+            { status: 500 }
+          );
+        console.error("uploadProgramImage error:", e);
+        return NextResponse.json(
+          { message: "Upload gambar gagal" },
+          { status: 500 }
+        );
+      }
+    } else if (payload.image_url !== undefined) {
+      // client sent explicit image_url change (string or null/"")
+      storedImagePath =
+        payload.image_url === null || payload.image_url === ""
+          ? null
+          : String(payload.image_url);
+    }
+
+    if (storedImagePath !== undefined) {
+      data.image_url = storedImagePath; // may be string or null
+    }
+
+    if (payload.program_type !== undefined) {
+      try {
+        data.program_type = ensureProgramTypeOptional(payload.program_type);
       } catch (e) {
         return badRequest(e.message);
       }
     }
 
-    // NEW: program_category (4 kategori) — bisa null untuk clear
-    if (body.program_category !== undefined) {
+    if (payload.program_category !== undefined) {
       try {
         data.program_category = ensureProgramCategoryOptional(
-          body.program_category
+          payload.program_category
         );
       } catch (e) {
         return badRequest(e.message);
       }
     }
 
-    if (body.price !== undefined) {
+    if (payload.price !== undefined) {
       const p =
-        body.price === null || body.price === undefined
+        payload.price === null || payload.price === undefined
           ? null
-          : parseInt(body.price, 10);
+          : parseInt(payload.price, 10);
       if (p !== null && (!Number.isFinite(p) || p < 0))
         return badRequest("price harus bilangan bulat >= 0");
       data.price = p;
     }
 
-    if (body.phone !== undefined) data.phone = body.phone ?? null;
-    if (body.is_published !== undefined)
-      data.is_published = !!body.is_published;
+    if (payload.phone !== undefined) data.phone = payload.phone ?? null;
+    if (payload.is_published !== undefined)
+      data.is_published = !!payload.is_published;
     if (Object.keys(data).length) data.updated_at = new Date();
 
     const updated = Object.keys(data).length
@@ -161,59 +303,62 @@ export async function PATCH(req, { params }) {
 
     if (!updated) return notFound();
 
+    // Upsert translations if provided
     const ops = [];
 
-    if (body.name_id !== undefined || body.description_id !== undefined) {
+    if (payload.name_id !== undefined || payload.description_id !== undefined) {
       ops.push(
         prisma.programs_translate.upsert({
           where: { id_programs_locale: { id_programs: id, locale: "id" } },
           update: {
-            ...(body.name_id !== undefined
-              ? { name: String(body.name_id).slice(0, 191) }
+            ...(payload.name_id !== undefined
+              ? { name: String(payload.name_id).slice(0, 191) }
               : {}),
-            ...(body.description_id !== undefined
-              ? { description: body.description_id ?? null }
+            ...(payload.description_id !== undefined
+              ? { description: payload.description_id ?? null }
               : {}),
           },
           create: {
             id_programs: id,
             locale: "id",
-            name: String(body.name_id ?? "(no title)").slice(0, 191),
-            description: body.description_id ?? null,
+            name: String(payload.name_id ?? "(no title)").slice(0, 191),
+            description: payload.description_id ?? null,
           },
         })
       );
     }
 
-    if (body.name_en !== undefined || body.description_en !== undefined) {
+    if (payload.name_en !== undefined || payload.description_en !== undefined) {
       ops.push(
         prisma.programs_translate.upsert({
           where: { id_programs_locale: { id_programs: id, locale: "en" } },
           update: {
-            ...(body.name_en !== undefined
-              ? { name: String(body.name_en).slice(0, 191) }
+            ...(payload.name_en !== undefined
+              ? { name: String(payload.name_en).slice(0, 191) }
               : {}),
-            ...(body.description_en !== undefined
-              ? { description: body.description_en ?? null }
+            ...(payload.description_en !== undefined
+              ? { description: payload.description_en ?? null }
               : {}),
           },
           create: {
             id_programs: id,
             locale: "en",
-            name: String(body.name_en ?? "(no title)").slice(0, 191),
-            description: body.description_en ?? null,
+            name: String(payload.name_en ?? "(no title)").slice(0, 191),
+            description: payload.description_en ?? null,
           },
         })
       );
     }
 
-    if (body.autoTranslate && (body.name_id || body.description_id)) {
-      const name_en = body.name_id
-        ? await translate(String(body.name_id), "id", "en")
-        : undefined;
-      const desc_en = body.description_id
-        ? await translate(String(body.description_id), "id", "en")
-        : undefined;
+    if (payload.autoTranslate && (payload.name_id || payload.description_id)) {
+      const name_en =
+        payload.name_id !== undefined && payload.name_id !== null
+          ? await translate(String(payload.name_id), "id", "en")
+          : undefined;
+      const desc_en =
+        payload.description_id !== undefined
+          ? await translate(String(payload.description_id), "id", "en")
+          : undefined;
 
       ops.push(
         prisma.programs_translate.upsert({
@@ -234,7 +379,17 @@ export async function PATCH(req, { params }) {
 
     if (ops.length) await prisma.$transaction(ops);
 
-    return NextResponse.json({ data: { id } });
+    const finalImagePath =
+      storedImagePath !== undefined ? storedImagePath : updated.image_url;
+    const image_public_url = getPublicUrl(finalImagePath);
+
+    return NextResponse.json({
+      data: {
+        id,
+        image_url: finalImagePath,
+        image_public_url,
+      },
+    });
   } catch (e) {
     console.error(`PATCH /api/programs/${params?.id} error:`, e);
     if (e.code === "P2025") return notFound();
