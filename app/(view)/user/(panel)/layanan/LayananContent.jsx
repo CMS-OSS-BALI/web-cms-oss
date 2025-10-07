@@ -22,14 +22,41 @@ const marqueeAutoplay = {
   disableOnInteraction: false,
   pauseOnMouseEnter: false,
 };
+const STORAGE_BASE_URL = (() => {
+  const explicit = (process.env.NEXT_PUBLIC_STORAGE_BASE_URL || "")
+    .trim()
+    .replace(/\/$/, "");
+  if (explicit) return explicit;
+  const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || "")
+    .trim()
+    .replace(/\/$/, "");
+  const bucket = (process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "")
+    .trim()
+    .replace(/^\/+|\/+$/g, "");
+  if (supabaseUrl && bucket) {
+    return `${supabaseUrl}/storage/v1/object/public/${bucket}`;
+  }
+  return "";
+})();
+
+const DEFAULT_TESTI_PLACEHOLDER =
+  "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=1200&auto=format&fit=crop";
+const shouldUseStorage = (path = "") => /testimonials\//i.test(path);
+
 const marqueeFreeMode = { enabled: true, momentum: false, sticky: false };
 
 /* ================== Helpers ================== */
 function normalizeImgSrc(input) {
-  const raw = input ?? "";
-  if (!raw) return "/placeholder-portrait.png";
+  const raw = (input ?? "").toString().trim();
+  if (!raw) return DEFAULT_TESTI_PLACEHOLDER;
   if (/^https?:\/\//i.test(raw)) return raw;
-  return raw.startsWith("/") ? raw : `/${raw}`;
+  const cleaned = raw.replace(/^\/+/, "");
+  if (shouldUseStorage(cleaned)) {
+    if (STORAGE_BASE_URL) return `${STORAGE_BASE_URL}/${cleaned}`;
+    return DEFAULT_TESTI_PLACEHOLDER;
+  }
+  if (raw.startsWith("/")) return raw;
+  return `/${cleaned}`;
 }
 function isExternal(src) {
   return /^https?:\/\//i.test(src);
@@ -330,10 +357,6 @@ const styles = {
     fontSize: 13.5,
     lineHeight: 1.55,
     textAlign: "center",
-    display: "-webkit-box",
-    WebkitBoxOrient: "vertical",
-    WebkitLineClamp: 3, // fewer lines to keep height
-    overflow: "hidden",
     whiteSpace: "pre-line",
   },
 };

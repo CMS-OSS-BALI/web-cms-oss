@@ -1,7 +1,7 @@
 // app/(admin)/admin/jurusan/JurusanContent.jsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
   Card,
@@ -24,7 +24,7 @@ import {
   Pagination,
   theme as antdTheme,
 } from "antd";
-import { EyeOutlined, PlusOutlined } from "@ant-design/icons";
+import { EyeOutlined, PlusOutlined, UploadOutlined } from "@ant-design/icons";
 import { sanitizeHtml } from "@/app/utils/dompurify";
 import HtmlEditor from "@/app/components/editor/HtmlEditor";
 
@@ -33,6 +33,47 @@ const { Title, Text, Paragraph } = Typography;
 const CARD_BG = "rgba(11, 18, 35, 0.94)";
 const IMAGE_PLACEHOLDER =
   "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=1200&auto=format&fit=crop";
+
+const STORAGE_PUBLIC_BASE = (() => {
+  const explicit = (process.env.NEXT_PUBLIC_STORAGE_BASE_URL || "").trim().replace(/\/$/, "");
+  if (explicit) return explicit;
+  const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").trim().replace(/\/$/, "");
+  const bucket = (process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "").trim().replace(/^\/+|\/+$/g, "");
+  if (supabaseUrl && bucket) {
+    return `${supabaseUrl}/storage/v1/object/public/${bucket}`;
+  }
+  return "";
+})();
+
+const isHttpUrl = (value) => typeof value === "string" && /^https?:\/\//i.test(value);
+const sanitizeImageInput = (value) => {
+  const raw = (value ?? "").toString().trim();
+  if (!raw) return "";
+  if (isHttpUrl(raw)) {
+    if (STORAGE_PUBLIC_BASE && raw.startsWith(`${STORAGE_PUBLIC_BASE}/`)) {
+      return raw.slice(STORAGE_PUBLIC_BASE.length + 1).replace(/^\/+/, "").slice(0, 255);
+    }
+    return raw.slice(0, 255);
+  }
+  return raw.replace(/^\/+/, "").slice(0, 255);
+};
+const toPublicImageUrl = (value) => {
+  const raw = (value ?? "").toString().trim();
+  if (!raw) return "";
+  if (isHttpUrl(raw)) return raw;
+  const cleaned = raw.replace(/^\/+/, "");
+  if (!cleaned) return "";
+  if (STORAGE_PUBLIC_BASE) {
+    return `${STORAGE_PUBLIC_BASE}/${cleaned}`;
+  }
+  return cleaned.startsWith("/") ? cleaned : `/${cleaned}`;
+};
+const resolveImageSrc = (record) => {
+  if (!record) return "";
+  const source =
+    record.image_public_url || record.image_src || record.image_url || "";
+  return toPublicImageUrl(source);
+};
 
 const darkCardStyle = {
   background: CARD_BG,
@@ -91,11 +132,6 @@ const formatRegisterPriceDisplay = (value, currency = "IDR") => {
 };
 
 // Keep URL <= 255 chars to match @db.VarChar(255)
-const normalizeUrl255 = (v) =>
-  String(v || "")
-    .trim()
-    .slice(0, 255);
-
 /* ===== Form Modal ===== */
 function JurusanFormModal({
   open,
@@ -111,14 +147,89 @@ function JurusanFormModal({
   const isCreate = mode !== "edit";
   const req = (msg) => (isCreate ? [{ required: true, message: msg }] : []);
 
+  const initialPreview = useMemo(() => {
+    const stored =
+      initialValues?.image_public_url || initialValues?.image_url || "";
+    return toPublicImageUrl(stored);
+  }, [initialValues]);
+
+  const [uploadFile, setUploadFile] = useState(null);
+  const [previewSrc, setPreviewSrc] = useState(initialPreview);
+  const fileInputRef = useRef(null);
+  const objectUrlRef = useRef(null);
+
+  const resetUpload = useCallback(() => {
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
+    setUploadFile(null);
+    setPreviewSrc(initialPreview);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  }, [initialPreview]);
+
   useEffect(() => {
     if (!open) return;
     form.resetFields();
     form.setFieldsValue({ ...initialValues });
-  }, [open, initialValues, form]);
+    resetUpload();
+  }, [open, initialValues, form, resetUpload]);
+
+  useEffect(() => {
+    return () => {
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+      }
+    };
+  }, []);
+
+  const imageValue = Form.useWatch("image_url", form);
+  const previewUrl = useMemo(() => {
+    if (uploadFile && previewSrc) return previewSrc;
+    if (imageValue) return toPublicImageUrl(imageValue);
+    return initialPreview;
+  }, [uploadFile, previewSrc, imageValue, initialPreview]);
+
+  const handleFileChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      resetUpload();
+      setTimeout(() => form.validateFields(["image_url"]).catch(() => null), 0);
+      return;
+    }
+
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    objectUrlRef.current = objectUrl;
+    setUploadFile(file);
+    setPreviewSrc(objectUrl);
+    setTimeout(() => form.validateFields(["image_url"]).catch(() => null), 0);
+  };
+
+  const handleClearUpload = () => {
+    resetUpload();
+    setTimeout(() => form.validateFields(["image_url"]).catch(() => null), 0);
+  };
 
   const handleFinish = (values) => {
-    const imageUrl = normalizeUrl255(values.image_url);
+    const sanitizedImageUrl = sanitizeImageInput(values.image_url);
+    form.setFieldsValue({ image_url: sanitizedImageUrl });
+    const hasFile = Boolean(uploadFile);
+    if (!hasFile && !sanitizedImageUrl) {
+      form.setFields([
+        {
+          name: "image_url",
+          errors: ["Logo wajib diisi (URL atau upload file)."],
+        },
+      ]);
+      return;
+    }
     const payload = {
       partner_id: values.partner_id,
       register_price:
@@ -127,10 +238,11 @@ function JurusanFormModal({
         values.register_price === ""
           ? undefined
           : String(parseThousands(String(values.register_price))),
-      image_url: imageUrl,
+      image_url: hasFile ? undefined : sanitizedImageUrl,
       name_id: values.name_id?.trim(),
       description_id: values.description_id || "",
       autoTranslate: true,
+      file: hasFile ? uploadFile : undefined,
     };
     onSubmit(payload);
   };
@@ -214,17 +326,26 @@ function JurusanFormModal({
               <Col xs={24} md={12}>
                 <Form.Item
                   name="image_url"
-                  label="Image URL"
+                  label="Logo URL"
+                  extra="Isi URL logo jika tidak mengunggah file."
                   rules={[
-                    { required: true, message: "Image URL wajib diisi" },
-                    { type: "url", message: "URL gambar tidak valid" },
                     () => ({
                       validator(_, value) {
-                        if (!value || normalizeUrl255(value) === value)
-                          return Promise.resolve();
-                        return Promise.reject(
-                          new Error("Maksimal 255 karakter")
-                        );
+                        if (uploadFile) return Promise.resolve();
+                        const sanitized = sanitizeImageInput(value);
+                        if (!sanitized) {
+                          return Promise.reject(
+                            new Error("Logo wajib diisi (URL atau upload file).")
+                          );
+                        }
+                        const trimmed = (value ?? "").toString().trim();
+                        if (trimmed && isHttpUrl(trimmed) && trimmed.length > 255) {
+                          return Promise.reject(new Error("Maksimal 255 karakter"));
+                        }
+                        if (!isHttpUrl(trimmed) && sanitized.length > 255) {
+                          return Promise.reject(new Error("Maksimal 255 karakter"));
+                        }
+                        return Promise.resolve();
                       },
                     }),
                   ]}
@@ -234,6 +355,67 @@ function JurusanFormModal({
                     style={ctrlStyle}
                     maxLength={255}
                   />
+                </Form.Item>
+
+                <Form.Item
+                  label="Upload Logo (opsional)"
+                  extra="Unggah JPEG/PNG/WebP (maks. 10MB). Jika diisi, logo akan diunggah ke Supabase."
+                >
+                  <Space align="start" size={12} wrap>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      style={{ display: "none" }}
+                      onChange={handleFileChange}
+                    />
+
+                    <Button
+                      shape="round"
+                      icon={<UploadOutlined />}
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      Pilih File
+                    </Button>
+
+                    {uploadFile ? (
+                      <Text type="secondary">
+                        {uploadFile.name} ({
+                          Math.round((uploadFile.size || 0) / 1024)
+                        } KB)
+                      </Text>
+                    ) : (
+                      <Text type="secondary">
+                        {previewUrl
+                          ? "Menggunakan logo tersimpan."
+                          : "Belum ada file dipilih."}
+                      </Text>
+                    )}
+
+                    {uploadFile ? (
+                      <Button type="link" danger onClick={handleClearUpload}>
+                        Hapus
+                      </Button>
+                    ) : null}
+                  </Space>
+
+                  {previewUrl ? (
+                    <div style={{ marginTop: 12 }}>
+                      <Image
+                        src={previewUrl}
+                        alt={form.getFieldValue("name_id") || "Preview logo"}
+                        style={{
+                          width: "100%",
+                          maxHeight: 200,
+                          objectFit: "cover",
+                          borderRadius: 12,
+                          border: "1px solid rgba(148, 163, 184, 0.25)",
+                        }}
+                        fallback={IMAGE_PLACEHOLDER}
+                        preview={false}
+                      />
+                    </div>
+                  ) : null}
                 </Form.Item>
               </Col>
 
@@ -284,6 +466,7 @@ function JurusanViewModal({ open, data, onClose, resolvePartnerMeta }) {
     data?.partner_id != null ? resolvePartnerMeta?.(data.partner_id) : null;
   const partnerLabel = partnerMeta?.label ?? data?.partner_id ?? null;
   const currency = partnerMeta?.currency || "IDR";
+  const imageSrc = resolveImageSrc(data);
   const tags = [
     partnerLabel
       ? { key: "partner", color: "gold", label: `Partner: ${partnerLabel}` }
@@ -306,6 +489,14 @@ function JurusanViewModal({ open, data, onClose, resolvePartnerMeta }) {
     {
       label: "Partner",
       content: partnerLabel || "-",
+    },
+    {
+      label: "Image Source",
+      content: imageSrc ? (
+        <a href={imageSrc} target="_blank" rel="noreferrer noopener">
+          {imageSrc}
+        </a>
+      ) : (data?.image_url || "-"),
     },
     {
       label: "Register Price",
@@ -367,7 +558,7 @@ function JurusanViewModal({ open, data, onClose, resolvePartnerMeta }) {
       <div className="view-scroll">
         <div style={{ padding: 16 }}>
           <Image
-            src={data?.image_url || IMAGE_PLACEHOLDER}
+            src={imageSrc || IMAGE_PLACEHOLDER}
             alt={data?.name || "Jurusan image"}
             width="100%"
             style={{
@@ -378,7 +569,7 @@ function JurusanViewModal({ open, data, onClose, resolvePartnerMeta }) {
               border: "1px solid rgba(148, 163, 184, 0.25)",
             }}
             fallback={IMAGE_PLACEHOLDER}
-            preview={false}
+            preview={!!imageSrc}
           />
 
           <Space size={[8, 8]} wrap style={{ marginBottom: 16 }}>
@@ -421,6 +612,7 @@ function JurusanCard({ item, onView, onEdit, onDelete, resolvePartnerMeta }) {
     item.partner_id != null ? resolvePartnerMeta?.(item.partner_id) : null;
   const partnerLabel = partnerMeta?.label ?? item.partner_id ?? null;
   const currency = partnerMeta?.currency || "IDR";
+  const imageSrc = resolveImageSrc(item);
 
   const badgeStyle = {
     position: "absolute",
@@ -461,13 +653,13 @@ function JurusanCard({ item, onView, onEdit, onDelete, resolvePartnerMeta }) {
           onClick={onView}
         >
           <Image
-            src={item.image_url || IMAGE_PLACEHOLDER}
+            src={imageSrc || IMAGE_PLACEHOLDER}
             alt={item.name || "Jurusan image"}
             width="100%"
             height={180}
             style={{ width: "100%", height: "100%", objectFit: "cover" }}
             fallback={IMAGE_PLACEHOLDER}
-            preview={false}
+            preview={!!imageSrc}
           />
           {partnerLabel ? (
             <span style={badgeStyle} title={partnerLabel}>
@@ -652,6 +844,7 @@ export default function JurusanContent(props) {
         partner_id: "",
         register_price: null,
         image_url: "",
+        image_public_url: "",
         name_id: "",
         description_id: "",
       };
@@ -662,7 +855,10 @@ export default function JurusanContent(props) {
         editing.register_price === null || editing.register_price === undefined
           ? null
           : Number(editing.register_price),
-      image_url: editing.image_url || "",
+      image_url: sanitizeImageInput(
+        editing.image_url || editing.image_public_url || ""
+      ),
+      image_public_url: resolveImageSrc(editing),
       name_id: editing.name || "",
       description_id: editing.description || "",
     };

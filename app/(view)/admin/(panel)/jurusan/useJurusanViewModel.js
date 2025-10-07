@@ -26,6 +26,31 @@ function buildQuery(params = {}) {
   return sp.toString();
 }
 
+const isFileObject = (value) =>
+  typeof File !== "undefined" && value instanceof File;
+
+const toJsonPayload = (payload = {}) => {
+  const result = {};
+  Object.entries(payload).forEach(([key, value]) => {
+    if (value === undefined) return;
+    result[key] = value;
+  });
+  return result;
+};
+
+const appendFormDataSafe = (formData, payload = {}) => {
+  Object.entries(payload).forEach(([key, value]) => {
+    if (value === undefined) return;
+    if (value === null) {
+      formData.append(key, "");
+    } else if (value instanceof Blob) {
+      formData.append(key, value);
+    } else {
+      formData.append(key, String(value));
+    }
+  });
+};
+
 export default function useJurusanViewModel() {
   // filters & pagination
   const [q, setQ] = useState("");
@@ -71,7 +96,7 @@ export default function useJurusanViewModel() {
     mutate: refreshList,
   } = useSWR(key, fetcher, { revalidateOnFocus: false });
 
-  const jurusan = listData?.data || [];
+  const rawJurusan = listData?.data || [];
   const total = listData?.meta?.total || 0;
   const totalPages = listData?.meta?.totalPages || 1;
 
@@ -84,6 +109,15 @@ export default function useJurusanViewModel() {
   } = useSWR("/api/partners?perPage=1000", fetcher, {
     revalidateOnFocus: false,
   });
+
+  const jurusan = useMemo(
+    () =>
+      rawJurusan.map((item) => ({
+        ...item,
+        image_src: item.image_public_url || item.image_url || "",
+      })),
+    [rawJurusan]
+  );
 
   const partnerOptions = useMemo(() => {
     const rows = partnersData?.data || [];
@@ -112,12 +146,26 @@ export default function useJurusanViewModel() {
     async (payload) => {
       setOpLoading(true);
       try {
-        const r = await fetch("/api/jurusan", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
+        const { file, ...rest } = payload || {};
+        let r;
+        if (isFileObject(file)) {
+          const fd = new FormData();
+          fd.append("file", file);
+          appendFormDataSafe(fd, rest);
+          r = await fetch("/api/jurusan", {
+            method: "POST",
+            credentials: "include",
+            body: fd,
+          });
+        } else {
+          const body = toJsonPayload(rest);
+          r = await fetch("/api/jurusan", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+        }
         const j = await r.json().catch(() => ({}));
         if (!r.ok)
           return { ok: false, error: j?.message || "Gagal membuat jurusan" };
@@ -136,12 +184,27 @@ export default function useJurusanViewModel() {
     async (id, payload) => {
       setOpLoading(true);
       try {
-        const r = await fetch(`/api/jurusan/${id}`, {
-          method: "PATCH",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
+        const { file, ...rest } = payload || {};
+        let r;
+        const endpoint = `/api/jurusan/${encodeURIComponent(id)}`;
+        if (isFileObject(file)) {
+          const fd = new FormData();
+          fd.append("file", file);
+          appendFormDataSafe(fd, rest);
+          r = await fetch(endpoint, {
+            method: "PATCH",
+            credentials: "include",
+            body: fd,
+          });
+        } else {
+          const body = toJsonPayload(rest);
+          r = await fetch(endpoint, {
+            method: "PATCH",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+        }
         const j = await r.json().catch(() => ({}));
         if (!r.ok)
           return {

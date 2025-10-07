@@ -91,6 +91,7 @@ export default function HeaderUser() {
     lang,
     langs,
     changeLang,
+    langLabel, // <-- ambil label i18n
   } = useHeaderUViewModel();
 
   return (
@@ -121,9 +122,10 @@ export default function HeaderUser() {
                 </a>
               </li>
             ))}
+
             {/* mobile: flag dropdown di dalam menu */}
             <li className="user-header__nav-item flagdd__mobile-wrap">
-              <div className="user-header__lang-label">Bahasa</div>
+              <div className="user-header__lang-label">{langLabel}</div>
               <FlagDropdown
                 lang={lang}
                 langs={langs}

@@ -10,18 +10,20 @@ const fetcher = (url) =>
     return r.json();
   });
 
-// helper: tambahkan ?menu=layanan ke semua link anak layanan
 const withMenu = (href = "#") =>
   href.includes("?") ? `${href}&menu=layanan` : `${href}?menu=layanan`;
 
-/* ===== View Model ===== */
-export default function useLayananViewModel({
-  locale = "id",
-  testiLimit = 12,
-} = {}) {
-  /* ---------- HERO ---------- */
-  const hero = useMemo(
-    () => ({
+const pickLocale = (v) =>
+  String(v || "id")
+    .slice(0, 2)
+    .toLowerCase() === "en"
+    ? "en"
+    : "id";
+
+/* ===== Texts ===== */
+const TEXT = {
+  id: {
+    hero: {
       image: "/hero-layanan.svg",
       objectPosition: "40% 50%",
       title: "LAYANAN OSS",
@@ -34,14 +36,14 @@ export default function useLayananViewModel({
           href: withMenu("/user/english-course"),
         },
         {
-          label: "AKOMODATION",
+          label: "ACCOMMODATION",
           icon: "/akomodasi.svg",
           href: withMenu("/user/accommodation"),
         },
         {
           label: "STUDY OVERSEAS",
           icon: "/overseas.svg",
-          href: withMenu("/user/overseas-study"),
+          href: withMenu("/user/overseas"),
         },
         {
           label: "VISA APPLY",
@@ -51,50 +53,39 @@ export default function useLayananViewModel({
         {
           label: "DOCUMENT TRANSLATION",
           icon: "/doctranslate.svg",
-          href: withMenu("/user/doc.translate"),
+          href: withMenu("/user/document-translation"),
           wide: true,
         },
       ],
-    }),
-    []
-  );
-
-  /* ---------- WHY CHOOSE ---------- */
-  const reasons = useMemo(
-    () => [
+    },
+    reasons: [
       {
         key: "one-stop",
         title: "ONE STOP SERVICE",
-        desc: "Semua Layanan Dalam Satu Tempat.",
+        desc: "Semua layanan dalam satu tempat.",
         icon: "/vector-why.svg",
       },
       {
         key: "quality-ec",
         title: "QUALITY ENGLISH COURSE",
-        desc: "Kursus Bahasa Standar Internasional.",
+        desc: "Kursus bahasa standar internasional.",
         icon: "/vector-why.svg",
       },
       {
         key: "personal-guidance",
         title: "PERSONAL GUIDANCE",
-        desc: "Pendampingan Sesuai Kebutuhanmu.",
+        desc: "Pendampingan sesuai kebutuhanmu.",
         icon: "/vector-why.svg",
       },
       {
         key: "fast-transparent",
         title: "FAST & TRANSPARENT PROCESS",
-        desc: "Cepat, Mudah, Dan Jelas.",
+        desc: "Cepat, mudah, dan jelas.",
         icon: "/vector-why.svg",
       },
     ],
-    []
-  );
-
-  const whyImage = "/why-choose.svg";
-
-  /* ---------- OUR SERVICE ---------- */
-  const services = useMemo(
-    () => [
+    whyImage: "/why-choose.svg",
+    services: [
       {
         id: "english",
         title: "ENGLISH COURSE",
@@ -126,17 +117,135 @@ export default function useLayananViewModel({
         href: withMenu("/user/accommodation"),
       },
     ],
-    []
-  );
+    serviceIntro:
+      "Layanan kami dirancang untuk mendampingi setiap langkah perjalanan Anda, memberikan solusi tepat, dukungan menyeluruh, dan pengalaman terbaik menuju impian studi global.",
+    testiEmpty: "Belum ada testimoni untuk kategori layanan",
+  },
 
-  const serviceIntro =
-    "Layanan kami dirancang untuk mendampingi setiap langkah perjalanan Anda, memberikan solusi tepat, dukungan menyeluruh, dan pengalaman terbaik menuju impian studi global";
+  en: {
+    hero: {
+      image: "/hero-layanan.svg",
+      objectPosition: "40% 50%",
+      title: "OSS SERVICES",
+      quoteTop: "FROM LANGUAGE COURSES, VISA PROCESSING,",
+      quoteBottom: "TO STUDYING ABROAD",
+      pills: [
+        {
+          label: "ENGLISH COURSE",
+          icon: "/engcourse.svg",
+          href: withMenu("/user/english-course"),
+        },
+        {
+          label: "ACCOMMODATION",
+          icon: "/akomodasi.svg",
+          href: withMenu("/user/accommodation"),
+        },
+        {
+          label: "STUDY OVERSEAS",
+          icon: "/overseas.svg",
+          href: withMenu("/user/overseas"),
+        },
+        {
+          label: "VISA APPLY",
+          icon: "/visa.svg",
+          href: withMenu("/user/visa-apply"),
+        },
+        {
+          label: "DOCUMENT TRANSLATION",
+          icon: "/doctranslate.svg",
+          href: withMenu("/user/document-translation"),
+          wide: true,
+        },
+      ],
+    },
+    reasons: [
+      {
+        key: "one-stop",
+        title: "ONE STOP SERVICE",
+        desc: "All services in one place.",
+        icon: "/vector-why.svg",
+      },
+      {
+        key: "quality-ec",
+        title: "QUALITY ENGLISH COURSE",
+        desc: "International-standard language course.",
+        icon: "/vector-why.svg",
+      },
+      {
+        key: "personal-guidance",
+        title: "PERSONAL GUIDANCE",
+        desc: "Personalized guidance for your needs.",
+        icon: "/vector-why.svg",
+      },
+      {
+        key: "fast-transparent",
+        title: "FAST & TRANSPARENT PROCESS",
+        desc: "Fast, easy, and clear.",
+        icon: "/vector-why.svg",
+      },
+    ],
+    whyImage: "/why-choose.svg",
+    services: [
+      {
+        id: "english",
+        title: "ENGLISH COURSE",
+        image: "/org-bljr.svg",
+        href: withMenu("/user/english-course"),
+      },
+      {
+        id: "overseas",
+        title: "OVERSEAS STUDY",
+        image: "/org-bljr.svg",
+        href: withMenu("/user/overseas"),
+      },
+      {
+        id: "doc",
+        title: "DOC. TRANSLATION",
+        image: "/org-bljr.svg",
+        href: withMenu("/user/document-translation"),
+      },
+      {
+        id: "visa",
+        title: "VISA APPLY",
+        image: "/org-bljr.svg",
+        href: withMenu("/user/visa-apply"),
+      },
+      {
+        id: "accommodation",
+        title: "ACCOMMODATION",
+        image: "/org-bljr.svg",
+        href: withMenu("/user/accommodation"),
+      },
+    ],
+    serviceIntro:
+      "Our services are designed to accompany every step of your journey - providing precise solutions, comprehensive support, and the best experience toward your global study goals.",
+    testiEmpty: "No testimonials yet for services category",
+  },
+};
+
+/* ===== View Model ===== */
+export default function useLayananViewModel({
+  locale = "id",
+  testiLimit = 12,
+} = {}) {
+  const lk = pickLocale(locale);
+  const T = TEXT[lk];
+
+  /* ---------- HERO ---------- */
+  const hero = useMemo(() => T.hero, [T]);
+
+  /* ---------- WHY CHOOSE ---------- */
+  const reasons = useMemo(() => T.reasons, [T]);
+  const whyImage = T.whyImage;
+
+  /* ---------- OUR SERVICE ---------- */
+  const services = useMemo(() => T.services, [T]);
+  const serviceIntro = T.serviceIntro;
 
   /* ---------- TESTIMONI (category=layanan) ---------- */
-  // minta hanya kolom minimal: image, name, description
   const qs = new URLSearchParams({
     category: "layanan",
-    locale,
+    locale: lk,
     limit: String(testiLimit),
     fields: "image,name,description",
   }).toString();
@@ -145,13 +254,15 @@ export default function useLayananViewModel({
   const testimonials = Array.isArray(data?.data) ? data.data : [];
 
   return {
+    locale: lk,
     hero,
     reasons,
     whyImage,
     services,
     serviceIntro,
-    testimonials, // berisi { id, image, name, description }
+    testimonials, // { id, image, name, description }
     testiLoading: isLoading,
     testiError: !!error,
+    testiEmptyText: T.testiEmpty,
   };
 }

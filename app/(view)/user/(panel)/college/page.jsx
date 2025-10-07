@@ -3,18 +3,18 @@
 import { Suspense, lazy, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import Loading from "@/app/components/loading/LoadingImage";
-import useLayananViewModel from "./useLayananViewModel";
 
-const LayananContentLazy = lazy(() => import("./LayananContent"));
+const CollegeContentLazy = lazy(() => import("./CollegeContent"));
 
-const pickLocale = (q, ls) => {
+function pickLocale(q, ls) {
   const v = (q || ls || "id").slice(0, 2).toLowerCase();
   return v === "en" ? "en" : "id";
-};
+}
 
-export default function LayananPage() {
+export default function CollegePage() {
   const search = useSearchParams();
 
+  // Ambil dari query ?lang= lebih dulu, fallback ke localStorage (client only)
   const locale = useMemo(() => {
     const q = search?.get("lang") || "";
     const ls =
@@ -24,9 +24,6 @@ export default function LayananPage() {
     return pickLocale(q, ls);
   }, [search]);
 
-  // VM di-evaluate di page agar props bisa di-pass ke content
-  const vm = useLayananViewModel({ locale });
-
   return (
     <Suspense
       fallback={
@@ -35,8 +32,8 @@ export default function LayananPage() {
         </div>
       }
     >
-      {/* key=locale agar remount saat bahasa berubah */}
-      <LayananContentLazy key={locale} {...vm} />
+      {/* key memastikan remount ketika ?lang= berubah */}
+      <CollegeContentLazy key={locale} locale={locale} />
     </Suspense>
   );
 }

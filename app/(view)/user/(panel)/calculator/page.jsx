@@ -3,16 +3,16 @@
 import { Suspense, lazy, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import Loading from "@/app/components/loading/LoadingImage";
-import useLayananViewModel from "./useLayananViewModel";
+import useCalculatorViewModel from "./useCalculatorViewModel";
 
-const LayananContentLazy = lazy(() => import("./LayananContent"));
+const CalculatorContentLazy = lazy(() => import("./CalculatorContent"));
 
 const pickLocale = (q, ls) => {
   const v = (q || ls || "id").slice(0, 2).toLowerCase();
   return v === "en" ? "en" : "id";
 };
 
-export default function LayananPage() {
+export default function CalculatorPage() {
   const search = useSearchParams();
 
   const locale = useMemo(() => {
@@ -25,7 +25,7 @@ export default function LayananPage() {
   }, [search]);
 
   // VM di-evaluate di page agar props bisa di-pass ke content
-  const vm = useLayananViewModel({ locale });
+  const vm = useCalculatorViewModel({ locale });
 
   return (
     <Suspense
@@ -36,7 +36,7 @@ export default function LayananPage() {
       }
     >
       {/* key=locale agar remount saat bahasa berubah */}
-      <LayananContentLazy key={locale} {...vm} />
+      <CalculatorContentLazy key={locale} {...vm} />
     </Suspense>
   );
 }

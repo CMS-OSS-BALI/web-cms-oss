@@ -1,22 +1,14 @@
-﻿export function useFooterUViewModel() {
+﻿// useFooterUViewModel.js
+export default function useFooterUViewModel() {
   const logo = {
     src: "/images/loading.png",
     alt: "OSS Bali",
   };
 
   const contacts = [
-    {
-      icon: "location",
-      text: "Hayam wuruk 66 B, lt 2 Denpasar",
-    },
-    {
-      icon: "phone",
-      text: "+62 877 0509 2020",
-    },
-    {
-      icon: "email",
-      text: "onestepsolution@gmail.com",
-    },
+    { icon: "location", text: "Hayam Wuruk 66 B, lt 2 Denpasar" },
+    { icon: "phone", text: "+62 877 0509 2020" },
+    { icon: "email", text: "onestepsolution@gmail.com" },
   ];
 
   const navSections = [
@@ -45,6 +37,7 @@
         { label: "Accommodation", href: "#" },
         { label: "FAQ", href: "#" },
         { label: "Review", href: "#" },
+        { label: "Calculator", href: "/user/calculator" }, // ⬅️ ini yang kamu mau tampilkan
       ],
     },
   ];
@@ -55,13 +48,8 @@
     { icon: "youtube", href: "#", ariaLabel: "YouTube" },
   ];
 
-  const copyright = "\u00A9 " + new Date().getFullYear() + " OSS Bali. All Rights Reserved.";
+  const copyright =
+    "\u00A9 " + new Date().getFullYear() + " OSS Bali. All Rights Reserved.";
 
-  return {
-    logo,
-    contacts,
-    navSections,
-    socials,
-    copyright,
-  };
+  return { logo, contacts, navSections, socials, copyright };
 }

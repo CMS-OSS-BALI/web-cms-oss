@@ -279,11 +279,13 @@ model jurusan {
   updated_at        DateTime            @default(now()) @db.DateTime(0)
   deleted_at        DateTime?           @db.DateTime(0)
   image_url         String              @db.VarChar(255)
+  likes_count       BigInt              @default(0) @db.UnsignedBigInt
   partners          partners            @relation(fields: [partner_id], references: [id], map: "fk_jurusan_partner")
   jurusan_translate jurusan_translate[]
 
   @@index([deleted_at], map: "idx_jurusan_deleted")
   @@index([partner_id], map: "idx_jurusan_partner")
+  @@index([likes_count], map: "idx_jurusan_likes_count")
   @@map("jurusan")
 }
 
@@ -300,6 +302,19 @@ model jurusan_translate {
   @@unique([id_jurusan, locale], map: "jurusan_locale_unique")
   @@index([locale], map: "idx_jurusan_translate_locale")
   @@map("jurusan_translate")
+}
+
+model jurusan_like {
+  id         String        @id @default(uuid()) @db.VarChar(36)
+  id_jurusan String        @db.VarChar(36)
+  actor_key  String        @db.VarChar(128)
+  actor_type LikeActorType
+  created_at DateTime      @default(now())
+
+  @@unique([id_jurusan, actor_key], map: "uniq_jurusan_like_actor")
+  @@index([actor_key], map: "idx_jurusan_like_actor_key")
+  @@index([created_at], map: "idx_jurusan_like_created_at")
+  @@map("jurusan_like")
 }
 
 model programs {
@@ -457,6 +472,26 @@ model mitra_dalam_negeri_translate {
   @@index([locale], map: "idx_locale")
 }
 
+model calculator {
+  id         Int             @id @default(autoincrement()) @db.UnsignedInt
+  type       calculator_type
+  code       String          @db.VarChar(50)
+  label      String          @db.VarChar(160)
+  note       String?         @db.VarChar(160)
+  amount_idr Int             @default(0) @db.UnsignedInt
+  is_active  Boolean         @default(true)
+  sort_order Int             @default(0)
+  created_at DateTime        @default(now()) @db.Timestamp(0)
+  updated_at DateTime        @default(now()) @db.Timestamp(0)
+
+  @@unique([type, code], map: "uq_type_code")
+}
+
+enum LikeActorType {
+  USER
+  CLIENT
+}
+
 enum events_pricing_type {
   FREE
   PAID
@@ -502,4 +537,11 @@ enum verification_status {
   NEED_REVIEW
   REJECTED
   VERIFIED
+}
+
+enum calculator_type {
+  SERVICE_FEE
+  INSURANCE
+  VISA
+  ADDON
 }
