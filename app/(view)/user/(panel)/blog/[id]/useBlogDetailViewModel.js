@@ -2,20 +2,18 @@
 
 import { useMemo } from "react";
 import useSWR from "swr";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams } from "next/navigation";
 import { fetcher } from "@/lib/swr/fetcher";
 
 /* ---------- helpers ---------- */
 const imgSrc = (r) => r?.image_public_url || r?.image_url || "";
 
 // Split title -> [main, sub] pakai delimiter umum.
-// Contoh: "BACHELOR'S DEGREE: IN COMPUTER ENGINEERING..." =>
-// main: "BACHELOR'S DEGREE", sub: "IN COMPUTER ENGINEERING..."
 function splitTitle(name = "") {
   const s = String(name || "").trim();
   if (!s) return ["", ""];
 
-  const delims = [":", "–", "-"]; // prioritas sesuai desain
+  const delims = [":", "–", "-"];
   for (const d of delims) {
     const i = s.indexOf(d);
     if (i > 0) {
@@ -24,21 +22,25 @@ function splitTitle(name = "") {
       if (a && b) return [a, b];
     }
   }
-  // fallback: satu baris saja (sub dikosongkan)
   return [s, ""];
 }
 
-export default function useBlogDetailViewModel() {
+/**
+ * Bilingual Blog Detail VM
+ * Gunakan: const vm = useBlogDetailViewModel({ locale: "id" | "en", fallback: "id" })
+ */
+export default function useBlogDetailViewModel({
+  locale = "id",
+  fallback = "id",
+} = {}) {
   const { id } = useParams();
-  const search = useSearchParams();
-  const locale = search?.get("locale") || "id";
-  const fallback = search?.get("fallback") || "id";
 
   const key = id
     ? `/api/blog/${encodeURIComponent(
         id
       )}?locale=${locale}&fallback=${fallback}`
     : null;
+
   const { data, isLoading, error, mutate } = useSWR(key, fetcher);
 
   const vm = useMemo(() => {
@@ -46,23 +48,25 @@ export default function useBlogDetailViewModel() {
     const [titleMain, titleSub] = splitTitle(row?.name || "");
 
     return {
+      locale,
+      fallback,
       loading: isLoading,
       error: error?.message || "",
       refresh: mutate,
 
       // content
-      titleMain: titleMain.toUpperCase(),
-      titleSub: titleSub.toUpperCase(),
+      titleMain: (titleMain || "").toUpperCase(),
+      titleSub: (titleSub || "").toUpperCase(),
       image: imgSrc(row),
       html: row?.description || "",
 
-      // optional (jika nanti kamu tambahkan di API)
+      // optional
       source: row?.source || "",
 
       // raw
       raw: row,
     };
-  }, [data, isLoading, error, mutate]);
+  }, [data, isLoading, error, mutate, locale, fallback]);
 
   return vm;
 }

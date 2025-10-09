@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Skeleton } from "antd";
-import useDocumentTranslateViewModel from "./useDocumentTranslateViewModel";
 import { sanitizeHtml } from "@/app/utils/dompurify";
 
 const FONT_FAMILY = '"Poppins", sans-serif';
@@ -13,8 +12,6 @@ const styles = {
     margin: "0 auto",
     fontFamily: FONT_FAMILY,
   },
-
-  /* ---------- HERO (unchanged) ---------- */
   hero: {
     section: { padding: "0 0 24px" },
     wrapper: {
@@ -85,8 +82,6 @@ const styles = {
     },
     illustration: { width: "min(500px, 92%)", height: 320 },
   },
-
-  /* ---------- DESCRIPTION (unchanged) ---------- */
   desc: {
     section: { padding: "50px 0 20px" },
     wrap: { marginTop: 48 },
@@ -115,8 +110,6 @@ const styles = {
       margin: 0,
     },
   },
-
-  /* ---------- PRODUCTS (unchanged except full-bleed deco widths) ---------- */
   products: {
     section: { padding: "50px 0 40px" },
     headWrap: {
@@ -195,8 +188,6 @@ const styles = {
     gridNarrow: { gridTemplateColumns: "1fr", gap: 14 },
     titleNarrow: { fontSize: 22 },
   },
-
-  /* ---------- WHY section (NEW) ---------- */
   why: {
     section: { padding: "50px 0 28px" },
     title: {
@@ -253,8 +244,6 @@ const styles = {
     gridNarrow: { gridTemplateColumns: "1fr", gap: 16 },
     titleNarrow: { fontSize: 24 },
   },
-
-  /* ---------- CTA (NEW) ---------- */
   cta: {
     section: { padding: "50px 0 64px" },
     title: {
@@ -284,8 +273,8 @@ const styles = {
   },
 };
 
-/* ---------- Helpers ---------- */
 function Img({ src, alt, style }) {
+  // eslint-disable-next-line @next/next/no-img-element
   return (
     <img
       src={src}
@@ -300,12 +289,15 @@ function Img({ src, alt, style }) {
   );
 }
 
-export default function DocumentTranslateContent({ locale = "id" }) {
-  const { content, isLoading } = useDocumentTranslateViewModel({ locale });
-  const hero = content.hero || {};
-  const bullets = Array.isArray(hero.bullets) ? hero.bullets : [];
+export default function DocumentTranslateContent({
+  locale = "id",
+  content,
+  isLoading,
+}) {
+  const hero = content?.hero || {};
+  const bullets = Array.isArray(hero?.bullets) ? hero.bullets : [];
 
-  const safeDescription = sanitizeHtml(content.description || "", {
+  const safeDescription = sanitizeHtml(content?.description || "", {
     allowedTags: [
       "b",
       "strong",
@@ -417,7 +409,11 @@ export default function DocumentTranslateContent({ locale = "id" }) {
                 <div style={heroIllustrationStyle}>
                   <Img
                     src={hero.illustration}
-                    alt="Document Translation Illustration"
+                    alt={
+                      locale === "en"
+                        ? "Document Translation Illustration"
+                        : "Ilustrasi Terjemahan Dokumen"
+                    }
                     style={{
                       width: "100%",
                       height: "100%",
@@ -436,14 +432,14 @@ export default function DocumentTranslateContent({ locale = "id" }) {
         <div style={sectionInnerStyle}>
           <div style={styles.desc.wrap}>
             <h2 style={descTitleStyle}>
-              {locale === "id" ? "Deskripsi Program" : "Program Description"}
+              {locale === "en" ? "Program Description" : "Deskripsi Program"}
             </h2>
             <div style={styles.desc.box}>
               {isLoading ? (
                 <Skeleton active paragraph={{ rows: 5 }} />
               ) : (
                 <div
-                  style={descTextStyle}
+                  style={styles.desc.text}
                   dangerouslySetInnerHTML={{ __html: safeDescription }}
                 />
               )}
@@ -468,7 +464,7 @@ export default function DocumentTranslateContent({ locale = "id" }) {
                 ...(isNarrow ? styles.products.titleNarrow : {}),
               }}
             >
-              {content.productSection?.title}
+              {content?.productSection?.title}
             </h3>
           </div>
 
@@ -478,7 +474,7 @@ export default function DocumentTranslateContent({ locale = "id" }) {
               ...(isNarrow ? styles.products.gridNarrow : {}),
             }}
           >
-            {(content.productSection?.items || []).map((it) => (
+            {(content?.productSection?.items || []).map((it) => (
               <a
                 key={it.id}
                 href={it.href || "#"}
@@ -509,7 +505,7 @@ export default function DocumentTranslateContent({ locale = "id" }) {
         </div>
       </section>
 
-      {/* ===== WHY CHOOSE OUR SERVICE (NEW) ===== */}
+      {/* ===== WHY CHOOSE OUR SERVICE ===== */}
       <section style={styles.why.section}>
         <div style={sectionInnerStyle}>
           <h3
@@ -518,7 +514,7 @@ export default function DocumentTranslateContent({ locale = "id" }) {
               ...(isNarrow ? styles.why.titleNarrow : {}),
             }}
           >
-            {content.why?.title}
+            {content?.why?.title}
           </h3>
 
           <div
@@ -527,12 +523,10 @@ export default function DocumentTranslateContent({ locale = "id" }) {
               ...(isNarrow ? styles.why.gridNarrow : {}),
             }}
           >
-            {(content.why?.items || []).map((f) => (
+            {(content?.why?.items || []).map((f) => (
               <div key={f.id} style={styles.why.outerCard}>
                 <div style={styles.why.innerTile}>
-                  <div style={styles.why.lightning}>
-                    <Img src={f.icon} alt="" style={styles.why.lightningImg} />
-                  </div>
+                  <Img src={f.icon} alt="" style={styles.why.lightningImg} />
                   <div style={styles.why.cardTitle}>{f.title}</div>
                   <div style={styles.why.cardDesc}>{f.desc}</div>
                 </div>
@@ -542,12 +536,12 @@ export default function DocumentTranslateContent({ locale = "id" }) {
         </div>
       </section>
 
-      {/* ===== CTA (NEW) ===== */}
+      {/* ===== CTA ===== */}
       <section style={styles.cta.section}>
         <div style={sectionInnerStyle}>
-          <h3 style={styles.cta.title}>{content.cta?.title}</h3>
+          <h3 style={styles.cta.title}>{content?.cta?.title}</h3>
           <div style={styles.cta.btnWrap}>
-            {content.cta?.button?.href && (
+            {content?.cta?.button?.href && (
               <a href={content.cta.button.href} style={styles.cta.btn}>
                 {content.cta.button.label}
               </a>

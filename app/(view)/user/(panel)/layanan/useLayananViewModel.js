@@ -10,15 +10,17 @@ const fetcher = (url) =>
     return r.json();
   });
 
+/** Append ?menu=layanan to child links */
 const withMenu = (href = "#") =>
   href.includes("?") ? `${href}&menu=layanan` : `${href}?menu=layanan`;
 
-const pickLocale = (v) =>
-  String(v || "id")
-    .slice(0, 2)
-    .toLowerCase() === "en"
-    ? "en"
-    : "id";
+/** Normalize to 'id' or 'en' (handles 'en-US', etc.) */
+const pickLocale = (v) => {
+  const s = String(v || "id")
+    .trim()
+    .toLowerCase();
+  return s.startsWith("en") ? "en" : "id";
+};
 
 /* ===== Texts ===== */
 const TEXT = {
@@ -43,8 +45,8 @@ const TEXT = {
         {
           label: "STUDY OVERSEAS",
           icon: "/overseas.svg",
-          href: withMenu("/user/overseas"),
-        },
+          href: withMenu("/user/overseas-study"),
+        }, // fixed
         {
           label: "VISA APPLY",
           icon: "/visa.svg",
@@ -53,9 +55,9 @@ const TEXT = {
         {
           label: "DOCUMENT TRANSLATION",
           icon: "/doctranslate.svg",
-          href: withMenu("/user/document-translation"),
+          href: withMenu("/user/doc.translate"),
           wide: true,
-        },
+        }, // fixed
       ],
     },
     reasons: [
@@ -96,14 +98,14 @@ const TEXT = {
         id: "overseas",
         title: "OVERSEAS STUDY",
         image: "/org-bljr.svg",
-        href: withMenu("/user/overseas"),
-      },
+        href: withMenu("/user/overseas-study"),
+      }, // fixed
       {
         id: "doc",
         title: "DOC. TRANSLATION",
         image: "/org-bljr.svg",
-        href: withMenu("/user/document-translation"),
-      },
+        href: withMenu("/user/doc.translate"),
+      }, // fixed
       {
         id: "visa",
         title: "VISA APPLY",
@@ -143,8 +145,8 @@ const TEXT = {
         {
           label: "STUDY OVERSEAS",
           icon: "/overseas.svg",
-          href: withMenu("/user/overseas"),
-        },
+          href: withMenu("/user/overseas-study"),
+        }, // fixed
         {
           label: "VISA APPLY",
           icon: "/visa.svg",
@@ -153,9 +155,9 @@ const TEXT = {
         {
           label: "DOCUMENT TRANSLATION",
           icon: "/doctranslate.svg",
-          href: withMenu("/user/document-translation"),
+          href: withMenu("/user/doc.translate"),
           wide: true,
-        },
+        }, // fixed
       ],
     },
     reasons: [
@@ -196,14 +198,14 @@ const TEXT = {
         id: "overseas",
         title: "OVERSEAS STUDY",
         image: "/org-bljr.svg",
-        href: withMenu("/user/overseas"),
-      },
+        href: withMenu("/user/overseas-study"),
+      }, // fixed
       {
         id: "doc",
         title: "DOC. TRANSLATION",
         image: "/org-bljr.svg",
-        href: withMenu("/user/document-translation"),
-      },
+        href: withMenu("/user/doc.translate"),
+      }, // fixed
       {
         id: "visa",
         title: "VISA APPLY",
@@ -218,7 +220,7 @@ const TEXT = {
       },
     ],
     serviceIntro:
-      "Our services are designed to accompany every step of your journey - providing precise solutions, comprehensive support, and the best experience toward your global study goals.",
+      "Our services are designed to accompany every step of your journey — providing precise solutions, comprehensive support, and the best experience toward your global study goals.",
     testiEmpty: "No testimonials yet for services category",
   },
 };
@@ -231,26 +233,34 @@ export default function useLayananViewModel({
   const lk = pickLocale(locale);
   const T = TEXT[lk];
 
-  /* ---------- HERO ---------- */
+  // memoized blocks
   const hero = useMemo(() => T.hero, [T]);
-
-  /* ---------- WHY CHOOSE ---------- */
   const reasons = useMemo(() => T.reasons, [T]);
-  const whyImage = T.whyImage;
-
-  /* ---------- OUR SERVICE ---------- */
   const services = useMemo(() => T.services, [T]);
+  const whyImage = T.whyImage;
   const serviceIntro = T.serviceIntro;
 
-  /* ---------- TESTIMONI (category=layanan) ---------- */
-  const qs = new URLSearchParams({
-    category: "layanan",
-    locale: lk,
-    limit: String(testiLimit),
-    fields: "image,name,description",
-  }).toString();
+  // testimonials (category=layanan)
+  const qs = useMemo(
+    () =>
+      new URLSearchParams({
+        category: "layanan",
+        locale: lk,
+        limit: String(testiLimit),
+        fields: "image,name,description",
+      }).toString(),
+    [lk, testiLimit]
+  );
 
-  const { data, error, isLoading } = useSWR(`/api/testimonials?${qs}`, fetcher);
+  const { data, error, isLoading } = useSWR(
+    `/api/testimonials?${qs}`,
+    fetcher,
+    {
+      revalidateOnFocus: false,
+      shouldRetryOnError: false,
+    }
+  );
+
   const testimonials = Array.isArray(data?.data) ? data.data : [];
 
   return {
@@ -260,7 +270,7 @@ export default function useLayananViewModel({
     whyImage,
     services,
     serviceIntro,
-    testimonials, // { id, image, name, description }
+    testimonials,
     testiLoading: isLoading,
     testiError: !!error,
     testiEmptyText: T.testiEmpty,

@@ -6,6 +6,7 @@ import useCollegeViewModel from "./useCollegeViewModel";
 import { Swiper, SwiperSlide } from "swiper/react";
 import { Autoplay, FreeMode } from "swiper/modules";
 import "swiper/css";
+import "swiper/css/free-mode";
 
 /* Ant Design Pagination */
 import { Pagination } from "antd";
@@ -228,8 +229,6 @@ const searchStyles = {
     borderLeft: "2px dotted #1962BF",
     justifySelf: "center",
   },
-
-  /* Filter pill di kanan */
   filterPill: {
     height: 62,
     minWidth: 180,
@@ -443,7 +442,7 @@ const scholarshipStyles = {
   },
 };
 
-/* ================= Helpers missing before ================= */
+/* ================= Helpers ================= */
 const BulletIcon = ({ type }) => {
   const common = { width: 18, height: 18 };
   if (type === "pin") {
@@ -489,8 +488,8 @@ const BulletIcon = ({ type }) => {
 };
 
 function Stars({ value = 0, max = 5 }) {
-  const full = Math.floor(value);
-  const half = value - full >= 0.5;
+  const full = Math.floor(Number(value) || 0);
+  const half = (Number(value) || 0) - full >= 0.5;
   const arr = Array.from({ length: max }, (_, i) =>
     i < full ? "full" : i === full && half ? "half" : "empty"
   );
@@ -541,12 +540,22 @@ function Stars({ value = 0, max = 5 }) {
   );
 }
 
-function normalizeImgSrc(input) {
-  const raw = input ?? "";
-  if (!raw) return "/placeholder-landscape.png";
+const normalizeImgSrc = (input) => {
+  const raw = (input || "").trim();
+  // Safe fallback (no 404 / no optimizer):
+  if (!raw)
+    return "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>";
   if (/^https?:\/\//i.test(raw)) return raw;
   return raw.startsWith("/") ? raw : `/${raw}`;
-}
+};
+
+const pickLogo = (obj) =>
+  obj?.logo ||
+  obj?.logo_url ||
+  obj?.image ||
+  obj?.image_url ||
+  obj?.image_public_url ||
+  "";
 
 /* ================= Component ================= */
 export default function CollegeContent({ locale = "id" }) {
@@ -560,13 +569,22 @@ export default function CollegeContent({ locale = "id" }) {
     scholarshipCTA,
   } = useCollegeViewModel({ locale });
 
-  const relevantCampus = recommendedUniversity.relevantCampus || [];
+  /* ------- Relevant Campus (robust) ------- */
+  const relevantCampus = useMemo(() => {
+    const raw =
+      recommendedUniversity?.relevantCampus ??
+      recommendedUniversity?.relevant_colleges ??
+      recommendedUniversity?.relevant_college ??
+      [];
+    return Array.isArray(raw) ? raw : [];
+  }, [recommendedUniversity]);
+
   const hasMultipleRelevantCampus = relevantCampus.length > 1;
   const relevantCampusAutoplay = hasMultipleRelevantCampus
     ? marqueeAutoplay
     : undefined;
 
-  // ------- search state + mic -------
+  /* ------- search state + mic ------- */
   const [query, setQuery] = useState("");
   const [country, setCountry] = useState("");
   const [listening, setListening] = useState(false);
@@ -717,7 +735,7 @@ export default function CollegeContent({ locale = "id" }) {
           </div>
 
           <div className="majors-grid" style={majorStyles.grid}>
-            {popularMajors.map((m) => (
+            {(popularMajors || []).map((m) => (
               <article
                 key={m.id}
                 style={majorStyles.card}
@@ -743,7 +761,7 @@ export default function CollegeContent({ locale = "id" }) {
         </div>
       </section>
 
-      {/* SEARCH BAR + FILTER NEGARA (KANAN) */}
+      {/* HEADING + SEARCH BAR */}
       <section style={{ paddingBottom: 0 }}>
         <div style={recUniStyles.block}>
           <h2 style={recUniStyles.title}>{recommendedUniversity.title}</h2>
@@ -866,7 +884,7 @@ export default function CollegeContent({ locale = "id" }) {
         ) : (
           <div style={uniListStyles.list}>
             {pageItems.map((u) => {
-              const src = normalizeImgSrc(u.logo);
+              const src = normalizeImgSrc(pickLogo(u));
               const external = /^https?:\/\//i.test(src);
               return (
                 <article
@@ -886,11 +904,14 @@ export default function CollegeContent({ locale = "id" }) {
                   </div>
 
                   <div>
-                    <h3 style={uniListStyles.title}>{u.name.toUpperCase()}</h3>
-                    <p style={uniListStyles.excerpt}>{u.excerpt}</p>
+                    <h3 style={uniListStyles.title}>
+                      {(u.name || "").toUpperCase()}
+                    </h3>
+                    <p style={uniListStyles.excerpt}>{u.excerpt || ""}</p>
 
+                    {/* bullets aman meski kosong */}
                     <div style={uniListStyles.bullets}>
-                      {u.bullets.map((b, i) => (
+                      {(u.bullets || []).map((b, i) => (
                         <div key={i} style={uniListStyles.bulletItem}>
                           <BulletIcon type={b.icon} />
                           <span>{b.text}</span>
@@ -901,7 +922,7 @@ export default function CollegeContent({ locale = "id" }) {
 
                   <div style={uniListStyles.footer}>
                     <div style={uniListStyles.rating}>
-                      <Stars value={u.rating} />
+                      <Stars value={Number(u.rating || 0)} />
                     </div>
                     <a href={u.href || "#"} style={uniListStyles.viewMore}>
                       View More
@@ -950,7 +971,7 @@ export default function CollegeContent({ locale = "id" }) {
             <div style={relevantStyles.underline} />
           </div>
 
-          {relevantCampus.length > 0 && (
+          {relevantCampus.length > 0 ? (
             <>
               <Swiper
                 className={RELEVANT_CAMPUS_SWIPER_CLASS}
@@ -960,15 +981,16 @@ export default function CollegeContent({ locale = "id" }) {
                 autoplay={relevantCampusAutoplay}
                 slidesPerView="auto"
                 spaceBetween={24}
-                freeMode={marqueeFreeMode}
+                freeMode={marqueeAutoplay ? marqueeFreeMode : undefined}
                 allowTouchMove={false}
               >
-                {relevantCampus.map((c) => {
-                  const src = normalizeImgSrc(c.logo);
-                  const external = /^https?:\/\//i.test(src);
+                {relevantCampus.map((c, idx) => {
+                  if (!c?.logo_url) return null;
+                  const isHttp = /^https?:\/\//i.test(c.logo_url);
+                  const src = isHttp ? c.logo_url : normalizeImgSrc(c.logo_url);
                   return (
                     <SwiperSlide
-                      key={c.id}
+                      key={c.id || idx}
                       style={{ width: "min(240px, 72vw)" }}
                     >
                       <div
@@ -985,12 +1007,22 @@ export default function CollegeContent({ locale = "id" }) {
                         }}
                       >
                         <div style={relevantStyles.logoBox}>
-                          <Image
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
                             src={src}
-                            alt={`${c.name} logo`}
-                            fill
-                            sizes="(max-width: 640px) 45vw, 240px"
-                            unoptimized={external}
+                            alt={`${c.name || "campus"} logo`}
+                            loading="lazy"
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "contain",
+                            }}
+                            onError={(e) => {
+                              // Kalau URL rusak, hapus slidenya supaya tidak kosong
+                              e.currentTarget
+                                ?.closest(".swiper-slide")
+                                ?.remove();
+                            }}
                           />
                         </div>
                       </div>
@@ -1012,6 +1044,12 @@ export default function CollegeContent({ locale = "id" }) {
                 }}
               />
             </>
+          ) : (
+            <div style={uniListStyles.empty}>
+              {locale === "en"
+                ? "No relevant campus yet."
+                : "Belum ada kampus relevan."}
+            </div>
           )}
         </div>
       </section>

@@ -56,7 +56,6 @@ export default function useForgotViewModel() {
         setMsg("Jika email terdaftar, kode telah dikirim. Periksa inbox/Spam.");
         startCooldown(60);
 
-        // langsung ke halaman reset (prefill email)
         const q = new URLSearchParams({
           email: email.trim().toLowerCase(),
           sent: "1",

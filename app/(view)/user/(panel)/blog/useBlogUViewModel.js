@@ -4,17 +4,14 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/lib/swr/fetcher";
 
-/* ---------- helpers ---------- */
-const DEFAULT_LOCALE = "id";
-const DEFAULT_FALLBACK = "id";
-
-function buildUrl({ page, perPage, sort, q }) {
+/* ---------- helpers (bilingual) ---------- */
+function buildUrl({ page, perPage, sort, q, locale = "id", fallback = "id" }) {
   const p = new URLSearchParams();
   p.set("page", String(page));
   p.set("perPage", String(perPage));
   p.set("sort", sort);
-  p.set("locale", DEFAULT_LOCALE);
-  p.set("fallback", DEFAULT_FALLBACK);
+  p.set("locale", locale);
+  p.set("fallback", fallback);
   if (q?.trim()) p.set("q", q.trim());
   return `/api/blog?${p.toString()}`;
 }
@@ -51,36 +48,47 @@ function toDate(v) {
   return null;
 }
 
-// Human “time ago” (ID)
-function timeAgoFrom(input, now = Date.now()) {
+// Human “time ago” (ID/EN)
+function timeAgoFrom(input, now = Date.now(), locale = "id") {
   const d = toDate(input);
   if (!d) return "";
   const diffSec = Math.floor((now - d.getTime()) / 1000);
+  if (locale === "en") {
+    if (diffSec < 60) return "just now";
+    const m = Math.floor(diffSec / 60);
+    if (m < 60) return `${m} min ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h} hr ago`;
+    const dys = Math.floor(h / 24);
+    if (dys < 7) return `${dys} day${dys > 1 ? "s" : ""} ago`;
+    const w = Math.floor(dys / 7);
+    if (w < 5) return `${w} wk ago`;
+    const mo = Math.floor(dys / 30);
+    if (mo < 12) return `${mo} mo ago`;
+    const y = Math.floor(dys / 365);
+    return `${y} yr ago`;
+  }
+  // id
   if (diffSec < 60) return "baru saja";
-
   const m = Math.floor(diffSec / 60);
   if (m < 60) return `${m} mnt lalu`;
-
   const h = Math.floor(m / 60);
   if (h < 24) return `${h} jam lalu`;
-
   const dys = Math.floor(h / 24);
   if (dys < 7) return `${dys} hari lalu`;
-
   const w = Math.floor(dys / 7);
   if (w < 5) return `${w} mgg lalu`;
-
   const mo = Math.floor(dys / 30);
   if (mo < 12) return `${mo} bln lalu`;
-
   const y = Math.floor(dys / 365);
   return `${y} thn lalu`;
 }
 
-// Read time
-const readTime = (html) => {
+// Read time (ID/EN)
+const readTime = (html, locale = "id") => {
   const w = strip(html).split(/\s+/).filter(Boolean).length;
-  return `${Math.max(1, Math.round(w / 200))} min read`;
+  const mins = Math.max(1, Math.round(w / 200));
+  return locale === "en" ? `${mins} min read` : `${mins} mnt baca`;
 };
 
 // like-once localStorage
@@ -103,7 +111,11 @@ function saveLikedIds(set) {
   } catch {}
 }
 
-export function useBlogUViewModel() {
+/**
+ * Bilingual Blog VM
+ * Gunakan: const vm = useBlogUViewModel({ locale: "id" | "en", perPage?: 6, q?: "" })
+ */
+export function useBlogUViewModel({ locale = "id", perPage = 6, q = "" } = {}) {
   // like-once
   const [likedSet, setLikedSet] = useState(() => new Set());
   useEffect(() => setLikedSet(loadLikedIds()), []);
@@ -116,10 +128,18 @@ export function useBlogUViewModel() {
     return () => clearInterval(t);
   }, []);
 
-  // popular
+  // pagination
   const [page, setPage] = useState(1);
-  const perPage = 6;
-  const keyPopular = buildUrl({ page, perPage, sort: "views_count:desc" });
+
+  // popular
+  const keyPopular = buildUrl({
+    page,
+    perPage,
+    sort: "views_count:desc",
+    q,
+    locale,
+    fallback: "id",
+  });
 
   const {
     data: popularJson,
@@ -136,12 +156,12 @@ export function useBlogUViewModel() {
       return {
         ...r,
         image_src: imgSrc(r),
-        time_ago: timeAgoFrom(ts, now),
-        read_str: readTime(r.description || ""),
+        time_ago: timeAgoFrom(ts, now, locale),
+        read_str: readTime(r.description || "", locale),
         excerpt: excerpt(r.description || "", 220),
       };
     });
-  }, [popularJson, now]);
+  }, [popularJson, now, locale]);
 
   const total = popularJson?.meta?.total ?? 0;
   const totalPages =
@@ -152,6 +172,9 @@ export function useBlogUViewModel() {
     page: 1,
     perPage: 3,
     sort: "likes_count:desc",
+    q,
+    locale,
+    fallback: "id",
   });
   const {
     data: topLikeJson,
@@ -169,16 +192,22 @@ export function useBlogUViewModel() {
         ...r,
         image_src: imgSrc(r),
         no: String(i + 1).padStart(2, "0"),
-        time_ago: timeAgoFrom(ts, now),
-        read_str: readTime(r.description || ""),
-        // ✨ tambahkan excerpt agar dipakai di sidebar
+        time_ago: timeAgoFrom(ts, now, locale),
+        read_str: readTime(r.description || "", locale),
         excerpt: excerpt(r.description || "", 140),
       };
     });
-  }, [topLikeJson, now]);
+  }, [topLikeJson, now, locale]);
 
   // late posts
-  const keyLate = buildUrl({ page: 1, perPage: 3, sort: "created_at:desc" });
+  const keyLate = buildUrl({
+    page: 1,
+    perPage: 3,
+    sort: "created_at:desc",
+    q,
+    locale,
+    fallback: "id",
+  });
   const {
     data: lateJson,
     isLoading: lateLoading,
@@ -195,13 +224,12 @@ export function useBlogUViewModel() {
         ...r,
         image_src: imgSrc(r),
         no: String(i + 1).padStart(2, "0"),
-        time_ago: timeAgoFrom(ts, now),
-        read_str: readTime(r.description || ""),
-        // ✨ tambahkan excerpt agar dipakai di sidebar
+        time_ago: timeAgoFrom(ts, now, locale),
+        read_str: readTime(r.description || "", locale),
         excerpt: excerpt(r.description || "", 140),
       };
     });
-  }, [lateJson, now]);
+  }, [lateJson, now, locale]);
 
   const goTo = useCallback(
     (p) => setPage(Math.max(1, Math.min(p, totalPages))),
@@ -263,6 +291,8 @@ export function useBlogUViewModel() {
   );
 
   return {
+    locale,
+
     // data
     popular,
     topLikes,

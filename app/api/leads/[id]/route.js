@@ -34,7 +34,7 @@ function parseBigInt(value) {
   if (value === null || value === undefined || value === "") return null;
   try {
     const n = BigInt(value);
-    if (n < 0) return null;
+    if (n < 0n) return null;
     return n;
   } catch {
     return null;
@@ -108,12 +108,15 @@ async function notifyConsultantAssignment(lead, consultant) {
 }
 
 /* ========== GET detail ========== */
-export async function GET(_req, { params }) {
+export async function GET(req, { params }) {
   try {
     await assertAdmin();
   } catch {
     return json({ error: { code: "UNAUTHORIZED" } }, { status: 401 });
   }
+
+  const includeReferral =
+    new URL(req.url).searchParams.get("include_referral") === "1";
 
   const id = Number(params.id);
   if (!id) return json({ error: { code: "BAD_ID" } }, { status: 400 });
@@ -129,9 +132,17 @@ export async function GET(_req, { params }) {
       education_last: true,
       assigned_to: true,
       assigned_at: true,
+      referral_id: true,
       created_at: true,
       updated_at: true,
       deleted_at: true,
+      ...(includeReferral
+        ? {
+            referral: {
+              select: { id: true, full_name: true, code: true, status: true },
+            },
+          }
+        : {}),
     },
   });
 
@@ -163,6 +174,8 @@ export async function PATCH(req, { params }) {
       email: true,
       education_last: true,
       assigned_to: true,
+      assigned_at: true,
+      referral_id: true,
     },
   });
   if (!existing) return json({ error: { code: "NOT_FOUND" } }, { status: 404 });
@@ -189,6 +202,8 @@ export async function PATCH(req, { params }) {
     }
   }
 
+  // assignment
+  let assignedToChanged = false;
   if (Object.prototype.hasOwnProperty.call(body, "assigned_to")) {
     const assignedToValue = parseBigInt(body.assigned_to);
     if (body.assigned_to && assignedToValue === null) {
@@ -203,6 +218,8 @@ export async function PATCH(req, { params }) {
       );
     }
     data.assigned_to = assignedToValue;
+    assignedToChanged =
+      (existing.assigned_to ?? null) !== (assignedToValue ?? null);
   }
 
   if (Object.prototype.hasOwnProperty.call(body, "assigned_at")) {
@@ -221,41 +238,91 @@ export async function PATCH(req, { params }) {
     data.assigned_at = assignedAtValue;
   }
 
-  if (!Object.keys(data).length) {
-    return json({ error: { code: "NO_CHANGES" } }, { status: 400 });
-  }
-
-  // Deteksi perubahan assigned_to
-  const assignedToChanged = Object.prototype.hasOwnProperty.call(
-    data,
-    "assigned_to"
-  )
-    ? (existing.assigned_to ?? null) !== (data.assigned_to ?? null)
-    : false;
-
-  // Jika baru di-assign & belum ada timestamp, set sekarang
   if (assignedToChanged && data.assigned_to && !data.assigned_at) {
     data.assigned_at = new Date();
+  }
+
+  // referral changes (by id OR code)
+  let referralChange = false;
+  let newReferralId = null;
+  if (
+    Object.prototype.hasOwnProperty.call(body, "referral_id") ||
+    Object.prototype.hasOwnProperty.call(body, "referral_code")
+  ) {
+    newReferralId = parseBigInt(body.referral_id);
+    const code =
+      typeof body.referral_code === "string" ? body.referral_code.trim() : "";
+
+    if (!newReferralId && code) {
+      const found = await prisma.referral.findFirst({
+        where: { code, deleted_at: null },
+        select: { id: true },
+      });
+      if (!found) {
+        return json(
+          {
+            error: {
+              code: "VALIDATION_ERROR",
+              message: "Kode referral tidak ditemukan",
+            },
+          },
+          { status: 422 }
+        );
+      }
+      newReferralId = found.id;
+    }
+    data.referral_id = newReferralId; // boleh null (unassign)
+    referralChange = (existing.referral_id ?? null) !== (newReferralId ?? null);
+  }
+
+  if (!Object.keys(data).length) {
+    return json({ error: { code: "NO_CHANGES" } }, { status: 400 });
   }
   data.updated_at = new Date();
 
   try {
-    const updated = await prisma.leads.update({
-      where: { id },
-      data,
-      select: {
-        id: true,
-        full_name: true,
-        domicile: true,
-        whatsapp: true,
-        email: true,
-        education_last: true,
-        assigned_to: true,
-        assigned_at: true,
-        created_at: true,
-        updated_at: true,
-        deleted_at: true,
-      },
+    const updated = await prisma.$transaction(async (tx) => {
+      // update lead
+      const upd = await tx.leads.update({
+        where: { id },
+        data,
+        select: {
+          id: true,
+          full_name: true,
+          domicile: true,
+          whatsapp: true,
+          email: true,
+          education_last: true,
+          assigned_to: true,
+          assigned_at: true,
+          referral_id: true,
+          created_at: true,
+          updated_at: true,
+          deleted_at: true,
+        },
+      });
+
+      // adjust referral counts if changed
+      if (referralChange) {
+        if (existing.referral_id) {
+          await tx.referral
+            .update({
+              where: { id: existing.referral_id },
+              data: { leads_count: { decrement: 1 } },
+            })
+            .catch(() => {});
+        }
+        if (newReferralId) {
+          await tx.referral
+            .update({
+              where: { id: newReferralId },
+              data: { leads_count: { increment: 1 } },
+            })
+            .catch(() => {});
+        }
+      }
+
+      return upd;
     });
 
     // Kirim WA jika konsultan berubah & ada assigned_to yang baru
@@ -272,7 +339,7 @@ export async function PATCH(req, { params }) {
     return json(updated);
   } catch (e) {
     console.error("PATCH /leads/:id error:", e?.message || e);
-    return json({ error: { code: "NOT_FOUND" } }, { status: 404 });
+    return json({ error: { code: "SERVER_ERROR" } }, { status: 500 });
   }
 }
 
@@ -288,13 +355,34 @@ export async function DELETE(_req, { params }) {
   if (!id) return json({ error: { code: "BAD_ID" } }, { status: 400 });
 
   try {
-    await prisma.leads.update({
-      where: { id },
-      data: { deleted_at: new Date() },
+    await prisma.$transaction(async (tx) => {
+      const ex = await tx.leads.findUnique({
+        where: { id },
+        select: { id: true, referral_id: true, deleted_at: true },
+      });
+      if (!ex) throw Object.assign(new Error("NOT_FOUND"), { status: 404 });
+
+      if (!ex.deleted_at) {
+        await tx.leads.update({
+          where: { id },
+          data: { deleted_at: new Date() },
+        });
+        if (ex.referral_id) {
+          await tx.referral
+            .update({
+              where: { id: ex.referral_id },
+              data: { leads_count: { decrement: 1 } },
+            })
+            .catch(() => {});
+        }
+      }
     });
     return new NextResponse(null, { status: 204 });
   } catch (e) {
+    const status = e?.status || 500;
+    if (status === 404)
+      return json({ error: { code: "NOT_FOUND" } }, { status: 404 });
     console.error("DELETE /leads/:id error:", e?.message || e);
-    return json({ error: { code: "NOT_FOUND" } }, { status: 404 });
+    return json({ error: { code: "SERVER_ERROR" } }, { status: 500 });
   }
 }

@@ -56,7 +56,7 @@ async function uploadFrontToSupabase(file, nik) {
   return objectPath; // store path, not URL
 }
 
-// === NEW: getPublicUrl (no expiry) ===
+// Permanent public URL
 function getPublicUrl(path) {
   if (!path) return null;
   const { data } = supabaseAdmin.storage
@@ -89,6 +89,38 @@ export async function POST(req) {
   const whatsapp = trimStr(form.get("whatsapp"), 32);
   const gender = pickEnum(form.get("gender"), GENDERS);
   const consent_agreed = String(form.get("consent_agreed")) === "true";
+
+  // PIC consultant (required)
+  const picRaw = form.get("pic_consultant_id");
+  let pic_consultant_id = null;
+  try {
+    if (
+      picRaw === null ||
+      picRaw === undefined ||
+      String(picRaw).trim() === ""
+    ) {
+      return json(
+        {
+          error: {
+            code: "VALIDATION_ERROR",
+            message: "PIC Konsultan wajib dipilih",
+          },
+        },
+        { status: 422 }
+      );
+    }
+    pic_consultant_id = BigInt(String(picRaw));
+  } catch {
+    return json(
+      {
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "PIC Konsultan tidak valid",
+        },
+      },
+      { status: 422 }
+    );
+  }
 
   if (!nik || nik.length !== 16) {
     return json(
@@ -194,10 +226,27 @@ export async function POST(req) {
   };
 
   try {
+    // Validate PIC exists
+    const pic = await prisma.consultants.findUnique({
+      where: { id: pic_consultant_id },
+      select: { id: true },
+    });
+    if (!pic) {
+      return json(
+        {
+          error: {
+            code: "VALIDATION_ERROR",
+            message: "PIC Konsultan tidak ditemukan",
+          },
+        },
+        { status: 422 }
+      );
+    }
+
     // Upload image → Supabase (store PATH)
     const front_url = await uploadFrontToSupabase(front, nik);
 
-    // Save to DB
+    // Save to DB (kode dibuat saat approval)
     const created = await prisma.referral.create({
       data: {
         nik,
@@ -209,6 +258,8 @@ export async function POST(req) {
         consent_agreed: true,
         front_url, // PATH
         status: "PENDING",
+        pic_consultant_id, // required
+        code: null, // generated later on approval
         ...payload,
       },
       select: {
@@ -222,6 +273,8 @@ export async function POST(req) {
         status: true,
         front_url: true, // PATH
         created_at: true,
+        code: true,
+        pic_consultant_id: true,
       },
     });
 
@@ -235,7 +288,12 @@ export async function POST(req) {
   } catch (err) {
     if (err?.code === "P2002") {
       return json(
-        { error: { code: "CONFLICT", message: "NIK sudah terdaftar" } },
+        {
+          error: {
+            code: "CONFLICT",
+            message: "NIK atau data unik sudah terdaftar",
+          },
+        },
         { status: 409 }
       );
     }

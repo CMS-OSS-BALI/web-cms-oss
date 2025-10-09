@@ -1,11 +1,10 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useEffect } from "react";
 import dayjs from "dayjs";
 
 /* ========= Helpers ========= */
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
-// Accepts 08xxxxxxxx / +628xxxxxxxx / 628xxxxxxxx (8–15 digits after prefix)
 const PHONE_RE = /^(?:\+?62|0)\d{8,15}$/;
 
 function cleanDigits(str = "") {
@@ -17,13 +16,10 @@ function nonEmpty(v) {
 
 export function useReferralViewModel() {
   const [values, setValues] = useState({
-    // Identitas
     nik: "",
     full_name: "",
-    date_of_birth: null, // dayjs | null
-    gender: undefined, // "MALE" | "FEMALE"
-
-    // Alamat
+    date_of_birth: null,
+    gender: undefined,
     address_line: "",
     rt: "",
     rw: "",
@@ -33,38 +29,63 @@ export function useReferralViewModel() {
     province: "",
     postal_code: "",
     domicile: "",
-
-    // Kontak
     whatsapp: "",
     email: "",
-
-    // Persetujuan
+    pic_consultant_id: "", // Wajib
     consent_agreed: false,
-
-    // Dokumen
     document: { front_file: null, front_preview: "" },
   });
 
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
-  // `msg` is consumed by your <ReferralContent /> to show AntD notifications
   const [msg, setMsg] = useState(null);
 
-  // Generic setter (supports nested path like "document.front_preview")
+  // Data dropdown konsultan
+  const [consultants, setConsultants] = useState([]);
+  const [consultantsLoading, setConsultantsLoading] = useState(false);
+
+  const loadConsultants = useCallback(async (q = "") => {
+    try {
+      setConsultantsLoading(true);
+      // sesuaikan jika endpoint kamu beda; `public=1` aman untuk publik
+      const url = new URL("/api/consultants", window.location.origin);
+      url.searchParams.set("public", "1");
+      url.searchParams.set("limit", "50");
+      if (q && q.trim()) url.searchParams.set("q", q.trim());
+
+      const res = await fetch(url.toString(), { credentials: "omit" });
+      const json = await res.json().catch(() => ({}));
+      const items = Array.isArray(json?.data) ? json.data : [];
+
+      const opts = items.map((it) => ({
+        value: String(it.id),
+        label: it.name || it.full_name || it.name_id || `Konsultan ${it.id}`,
+      }));
+      setConsultants(opts);
+    } catch {
+      setConsultants([]);
+    } finally {
+      setConsultantsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadConsultants();
+  }, [loadConsultants]);
+
+  // Generic setter
   const onChange = useCallback((path, val) => {
     setValues((prev) => {
       const next = { ...prev };
       if (path.includes(".")) {
         const [p1, p2] = path.split(".");
         next[p1] = { ...(prev[p1] || {}), [p2]: val };
-      } else {
-        next[path] = val;
-      }
+      } else next[path] = val;
       return next;
     });
   }, []);
 
-  // Picker file KTP depan (no OCR)
+  // Picker file KTP
   const onPickFront = useCallback((file) => {
     if (!(file instanceof File)) return;
     const allowed = ["image/jpeg", "image/png", "image/webp"];
@@ -85,11 +106,9 @@ export function useReferralViewModel() {
     reader.readAsDataURL(file);
   }, []);
 
-  // Build field errors (used for canSubmit + helpful message)
+  // Validasi
   const buildErrors = useCallback((v) => {
     const e = {};
-
-    // Identitas
     if (cleanDigits(v.nik).length !== 16) e.nik = "NIK harus 16 digit.";
     if (!nonEmpty(v.full_name) || v.full_name.trim().length < 2)
       e.full_name = "Nama lengkap minimal 2 karakter.";
@@ -97,7 +116,6 @@ export function useReferralViewModel() {
       e.date_of_birth = "Tanggal lahir wajib (format YYYY-MM-DD).";
     if (!v.gender) e.gender = "Jenis kelamin wajib.";
 
-    // Alamat
     if (!nonEmpty(v.address_line) || v.address_line.trim().length < 6)
       e.address_line = "Alamat terlalu pendek.";
     if (cleanDigits(v.rt).length === 0) e.rt = "RT wajib.";
@@ -109,23 +127,20 @@ export function useReferralViewModel() {
     if (cleanDigits(v.postal_code).length < 5)
       e.postal_code = "Kode pos minimal 5 digit.";
 
-    // Kontak
     if (!PHONE_RE.test(String(v.whatsapp || "").trim()))
       e.whatsapp = "Nomor WhatsApp tidak valid.";
     if (!EMAIL_RE.test(String(v.email || "").trim()))
       e.email = "Email tidak valid.";
 
-    // Dokumen
+    if (!v.pic_consultant_id)
+      e.pic_consultant_id = "Pilih PIC Konsultan terlebih dahulu.";
+
     if (!(v.document.front_file || v.document.front_preview))
       e.front = "Foto KTP wajib diunggah.";
-
-    // Consent
     if (!v.consent_agreed) e.consent_agreed = "Wajib menyetujui syarat.";
-
     return e;
   }, []);
 
-  // All required fields valid?
   const canSubmit = useMemo(() => {
     const e = buildErrors(values);
     return Object.keys(e).length === 0 && !loading;
@@ -134,7 +149,6 @@ export function useReferralViewModel() {
   const submit = useCallback(async () => {
     const e = buildErrors(values);
     setErrors(e);
-
     if (Object.keys(e).length > 0) {
       const sections = [
         e.nik && "NIK",
@@ -152,12 +166,12 @@ export function useReferralViewModel() {
           "Alamat",
         e.whatsapp && "WhatsApp",
         e.email && "Email",
+        e.pic_consultant_id && "PIC Konsultan",
         e.front && "Foto KTP",
         e.consent_agreed && "Persetujuan",
       ]
         .filter(Boolean)
         .join(", ");
-
       setMsg({
         type: "error",
         text:
@@ -172,17 +186,14 @@ export function useReferralViewModel() {
 
     try {
       const fd = new FormData();
-
-      // Identitas (required)
       fd.append("nik", cleanDigits(values.nik));
       fd.append("full_name", values.full_name.trim());
       fd.append(
         "date_of_birth",
         values.date_of_birth ? values.date_of_birth.format("YYYY-MM-DD") : ""
       );
-      fd.append("gender", String(values.gender)); // "MALE" | "FEMALE"
+      fd.append("gender", String(values.gender));
 
-      // Alamat (UI requires; backend accepts)
       [
         "address_line",
         "rt",
@@ -195,19 +206,18 @@ export function useReferralViewModel() {
         "domicile",
       ].forEach((k) => {
         const v = values[k];
-        if (v != null && String(v).trim() !== "") {
+        if (v != null && String(v).trim() !== "")
           fd.append(k, String(v).trim());
-        }
       });
 
-      // Kontak (required)
       fd.append("whatsapp", values.whatsapp.trim());
       fd.append("email", values.email.trim());
 
-      // Consent
+      // Wajib
+      fd.append("pic_consultant_id", String(values.pic_consultant_id));
+
       fd.append("consent_agreed", String(!!values.consent_agreed));
 
-      // Dokumen (required)
       if (values.document.front_file instanceof File) {
         fd.append(
           "front",
@@ -222,7 +232,6 @@ export function useReferralViewModel() {
 
       const res = await fetch("/api/referral", { method: "POST", body: fd });
       const json = await res.json().catch(() => ({}));
-
       if (!res.ok) {
         const message =
           json?.error?.message ||
@@ -237,8 +246,6 @@ export function useReferralViewModel() {
         type: "success",
         text: "Berhasil mengirim data. Terima kasih!",
       });
-
-      // Reset
       setValues({
         nik: "",
         full_name: "",
@@ -255,11 +262,12 @@ export function useReferralViewModel() {
         domicile: "",
         whatsapp: "",
         email: "",
+        pic_consultant_id: "",
         consent_agreed: false,
         document: { front_file: null, front_preview: "" },
       });
       setErrors({});
-    } catch (_e) {
+    } catch {
       setMsg({ type: "error", text: "Terjadi kesalahan jaringan. Coba lagi." });
     } finally {
       setLoading(false);
@@ -268,12 +276,15 @@ export function useReferralViewModel() {
 
   return {
     values,
-    errors, // optional: bind to inputs for visual error states later
+    errors,
     onChange,
     onPickFront,
     submit,
     canSubmit,
     loading,
-    msg, // consumed by AntD notification in ReferralContent
+    msg,
+    consultants,
+    consultantsLoading,
+    loadConsultants,
   };
 }

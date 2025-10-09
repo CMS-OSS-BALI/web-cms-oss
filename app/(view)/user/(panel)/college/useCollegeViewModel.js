@@ -9,33 +9,120 @@ const fetcher = (url) =>
     return r.json();
   });
 
+/* helpers */
+const strip = (html = "") =>
+  String(html)
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const fmtMoney = (n, currency) => {
+  if (n === null || n === undefined || n === "") return null;
+  try {
+    if (currency)
+      return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: (currency || "USD").toUpperCase(),
+        maximumFractionDigits: 0,
+      }).format(Number(n));
+    return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(
+      Number(n)
+    );
+  } catch {
+    return String(n);
+  }
+};
+
 export default function useCollegeViewModel({ locale = "id" } = {}) {
   const t = (id, en) => (locale === "en" ? en : id);
 
-  const { data } = useSWR(`/api/college?locale=${locale}`, fetcher, {
+  // Ambil data kampus dari /api/partners (bilingual + fallback)
+  const perPage = 100;
+  const fallback = "id";
+  const partnersUrl = `/api/partners?page=1&perPage=${perPage}&locale=${locale}&fallback=${fallback}`;
+
+  const { data } = useSWR(partnersUrl, fetcher, {
     revalidateOnFocus: false,
     shouldRetryOnError: false,
   });
 
   const vm = useMemo(() => {
     const api = data || {};
+    const rows = Array.isArray(api.data) ? api.data : [];
+
+    // ===== Universitas untuk daftar utama (boleh pakai gambar apapun yang ada) =====
+    const universities = rows.map((r, i) => {
+      const name = r?.name || r?.slug || `Campus ${i + 1}`;
+      const country = r?.country || "";
+      const city = r?.city || "";
+      const locText = [country, city].filter(Boolean).join(" - ");
+
+      const min = fmtMoney(r?.tuition_min, r?.currency);
+      const max = fmtMoney(r?.tuition_max, r?.currency);
+      const moneyText =
+        min && max
+          ? `${min} - ${max}${r?.currency ? ` (${r.currency})` : ""}`
+          : min
+          ? `${min}${r?.currency ? ` (${r.currency})` : ""}`
+          : max
+          ? `${max}${r?.currency ? ` (${r.currency})` : ""}`
+          : "";
+
+      const bullets = [
+        ...(r?.type ? [{ icon: "cap", text: r.type }] : []),
+        ...(locText ? [{ icon: "pin", text: locText }] : []),
+        ...(moneyText ? [{ icon: "money", text: moneyText }] : []),
+      ];
+
+      // Untuk daftar utama, tetap gunakan logo_url dulu, jika kosong boleh jatuh ke image_*
+      const logo =
+        r?.logo_url ||
+        r?.image_url ||
+        r?.image_public_url ||
+        r?.logo ||
+        r?.image ||
+        "";
+
+      return {
+        id: r.id,
+        name,
+        country,
+        logo,
+        excerpt: strip(r?.description || ""),
+        bullets,
+        rating: 0,
+        href: r?.slug ? `/user/partners/${r.slug}` : r?.website || "#",
+      };
+    });
+
+    // ===== Relevant Campus: HANYA pakai logo_url dari endpoint =====
+    const relevantCampus = rows
+      // WAJIB ada logo_url string non-kosong
+      .filter((r) => typeof r.logo_url === "string" && r.logo_url.trim() !== "")
+      .slice(0, 16)
+      .map((r) => ({
+        id: r.id,
+        name: r.name || r.slug || "",
+        logo_url: r.logo_url.trim(), // kirim sebagai logo_url
+      }));
+
     return {
       hero: {
-        titleLine1: api?.hero?.titleLine1 ?? t("KULIAH", "STUDY"),
-        titleLine2: api?.hero?.titleLine2 ?? t("DI LUAR NEGERI", "ABROAD"),
-        image: api?.hero?.image ?? "/canada-hero.svg",
-        imageAlt: api?.hero?.imageAlt ?? t("Mahasiswa wisuda", "Graduate"),
-        objectPosition: api?.hero?.objectPosition || "40% 50%",
+        titleLine1: t("KULIAH", "STUDY"),
+        titleLine2: t("DI LUAR NEGERI", "ABROAD"),
+        image: "/canada-hero.svg",
+        imageAlt: t("Mahasiswa wisuda", "Graduate"),
+        objectPosition: "40% 50%",
       },
       findProgram: {
-        title:
-          api?.findProgram?.title ??
-          t(
-            "TEMUKAN PROGRAM KULIAH LUAR NEGERI TERBAIK UNTUKMU",
-            "FIND YOUR PERFECT STUDY ABROAD PROGRAM"
-          ),
+        title: t(
+          "TEMUKAN PROGRAM KULIAH LUAR NEGERI TERBAIK UNTUKMU",
+          "FIND YOUR PERFECT STUDY ABROAD PROGRAM"
+        ),
       },
-      popularMajors: api?.popularMajors ?? [
+      popularMajors: [
         {
           id: "data-analysis",
           title: t("Data Analysis", "Data Analysis"),
@@ -53,127 +140,34 @@ export default function useCollegeViewModel({ locale = "id" } = {}) {
         },
       ],
       search: {
-        label: api?.search?.label ?? t("Pencarian", "Search"),
-        placeholder:
-          api?.search?.placeholder ??
-          t(
-            "Cari program atau universitas (mis. IT, di Kanada)",
-            "Search for program or university (e.g., IT, in Canada)"
-          ),
-        voiceHint:
-          api?.search?.voiceHint ?? t("Ucapkan untuk mencari", "Tap to speak"),
-        onSearchHref: api?.search?.onSearchHref ?? "/user/layanan?menu=layanan",
+        label: t("Pencarian", "Search"),
+        placeholder: t(
+          "Cari program atau universitas (mis. IT, di Kanada)",
+          "Search for program or university (e.g., IT, in Canada)"
+        ),
+        voiceHint: t("Ucapkan untuk mencari", "Tap to speak"),
+        onSearchHref: "/user/layanan?menu=layanan",
       },
       recommendedUniversity: {
-        title:
-          api?.recommendedUniversity?.title ??
-          t("RECOMMENDED UNIVERSITY", "RECOMMENDED UNIVERSITY"),
-        subtitle:
-          api?.recommendedUniversity?.subtitle ??
-          t(
-            "Temukan jalurmu di universitas-universitas terkemuka dunia",
-            "Find Your Path At Leading Universities Worldwide"
-          ),
-        relevantCampus: api?.recommendedUniversity?.relevantCampus ?? [
-          { id: "bsbi", name: "BSBI", logo: "/bsbi.svg" },
-          {
-            id: "bradford",
-            name: "University of Bradford",
-            logo: "/univ-bradford.svg",
-          },
-          {
-            id: "strathfield",
-            name: "Strathfield College",
-            logo: "/strathfield.svg",
-          },
-          {
-            id: "queensford",
-            name: "Queensford College",
-            logo: "/queensford.svg",
-          },
-          { id: "bsbi-2", name: "BSBI", logo: "/bsbi.svg" },
-          {
-            id: "bradford-2",
-            name: "University of Bradford",
-            logo: "/univ-bradford.svg",
-          },
-          {
-            id: "strathfield-2",
-            name: "Strathfield College",
-            logo: "/strathfield.svg",
-          },
-          {
-            id: "queensford-2",
-            name: "Queensford College",
-            logo: "/queensford.svg",
-          },
-        ],
+        title: t("RECOMMENDED UNIVERSITY", "RECOMMENDED UNIVERSITY"),
+        subtitle: t(
+          "Temukan jalurmu di universitas-universitas terkemuka dunia",
+          "Find Your Path At Leading Universities Worldwide"
+        ),
+        relevantCampus, // ← sudah hanya pakai logo_url
       },
-      universities: api?.universities ?? [
-        {
-          id: "ucw",
-          name: "University Canada West",
-          logo: "/ucw.svg",
-          excerpt: t(
-            "Menjadi bagian dari Masa Depan Pendidikan dan Bisnis. UCW di Kanada adalah pilihan yang tepat bagi pelajar yang ingin berkarier global.",
-            "Be part of the future of Education and Business. UCW in Canada is a great choice for globally-minded students."
-          ),
-          bullets: [
-            { icon: "cap", text: "Foundation, HE" },
-            { icon: "pin", text: "Canada - Vancouver" },
-            { icon: "money", text: "$9,000 - $10,000 (CAD)" },
-          ],
-          rating: 4.5,
-          href: "/universities/ucw",
-        },
-        {
-          id: "eton",
-          name: "Eton College",
-          logo: "/eton.svg",
-          excerpt: t(
-            "Eton College adalah sekolah bergengsi dengan lingkungan belajar suportif dan jaringan industri yang kuat.",
-            "Eton College is a prestigious school with a supportive learning environment and strong industry links."
-          ),
-          bullets: [
-            { icon: "cap", text: "ESL, VET" },
-            { icon: "pin", text: "Canada - Vancouver" },
-            { icon: "money", text: "$7,000 - $8,000 (CAD)" },
-          ],
-          rating: 4.2,
-          href: "/universities/eton-college",
-        },
-        {
-          id: "kaplan",
-          name: "Kaplan Business School",
-          logo: "/kaplan.svg",
-          excerpt: t(
-            "Kaplan Business School menawarkan pendidikan bisnis dengan koneksi industri luas dan hasil lulusan yang kuat.",
-            "Kaplan Business School delivers business education with strong industry connections and outcomes."
-          ),
-          bullets: [
-            { icon: "cap", text: "ESL, VET" },
-            { icon: "pin", text: "Canada - Vancouver" },
-            { icon: "money", text: "$7,000 - $8,000 (CAD)" },
-          ],
-          rating: 4.1,
-          href: "/universities/kaplan",
-        },
-      ],
+      universities,
       scholarshipCTA: {
-        title:
-          api?.scholarshipCTA?.title ??
-          t(
-            "TEMUKAN KESEMPATAN BEASISWAMU",
-            "FIND YOUR SCHOLARSHIP OPPORTUNITIES"
-          ),
-        body:
-          api?.scholarshipCTA?.body ??
-          t(
-            "Jelajahi Beasiswa Luar Negeri Dan Peluang Pendanaan Bagi Mahasiswa Dari Indonesia Sepertimu. Tersedia Lebih Dari 5,000 Beasiswa Dari Berbagai Universitas Di Luar Negeri.",
-            "Explore overseas scholarships and funding opportunities. 5,000+ scholarships from universities abroad."
-          ),
-        ctaLabel: api?.scholarshipCTA?.ctaLabel ?? t("View More", "View More"),
-        href: api?.scholarshipCTA?.href ?? "/scholarships",
+        title: t(
+          "TEMUKAN KESEMPATAN BEASISWAMU",
+          "FIND YOUR SCHOLARSHIP OPPORTUNITIES"
+        ),
+        body: t(
+          "Jelajahi Beasiswa Luar Negeri Dan Peluang Pendanaan Bagi Mahasiswa Dari Indonesia Sepertimu. Tersedia Lebih Dari 5,000 Beasiswa Dari Berbagai Universitas Di Luar Negeri.",
+          "Explore overseas scholarships and funding opportunities. 5,000+ scholarships from universities abroad."
+        ),
+        ctaLabel: t("View More", "View More"),
+        href: "/scholarships",
       },
     };
   }, [data, locale]);

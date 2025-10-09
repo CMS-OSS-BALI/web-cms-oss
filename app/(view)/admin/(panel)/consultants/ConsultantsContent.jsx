@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
   Card,
@@ -21,12 +21,15 @@ import {
   Tag,
   Typography,
   theme as antdTheme,
+  Checkbox,
 } from "antd";
 import {
   EyeOutlined,
   MailOutlined,
   PhoneOutlined,
   PlusOutlined,
+  DeleteOutlined,
+  UploadOutlined,
 } from "@ant-design/icons";
 import HtmlEditor from "@/app/components/editor/HtmlEditor";
 import { sanitizeHtml } from "@/app/utils/dompurify";
@@ -50,18 +53,19 @@ const pageWrapStyle = {
   padding: "24px 32px 12px",
 };
 
-const normalizeOptional = (value) => {
-  if (value === undefined || value === null) return undefined;
-  const trimmed = String(value).trim();
-  return trimmed.length ? trimmed : undefined;
-};
+/* ===== util ===== */
+function fileOk(file) {
+  const allowed = ["image/jpeg", "image/png", "image/webp"];
+  if (!allowed.includes(file.type)) {
+    return { ok: false, msg: "Format tidak didukung (JPG/PNG/WebP)" };
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    return { ok: false, msg: "Maksimal 10MB" };
+  }
+  return { ok: true };
+}
 
-const normalizeUrl512 = (value) => {
-  const cleaned = normalizeOptional(value);
-  return cleaned ? cleaned.slice(0, 512) : undefined;
-};
-
-/* ===== Form Modal ===== */
+/* ===== Form Modal (dengan upload file) ===== */
 function ConsultantFormModal({
   open,
   mode,
@@ -74,42 +78,243 @@ function ConsultantFormModal({
   const isCreate = mode !== "edit";
   const req = (msg) => (isCreate ? [{ required: true, message: msg }] : []);
 
+  // refs input file
+  const refProfile = useRef(null);
+  const refCover = useRef(null);
+  const refGallery = useRef(null);
+
+  // state file + preview
+  const [profileFile, setProfileFile] = useState(null);
+  const [profilePreview, setProfilePreview] = useState("");
+
+  const [coverFile, setCoverFile] = useState(null); // program consultant
+  const [coverPreview, setCoverPreview] = useState("");
+
+  const [galleryFiles, setGalleryFiles] = useState([]); // File[]
+  const [galleryPreviews, setGalleryPreviews] = useState([]); // string[]
+
+  // mode replace/append galeri (PATCH)
+  const [replaceGallery, setReplaceGallery] = useState(false);
+
   useEffect(() => {
     if (!open) return;
     form.resetFields();
     form.setFieldsValue({ ...initialValues });
+
+    // reset file states
+    setProfileFile(null);
+    setCoverFile(null);
+    setGalleryFiles([]);
+    setGalleryPreviews([]);
+    setReplaceGallery(false);
+
+    // preview default dari existing data
+    setProfilePreview(
+      initialValues?.profile_image_public_url ||
+        initialValues?.profile_image_url ||
+        ""
+    );
+    setCoverPreview(
+      initialValues?.program_consultant_image_public_url ||
+        initialValues?.program_consultant_image_url ||
+        ""
+    );
+
+    // existing gallery (hanya untuk pratinjau)
+    const existingGallery = Array.isArray(initialValues?.program_images)
+      ? initialValues.program_images
+      : [];
+    setGalleryPreviews(
+      existingGallery.map((g) => g.image_public_url || g.image_url || "")
+    );
   }, [open, initialValues, form]);
 
+  const onPickProfile = () => {
+    if (refProfile.current) refProfile.current.value = "";
+    refProfile.current?.click();
+  };
+  const onPickCover = () => {
+    if (refCover.current) refCover.current.value = "";
+    refCover.current?.click();
+  };
+  const onPickGallery = () => {
+    if (refGallery.current) refGallery.current.value = "";
+    refGallery.current?.click();
+  };
+
+  const onProfileChange = (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const val = fileOk(f);
+    if (!val.ok) {
+      Modal.error({ title: "Upload gagal", content: val.msg });
+      e.target.value = "";
+      return;
+    }
+    setProfileFile(f);
+    setProfilePreview(URL.createObjectURL(f));
+  };
+  const onCoverChange = (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const val = fileOk(f);
+    if (!val.ok) {
+      Modal.error({ title: "Upload gagal", content: val.msg });
+      e.target.value = "";
+      return;
+    }
+    setCoverFile(f);
+    setCoverPreview(URL.createObjectURL(f));
+  };
+  const onGalleryChange = (e) => {
+    const files = [...(e.target.files || [])];
+    if (!files.length) return;
+    const oks = [];
+    const previews = [];
+    for (const f of files) {
+      const val = fileOk(f);
+      if (!val.ok) {
+        Modal.error({ title: "Upload gagal", content: val.msg });
+        continue;
+      }
+      oks.push(f);
+      previews.push(URL.createObjectURL(f));
+    }
+    setGalleryFiles((prev) => prev.concat(oks));
+    setGalleryPreviews((prev) => prev.concat(previews));
+  };
+
+  const removeGalleryItem = (idx) => {
+    setGalleryFiles((prev) => prev.filter((_, i) => i !== idx));
+    setGalleryPreviews((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const removeProfile = () => {
+    setProfileFile(null);
+    setProfilePreview("");
+    if (refProfile.current) refProfile.current.value = "";
+  };
+  const removeCover = () => {
+    setCoverFile(null);
+    setCoverPreview("");
+    if (refCover.current) refCover.current.value = "";
+  };
+  const clearNewGallery = () => {
+    setGalleryFiles([]);
+    setGalleryPreviews([]);
+    if (refGallery.current) refGallery.current.value = "";
+  };
+
   const handleFinish = (values) => {
+    // payload multipart untuk VM
     const payload = {
       name_id: values.name_id?.trim() || undefined,
-      email: normalizeOptional(values.email),
-      whatsapp: normalizeOptional(values.whatsapp),
-      profile_image_url: normalizeUrl512(values.profile_image_url),
-      program_consultant_image_url: normalizeUrl512(
-        values.program_consultant_image_url
-      ),
-      description_id: values.description_id ?? "",
+      description_id:
+        values.description_id == null
+          ? ""
+          : typeof values.description_id === "string"
+          ? values.description_id
+          : String(values.description_id),
+      email: values.email?.trim() || undefined,
+      whatsapp: values.whatsapp?.trim() || undefined,
       autoTranslate: true,
     };
+
+    // NB: API MENERIMA "files[]" untuk galeri program
+    if (galleryFiles.length) payload.files = galleryFiles;
+
+    // (Opsional ke depan) bila kamu punya endpoint upload profile/cover terpisah,
+    // set "profile_image_url" / "program_consultant_image_url" di payload dengan path publik.
+    // Di sini, kita hanya simpan file untuk preview lokal.
+    if (profileFile) payload.profile_file = profileFile;
+    if (coverFile) payload.program_consultant_file = coverFile;
+
+    if (mode === "edit" && (galleryFiles.length || replaceGallery)) {
+      payload.program_images_mode = replaceGallery ? "replace" : "append";
+    }
+
+    if (isCreate && !values.name_id?.trim()) {
+      Modal.warning({ title: "Nama belum diisi", content: "Nama (ID) wajib." });
+      return;
+    }
 
     onSubmit(payload);
   };
 
-  const ctrlStyle = {
-    background: "#0e182c",
-    borderColor: "#2f3f60",
-    color: "#e6eaf2",
-    borderRadius: 12,
-  };
+  const UploadBox = ({
+    label,
+    preview,
+    onPick,
+    onRemove,
+    inputRef,
+    onChange,
+    multiple = false,
+  }) => (
+    <div style={{ display: "grid", gap: 8 }}>
+      {!preview ? (
+        <div
+          style={{
+            border: "2px dashed #3a5794",
+            borderRadius: 12,
+            padding: 18,
+            display: "grid",
+            placeItems: "center",
+            cursor: "pointer",
+            background:
+              "repeating-linear-gradient(-45deg,rgba(17,24,39,.3),rgba(17,24,39,.3) 10px,rgba(17,24,39,.24) 10px,rgba(17,24,39,.24) 20px)",
+          }}
+          onClick={onPick}
+        >
+          <Space direction="vertical" align="center" size={4}>
+            <UploadOutlined style={{ fontSize: 26, color: "#8fb3ff" }} />
+            <Text strong>Ketuk untuk unggah {label}</Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              JPG/PNG/WebP • Maks 10MB
+            </Text>
+          </Space>
+        </div>
+      ) : typeof preview === "string" ? (
+        <div style={{ position: "relative" }}>
+          <img
+            src={preview}
+            alt={label}
+            style={{
+              width: "100%",
+              maxHeight: 260,
+              objectFit: "cover",
+              borderRadius: 12,
+              border: "1px solid #2f3f60",
+            }}
+          />
+          <div style={{ marginTop: 8 }}>
+            <Button danger shape="round" onClick={onRemove}>
+              <DeleteOutlined /> Hapus
+            </Button>
+            <Button shape="round" style={{ marginLeft: 8 }} onClick={onPick}>
+              Ganti
+            </Button>
+          </div>
+        </div>
+      ) : null}
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        style={{ display: "none" }}
+        onChange={onChange}
+        multiple={multiple}
+      />
+    </div>
+  );
 
   return (
     <Modal
       title={mode === "edit" ? "Edit Consultant" : "Add Consultant"}
       open={open}
       centered
-      width={880}
+      width={980}
       onCancel={onCancel}
+      destroyOnClose
       footer={
         <Space style={{ width: "100%", justifyContent: "flex-end" }}>
           <Button shape="round" onClick={onCancel}>
@@ -134,7 +339,6 @@ function ConsultantFormModal({
         body: { padding: 0 },
         mask: { backgroundColor: "rgba(0,0,0,.6)" },
       }}
-      destroyOnHidden
     >
       <div className="consultant-form-scroll">
         <div style={{ padding: 16 }}>
@@ -147,76 +351,190 @@ function ConsultantFormModal({
                   required={isCreate}
                   rules={req("Nama (ID) wajib diisi")}
                 >
-                  <Input style={ctrlStyle} maxLength={150} />
-                </Form.Item>
-              </Col>
-
-              <Col span={24}>
-                <Form.Item
-                  name="email"
-                  label="Email"
-                  rules={[{ type: "email", message: "Email tidak valid" }]}
-                >
                   <Input
-                    style={ctrlStyle}
+                    style={{
+                      background: "#0e182c",
+                      borderColor: "#2f3f60",
+                      color: "#e6eaf2",
+                      borderRadius: 12,
+                    }}
                     maxLength={150}
-                    placeholder="email@contoh.com"
                   />
                 </Form.Item>
               </Col>
 
-              <Col span={24}>
+              <Col xs={24} md={12}>
+                <Form.Item name="email" label="Email">
+                  <Input
+                    style={{
+                      background: "#0e182c",
+                      borderColor: "#2f3f60",
+                      color: "#e6eaf2",
+                      borderRadius: 12,
+                    }}
+                    maxLength={150}
+                  />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={12}>
                 <Form.Item name="whatsapp" label="WhatsApp">
                   <Input
-                    style={ctrlStyle}
+                    style={{
+                      background: "#0e182c",
+                      borderColor: "#2f3f60",
+                      color: "#e6eaf2",
+                      borderRadius: 12,
+                    }}
                     maxLength={30}
-                    placeholder="0812xxxxxxx"
                   />
                 </Form.Item>
               </Col>
 
-              <Col span={24}>
-                <Form.Item
-                  name="profile_image_url"
-                  label="Profile Image URL"
-                  rules={[
-                    {
-                      validator(_, value) {
-                        const normalized = normalizeUrl512(value);
-                        if (!value || normalized === value) return Promise.resolve();
-                        return Promise.reject(new Error("Maksimal 512 karakter"));
-                      },
-                    },
-                  ]}
-                >
-                  <Input style={ctrlStyle} placeholder="https://..." maxLength={512} />
+              {/* Profile image (preview-only) */}
+              <Col xs={24} md={12}>
+                <Form.Item label="Profile Image">
+                  <UploadBox
+                    label="profile image"
+                    preview={profilePreview}
+                    onPick={onPickProfile}
+                    onRemove={removeProfile}
+                    inputRef={refProfile}
+                    onChange={onProfileChange}
+                  />
                 </Form.Item>
               </Col>
 
-              <Col span={24}>
-                <Form.Item
-                  name="program_consultant_image_url"
-                  label="Program Consultant Image URL"
-                  rules={[
-                    {
-                      validator(_, value) {
-                        const normalized = normalizeUrl512(value);
-                        if (!value || normalized === value) return Promise.resolve();
-                        return Promise.reject(new Error("Maksimal 512 karakter"));
-                      },
-                    },
-                  ]}
-                >
-                  <Input style={ctrlStyle} placeholder="https://..." maxLength={512} />
+              {/* Program consultant cover (preview-only) */}
+              <Col xs={24} md={12}>
+                <Form.Item label="Program Cover">
+                  <UploadBox
+                    label="program cover"
+                    preview={coverPreview}
+                    onPick={onPickCover}
+                    onRemove={removeCover}
+                    inputRef={refCover}
+                    onChange={onCoverChange}
+                  />
                 </Form.Item>
               </Col>
 
+              {/* Description */}
               <Col span={24}>
                 <Form.Item
                   name="description_id"
                   label="Deskripsi (Bahasa Indonesia)"
                 >
                   <HtmlEditor className="editor-dark" minHeight={200} />
+                </Form.Item>
+              </Col>
+
+              {/* Gallery program */}
+              <Col span={24}>
+                <Form.Item label="Program Gallery">
+                  <div style={{ display: "grid", gap: 12 }}>
+                    <div>
+                      <Button
+                        shape="round"
+                        icon={<UploadOutlined />}
+                        onClick={onPickGallery}
+                      >
+                        Tambah Gambar
+                      </Button>
+                      {mode === "edit" && (
+                        <Checkbox
+                          style={{ marginLeft: 12 }}
+                          checked={replaceGallery}
+                          onChange={(e) => setReplaceGallery(e.target.checked)}
+                        >
+                          Replace semua galeri (bukan append)
+                        </Checkbox>
+                      )}
+                    </div>
+
+                    {/* existing + new previews */}
+                    <Row gutter={[8, 8]}>
+                      {/* existing previews (tampil jika tidak replace) */}
+                      {Array.isArray(initialValues?.program_images) &&
+                        initialValues.program_images.length > 0 &&
+                        !replaceGallery &&
+                        initialValues.program_images.map((g) => {
+                          const src =
+                            g.image_public_url ||
+                            g.image_url ||
+                            IMAGE_PLACEHOLDER;
+                          return (
+                            <Col
+                              key={`ex-${g.id}`}
+                              xs={12}
+                              sm={8}
+                              md={6}
+                              lg={6}
+                            >
+                              <Image
+                                src={src}
+                                alt="existing"
+                                style={{
+                                  width: "100%",
+                                  height: 110,
+                                  objectFit: "cover",
+                                  borderRadius: 8,
+                                  border: "1px solid rgba(148,163,184,.25)",
+                                }}
+                                fallback={IMAGE_PLACEHOLDER}
+                                preview={false}
+                              />
+                            </Col>
+                          );
+                        })}
+
+                      {/* new previews */}
+                      {galleryPreviews.map((src, idx) => (
+                        <Col key={`new-${idx}`} xs={12} sm={8} md={6} lg={6}>
+                          <div style={{ position: "relative" }}>
+                            <Image
+                              src={src}
+                              alt="preview"
+                              style={{
+                                width: "100%",
+                                height: 110,
+                                objectFit: "cover",
+                                borderRadius: 8,
+                                border: "1px solid rgba(148,163,184,.25)",
+                              }}
+                              fallback={IMAGE_PLACEHOLDER}
+                              preview={false}
+                            />
+                            <Button
+                              danger
+                              size="small"
+                              shape="round"
+                              style={{ position: "absolute", right: 6, top: 6 }}
+                              onClick={() => removeGalleryItem(idx)}
+                            >
+                              Hapus
+                            </Button>
+                          </div>
+                        </Col>
+                      ))}
+                    </Row>
+
+                    {galleryPreviews.length > 0 && (
+                      <div>
+                        <Button danger shape="round" onClick={clearNewGallery}>
+                          <DeleteOutlined /> Hapus semua gambar baru
+                        </Button>
+                      </div>
+                    )}
+
+                    <input
+                      ref={refGallery}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      multiple
+                      style={{ display: "none" }}
+                      onChange={onGalleryChange}
+                    />
+                  </div>
                 </Form.Item>
               </Col>
             </Row>
@@ -245,11 +563,23 @@ function ConsultantFormModal({
 function ConsultantViewModal({ open, data, onClose }) {
   if (!data) return null;
 
+  const firstProgramImage =
+    data.program_images?.[0]?.image_public_url ||
+    data.program_images?.[0]?.image_url ||
+    null;
+
   const coverUrl =
+    firstProgramImage ||
+    data.program_consultant_image_public_url ||
     data.program_consultant_image_url ||
+    data.profile_image_public_url ||
     data.profile_image_url ||
     IMAGE_PLACEHOLDER;
-  const profileUrl = data.profile_image_url || IMAGE_PLACEHOLDER;
+
+  const profileUrl =
+    data.profile_image_public_url ||
+    data.profile_image_url ||
+    IMAGE_PLACEHOLDER;
 
   const tags = [
     data.email
@@ -257,7 +587,9 @@ function ConsultantViewModal({ open, data, onClose }) {
           key: "email",
           color: "blue",
           label: (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <span
+              style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+            >
               <MailOutlined /> {data.email}
             </span>
           ),
@@ -268,7 +600,9 @@ function ConsultantViewModal({ open, data, onClose }) {
           key: "wa",
           color: "green",
           label: (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <span
+              style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+            >
               <PhoneOutlined /> {data.whatsapp}
             </span>
           ),
@@ -290,10 +624,16 @@ function ConsultantViewModal({ open, data, onClose }) {
       ? { label: "Locale", content: String(data.locale_used).toUpperCase() }
       : null,
     data.created_at
-      ? { label: "Created", content: new Date(data.created_at).toLocaleString() }
+      ? {
+          label: "Created",
+          content: new Date(data.created_at).toLocaleString(),
+        }
       : null,
     data.updated_at
-      ? { label: "Updated", content: new Date(data.updated_at).toLocaleString() }
+      ? {
+          label: "Updated",
+          content: new Date(data.updated_at).toLocaleString(),
+        }
       : null,
     {
       label: "Description",
@@ -309,13 +649,16 @@ function ConsultantViewModal({ open, data, onClose }) {
     },
   ].filter(Boolean);
 
+  const gallery = Array.isArray(data.program_images) ? data.program_images : [];
+
   return (
     <Modal
       open={open}
       onCancel={onClose}
       centered
-      width={840}
+      width={900}
       title={data.name || "Detail Konsultan"}
+      destroyOnClose
       footer={
         <Button shape="round" type="primary" onClick={onClose}>
           Close
@@ -330,24 +673,31 @@ function ConsultantViewModal({ open, data, onClose }) {
         body: { padding: 0 },
         mask: { backgroundColor: "rgba(0,0,0,.6)" },
       }}
-      destroyOnHidden
     >
       <div className="consultant-view-scroll">
         <div style={{ padding: 16 }}>
-          <Image
-            src={coverUrl}
-            alt={data.name || "Consultant cover"}
-            width="100%"
+          <div
             style={{
               borderRadius: 12,
               marginBottom: 16,
               maxHeight: 300,
-              objectFit: "cover",
+              overflow: "hidden",
               border: "1px solid rgba(148, 163, 184, 0.25)",
             }}
-            fallback={IMAGE_PLACEHOLDER}
-            preview={false}
-          />
+          >
+            <Image
+              src={coverUrl}
+              alt={data.name || "Consultant cover"}
+              style={{
+                display: "block",
+                width: "100%",
+                height: 300,
+                objectFit: "cover",
+              }}
+              fallback={IMAGE_PLACEHOLDER}
+              preview={false}
+            />
+          </div>
 
           <Space align="center" size={12} style={{ marginBottom: 16 }}>
             <Image
@@ -371,9 +721,45 @@ function ConsultantViewModal({ open, data, onClose }) {
             </div>
           </Space>
 
+          {gallery.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <Text strong style={{ display: "block", marginBottom: 8 }}>
+                Program Images
+              </Text>
+              <Image.PreviewGroup>
+                <Row gutter={[8, 8]}>
+                  {gallery.map((g) => {
+                    const src =
+                      g.image_public_url || g.image_url || IMAGE_PLACEHOLDER;
+                    return (
+                      <Col key={g.id} xs={12} sm={8} md={6}>
+                        <Image
+                          src={src}
+                          alt="program"
+                          style={{
+                            width: "100%",
+                            height: 110,
+                            objectFit: "cover",
+                            borderRadius: 8,
+                            border: "1px solid rgba(148,163,184,.25)",
+                          }}
+                          fallback={IMAGE_PLACEHOLDER}
+                        />
+                      </Col>
+                    );
+                  })}
+                </Row>
+              </Image.PreviewGroup>
+            </div>
+          )}
+
           <Space size={[8, 8]} wrap style={{ marginBottom: 16 }}>
             {tags.map((tag) => (
-              <Tag key={tag.key} color={tag.color} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <Tag
+                key={tag.key}
+                color={tag.color}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+              >
                 {tag.label}
               </Tag>
             ))}
@@ -408,14 +794,30 @@ function ConsultantViewModal({ open, data, onClose }) {
 
 /* ===== Card item ===== */
 function ConsultantCard({ item, onView, onEdit, onDelete }) {
+  const firstProgramImage =
+    item.program_images?.[0]?.image_public_url ||
+    item.program_images?.[0]?.image_url ||
+    null;
+
   const coverUrl =
+    firstProgramImage ||
+    item.program_consultant_image_public_url ||
     item.program_consultant_image_url ||
+    item.profile_image_public_url ||
     item.profile_image_url ||
     IMAGE_PLACEHOLDER;
 
-  const safeDesc = sanitizeHtml(item.description || "");
-  const plainDesc = safeDesc.replace(/<[^>]*>/g, "").trim();
-  const hasDesc = plainDesc.length > 0;
+  const rawHtml = String(item.description || "");
+  const safeHtml = sanitizeHtml(rawHtml);
+  const textFromSafe = safeHtml
+    .replace(/<[^>]*>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const fallbackText = rawHtml
+    .replace(/<[^>]*>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const hasRenderableHtml = textFromSafe.length > 0;
 
   const tags = [
     item.email
@@ -423,7 +825,9 @@ function ConsultantCard({ item, onView, onEdit, onDelete }) {
           key: `email-${item.id}`,
           color: "blue",
           label: (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <span
+              style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+            >
               <MailOutlined /> {item.email}
             </span>
           ),
@@ -434,7 +838,9 @@ function ConsultantCard({ item, onView, onEdit, onDelete }) {
           key: `wa-${item.id}`,
           color: "green",
           label: (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <span
+              style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+            >
               <PhoneOutlined /> {item.whatsapp}
             </span>
           ),
@@ -468,9 +874,12 @@ function ConsultantCard({ item, onView, onEdit, onDelete }) {
           <Image
             src={coverUrl}
             alt={item.name || "Consultant image"}
-            width="100%"
-            height={180}
-            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              display: "block",
+            }}
             fallback={IMAGE_PLACEHOLDER}
             preview={false}
           />
@@ -486,7 +895,7 @@ function ConsultantCard({ item, onView, onEdit, onDelete }) {
           {item.name || "(no name)"}
         </Text>
 
-        {hasDesc ? (
+        {hasRenderableHtml ? (
           <div
             style={{
               margin: 0,
@@ -497,8 +906,14 @@ function ConsultantCard({ item, onView, onEdit, onDelete }) {
               WebkitBoxOrient: "vertical",
               overflow: "hidden",
             }}
-            dangerouslySetInnerHTML={{ __html: safeDesc }}
+            dangerouslySetInnerHTML={{ __html: safeHtml }}
           />
+        ) : fallbackText ? (
+          <Paragraph style={{ margin: 0, color: "#94a3b8" }}>
+            {fallbackText.length > 220
+              ? `${fallbackText.slice(0, 220)}…`
+              : fallbackText}
+          </Paragraph>
         ) : (
           <Paragraph style={{ margin: 0 }} type="secondary">
             -
@@ -518,9 +933,7 @@ function ConsultantCard({ item, onView, onEdit, onDelete }) {
         </Space>
       </div>
 
-      <div
-        style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}
-      >
+      <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
         <Button
           type="primary"
           size="small"
@@ -614,9 +1027,7 @@ export default function ConsultantsContent(props) {
       api.success({
         key: "consultants-save",
         message:
-          mode === "edit"
-            ? "Konsultan diperbarui"
-            : "Konsultan ditambahkan",
+          mode === "edit" ? "Konsultan diperbarui" : "Konsultan ditambahkan",
         description: "Data telah tersimpan.",
         placement: "topRight",
       });
@@ -638,19 +1049,24 @@ export default function ConsultantsContent(props) {
         name_id: "",
         email: "",
         whatsapp: "",
+        description_id: "",
         profile_image_url: "",
         program_consultant_image_url: "",
-        description_id: "",
+        program_images: [],
       };
     }
     return {
       name_id: editing.name_id || editing.name || "",
       email: editing.email || "",
       whatsapp: editing.whatsapp || "",
-      profile_image_url: editing.profile_image_url || "",
+      description_id: editing.description_id ?? editing.description ?? "",
+      profile_image_url:
+        editing.profile_image_public_url || editing.profile_image_url || "",
       program_consultant_image_url:
-        editing.program_consultant_image_url || "",
-      description_id: editing.description_id || editing.description || "",
+        editing.program_consultant_image_public_url ||
+        editing.program_consultant_image_url ||
+        "",
+      program_images: editing.program_images || [],
     };
   }, [editing]);
 
@@ -697,7 +1113,7 @@ export default function ConsultantsContent(props) {
                 Konsultan
               </Title>
               <Text type="secondary">
-                Kelola daftar konsultan dengan data kontak dan deskripsi.
+                Kelola daftar konsultan dengan kontak, deskripsi, dan gambar.
               </Text>
             </div>
             <Button
@@ -769,7 +1185,7 @@ export default function ConsultantsContent(props) {
                       setPerPage(10);
                       setSort?.("created_at:desc");
                       setLocale?.("id");
-                      setFallback?.("id");
+                      setFallback?.("en");
                     }}
                   >
                     Reset
@@ -848,7 +1264,11 @@ export default function ConsultantsContent(props) {
         </Card>
 
         {/* Modals */}
-        <ConsultantViewModal open={!!view} data={view} onClose={() => setView(null)} />
+        <ConsultantViewModal
+          open={!!view}
+          data={view}
+          onClose={() => setView(null)}
+        />
         <ConsultantFormModal
           open={modalOpen}
           mode={mode}
@@ -864,8 +1284,3 @@ export default function ConsultantsContent(props) {
     </ConfigProvider>
   );
 }
-
-
-
-
-

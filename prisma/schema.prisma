@@ -353,15 +353,19 @@ model programs_translate {
 }
 
 model consultants {
-  id                           BigInt                  @id @default(autoincrement()) @db.UnsignedBigInt
-  whatsapp                     String?                 @unique(map: "uq_consultants_whatsapp") @db.VarChar(30)
-  email                        String?                 @unique(map: "uq_consultants_email")
-  profile_image_url            String?                 @db.VarChar(512)
-  program_consultant_image_url String?                 @db.VarChar(512)
-  created_at                   DateTime                @default(now()) @db.Timestamp(0)
-  updated_at                   DateTime                @default(now()) @db.Timestamp(0)
+  id                           BigInt                       @id @default(autoincrement()) @db.UnsignedBigInt
+  whatsapp                     String?                      @unique(map: "uq_consultants_whatsapp") @db.VarChar(30)
+  email                        String?                      @unique(map: "uq_consultants_email")
+  profile_image_url            String?                      @db.VarChar(512)
+  program_consultant_image_url String?                      @db.VarChar(512)
+  created_at                   DateTime                     @default(now()) @db.Timestamp(0)
+  updated_at                   DateTime                     @default(now()) @db.Timestamp(0)
   consultants_translate        consultants_translate[]
   leads                        leads[]
+  referrals                    referral[]
+
+  // NEW: one-to-many program images
+  program_images               consultant_program_images[]
 
   @@index([email], map: "idx_consultants_email")
   @@index([whatsapp], map: "idx_consultants_whatsapp")
@@ -381,6 +385,21 @@ model consultants_translate {
   @@index([id_consultant], map: "idx_ct_id_consultant")
 }
 
+/// NEW: child table to store multiple program image URLs per consultant
+model consultant_program_images {
+  id            BigInt       @id @default(autoincrement()) @db.UnsignedBigInt
+  id_consultant BigInt       @db.UnsignedBigInt
+  image_url     String       @db.VarChar(512)
+  sort          Int          @default(0) @db.UnsignedInt
+  created_at    DateTime     @default(now()) @db.Timestamp(0)
+  updated_at    DateTime     @default(now()) @db.Timestamp(0)
+
+  consultant    consultants  @relation(fields: [id_consultant], references: [id], onDelete: Cascade, map: "fk_cpi_consultant")
+
+  @@index([id_consultant], map: "idx_cpi_consultant")
+  @@map("consultant_program_images")
+}
+
 model leads {
   id             BigInt       @id @default(autoincrement()) @db.UnsignedBigInt
   full_name      String       @db.VarChar(150)
@@ -393,7 +412,9 @@ model leads {
   created_at     DateTime     @default(now()) @db.Timestamp(0)
   updated_at     DateTime     @default(now()) @db.Timestamp(0)
   deleted_at     DateTime?    @db.Timestamp(0)
+  referral_id    BigInt?      @db.UnsignedBigInt
   consultants    consultants? @relation(fields: [assigned_to], references: [id], map: "fk_leads_assigned_to_consultants")
+  referral       referral?    @relation("referral_to_leads", fields: [referral_id], references: [id], map: "fk_leads_referral")
 
   @@index([assigned_at], map: "idx_leads_assigned_at")
   @@index([assigned_to], map: "idx_leads_assigned_to")
@@ -401,34 +422,41 @@ model leads {
   @@index([deleted_at], map: "idx_leads_deleted_at")
   @@index([email], map: "idx_leads_email")
   @@index([whatsapp], map: "idx_leads_whatsapp")
+  @@index([referral_id], map: "idx_leads_referral")
 }
 
 model referral {
-  id             BigInt              @id @default(autoincrement()) @db.UnsignedBigInt
-  nik            String              @unique(map: "uq_referral_nik") @db.VarChar(16)
-  full_name      String              @db.VarChar(150)
-  date_of_birth  DateTime?           @db.DateTime(6)
-  gender         gender
-  address_line   String?
-  rt             String?             @db.VarChar(3)
-  rw             String?             @db.VarChar(3)
-  kelurahan      String?             @db.VarChar(64)
-  kecamatan      String?             @db.VarChar(64)
-  city           String?             @db.VarChar(64)
-  province       String?             @db.VarChar(64)
-  whatsapp       String              @db.VarChar(32)
-  whatsapp_e164  String?             @db.VarChar(20)
-  status         verification_status @default(PENDING)
-  notes          String?             @db.VarChar(255)
-  created_at     DateTime            @default(now()) @db.DateTime(6)
-  updated_at     DateTime            @updatedAt @db.DateTime(6)
-  deleted_at     DateTime?           @db.DateTime(6)
-  email          String
-  consent_agreed Boolean             @default(false)
-  domicile       String?             @db.VarChar(100)
-  postal_code    String?             @db.VarChar(10)
-  front_url      String              @db.VarChar(512)
+  id                BigInt              @id @default(autoincrement()) @db.UnsignedBigInt
+  nik               String              @unique(map: "uq_referral_nik") @db.VarChar(16)
+  full_name         String              @db.VarChar(150)
+  date_of_birth     DateTime?           @db.DateTime(6)
+  gender            gender
+  address_line      String?
+  rt                String?             @db.VarChar(3)
+  rw                String?             @db.VarChar(3)
+  kelurahan         String?             @db.VarChar(64)
+  kecamatan         String?             @db.VarChar(64)
+  city              String?             @db.VarChar(64)
+  province          String?             @db.VarChar(64)
+  whatsapp          String              @db.VarChar(32)
+  whatsapp_e164     String?             @db.VarChar(20)
+  status            verification_status @default(PENDING)
+  notes             String?             @db.VarChar(255)
+  created_at        DateTime            @default(now()) @db.DateTime(6)
+  updated_at        DateTime            @updatedAt @db.DateTime(6)
+  deleted_at        DateTime?           @db.DateTime(6)
+  email             String
+  consent_agreed    Boolean             @default(false)
+  domicile          String?             @db.VarChar(100)
+  postal_code       String?             @db.VarChar(10)
+  front_url         String              @db.VarChar(512)
+  code              String?             @unique(map: "uq_referral_code") @db.VarChar(64)
+  leads_count       Int                 @default(0) @db.UnsignedInt
+  pic_consultant_id BigInt?             @db.UnsignedBigInt
+  leads             leads[]             @relation("referral_to_leads")
+  pic_consultant    consultants?        @relation(fields: [pic_consultant_id], references: [id], map: "fk_referral_pic_consultant")
 
+  @@index([status, created_at], map: "idx_referral_status_created_at")
   @@index([full_name], map: "idx_referral_full_name")
   @@index([city, province], map: "idx_referral_region")
   @@index([whatsapp], map: "idx_referral_whatsapp")
@@ -436,6 +464,7 @@ model referral {
   @@index([email], map: "idx_referral_email")
   @@index([created_at], map: "idx_referral_created_at")
   @@index([deleted_at], map: "idx_referral_deleted_at")
+  @@index([pic_consultant_id], map: "fk_referral_pic_consultant")
 }
 
 model mitra_dalam_negeri {

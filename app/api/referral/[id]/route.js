@@ -61,7 +61,7 @@ const pickEnum = (v, allowed) => {
   return allowed.includes(up) ? up : null;
 };
 
-// === NEW: getPublicUrl (no expiry) ===
+// Permanent public URL
 function getPublicUrl(path) {
   if (!path) return null;
   const { data } = supabaseAdmin.storage
@@ -70,7 +70,23 @@ function getPublicUrl(path) {
   return data?.publicUrl || null;
 }
 
-/* ============== GET /api/referral/[id] ============== */
+// === Code format: OSSBALI/{YYYY}/REFERRAL-66B###
+async function generateUniqueReferralCode() {
+  const year = new Date().getFullYear();
+  const prefix = `OSSBALI/${year}/REFERRAL-66B`;
+  for (let i = 0; i < 20; i++) {
+    const suffix = String(Math.floor(Math.random() * 1000)).padStart(3, "0");
+    const code = `${prefix}${suffix}`;
+    const exists = await prisma.referral.count({ where: { code } });
+    if (exists === 0) return code;
+  }
+  return `${prefix}${String(Math.floor(Math.random() * 1000)).padStart(
+    3,
+    "0"
+  )}`;
+}
+
+/* ============== GET ============== */
 export async function GET(_req, { params }) {
   try {
     await requireAdmin();
@@ -84,11 +100,11 @@ export async function GET(_req, { params }) {
   const row = await prisma.referral.findUnique({ where: { id } });
   if (!row) return json({ error: { code: "NOT_FOUND" } }, { status: 404 });
 
-  const previews = { front: getPublicUrl(row.front_url) }; // permanent URL
+  const previews = { front: getPublicUrl(row.front_url) };
   return json(sanitize({ data: row, previews }));
 }
 
-/* ============== PATCH /api/referral/[id] ============== */
+/* ============== PATCH ============== */
 export async function PATCH(req, { params }) {
   try {
     await requireAdmin();
@@ -106,7 +122,7 @@ export async function PATCH(req, { params }) {
   if (ct.includes("multipart/form-data")) {
     const form = await req.formData();
 
-    // Replace KTP image if provided
+    // replace KTP
     const f = form.get("front");
     if (f instanceof File) {
       const MAX = 5 * 1024 * 1024;
@@ -138,17 +154,47 @@ export async function PATCH(req, { params }) {
         });
       if (error) throw new Error(error.message);
 
-      data.front_url = objectPath; // store PATH
+      data.front_url = objectPath;
       replacedFront = true;
     }
 
-    // optional status change (multipart)
     const status = form.get("status");
     if (status && STATUSES.includes(String(status).toUpperCase())) {
       data.status = String(status).toUpperCase();
     }
+    if (form.has("notes")) data.notes = trimStr(form.get("notes"), 255) || null;
+
+    if (form.has("pic_consultant_id")) {
+      try {
+        const v = BigInt(String(form.get("pic_consultant_id")));
+        const pic = await prisma.consultants.findUnique({
+          where: { id: v },
+          select: { id: true },
+        });
+        if (!pic)
+          return json(
+            {
+              error: {
+                code: "VALIDATION_ERROR",
+                message: "PIC Konsultan tidak ditemukan",
+              },
+            },
+            { status: 422 }
+          );
+        data.pic_consultant_id = v;
+      } catch {
+        return json(
+          {
+            error: {
+              code: "VALIDATION_ERROR",
+              message: "PIC Konsultan tidak valid",
+            },
+          },
+          { status: 422 }
+        );
+      }
+    }
   } else {
-    // JSON body updates
     const body = await req.json().catch(() => ({}));
 
     if (body.full_name !== undefined)
@@ -161,18 +207,16 @@ export async function PATCH(req, { params }) {
     }
     if (body.gender !== undefined) {
       const g = pickEnum(body.gender, GENDERS);
-      if (!g) {
+      if (!g)
         return json(
           { error: { code: "VALIDATION_ERROR", message: "invalid gender" } },
           { status: 422 }
         );
-      }
       data.gender = g;
     }
     if (body.date_of_birth !== undefined)
       data.date_of_birth = parseDate(body.date_of_birth);
 
-    // optional address/contact fields
     if (body.address_line !== undefined)
       data.address_line = trimStr(body.address_line, 191) || null;
     if (body.rt !== undefined) data.rt = trimStr(body.rt, 3) || null;
@@ -190,6 +234,38 @@ export async function PATCH(req, { params }) {
       data.domicile = trimStr(body.domicile, 100) || null;
     if (body.consent_agreed !== undefined)
       data.consent_agreed = Boolean(body.consent_agreed);
+    if (body.notes !== undefined) data.notes = trimStr(body.notes, 255) || null;
+
+    if (body.pic_consultant_id !== undefined) {
+      try {
+        const v = BigInt(String(body.pic_consultant_id));
+        const pic = await prisma.consultants.findUnique({
+          where: { id: v },
+          select: { id: true },
+        });
+        if (!pic)
+          return json(
+            {
+              error: {
+                code: "VALIDATION_ERROR",
+                message: "PIC Konsultan tidak ditemukan",
+              },
+            },
+            { status: 422 }
+          );
+        data.pic_consultant_id = v;
+      } catch {
+        return json(
+          {
+            error: {
+              code: "VALIDATION_ERROR",
+              message: "PIC Konsultan tidak valid",
+            },
+          },
+          { status: 422 }
+        );
+      }
+    }
 
     if (body.status !== undefined) {
       const s = String(body.status || "").toUpperCase();
@@ -204,6 +280,21 @@ export async function PATCH(req, { params }) {
   }
 
   try {
+    // BEFORE state
+    const before = await prisma.referral.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        full_name: true,
+        whatsapp: true,
+        whatsapp_e164: true,
+        status: true,
+        code: true,
+      },
+    });
+    if (!before) return json({ error: { code: "NOT_FOUND" } }, { status: 404 });
+
+    // UPDATE
     const updated = await prisma.referral.update({
       where: { id },
       data,
@@ -216,21 +307,77 @@ export async function PATCH(req, { params }) {
         whatsapp_e164: true,
         gender: true,
         status: true,
-        front_url: true, // PATH
+        front_url: true,
         updated_at: true,
+        code: true,
+        pic_consultant_id: true,
+        notes: true,
       },
     });
 
-    // Optional WA on approve/auto-pass
-    if (
-      data.status &&
-      (data.status === "VERIFIED" || data.status === "AUTO_PASS")
-    ) {
-      const phone = updated.whatsapp_e164 || updated.whatsapp;
-      if (phone) {
-        const msg = `Halo ${updated.full_name}, pengajuan referral Anda telah *${updated.status}*.\nTerima kasih sudah mendaftar di OSS Bali.`;
+    const wasApproved = ["VERIFIED", "AUTO_PASS"].includes(before.status);
+    const isApproved = ["VERIFIED", "AUTO_PASS"].includes(updated.status);
+    const becameApproved = !wasApproved && isApproved;
+
+    /* ==== Ensure CODE if approved but missing (handles "already verified" case) ==== */
+    let codeCreatedNow = false;
+    if (isApproved && !updated.code) {
+      for (let i = 0; i < 5; i++) {
+        const candidate = await generateUniqueReferralCode();
+        try {
+          const after = await prisma.referral.update({
+            where: { id },
+            data: { code: candidate },
+            select: { code: true },
+          });
+          updated.code = after.code; // reflect on response
+          codeCreatedNow = true;
+          break;
+        } catch (e) {
+          // Unique race or other—log & retry if meaningful
+          console.error("Assign code failed:", e?.code || e?.message || e);
+          if (e?.code !== "P2002") break;
+        }
+      }
+    }
+
+    /* ==== WhatsApp notifications ==== */
+    const phone = updated.whatsapp_e164 || updated.whatsapp;
+    if (phone) {
+      // a) On first approval
+      if (becameApproved) {
+        const msg =
+          `Halo ${updated.full_name}, pengajuan referral Anda telah *${updated.status}*.\n` +
+          (updated.code
+            ? `Kode referral Anda: *${updated.code}*.\nBagikan kode ini ke calon leads.`
+            : `Kode referral belum dapat diterbitkan saat ini.`) +
+          `\nTerima kasih sudah mendaftar di OSS Bali.`;
         sendWhatsAppMessage(phone, msg).catch((e) =>
-          console.error("WA send error:", e?.message || e)
+          console.error("WA send error:", e?.response?.data || e?.message || e)
+        );
+      }
+      // b) Jika sudah approved lama tapi baru berhasil bikin code sekarang → kirim WA berisi kodenya
+      else if (isApproved && codeCreatedNow) {
+        const msg =
+          `Halo ${updated.full_name}, kode referral Anda telah diterbitkan: *${updated.code}*.\n` +
+          `Bagikan kode ini ke calon leads. Terima kasih!`;
+        sendWhatsAppMessage(phone, msg).catch((e) =>
+          console.error("WA send error:", e?.response?.data || e?.message || e)
+        );
+      }
+    }
+
+    // Rejected → WA singkat
+    if (data.status === "REJECTED" && before.status !== "REJECTED") {
+      const phoneR = updated.whatsapp_e164 || updated.whatsapp;
+      if (phoneR) {
+        const reason = updated.notes ? `\nAlasan: ${updated.notes}` : "";
+        const msg =
+          `Halo ${updated.full_name}, mohon maaf pengajuan referral Anda *REJECTED*.` +
+          reason +
+          `\nAnda dapat mengoreksi data lalu mengajukan kembali.`;
+        sendWhatsAppMessage(phoneR, msg).catch((e) =>
+          console.error("WA send error:", e?.response?.data || e?.message || e)
         );
       }
     }
@@ -240,7 +387,7 @@ export async function PATCH(req, { params }) {
       sanitize({
         data: updated,
         replaced_front: replacedFront,
-        preview_front: preview, // permanent public URL (or null if not replaced)
+        preview_front: preview,
       })
     );
   } catch (err) {
@@ -251,14 +398,13 @@ export async function PATCH(req, { params }) {
   }
 }
 
-/* ============== DELETE /api/referral/[id] ============== */
+/* ============== DELETE ============== */
 export async function DELETE(_req, { params }) {
   try {
     await requireAdmin();
   } catch (err) {
     return handleAuthError(err);
   }
-
   const id = BigInt(params?.id || 0);
   if (!id) return json({ error: { code: "BAD_REQUEST" } }, { status: 400 });
 

@@ -6,7 +6,7 @@ import { fetcher } from "@/lib/swr/fetcher";
 
 const DEFAULT_SORT = "created_at:desc";
 const DEFAULT_LOCALE = "id";
-const DEFAULT_FALLBACK = "id";
+const fallbackFor = (loc) => (String(loc).toLowerCase() === "id" ? "en" : "id");
 
 /* ========== Helpers ========== */
 function buildKey({ page, perPage, q, sort, locale, fallback }) {
@@ -15,72 +15,54 @@ function buildKey({ page, perPage, q, sort, locale, fallback }) {
   params.set("perPage", String(perPage));
   params.set("sort", sort || DEFAULT_SORT);
   params.set("locale", locale || DEFAULT_LOCALE);
-  params.set("fallback", fallback || DEFAULT_FALLBACK);
+  params.set("fallback", fallback || fallbackFor(locale || DEFAULT_LOCALE));
   if (q && q.trim()) params.set("q", q.trim());
   return `/api/consultants?${params.toString()}`;
 }
 
-const trimOrNull = (v) =>
-  typeof v === "string" ? (v.trim() === "" ? null : v.trim()) : v ?? null;
+/**
+ * toFormData (mendukung multi file)
+ * - Untuk galeri program, **SELALU** kirim sebagai "files[]"
+ * - Jika caller mengirim "program_images" (array string path), kirim sebagai "program_images[]"
+ */
+function toFormData(payload = {}) {
+  const fd = new FormData();
 
-function normalizeCreatePayload(values = {}) {
-  // CREATE expects:
-  // email?, whatsapp?, profile_image_url?, program_consultant_image_url?
-  // name_id (required), description_id?
-  return {
-    email: trimOrNull(values.email),
-    whatsapp: trimOrNull(values.whatsapp),
-    profile_image_url: trimOrNull(values.profile_image_url),
-    program_consultant_image_url: trimOrNull(
-      values.program_consultant_image_url
-    ),
+  Object.entries(payload).forEach(([k, v]) => {
+    if (v === undefined || v === null) return;
 
-    name_id: (values.name_id ?? "").toString().trim(),
-    description_id:
-      typeof values.description_id === "string" ? values.description_id : null,
-
-    autoTranslate: true,
-  };
-}
-
-
-function normalizeUpdatePayload(values = {}) {
-  // PATCH fields semua opsional:
-  // email?, whatsapp?, profile_image_url?, program_consultant_image_url?
-  // name_id?, description_id?
-  const out = {};
-
-  if ("email" in values) out.email = trimOrNull(values.email);
-  if ("whatsapp" in values) out.whatsapp = trimOrNull(values.whatsapp);
-  if ("profile_image_url" in values)
-    out.profile_image_url = trimOrNull(values.profile_image_url);
-  if ("program_consultant_image_url" in values)
-    out.program_consultant_image_url = trimOrNull(
-      values.program_consultant_image_url
-    );
-
-  if ("name_id" in values) {
-    const raw = values.name_id;
-    if (raw == null) out.name_id = null;
-    else {
-      const trimmed = raw.toString().trim();
-      out.name_id = trimmed.length ? trimmed : null;
+    // Back-compat: terima "program_files" atau "files" → kirim sebagai files[]
+    if (k === "program_files" || k === "files") {
+      const arr = Array.isArray(v) ? v : v instanceof FileList ? [...v] : [];
+      arr.forEach((f) => f instanceof File && fd.append("files[]", f));
+      return;
     }
-  }
 
-  if ("description_id" in values) {
-    const raw = values.description_id;
-    if (raw == null) out.description_id = null;
-    else if (typeof raw === "string") out.description_id = raw;
-    else out.description_id = String(raw);
-  }
+    // Array string untuk path gambar (jika pakai skema upload terpisah)
+    if (k === "program_images" && Array.isArray(v)) {
+      v.forEach(
+        (s) => typeof s === "string" && fd.append("program_images[]", s)
+      );
+      return;
+    }
 
+    // Catatan: API saat ini TIDAK membaca field file tunggal ini (disiapkan untuk masa depan)
+    if (k === "profile_file" || k === "program_consultant_file") {
+      if (v instanceof File) fd.append(k, v);
+      return;
+    }
 
-  return out;
+    if (typeof v === "boolean") {
+      fd.append(k, v ? "true" : "false");
+      return;
+    }
+
+    fd.append(k, String(v));
+  });
+
+  return fd;
 }
 
-
-/* ========== Hook ========== */
 export default function useConsultantsViewModel() {
   // filters/paging
   const [page, setPage] = useState(1);
@@ -88,7 +70,7 @@ export default function useConsultantsViewModel() {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState(DEFAULT_SORT);
   const [locale, setLocale] = useState(DEFAULT_LOCALE);
-  const [fallback, setFallback] = useState(DEFAULT_FALLBACK);
+  const [fallback, setFallback] = useState(fallbackFor(DEFAULT_LOCALE));
 
   // op loading (POST/PATCH/DELETE)
   const [opLoading, setOpLoading] = useState(false);
@@ -123,17 +105,14 @@ export default function useConsultantsViewModel() {
   const refresh = useCallback(() => mutate(), [mutate]);
 
   /* ===== CREATE ===== */
-  async function createConsultant(values) {
+  async function createConsultant(payload) {
+    // payload bisa campur: { files?: File[], program_images?: string[] } + fields text
     setOpLoading(true);
     try {
-      const payload = normalizeCreatePayload(values);
-      if (!payload.name_id || payload.name_id.length < 2) {
-        throw new Error("Nama (ID) wajib diisi (min 2 karakter)");
-      }
+      const fd = toFormData(payload);
       const res = await fetch("/api/consultants", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: fd, // biar browser set boundary otomatis
       });
       const info = await res.json().catch(() => null);
       if (!res.ok) {
@@ -151,14 +130,14 @@ export default function useConsultantsViewModel() {
   }
 
   /* ===== UPDATE ===== */
-  async function updateConsultant(id, values) {
+  async function updateConsultant(id, payload) {
+    // payload bisa: files?: File[], program_images_mode?: 'append' | 'replace'
     setOpLoading(true);
     try {
-      const payload = normalizeUpdatePayload(values);
+      const fd = toFormData(payload);
       const res = await fetch(`/api/consultants/${encodeURIComponent(id)}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: fd,
       });
       const info = await res.json().catch(() => null);
       if (!res.ok) {

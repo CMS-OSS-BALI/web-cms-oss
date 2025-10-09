@@ -132,7 +132,7 @@ const styles = {
     },
   },
 
-  /* ====== REUSABLE TITLE (ngikut product Doc Translate) ====== */
+  /* ====== REUSABLE TITLE ====== */
   headTitle: {
     wrap: { position: "relative", margin: "32px 0 18px", overflow: "visible" },
     decoBase: {
@@ -163,7 +163,7 @@ const styles = {
     titleNarrow: { fontSize: 22 },
   },
 
-  /* ================= SERVICES (UPDATED) ================= */
+  /* ================= SERVICES ================= */
   services: {
     section: { padding: "75px 0 75px" },
 
@@ -175,7 +175,6 @@ const styles = {
       marginTop: "75px",
     },
 
-    // collage: BOTH images same size
     collage: { position: "relative", width: "100%", height: 420 },
     backBox: {
       position: "absolute",
@@ -203,7 +202,6 @@ const styles = {
     },
     imgCover: { width: "100%", height: "100%", objectFit: "cover" },
 
-    // list
     list: {
       display: "grid",
       gridTemplateColumns: "repeat(2, 1fr)",
@@ -230,11 +228,10 @@ const styles = {
     itemDesc: { margin: 0, color: "#4b5563", lineHeight: 1.6 },
   },
 
-  /* ================= WHY (updated to match design) ================= */
+  /* ================= WHY ================= */
   why: {
     section: { padding: "0 0 28px" },
 
-    // full-bleed bar + centered pill title
     headBar: {
       background: "linear-gradient(90deg, #0a4ea7, #0b56c9)",
       height: 74,
@@ -261,7 +258,6 @@ const styles = {
         "0 14px 28px rgba(15,23,42,.20), inset 0 0 0 2px rgba(255,255,255,.35)",
     },
 
-    // list of reasons (2 columns)
     list: {
       display: "grid",
       gridTemplateColumns: "repeat(2, 1fr)",
@@ -283,7 +279,7 @@ const styles = {
       background: "#fff",
       border: "2px solid #e5e7eb",
       boxShadow: "0 8px 18px rgba(15,23,42,.08)",
-      fontSize: 38, // jika pakai emoji/icon font
+      fontSize: 38,
       color: "#0f172a",
     },
     title: {
@@ -294,7 +290,6 @@ const styles = {
     },
     sub: { margin: 0, color: "#334155", lineHeight: 1.55 },
 
-    /* responsive tweaks */
     pillTitleNarrow: { fontSize: 20, padding: "10px 18px" },
     listNarrow: { gridTemplateColumns: "1fr", gap: 22 },
     itemNarrow: { gridTemplateColumns: "56px 1fr" },
@@ -494,7 +489,7 @@ export default function AccommodationContent({ locale = "id" }) {
                             {b.label}
                           </span>
                         );
-                      })
+                      })}
                     </div>
                   )}
                 </>
@@ -537,7 +532,7 @@ export default function AccommodationContent({ locale = "id" }) {
         </div>
       </section>
 
-      {/* ============ SERVICES (title mengikuti product Doc Translate) ============ */}
+      {/* ============ SERVICES ============ */}
       <section style={styles.services.section}>
         <div style={sectionInner}>
           {/* Title with gradient side bars */}
@@ -606,7 +601,7 @@ export default function AccommodationContent({ locale = "id" }) {
         </div>
       </section>
 
-      {/* ============ WHY (updated) ============ */}
+      {/* ============ WHY ============ */}
       <section>
         <div style={sectionInner}>
           <div style={styles.why.headBar}>

@@ -20,7 +20,6 @@ const { TextArea } = Input;
 
 const styles = {
   wrap: { width: "100vw", marginLeft: "calc(50% - 50vw)" },
-
   hero: {
     background: "linear-gradient(180deg,#d8edff 0%, #e4f0ff 55%, #ffffff 100%)",
     padding: "36px 16px 300px",
@@ -45,9 +44,7 @@ const styles = {
     borderRadius: 999,
     margin: "12px auto 0",
   },
-
   container: { width: "min(980px, 92%)", margin: "-230px auto 80px" },
-
   card: {
     borderRadius: 16,
     border: "2px solid #cfe0ff",
@@ -55,7 +52,6 @@ const styles = {
     background: "#ffffff",
   },
   cardBody: { padding: 24 },
-
   sectionTitle: {
     fontSize: 14,
     fontWeight: 900,
@@ -64,7 +60,6 @@ const styles = {
     color: "#0B3E91",
     margin: "4px 0 10px",
   },
-
   label: {
     display: "block",
     fontSize: 12,
@@ -73,9 +68,7 @@ const styles = {
     marginBottom: 6,
   },
   req: { color: "#ff4d4f", marginLeft: 4, fontWeight: 900 },
-
   item: { marginBottom: 16 },
-
   input: {
     borderRadius: 8,
     background: "#f2f6fd",
@@ -87,8 +80,6 @@ const styles = {
     background: "#f2f6fd",
     border: "1px solid #d9e6ff",
   },
-
-  // Drop-zone
   ktpDrop: {
     border: "2px dashed #7fb0ff",
     borderRadius: 12,
@@ -104,8 +95,6 @@ const styles = {
   ktpInner: { display: "grid", placeItems: "center", gap: 8 },
   ktpHint: { color: "#4466aa", fontWeight: 700 },
   ktpSub: { color: "#6e87b8", fontSize: 12 },
-
-  // Preview + overlay delete
   previewBox: {
     position: "relative",
     border: "1px solid #d9e6ff",
@@ -142,7 +131,6 @@ const styles = {
     boxShadow: "0 10px 24px rgba(255,77,79,.35)",
     cursor: "pointer",
   },
-
   btnWrap: { marginTop: 16, textAlign: "center" },
   btn: {
     minWidth: 240,
@@ -155,8 +143,6 @@ const styles = {
     color: "#fff",
     border: "none",
   },
-
-  // Inline error text
   errText: {
     color: "#ff4d4f",
     fontSize: 12,
@@ -192,13 +178,18 @@ function CameraIcon({ size = 40 }) {
 
 export default function ReferralContent({
   values,
-  errors, // <--- NEW: from ViewModel
+  errors,
   onChange,
   onPickFront,
   submit,
   canSubmit,
   loading,
   msg,
+
+  // NEW: props dari ViewModel
+  consultants,
+  consultantsLoading,
+  loadConsultants,
 }) {
   const fileInputRef = useRef(null);
 
@@ -228,6 +219,11 @@ export default function ReferralContent({
       el.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   }, [errors]);
+
+  // Load list konsultan saat mount
+  useEffect(() => {
+    loadConsultants?.();
+  }, [loadConsultants]);
 
   const getStatus = (k) => (errors?.[k] ? "error" : undefined);
 
@@ -681,6 +677,35 @@ export default function ReferralContent({
               ) : null}
             </Col>
           </Row>
+
+          {/* ===== PIC Konsultan (Wajib) ===== */}
+          <div style={styles.sectionTitle}>PIC Konsultan</div>
+          <div style={styles.item} data-field="pic_consultant_id">
+            <Text style={styles.label}>
+              Konsultan Penanggung Jawab <span style={styles.req}>*</span>
+            </Text>
+            <Select
+              style={{ ...styles.input, width: "100%" }}
+              placeholder="Pilih konsultan"
+              options={consultants}
+              loading={consultantsLoading}
+              value={values.pic_consultant_id || undefined}
+              onChange={(v) => onChange("pic_consultant_id", v)}
+              showSearch
+              optionFilterProp="label"
+              status={getStatus("pic_consultant_id")}
+              aria-required="true"
+              aria-invalid={!!errors?.pic_consultant_id}
+              aria-describedby={
+                errors?.pic_consultant_id ? "err-pic" : undefined
+              }
+            />
+            {errors?.pic_consultant_id ? (
+              <div id="err-pic" style={styles.errText}>
+                {errors.pic_consultant_id}
+              </div>
+            ) : null}
+          </div>
 
           {/* ===== Kontak ===== */}
           <div style={styles.sectionTitle}>Kontak</div>

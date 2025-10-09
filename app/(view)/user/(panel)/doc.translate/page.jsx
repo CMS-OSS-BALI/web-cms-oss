@@ -1,16 +1,34 @@
 "use client";
 
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import Loading from "@/app/components/loading/LoadingImage";
-import useDocumentTranslateViewModel from "./useDocumentTranslateViewModel"; // <- default import
+import useDocumentTranslateViewModel from "./useDocumentTranslateViewModel";
 
 const DocumentTranslateContentLazy = lazy(() =>
   import("./DocumentTranslateContent")
 );
 
+function pickLocale(q, ls) {
+  const v = (q || ls || "id").slice(0, 2).toLowerCase();
+  return v === "en" ? "en" : "id";
+}
+
 export default function DocumentTranslatePage() {
-  // optional: pass locale if you need it
-  const vm = useDocumentTranslateViewModel({ locale: "id" });
+  const search = useSearchParams();
+
+  // Ambil dari ?lang= dulu, fallback ke localStorage, default "id"
+  const locale = useMemo(() => {
+    const q = search?.get("lang") || "";
+    const ls =
+      typeof window !== "undefined"
+        ? localStorage.getItem("oss.lang") || ""
+        : "";
+    return pickLocale(q, ls);
+  }, [search]);
+
+  // Build view model sesuai locale
+  const vm = useDocumentTranslateViewModel({ locale });
 
   return (
     <Suspense
@@ -20,9 +38,8 @@ export default function DocumentTranslatePage() {
         </div>
       }
     >
-      {/* DocumentTranslateContent currently uses its own hook,
-          but spreading vm here is harmless if you later consume it */}
-      <DocumentTranslateContentLazy {...vm} />
+      {/* key memastikan remount saat ?lang= berubah */}
+      <DocumentTranslateContentLazy key={locale} {...vm} locale={locale} />
     </Suspense>
   );
 }

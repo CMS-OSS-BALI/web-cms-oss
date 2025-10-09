@@ -2,10 +2,7 @@
 import useSWR from "swr";
 import { fetcher } from "../../../../utils/fetcher";
 
-// endpoint publik (sudah include locale & limit)
-const TESTIMONIALS_ENDPOINT = "/api/testimonials?locale=id&limit=12";
-
-// default/pola fetch consultants (mirip useConsultantsViewModel)
+// default/pola fetch consultants
 const DEFAULT_SORT = "created_at:desc";
 const DEFAULT_LOCALE = "id";
 const DEFAULT_FALLBACK = "id";
@@ -24,7 +21,7 @@ function consultantsKey({
   params.set("sort", sort);
   params.set("locale", locale);
   params.set("fallback", fallback);
-  params.set("public", "1"); // ← make it public
+  params.set("public", "1"); // ← public
   if (q && q.trim()) params.set("q", q.trim());
   return `/api/consultants?${params.toString()}`;
 }
@@ -32,10 +29,7 @@ function consultantsKey({
 // safer fetcher (keeps page stable even if server returns non-OK)
 const publicFetcher = async (url) => {
   const res = await fetch(url, { credentials: "omit" });
-  if (!res.ok) {
-    // if something odd happens, just return empty structure
-    return { data: [] };
-  }
+  if (!res.ok) return { data: [] };
   return res.json();
 };
 
@@ -44,110 +38,133 @@ const toNumber = (value, fallback = 0) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
-export function useLandingViewModel() {
+export function useLandingViewModel(arg) {
+  // Backward-compatible arg handling:
+  // - useLandingViewModel()
+  // - useLandingViewModel({ locale: "en" })
+  // - useLandingViewModel("en")
+  let locale = DEFAULT_LOCALE;
+  if (typeof arg === "string") locale = arg;
+  else if (arg && typeof arg === "object" && arg.locale) locale = arg.locale;
+  locale = (locale || "id").slice(0, 2).toLowerCase() === "en" ? "en" : "id";
+
+  const t = (id, en) => (locale === "en" ? en : id);
+
   const hero = {
     background: "/bg-1-lp.svg",
-    title: "MAKE YOU PRIORITY",
-    description:
-      "One Step Solution (OSS) Bali adalah konsultan pendidikan & karir yang membantu siswa serta profesional di Bali meraih peluang karir di luar negeri.",
+    title: t("JADIKAN KAMU PRIORITAS", "MAKE YOU A PRIORITY"),
+    description: t(
+      "One Step Solution (OSS) Bali adalah konsultan pendidikan & karier yang membantu siswa serta profesional di Bali meraih peluang karier di luar negeri.",
+      "One Step Solution (OSS) Bali is an education & career consultancy helping students and professionals in Bali pursue global career opportunities."
+    ),
   };
 
   const metrics = [
     {
       id: "global-partner-1",
       value: "50K+",
-      label: "Global Partner",
+      label: t("Mitra Global", "Global Partner"),
       gradient:
         "linear-gradient(180deg, rgba(18,88,190,0.95) 0%, rgba(12,63,151,0.95) 100%)",
     },
     {
       id: "visa-apply",
       value: "50K+",
-      label: "Visa Apply",
+      label: t("Pengajuan Visa", "Visa Apply"),
       gradient:
         "linear-gradient(180deg, rgba(74,154,255,0.95) 0%, rgba(43,131,231,0.95) 100%)",
     },
     {
       id: "student-exchange",
       value: "50K+",
-      label: "Student Exchange",
+      label: t("Pertukaran Pelajar", "Student Exchange"),
       gradient:
         "linear-gradient(180deg, rgba(32,107,220,0.95) 0%, rgba(25,86,184,0.95) 100%)",
     },
     {
       id: "global-partner-2",
       value: "50K+",
-      label: "Global Partner",
+      label: t("Mitra Global", "Global Partner"),
       gradient:
         "linear-gradient(180deg, rgba(13,74,168,0.95) 0%, rgba(8,46,108,0.95) 100%)",
     },
   ];
 
   const whyChoose = {
-    title: "WHY CHOOSE US?",
+    title: t("KENAPA PILIH KAMI?", "WHY CHOOSE US?"),
     cards: [
       {
         id: "trusted",
         icon: "/trusted.svg",
         value: "50K+",
-        label: "Trusted Institution",
+        label: t("Lembaga Terpercaya", "Trusted Institution"),
       },
       {
         id: "program",
         icon: "/program.svg",
         value: "50K+",
-        label: "Program Unggulan",
+        label: t("Program Unggulan", "Featured Programs"),
       },
       {
         id: "exchange",
         icon: "/exchange.svg",
         value: "50K+",
-        label: "Study Exchange",
+        label: t("Program Pertukaran", "Study Exchange"),
       },
       {
         id: "universitas",
         icon: "/university.svg",
         value: "50K+",
-        label: "Universitas Global",
+        label: t("Universitas Global", "Global Universities"),
       },
     ],
   };
 
   const popularProgram = {
-    title: "OUR POPULAR PROGRAM",
-    subtitle:
+    title: t("PROGRAM POPULER KAMI", "OUR POPULAR PROGRAM"),
+    subtitle: t(
       "Kami menawarkan program unggulan untuk mendukung studi dan karier global Anda, dengan pengalaman belajar berkualitas, peluang internasional, serta akses ke universitas dan mitra terbaik.",
+      "We offer standout programs to support your study and global career, with quality learning, international opportunities, and access to top universities & partners."
+    ),
     items: [
       {
         id: "destinations",
         image: "/program-destinations.svg",
-        label: "PULUHAN NEGARA TUJUAN",
+        label: t("PULUHAN NEGARA TUJUAN", "DOZENS OF DESTINATION COUNTRIES"),
       },
       {
         id: "campus",
         image: "/program-campus.svg",
-        label: "RATUSAN MITRA KAMPUS",
+        label: t("RATUSAN MITRA KAMPUS", "HUNDREDS OF CAMPUS PARTNERS"),
       },
       {
         id: "career",
         image: "/program-career.svg",
-        label: "KARIR LUAR NEGERI",
+        label: t("KARIER LUAR NEGERI", "OVERSEAS CAREERS"),
       },
     ],
   };
 
   const testimonials = {
-    title: "What They Say",
-    subtitle: "Cerita mereka yang sudah merasakan layanan OSS Bali.",
+    title: t("Apa Kata Mereka", "What They Say"),
+    subtitle: t(
+      "Cerita mereka yang sudah merasakan layanan OSS Bali.",
+      "Stories from those who have experienced OSS Bali's services."
+    ),
   };
 
-  /* ===== Testimonials (GET) ===== */
+  /* ===== Testimonials (GET) with locale & fallback ===== */
+  const testiKey = useMemo(
+    () => `/api/testimonials?locale=${locale}&fallback=id&limit=12`,
+    [locale]
+  );
+
   const {
     data: testiJson,
     error: testiErr,
     isLoading: testiLoading,
     isValidating: testiValidating,
-  } = useSWR(TESTIMONIALS_ENDPOINT, fetcher);
+  } = useSWR(testiKey, fetcher);
 
   const testimonialsList = useMemo(() => {
     const source = Array.isArray(testiJson?.data)
@@ -166,17 +183,17 @@ export function useLandingViewModel() {
     }));
   }, [testiJson]);
 
-  /* ===== Consultants (GET) publik ===== */
+  /* ===== Consultants (GET) publik, ikut locale ===== */
   const consultantsReqKey = useMemo(
     () =>
       consultantsKey({
         page: 1,
         perPage: 3, // tampilkan 3 di landing
         sort: DEFAULT_SORT,
-        locale: DEFAULT_LOCALE,
-        fallback: DEFAULT_FALLBACK,
+        locale,
+        fallback: "id",
       }),
-    []
+    [locale]
   );
 
   const {
@@ -189,65 +206,109 @@ export function useLandingViewModel() {
     const list = consultantsJson?.data ?? [];
     return list.map((c, i) => ({
       id: c.id ?? c._id ?? `consultant-${i}`,
-      name: c.name ?? c.name_id ?? "",
+      name:
+        (locale === "en" ? c.name_en : c.name_id) ??
+        c.name ??
+        c.name_id ??
+        c.name_en ??
+        "",
       photo:
         c.profile_image_url ??
         c.program_consultant_image_url ??
         "/images/avatars/default.jpg",
-      bio: c.description ?? c.description_id ?? "",
+      bio:
+        (locale === "en" ? c.description_en : c.description_id) ??
+        c.description ??
+        c.description_id ??
+        c.description_en ??
+        "",
     }));
-  }, [consultantsJson]);
+  }, [consultantsJson, locale]);
 
   const consultants = useMemo(
     () => ({
-      title: "Our Consultants",
+      title: t("Konsultan Kami", "Our Consultants"),
       items: consultantsItems,
     }),
-    [consultantsItems]
+    [consultantsItems, locale]
   );
 
   const faq = {
-    title: "FREQUENTLY ASK QUESTION",
-    illustration: "/images/mascot-faq.png",
+    title: t("PERTANYAAN YANG SERING DITANYAKAN", "FREQUENTLY ASKED QUESTIONS"),
+    illustration: "/images/maskot.png",
     items: [
       {
-        q: "Apakah harus punya IELTS untuk Kuliah di Luar Negeri?",
-        a: "Tidak selalu. Sejumlah kampus menerima alternatif seperti Duolingo English Test, TOEFL iBT, atau program pathway/ELP. Syarat spesifik tergantung negara dan universitas tujuan.",
+        q: t(
+          "Apakah harus punya IELTS untuk kuliah di luar negeri?",
+          "Do I need IELTS to study abroad?"
+        ),
+        a: t(
+          "Tidak selalu. Sejumlah kampus menerima alternatif seperti Duolingo English Test, TOEFL iBT, atau program pathway/ELP. Syarat spesifik tergantung negara dan universitas tujuan.",
+          "Not always. Many universities accept alternatives like Duolingo English Test, TOEFL iBT, or pathway/ELP programs. Requirements depend on the country and the university."
+        ),
       },
       {
-        q: "Bagaimana jika saya pernah mengalami penolakan visa?",
-        a: "Masih bisa apply lagi. Perbaiki dokumen yang lemah, kuatkan bukti finansial & ikatan kembali ke Indonesia, dan jelaskan perubahan kondisi pada pengajuan ulang.",
+        q: t(
+          "Bagaimana jika saya pernah mengalami penolakan visa?",
+          "What if I've had a visa refusal?"
+        ),
+        a: t(
+          "Masih bisa apply lagi. Perbaiki dokumen yang lemah, kuatkan bukti finansial & ikatan kembali ke Indonesia, dan jelaskan perubahan kondisi pada pengajuan ulang.",
+          "You can reapply. Strengthen weak documents, improve financial evidence & ties to your home country, and clearly explain changes in your circumstances."
+        ),
       },
       {
-        q: "Apakah kuliah di luar negeri bisa sambil bekerja?",
-        a: "Di banyak negara bisa part-time (contoh 20 jam/minggu saat kuliah). Aturan tiap negara berbeda, jadi pastikan cek regulasi imigrasi tujuanmu.",
+        q: t(
+          "Apakah kuliah di luar negeri bisa sambil bekerja?",
+          "Can I work while studying abroad?"
+        ),
+        a: t(
+          "Di banyak negara bisa part-time (contoh 20 jam/minggu saat kuliah). Aturan tiap negara berbeda, jadi pastikan cek regulasi imigrasi tujuanmu.",
+          "In many countries you can work part-time (e.g., 20 hours/week during term). Rules vary by country, so always check the relevant immigration regulations."
+        ),
       },
     ],
   };
 
   const countryPartners = {
-    title: "OUR COUNTRY PARTNER",
+    title: t("MITRA NEGARA KAMI", "OUR COUNTRY PARTNER"),
     items: [
-      { id: "us", name: "United States", flag: "/flags/us.svg" },
-      { id: "au", name: "Australia", flag: "/flags/au.svg" },
-      { id: "ca", name: "Canada", flag: "/flags/ca.svg" },
-      { id: "de", name: "Germany", flag: "/flags/de.svg" },
-      { id: "jp", name: "Japan", flag: "/flags/jp.svg" },
-      { id: "kr", name: "South Korea", flag: "/flags/kr.svg" },
-      { id: "nl", name: "Netherlands", flag: "/flags/nl.svg" },
-      { id: "ch", name: "Switzerland", flag: "/flags/ch.svg" },
-      { id: "cn", name: "China", flag: "/flags/cn.svg" },
-      { id: "nz", name: "New Zealand", flag: "/flags/nz.svg" },
-      { id: "gb", name: "United Kingdom", flag: "/flags/gb.svg" },
-      { id: "dk", name: "Denmark", flag: "/flags/dk.svg" },
-      { id: "pl", name: "Poland", flag: "/flags/pl.svg" },
-      { id: "ie", name: "Ireland", flag: "/flags/ie.svg" },
-      { id: "tw", name: "Taiwan", flag: "/flags/tw.svg" },
-      { id: "sg", name: "Singapore", flag: "/flags/sg.svg" },
-      { id: "my", name: "Malaysia", flag: "/flags/my.svg" },
-      { id: "tr", name: "Turkey", flag: "/flags/tr.svg" },
-      { id: "cz", name: "Czech Republic", flag: "/flags/cz.svg" },
-      { id: "it", name: "Italy", flag: "/flags/it.svg" },
+      {
+        id: "us",
+        name: t("Amerika Serikat", "United States"),
+        flag: "/flags/us.svg",
+      },
+      { id: "au", name: t("Australia", "Australia"), flag: "/flags/au.svg" },
+      { id: "ca", name: t("Kanada", "Canada"), flag: "/flags/ca.svg" },
+      { id: "de", name: t("Jerman", "Germany"), flag: "/flags/de.svg" },
+      { id: "jp", name: t("Jepang", "Japan"), flag: "/flags/jp.svg" },
+      {
+        id: "kr",
+        name: t("Korea Selatan", "South Korea"),
+        flag: "/flags/kr.svg",
+      },
+      { id: "nl", name: t("Belanda", "Netherlands"), flag: "/flags/nl.svg" },
+      { id: "ch", name: t("Swiss", "Switzerland"), flag: "/flags/ch.svg" },
+      { id: "cn", name: t("Tiongkok", "China"), flag: "/flags/cn.svg" },
+      {
+        id: "nz",
+        name: t("Selandia Baru", "New Zealand"),
+        flag: "/flags/nz.svg",
+      },
+      { id: "gb", name: t("Inggris", "United Kingdom"), flag: "/flags/gb.svg" },
+      { id: "dk", name: t("Denmark", "Denmark"), flag: "/flags/dk.svg" },
+      { id: "pl", name: t("Polandia", "Poland"), flag: "/flags/pl.svg" },
+      { id: "ie", name: t("Irlandia", "Ireland"), flag: "/flags/ie.svg" },
+      { id: "tw", name: t("Taiwan", "Taiwan"), flag: "/flags/tw.svg" },
+      { id: "sg", name: t("Singapura", "Singapore"), flag: "/flags/sg.svg" },
+      { id: "my", name: t("Malaysia", "Malaysia"), flag: "/flags/my.svg" },
+      { id: "tr", name: t("Turki", "Turkey"), flag: "/flags/tr.svg" },
+      {
+        id: "cz",
+        name: t("Republik Ceko", "Czech Republic"),
+        flag: "/flags/cz.svg",
+      },
+      { id: "it", name: t("Italia", "Italy"), flag: "/flags/it.svg" },
     ],
   };
 
@@ -256,6 +317,7 @@ export function useLandingViewModel() {
     metrics,
     whyChoose,
     popularProgram,
+
     testimonials,
     testimonialsList,
     isTestimonialsLoading: testiLoading,

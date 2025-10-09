@@ -1,7 +1,12 @@
 "use client";
 
-import React from "react";
-import { FacebookFilled, InstagramOutlined, WhatsAppOutlined } from "@ant-design/icons";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
+import { message } from "antd";
+import {
+  FacebookFilled,
+  InstagramOutlined,
+  WhatsAppOutlined,
+} from "@ant-design/icons";
 
 /** Gaya ringkas sesuai screenshot */
 const styles = {
@@ -67,9 +72,7 @@ const styles = {
     color: "#0e1726",
     textAlign: "justify",
   },
-  articleInner: {
-    // agar HTML kamu rapi
-  },
+  articleInner: {},
   articleP: {
     margin: "0 0 16px",
     textAlign: "justify",
@@ -104,6 +107,7 @@ const styles = {
     color: "#0B3E91",
     textDecoration: "none",
     transition: "transform .2s ease, opacity .2s ease",
+    cursor: "pointer",
   },
   shareIcon: { fontSize: 18, opacity: 0.9 },
 };
@@ -117,6 +121,70 @@ export default function BlogDetailContent({
   html,
   source,
 }) {
+  const [shareUrl, setShareUrl] = useState("");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      // hapus fragment supaya URL lebih bersih
+      const url = window.location.href.split("#")[0];
+      setShareUrl(url);
+    }
+  }, []);
+
+  const shareTitle = useMemo(() => {
+    const t = [titleMain, titleSub].filter(Boolean).join(" — ");
+    return t || "OSS Bali News";
+  }, [titleMain, titleSub]);
+
+  const openPopup = useCallback((url) => {
+    const w = 600;
+    const h = 540;
+    const y = typeof window !== "undefined" ? (window.outerHeight - h) / 2 : 0;
+    const x = typeof window !== "undefined" ? (window.outerWidth - w) / 2 : 0;
+    window.open(
+      url,
+      "_blank",
+      `noopener,noreferrer,width=${w},height=${h},left=${x},top=${y}`
+    );
+  }, []);
+
+  const onShareFacebook = useCallback(() => {
+    if (!shareUrl) return;
+    const u = encodeURIComponent(shareUrl);
+    const q = encodeURIComponent(shareTitle);
+    const url = `https://www.facebook.com/sharer/sharer.php?u=${u}&quote=${q}`;
+    openPopup(url);
+  }, [shareUrl, shareTitle, openPopup]);
+
+  const onShareWhatsApp = useCallback(() => {
+    if (!shareUrl) return;
+    const text = encodeURIComponent(`${shareTitle}\n${shareUrl}`);
+    const url = `https://wa.me/?text=${text}`;
+    // di mobile akan buka app WA; desktop buka WhatsApp Web
+    window.open(url, "_blank", "noopener,noreferrer");
+  }, [shareUrl, shareTitle]);
+
+  const onShareInstagram = useCallback(async () => {
+    if (!shareUrl) return;
+    // Instagram tidak punya web share resmi.
+    // 1) Jika Web Share API tersedia, gunakan share sheet OS.
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share({ title: shareTitle, url: shareUrl });
+        return;
+      } catch {
+        // user cancel / error → fallback ke clipboard
+      }
+    }
+    // 2) Fallback: copy link ke clipboard
+    try {
+      await navigator.clipboard.writeText(`${shareTitle} — ${shareUrl}`);
+      message.success("Link berita disalin. Tempel di Instagram bio/story.");
+    } catch {
+      message.info("Salin link: " + shareUrl);
+    }
+  }, [shareUrl, shareTitle]);
+
   if (loading) {
     return (
       <div style={{ ...styles.page, padding: "40px 0" }}>
@@ -165,7 +233,6 @@ export default function BlogDetailContent({
         <article style={styles.article}>
           <div
             style={styles.articleInner}
-            // konten HTML dari CMS
             dangerouslySetInnerHTML={{ __html: html || "" }}
           />
         </article>
@@ -185,28 +252,57 @@ export default function BlogDetailContent({
           </div>
         ) : null}
 
-        {/* Share (dummy—ganti dengan real link kalau perlu) */}
+        {/* Share */}
         <div style={{ marginTop: 16 }}>
           <div style={styles.metaLabel}>SHARE BERITA</div>
           <div style={styles.shareWrap}>
+            {/* Facebook */}
             <a
-              href="#"
+              role="button"
+              tabIndex={0}
+              onClick={(e) => {
+                e.preventDefault();
+                onShareFacebook();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") onShareFacebook();
+              }}
               title="Share to Facebook"
               aria-label="Facebook"
               style={styles.shareLink}
             >
               <FacebookFilled style={styles.shareIcon} />
             </a>
+
+            {/* Instagram (copy link / web share) */}
             <a
-              href="#"
+              role="button"
+              tabIndex={0}
+              onClick={(e) => {
+                e.preventDefault();
+                onShareInstagram();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") onShareInstagram();
+              }}
               title="Share to Instagram"
               aria-label="Instagram"
               style={styles.shareLink}
             >
               <InstagramOutlined style={styles.shareIcon} />
             </a>
+
+            {/* WhatsApp */}
             <a
-              href="#"
+              role="button"
+              tabIndex={0}
+              onClick={(e) => {
+                e.preventDefault();
+                onShareWhatsApp();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") onShareWhatsApp();
+              }}
               title="Share to WhatsApp"
               aria-label="WhatsApp"
               style={styles.shareLink}

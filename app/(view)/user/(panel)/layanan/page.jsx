@@ -24,7 +24,6 @@ export default function LayananPage() {
     return pickLocale(q, ls);
   }, [search]);
 
-  // VM di-evaluate di page agar props bisa di-pass ke content
   const vm = useLayananViewModel({ locale });
 
   return (
@@ -35,7 +34,7 @@ export default function LayananPage() {
         </div>
       }
     >
-      {/* key=locale agar remount saat bahasa berubah */}
+      {/* key ensures remount when ?lang changes */}
       <LayananContentLazy key={locale} {...vm} />
     </Suspense>
   );

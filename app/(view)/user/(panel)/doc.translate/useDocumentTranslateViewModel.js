@@ -9,9 +9,11 @@ const fetcher = (url) =>
     return r.json();
   });
 
+const t = (locale, id, en) => (locale === "en" ? en : id);
+
 export default function useDocumentTranslateViewModel({ locale = "id" } = {}) {
   const { data, error, isLoading } = useSWR(
-    `/api/doc-translate?locale=${locale}`,
+    `/api/doc-translate?locale=${locale}&fallback=id`,
     fetcher,
     { revalidateOnFocus: false, shouldRetryOnError: false }
   );
@@ -19,108 +21,115 @@ export default function useDocumentTranslateViewModel({ locale = "id" } = {}) {
   const fallback = useMemo(
     () => ({
       hero: {
-        title: "DOC.TRANSLATION",
-        subtitle:
-          locale === "id"
-            ? "Terjemahkan dokumen Anda secara akurat, cepat, dan siap pakai untuk kebutuhan akademik, legal, maupun profesional."
-            : "Translate your documents with accuracy and speed—ready for academic, legal, and professional use.",
+        title: t(locale, "TERJEMAHAN DOKUMEN", "DOCUMENT TRANSLATION"),
+        subtitle: t(
+          locale,
+          "Terjemahkan dokumen Anda secara akurat, cepat, dan siap pakai untuk kebutuhan akademik, legal, maupun profesional.",
+          "Translate your documents with accuracy and speed—ready for academic, legal, and professional use."
+        ),
         bullets: [
           {
             id: "b1",
-            label:
-              locale === "id"
-                ? "Rapi Ikuti Format Asli"
-                : "Clean, Source-Matching Layout",
+            label: t(
+              locale,
+              "Rapi Ikuti Format Asli",
+              "Clean, Source-Matching Layout"
+            ),
           },
           {
             id: "b2",
-            label:
-              locale === "id"
-                ? "Terminologi Konsisten"
-                : "Consistent Terminology",
+            label: t(locale, "Terminologi Konsisten", "Consistent Terminology"),
           },
           {
             id: "b3",
-            label:
-              locale === "id"
-                ? "Proses Cepat & Tepat"
-                : "Fast & Reliable Turnaround",
+            label: t(
+              locale,
+              "Proses Cepat & Tepat",
+              "Fast & Reliable Turnaround"
+            ),
           },
         ],
         illustration: "/doctranslate.svg",
       },
 
-      description:
-        locale === "id"
-          ? `<p>Layanan penerjemahan dokumen resmi atau pribadi dari satu bahasa ke bahasa lain, baik untuk keperluan akademik, profesional, maupun hukum. Layanan ini memastikan setiap dokumen diterjemahkan secara akurat, mempertahankan makna asli, format, dan konteksnya, sehingga siap digunakan untuk aplikasi pendidikan, pekerjaan, visa, atau kepentingan resmi lainnya.</p>`
-          : `<p>Professional translation for personal and official documents. We preserve meaning, context, and layout—ready for study, work, visa, and other official needs.</p>`,
+      description: t(
+        locale,
+        `<p>Layanan penerjemahan dokumen resmi atau pribadi dari satu bahasa ke bahasa lain, baik untuk keperluan akademik, profesional, maupun hukum. Layanan ini memastikan setiap dokumen diterjemahkan secara akurat, mempertahankan makna asli, format, dan konteksnya, sehingga siap digunakan untuk aplikasi pendidikan, pekerjaan, visa, atau kepentingan resmi lainnya.</p>`,
+        `<p>Professional translation for personal and official documents. We preserve meaning, context, and layout—ready for study, work, visa, and other official needs.</p>`
+      ),
 
       productSection: {
-        title: "OUR PRODUCT DOCUMENT TRANSLATION",
+        title: t(
+          locale,
+          "PRODUK TERJEMAHAN DOKUMEN KAMI",
+          "OUR DOCUMENT TRANSLATION PRODUCTS"
+        ),
         items: [
           {
             id: "ktp",
-            title: locale === "id" ? "KARTU PENDUDUK" : "NATIONAL ID",
+            title: t(locale, "KARTU PENDUDUK", "NATIONAL ID"),
             icon: "/acc.svg",
             href: "/user/leads",
           },
           {
             id: "kk",
-            title: locale === "id" ? "KARTU KELUARGA" : "FAMILY CARD",
+            title: t(locale, "KARTU KELUARGA", "FAMILY CARD"),
             icon: "/kk.svg",
             href: "/user/leads",
           },
           {
             id: "akta",
-            title: locale === "id" ? "AKTA KELAHIRAN" : "BIRTH CERTIFICATE",
+            title: t(locale, "AKTA KELAHIRAN", "BIRTH CERTIFICATE"),
             icon: "/akta.svg",
             href: "/user/leads",
           },
         ],
       },
 
-      // NEW: Why section
       why: {
-        title:
-          locale === "id" ? "WHY CHOOSE OUR SERVICE" : "WHY CHOOSE OUR SERVICE",
+        title: t(
+          locale,
+          "MENGAPA MEMILIH LAYANAN KAMI",
+          "WHY CHOOSE OUR SERVICE"
+        ),
         items: [
           {
             id: "quality",
-            title:
-              locale === "id" ? "Quality Guaranteed" : "Quality Guaranteed",
-            desc:
-              locale === "id"
-                ? "Cepat, andal, dan dokumen siap pakai di genggaman Anda."
-                : "Fast, reliable, and ready-to-use documents at your fingertips.",
-            icon: "/petir.svg", // ganti dengan asetmu
+            title: t(locale, "Kualitas Terjamin", "Quality Guaranteed"),
+            desc: t(
+              locale,
+              "Cepat, andal, dan dokumen siap pakai di genggaman Anda.",
+              "Fast, reliable, and ready-to-use documents at your fingertips."
+            ),
+            icon: "/petir.svg",
           },
           {
             id: "expert",
-            title: locale === "id" ? "Expert Translator" : "Expert Translator",
-            desc:
-              locale === "id"
-                ? "Tim penerjemah berpengalaman dengan terminologi konsisten."
-                : "Experienced translators with consistent terminology.",
+            title: t(locale, "Penerjemah Ahli", "Expert Translator"),
+            desc: t(
+              locale,
+              "Tim penerjemah berpengalaman dengan terminologi konsisten.",
+              "Experienced translators with consistent terminology."
+            ),
             icon: "/petir.svg",
           },
           {
             id: "fast",
-            title: locale === "id" ? "Fast Service" : "Fast Service",
-            desc:
-              locale === "id"
-                ? "Proses cepat tanpa mengorbankan kualitas hasil terjemahan."
-                : "Quick process without compromising translation quality.",
+            title: t(locale, "Layanan Cepat", "Fast Service"),
+            desc: t(
+              locale,
+              "Proses cepat tanpa mengorbankan kualitas hasil terjemahan.",
+              "Quick process without compromising translation quality."
+            ),
             icon: "/petir.svg",
           },
         ],
       },
 
-      // NEW: CTA block
       cta: {
-        title:
-          locale === "id" ? "READY TO GET STARTED" : "READY TO GET STARTED",
+        title: t(locale, "SIAP MEMULAI", "READY TO GET STARTED"),
         button: {
-          label: locale === "id" ? "KLIK HERE" : "CLICK HERE",
+          label: t(locale, "Klik di sini", "Click here"),
           href: "/user/leads",
         },
       },

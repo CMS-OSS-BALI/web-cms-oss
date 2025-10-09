@@ -12,9 +12,7 @@ function FlagDropdown({ lang, langs, onChange, variant = "desktop" }) {
     const close = (e) => {
       if (ref.current && !ref.current.contains(e.target)) setOpen(false);
     };
-    const esc = (e) => {
-      if (e.key === "Escape") setOpen(false);
-    };
+    const esc = (e) => e.key === "Escape" && setOpen(false);
     document.addEventListener("click", close);
     document.addEventListener("keydown", esc);
     return () => {
@@ -42,15 +40,12 @@ function FlagDropdown({ lang, langs, onChange, variant = "desktop" }) {
         onClick={() => setOpen((s) => !s)}
         title="Change language"
       >
-        {/* left cluster: flag (+ label on mobile) */}
         <span className="flagdd__left">
           <img className="flagdd__img" src={current.flag} alt="" />
           {variant === "mobile" && (
             <span className="flagdd__current">{current.label}</span>
           )}
         </span>
-
-        {/* right: chevron (CSS triangle) */}
         <span className="flagdd__chev" aria-hidden />
       </button>
 
@@ -91,22 +86,22 @@ export default function HeaderUser() {
     lang,
     langs,
     changeLang,
-    langLabel, // <-- ambil label i18n
+    langLabel,
   } = useHeaderUViewModel();
 
   return (
     <header className="user-header">
       <div className="user-header__inner">
-        {/* kiri: logo */}
         <a className="user-header__brand" href={logo.href}>
           <img src={logo.src} alt={logo.alt} />
         </a>
 
-        {/* tengah: nav (flex:1, center) */}
         <nav
           id="user-header-nav"
           className={`user-header__nav${isMenuOpen ? " is-open" : ""}`}
           aria-label="Navigasi utama"
+          // If some text still differs at hydration (rare), ignore warning:
+          suppressHydrationWarning
         >
           <ul className="user-header__nav-list">
             {navItems.map((item) => (
@@ -123,7 +118,6 @@ export default function HeaderUser() {
               </li>
             ))}
 
-            {/* mobile: flag dropdown di dalam menu */}
             <li className="user-header__nav-item flagdd__mobile-wrap">
               <div className="user-header__lang-label">{langLabel}</div>
               <FlagDropdown
@@ -136,7 +130,6 @@ export default function HeaderUser() {
           </ul>
         </nav>
 
-        {/* kanan: flag dropdown (desktop) + hamburger */}
         <div className="user-header__right">
           <FlagDropdown
             lang={lang}
@@ -144,7 +137,6 @@ export default function HeaderUser() {
             onChange={changeLang}
             variant="desktop"
           />
-
           <button
             type="button"
             className={`user-header__menu-btn${isMenuOpen ? " is-active" : ""}`}

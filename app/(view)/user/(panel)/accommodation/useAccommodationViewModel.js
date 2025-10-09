@@ -38,21 +38,25 @@ const TEXT = {
       items: [
         {
           id: "s1",
+          icon: "🏨",
           title: "Hotel Berkualitas",
           text: "Penyedia tepercaya dan terverifikasi.",
         },
         {
           id: "s2",
+          icon: "🏢",
           title: "Apartemen",
           text: "Lokasi strategis dengan banyak pilihan.",
         },
         {
           id: "s3",
+          icon: "🌐",
           title: "Student Apartment",
           text: "Pilihan khusus mahasiswa, nyaman & aman.",
         },
         {
           id: "s4",
+          icon: "🚕",
           title: "Transportasi",
           text: "Opsi antar-jemput & mobil sewa.",
         },
@@ -63,21 +67,25 @@ const TEXT = {
       reasons: [
         {
           id: "w1",
+          icon: "💲",
           title: "Harga Terjangkau",
           sub: "Harga ramah & transparan.",
         },
         {
           id: "w2",
+          icon: "🏫",
           title: "Student Apartment",
           sub: "Mitra resmi & tepercaya.",
         },
         {
           id: "w3",
+          icon: "🔒",
           title: "Keamanan Data",
           sub: "Privasi dan data Anda terlindungi.",
         },
         {
           id: "w4",
+          icon: "🧳",
           title: "Transportasi",
           sub: "Operasional profesional.",
         },
@@ -101,7 +109,7 @@ const TEXT = {
       illustration: "/akomodasi.svg",
     },
     description:
-      "<p>Accommodation Booking helps you find comfortable housing tailored to your needs during study or internship abroad. From apartments, student dorms, homestays, to short-term stays - everything can be arranged easily. With our team, you can focus on your goals while we secure the best accommodation for you.</p>",
+      "<p>Accommodation Booking helps you find comfortable housing tailored to your needs during study or internship abroad. From apartments, student dorms, homestays, to short-term stays — everything can be arranged easily. With our team, you can focus on your goals while we secure the best accommodation for you.</p>",
     services: {
       heading: "ACCOMMODATION SERVICES",
       imageBack: "/accommodation-collage-back.jpg",
@@ -109,21 +117,25 @@ const TEXT = {
       items: [
         {
           id: "s1",
+          icon: "🏨",
           title: "Quality Hotels",
           text: "Trusted, verified providers.",
         },
         {
           id: "s2",
+          icon: "🏢",
           title: "Apartments",
           text: "Prime locations & many options.",
         },
         {
           id: "s3",
+          icon: "🌐",
           title: "Student Apartment",
           text: "Student-friendly, safe & comfy.",
         },
         {
           id: "s4",
+          icon: "🚕",
           title: "Transportation",
           text: "Pick-up options & car rentals.",
         },
@@ -134,21 +146,25 @@ const TEXT = {
       reasons: [
         {
           id: "w1",
+          icon: "💲",
           title: "Affordable Price",
           sub: "Transparent pricing.",
         },
         {
           id: "w2",
+          icon: "🏫",
           title: "Student Apartment",
           sub: "Official & trusted partners.",
         },
         {
           id: "w3",
+          icon: "🔒",
           title: "Data Security",
           sub: "Your privacy is protected.",
         },
         {
           id: "w4",
+          icon: "🧳",
           title: "Transportation",
           sub: "Professionally operated.",
         },

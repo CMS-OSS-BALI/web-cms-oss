@@ -4,66 +4,97 @@ import { useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
 /**
- * ViewModel: supplies data arrays & handlers.
- * Replace image paths with your real assets in /public/images/career/...
+ * ViewModel bilingual (id/en).
+ * Gunakan: const vm = useCareerViewModel({ locale: "id" | "en" })
  */
-export default function useCareerViewModel() {
+export default function useCareerViewModel({ locale = "id" } = {}) {
   const router = useRouter();
+  const L = (id, en) => (locale === "en" ? en : id);
 
   const hero = useMemo(
     () => ({
-      title: "LET’S JOIN WITH US",
-      quote: "“Together We Dream, Together We Make It Real”",
+      title: L("GABUNG BERSAMA KAMI", "LET’S JOIN WITH US"),
+      quote: L(
+        "“Bermimpi bersama, Mewujudkannya bersama”",
+        "“Together We Dream, Together We Make It Real”"
+      ),
       image: "/career-bg.svg",
-      objectPosition: "35% 40%", // kiri 35%, atas 40% — tweak sesuai foto
+      objectPosition: "35% 40%",
     }),
-    []
+    [locale]
   );
 
   const benefits = useMemo(
     () => [
       {
         key: "growth",
-        title: "KESEMPATAN BERKEMBANG",
+        title: L("KESEMPATAN BERKEMBANG", "GROWTH OPPORTUNITIES"),
         points: [
-          "Program pelatihan & sertifikasi profesional",
-          "Promosi & jenjang karier yang jelas",
-          "Seminar & workshop untuk pengembangan diri",
+          L(
+            "Program pelatihan & sertifikasi profesional",
+            "Professional training & certification programs"
+          ),
+          L(
+            "Promosi & jenjang karier yang jelas",
+            "Clear promotion & career path"
+          ),
+          L(
+            "Seminar & workshop untuk pengembangan diri",
+            "Seminars & workshops for self-development"
+          ),
         ],
         icon: "/growth.svg",
       },
       {
         key: "collab",
-        title: "LINGKUNGAN KOLABORATIF",
+        title: L("LINGKUNGAN KOLABORATIF", "COLLABORATIVE ENVIRONMENT"),
         points: [
-          "Budaya kerja inklusif dan terbuka",
-          "Didukung tim dan manajemen",
-          "Kolaborasi lintas divisi untuk memperluas wawasan",
+          L(
+            "Budaya kerja inklusif dan terbuka",
+            "Inclusive, open work culture"
+          ),
+          L("Didukung tim dan manajemen", "Supportive team and leadership"),
+          L(
+            "Kolaborasi lintas divisi untuk memperluas wawasan",
+            "Cross-division collaboration to broaden perspectives"
+          ),
         ],
         icon: "/collab.svg",
       },
       {
         key: "innovation",
-        title: "INOVASI & KREATIVITAS",
+        title: L("INOVASI & KREATIVITAS", "INNOVATION & CREATIVITY"),
         points: [
-          "Kebebasan menyampaikan ide baru",
-          "Akses tools & teknologi modern",
-          "Project menantang untuk mengasah kreativitas",
+          L("Kebebasan menyampaikan ide baru", "Freedom to pitch new ideas"),
+          L(
+            "Akses tools & teknologi modern",
+            "Access to modern tools & technology"
+          ),
+          L(
+            "Project menantang untuk mengasah kreativitas",
+            "Challenging projects that sharpen creativity"
+          ),
         ],
         icon: "/innovation.svg",
       },
       {
         key: "benefit",
-        title: "TUNJANGAN KARYAWAN",
+        title: L("TUNJANGAN KARYAWAN", "EMPLOYEE BENEFITS"),
         points: [
-          "BPJS Kesehatan & Ketenagakerjaan",
-          "Transportasi & makan sesuai kebijakan",
-          "Insentif, bonus, dan cuti tahunan",
+          L("BPJS Kesehatan & Ketenagakerjaan", "Health & employment security"),
+          L(
+            "Transportasi & makan sesuai kebijakan",
+            "Transport & meals per policy"
+          ),
+          L(
+            "Insentif, bonus, dan cuti tahunan",
+            "Incentives, bonuses, and annual leave"
+          ),
         ],
         icon: "/benefit.svg",
       },
     ],
-    []
+    [locale]
   );
 
   const culture = useMemo(
@@ -72,31 +103,45 @@ export default function useCareerViewModel() {
       items: [
         {
           key: "celebration",
-          title: "CELEBRATION",
-          body: "Rasa syukur bersama menjadi momen kebersamaan. Pencapaian kecil hingga besar kami rayakan untuk menumbuhkan semangat positif.",
+          title: L("CELEBRATION", "CELEBRATION"),
+          body: L(
+            "Rasa syukur bersama menjadi momen kebersamaan. Pencapaian kecil hingga besar kami rayakan untuk menumbuhkan semangat positif.",
+            "Sharing gratitude becomes our moment of togetherness. We celebrate small to big wins to build positive spirit."
+          ),
           image: "/celebration.svg",
-          label: "CELEBRATION",
+          label: L("PERAYAAN", "CELEBRATION"),
         },
         {
           key: "games",
-          title: "GAME WITH TEAM",
-          body: "Aktivitas kebersamaan membangun keakraban lintas tim. Kegiatan ringan untuk menjaga work-life balance.",
+          title: L("GAME WITH TEAM", "TEAM GAMES"),
+          body: L(
+            "Aktivitas kebersamaan membangun keakraban lintas tim. Kegiatan ringan untuk menjaga work-life balance.",
+            "Team activities foster bonds across teams. Light activities that support work-life balance."
+          ),
           image: "/games.svg",
-          label: "GAMES",
+          label: L("GAMES", "GAMES"),
         },
         {
           key: "holiday",
-          title: "HOLIDAY WITH TEAM",
-          body: "Kegiatan liburan bersama mempererat hubungan dan menciptakan momen kebersamaan di luar rutinitas kerja.",
+          title: L("HOLIDAY WITH TEAM", "TEAM HOLIDAY"),
+          body: L(
+            "Kegiatan liburan bersama mempererat hubungan dan menciptakan momen kebersamaan di luar rutinitas kerja.",
+            "Team trips strengthen relationships and create shared moments beyond daily routines."
+          ),
           image: "/holiday.svg",
-          label: "HOLIDAY TEAM",
+          label: L("LIBURAN TIM", "TEAM HOLIDAY"),
         },
       ],
-      bottomCaptionTitle: "KOMUNIKASI TERBUKA DAN TRANSPARAN",
-      bottomCaptionBody:
+      bottomCaptionTitle: L(
+        "KOMUNIKASI TERBUKA DAN TRANSPARAN",
+        "OPEN & TRANSPARENT COMMUNICATION"
+      ),
+      bottomCaptionBody: L(
         "Transparansi bukan hanya nilai, tapi cara kami bekerja. Bersama, kita ciptakan ruang kerja yang inspiratif dan inklusif.",
+        "Transparency is not just a value—it’s how we work. Together, we build an inspiring and inclusive workplace."
+      ),
     }),
-    []
+    [locale]
   );
 
   const testimonials = useMemo(
@@ -104,29 +149,35 @@ export default function useCareerViewModel() {
       {
         id: 1,
         name: "Putri Indah",
-        role: "Team II",
+        role: L("Tim II", "Team II"),
         avatar: "/images/loading.png",
-        quote:
-          "Being an innovator is very challenging but very worth it, because as individuals we are required to always learn and apply it directly. The process of learn and grow as innovator is taking me to the most important thing, because innovation is definitely synonymous with failure, so we must learning from failure and growing.",
+        quote: L(
+          "Menjadi inovator itu menantang namun sangat berharga: kita dituntut terus belajar dan langsung mempraktikkannya. Proses belajar dari kegagalan dan bertumbuh adalah kuncinya.",
+          "Being an innovator is challenging yet rewarding: we must keep learning and apply it directly. Learning from failure and growing is the key."
+        ),
       },
       {
         id: 2,
         name: "Rama",
-        role: "Design",
+        role: L("Desain", "Design"),
         avatar: "/images/loading.png",
-        quote:
+        quote: L(
           "Lingkungan yang suportif bikin cepat berkembang. Feedback jelas, target realistis, dan tim saling bantu.",
+          "A supportive environment accelerates growth. Clear feedback, realistic targets, and a team that has your back."
+        ),
       },
       {
         id: 3,
         name: "Nadia",
-        role: "Operations",
+        role: L("Operasional", "Operations"),
         avatar: "/images/loading.png",
-        quote:
+        quote: L(
           "Budaya kolaboratif dan komunikasi terbuka bikin kerja terasa aman dan menyenangkan.",
+          "A collaborative culture and open communication make work feel safe and enjoyable."
+        ),
       },
     ],
-    []
+    [locale]
   );
 
   const onCTATeam = useCallback(() => {
@@ -134,13 +185,13 @@ export default function useCareerViewModel() {
   }, [router]);
 
   const onCTAReferral = useCallback(() => {
-    // Keeping the label “Reveral” as in your screenshot
     router.push("/user/referral?menu=career");
   }, [router]);
 
   const ctaImage = "/cta-girl.svg";
 
   return {
+    locale,
     hero,
     benefits,
     culture,

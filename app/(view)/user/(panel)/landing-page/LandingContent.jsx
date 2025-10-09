@@ -6,13 +6,14 @@ import { Swiper, SwiperSlide } from "swiper/react";
 import { Autoplay, FreeMode } from "swiper/modules";
 import "swiper/css";
 
+import Link from "next/link";
 import { useLandingViewModel } from "./useLandingViewModel";
 import { sanitizeHtml } from "@/app/utils/dompurify";
-import { useRouter } from "next/navigation";
 
 const { Title, Paragraph, Text } = Typography;
 
-const CONSULTANT_DETAIL_BASE = "/consultants";
+/** Correct base path = route to your detail page folder */
+const CONSULTANT_DETAIL_BASE = "/user/landing-page";
 
 /* =================== HERO =================== */
 const heroStyles = {
@@ -381,7 +382,7 @@ const testiStyles = {
     marginTop: 6,
     display: "flex",
     justifyContent: "center",
-    alignItems: "center", // ← add this
+    alignItems: "center",
   },
 
   stars: {
@@ -452,7 +453,6 @@ const consultantsStyles = {
   },
   grid: { marginTop: "clamp(18px, 3vw, 28px)" },
 
-  /* — Card ala testimonials (avatar lebih besar) — */
   cardShell: {
     position: "relative",
     background: "#0B3E91",
@@ -527,10 +527,7 @@ const countryStyles = {
     padding: "clamp(48px, 7vw, 96px) clamp(20px, 6vw, 48px)",
     marginTop: "-110px",
   },
-  container: {
-    width: "min(1220px, 100%)",
-    margin: "0 auto",
-  },
+  container: { width: "min(1220px, 100%)", margin: "0 auto" },
   title: {
     margin: 0,
     textAlign: "center",
@@ -559,7 +556,7 @@ const countryStyles = {
     border: "1px solid #DFE8F6",
     boxShadow: "0 4px 10px rgba(8,42,116,0.08)",
     overflow: "hidden",
-    aspectRatio: "16 / 10", // keeps all flags same shape
+    aspectRatio: "16 / 10",
     display: "flex",
   },
   flagImg: {
@@ -574,8 +571,6 @@ const countryStyles = {
 function ensureArray(val) {
   return Array.isArray(val) ? val : [];
 }
-
-/* Tambahan: helper slugify */
 function slugify(str = "") {
   return String(str)
     .toLowerCase()
@@ -586,7 +581,8 @@ function slugify(str = "") {
 }
 
 /* =================== Component =================== */
-export default function LandingContent() {
+export default function LandingContent({ locale = "id" }) {
+  // Pass locale down so texts come localized from the hook
   const {
     hero,
     metrics,
@@ -596,50 +592,29 @@ export default function LandingContent() {
     testimonialsList,
     consultants,
     isConsultantsLoading,
+    faq,
     countryPartners,
-  } = useLandingViewModel();
-
-  const router = useRouter(); // <— Wajib: inisialisasi router
-
-  // Fungsi klik card -> menuju detail
-  function goConsultantDetail(c) {
-    const slug = c?.slug || c?.id || slugify(c?.name || "");
-    if (!slug) return;
-    router.push(`${CONSULTANT_DETAIL_BASE}/${encodeURIComponent(slug)}`);
-  }
+  } = useLandingViewModel({ locale });
 
   const metricsList = ensureArray(metrics);
   const whyCards = ensureArray(whyChoose?.cards);
   const popularItems = ensureArray(popularProgram?.items);
   const testimonialContent = ensureArray(testimonialsList);
 
-  // FAQ items static
+  // Build FAQ items from the i18n data coming from the hook
   const faqItems = useMemo(
     () =>
-      [
-        "Apakah harus punya IELTS untuk Kuliah di Luar Negeri?",
-        "Bagaimana jika saya pernah mengalami penolakan visa?",
-        "Apakah kuliah di luar negeri bisa sambil bekerja?",
-      ].map((q, i) => ({
+      ensureArray(faq?.items).map((item, i) => ({
         key: `q${i + 1}`,
         label: (
           <div className="faq-pill">
-            <span className="faq-pill__text">{q}</span>
+            <span className="faq-pill__text">{item.q}</span>
             <span className="faq-pill__chev">▾</span>
           </div>
         ),
-        children: (
-          <Paragraph style={{ margin: 0 }}>
-            {i === 0 &&
-              "Tidak selalu. Banyak kampus menerima TOEFL/Duolingo atau menyediakan kelas persiapan; syarat beda tiap universitas/negara."}
-            {i === 1 &&
-              "Bisa apply lagi. Perbaiki dokumen dan justifikasi sesuai feedback penolakan sebelumnya; kami bisa bantu review & strategi."}
-            {i === 2 &&
-              "Di banyak negara boleh kerja paruh waktu (mis. 20 jam/minggu saat semester). Cek regulasi negara tujuanmu ya."}
-          </Paragraph>
-        ),
+        children: <Paragraph style={{ margin: 0 }}>{item.a}</Paragraph>,
       })),
-    []
+    [faq]
   );
 
   return (
@@ -822,13 +797,13 @@ export default function LandingContent() {
                       ))}
                     </div>
 
-                    <div style={testiStyles.quoteWrap}>
-                      <span
-                        dangerouslySetInnerHTML={{
-                          __html: sanitizeHtml(t.message || ""),
-                        }}
-                      />
-                    </div>
+                    {/* Put innerHTML on the container to avoid children + innerHTML conflicts */}
+                    <div
+                      style={testiStyles.quoteWrap}
+                      dangerouslySetInnerHTML={{
+                        __html: sanitizeHtml(t.message || ""),
+                      }}
+                    />
                   </Card>
                 </SwiperSlide>
               ))}
@@ -841,7 +816,7 @@ export default function LandingContent() {
       <section style={faqStyles.section}>
         <div style={faqStyles.container}>
           <Title level={2} style={faqStyles.title}>
-            FREQUENTLY ASK QUESTION
+            {faq?.title}
           </Title>
           <Row gutter={[24, 24]} style={faqStyles.row}>
             <Col xs={24} lg={16} style={faqStyles.faqCol}>
@@ -855,7 +830,7 @@ export default function LandingContent() {
             </Col>
             <Col xs={24} lg={8} style={faqStyles.mascotCol}>
               <img
-                src="/images/loading.png"
+                src={faq?.illustration || "/images/loading.png"}
                 alt="OSS Bali Mascot"
                 style={faqStyles.mascot}
                 onError={(e) => {
@@ -887,52 +862,39 @@ export default function LandingContent() {
 
               return (
                 <Col key={c.id || slug} xs={24} md={12} lg={8}>
-                  <Card
-                    style={consultantsStyles.cardShell}
-                    bodyStyle={consultantsStyles.cardBody}
-                    onClick={() => goConsultantDetail(c)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        goConsultantDetail(c);
-                      }
-                    }}
-                    role="button"
-                    tabIndex={0}
-                    hoverable
-                  >
-                    {/* Link overlay untuk klik tengah/SEO, di-block agar onClick router yang jalan */}
-                    <a
-                      href={href}
-                      onClick={(e) => e.preventDefault()}
-                      style={{ position: "absolute", inset: 0, zIndex: 6 }}
-                      aria-label={`Lihat detail ${c.name}`}
-                    />
+                  <Link href={href}>
+                    <Card
+                      style={consultantsStyles.cardShell}
+                      bodyStyle={consultantsStyles.cardBody}
+                      hoverable
+                    >
+                      <div style={consultantsStyles.avatarWrap}>
+                        <img
+                          src={c.photo}
+                          alt={c.name}
+                          style={consultantsStyles.avatar}
+                          onError={(e) => {
+                            e.currentTarget.src = "/images/logo.jpg";
+                          }}
+                        />
+                      </div>
 
-                    <div style={consultantsStyles.avatarWrap}>
-                      <img
-                        src={c.photo}
-                        alt={c.name}
-                        style={consultantsStyles.avatar}
-                        onError={(e) => {
-                          e.currentTarget.src = "/images/logo.jpg";
+                      <Paragraph style={consultantsStyles.name}>
+                        {c.name}
+                      </Paragraph>
+
+                      <div
+                        style={consultantsStyles.bio}
+                        dangerouslySetInnerHTML={{
+                          __html: sanitizeHtml(
+                            Array.isArray(c.bio)
+                              ? c.bio.join("\n")
+                              : c.bio || ""
+                          ),
                         }}
                       />
-                    </div>
-
-                    <Paragraph style={consultantsStyles.name}>
-                      {c.name}
-                    </Paragraph>
-
-                    <div
-                      style={consultantsStyles.bio}
-                      dangerouslySetInnerHTML={{
-                        __html: sanitizeHtml(
-                          Array.isArray(c.bio) ? c.bio.join("\n") : c.bio || ""
-                        ),
-                      }}
-                    />
-                  </Card>
+                    </Card>
+                  </Link>
                 </Col>
               );
             })}
@@ -995,15 +957,12 @@ export default function LandingContent() {
         :root {
           --testi-card-w: 360px;
           --testi-card-h: 420px;
-
-          /* consultants card height */
           --consult-card-h: 480px;
         }
         @media (max-width: 1199px) {
           :root {
             --testi-card-w: 320px;
             --testi-card-h: 400px;
-
             --consult-card-h: 450px;
           }
         }
@@ -1011,7 +970,6 @@ export default function LandingContent() {
           :root {
             --testi-card-w: 280px;
             --testi-card-h: 380px;
-
             --consult-card-h: 430px;
           }
         }
