@@ -318,9 +318,8 @@ const uniListStyles = {
     bottom: 12,
     display: "flex",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "flex-end", // moved button to the right
   },
-  rating: { display: "flex", gap: 2, alignItems: "center" },
   viewMore: {
     border: "1px solid rgba(13,38,78,.18)",
     background: "#f7fbff",
@@ -487,78 +486,49 @@ const BulletIcon = ({ type }) => {
   );
 };
 
-function Stars({ value = 0, max = 5 }) {
-  const full = Math.floor(Number(value) || 0);
-  const half = (Number(value) || 0) - full >= 0.5;
-  const arr = Array.from({ length: max }, (_, i) =>
-    i < full ? "full" : i === full && half ? "half" : "empty"
-  );
-  return (
-    <div style={{ display: "flex", gap: 2 }}>
-      {arr.map((s, i) => (
-        <svg
-          key={i}
-          viewBox="0 0 24 24"
-          width="16"
-          height="16"
-          aria-hidden="true"
-        >
-          {s !== "empty" ? (
-            <>
-              {s === "full" && (
-                <path
-                  d="M12 17.27 18.18 21 16.54 13.97 22 9.24 14.81 8.63 12 2 9.19 8.63 2 9.24 7.46 13.97 5.82 21z"
-                  fill="#FF9A2E"
-                />
-              )}
-              {s === "half" && (
-                <>
-                  <defs>
-                    <linearGradient id={`half-${i}`}>
-                      <stop offset="50%" stopColor="#FF9A2E" />
-                      <stop offset="50%" stopColor="transparent" />
-                    </linearGradient>
-                  </defs>
-                  <path
-                    d="M12 17.27 18.18 21 16.54 13.97 22 9.24 14.81 8.63 12 2 9.19 8.63 2 9.24 7.46 13.97 5.82 21z"
-                    fill={`url(#half-${i})`}
-                    stroke="#FF9A2E"
-                  />
-                </>
-              )}
-            </>
-          ) : (
-            <path
-              d="M12 17.27 18.18 21 16.54 13.97 22 9.24 14.81 8.63 12 2 9.19 8.63 2 9.24 7.46 13.97 5.82 21z"
-              fill="transparent"
-              stroke="#FF9A2E"
-            />
-          )}
-        </svg>
-      ))}
-    </div>
-  );
-}
+/* ===== Supabase public URL resolver (no image_public_url needed) ===== */
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const SUPABASE_BUCKET = process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "";
+
+const buildSupabasePublicUrl = (objectPath = "") => {
+  const path = String(objectPath).replace(/^\/+/, "");
+  if (!path) return "";
+  if (/^https?:\/\//i.test(path)) return path;
+  if (path.startsWith("/")) return path; // local asset
+  if (!SUPABASE_URL || !SUPABASE_BUCKET) {
+    // fallback: try as local path (will 404 if not hosted)
+    return `/${path}`;
+  }
+  const base = SUPABASE_URL.replace(/\/+$/, "");
+  return `${base}/storage/v1/object/public/${SUPABASE_BUCKET}/${path}`;
+};
 
 const normalizeImgSrc = (input) => {
   const raw = (input || "").trim();
-  // Safe fallback (no 404 / no optimizer):
   if (!raw)
     return "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>";
+  // try supabase first if it's an object path
+  const maybeStorage = buildSupabasePublicUrl(raw);
+  if (maybeStorage) return maybeStorage;
   if (/^https?:\/\//i.test(raw)) return raw;
   return raw.startsWith("/") ? raw : `/${raw}`;
 };
 
 const pickLogo = (obj) =>
-  obj?.logo ||
-  obj?.logo_url ||
-  obj?.image ||
-  obj?.image_url ||
-  obj?.image_public_url ||
-  "";
+  // prioritise logo_url (Supabase objectPath), optional fallbacks to app assets
+  obj?.logo_url || obj?.logo || obj?.image || obj?.image_url || "";
 
 /* ================= Component ================= */
 export default function CollegeContent({ locale = "id" }) {
+  // local UI state (typing)
+  const [query, setQuery] = useState("");
+  const [country, setCountry] = useState("");
+
+  // applied filters (fetch only when user submits)
+  const [qApplied, setQApplied] = useState("");
+  const [countryApplied, setCountryApplied] = useState("");
+
+  // fetch with applied filters
   const {
     hero,
     findProgram,
@@ -566,8 +536,13 @@ export default function CollegeContent({ locale = "id" }) {
     search,
     recommendedUniversity,
     universities,
-    scholarshipCTA,
-  } = useCollegeViewModel({ locale });
+    scholarshipCTA: scholarshipCTARaw,
+  } = useCollegeViewModel({ locale, q: qApplied, country: countryApplied });
+
+  const scholarshipCTA =
+    scholarshipCTARaw && typeof scholarshipCTARaw === "object"
+      ? scholarshipCTARaw
+      : {};
 
   /* ------- Relevant Campus (robust) ------- */
   const relevantCampus = useMemo(() => {
@@ -584,14 +559,11 @@ export default function CollegeContent({ locale = "id" }) {
     ? marqueeAutoplay
     : undefined;
 
-  /* ------- search state + mic ------- */
-  const [query, setQuery] = useState("");
-  const [country, setCountry] = useState("");
-  const [listening, setListening] = useState(false);
+  /* ------- refs & voice ------- */
   const inputRef = useRef(null);
   const listRef = useRef(null);
+  const [listening, setListening] = useState(false);
 
-  // helper: ambil negara dari data (country field atau bullet "pin")
   const inferCountry = (u) => {
     if (u.country) return String(u.country).trim();
     const pinText = (u.bullets || []).find((b) => b.icon === "pin")?.text || "";
@@ -600,7 +572,7 @@ export default function CollegeContent({ locale = "id" }) {
       .trim();
   };
 
-  // daftar negara (unique + sorted)
+  // country options from current data
   const countries = useMemo(() => {
     const set = new Set(
       (universities || [])
@@ -611,25 +583,16 @@ export default function CollegeContent({ locale = "id" }) {
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [universities]);
 
-  // filter by query + country
-  const filteredUniversities = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return (universities || []).filter((u) => {
-      const nameOk = !q || (u.name || "").toLowerCase().includes(q);
-      const c = inferCountry(u);
-      const countryOk = !country || c === country;
-      return nameOk && countryOk;
-    });
-  }, [universities, query, country]);
-
-  // read initial ?q & ?country from URL
+  // url -> state on first render
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
-    const q = params.get("q");
-    const c = params.get("country");
-    if (q) setQuery(q);
-    if (c) setCountry(c);
+    const q = params.get("q") || "";
+    const c = params.get("country") || "";
+    setQuery(q);
+    setCountry(c);
+    setQApplied(q);
+    setCountryApplied(c);
   }, []);
 
   const SpeechRecognition = useMemo(() => {
@@ -639,7 +602,11 @@ export default function CollegeContent({ locale = "id" }) {
 
   const startVoice = () => {
     if (!SpeechRecognition) {
-      alert("Voice search not supported on this browser.");
+      alert(
+        locale === "en"
+          ? "Voice search not supported on this browser."
+          : "Pencarian suara tidak didukung di browser ini."
+      );
       return;
     }
     try {
@@ -654,8 +621,15 @@ export default function CollegeContent({ locale = "id" }) {
       rec.onresult = (e) => {
         const text = e.results?.[0]?.[0]?.transcript || "";
         setQuery(text);
+        setQApplied(text);
         inputRef.current?.focus();
         listRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        if (typeof window !== "undefined") {
+          const url = new URL(window.location.href);
+          if (text) url.searchParams.set("q", text);
+          else url.searchParams.delete("q");
+          window.history.replaceState({}, "", url.toString());
+        }
       };
 
       rec.start();
@@ -665,6 +639,10 @@ export default function CollegeContent({ locale = "id" }) {
   };
 
   const doSearch = () => {
+    // apply filters → triggers fetch
+    setQApplied(query);
+    setCountryApplied(country);
+
     listRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
@@ -679,11 +657,15 @@ export default function CollegeContent({ locale = "id" }) {
   /* Pagination (AntD) */
   const PAGE_SIZE = 3;
   const [page, setPage] = useState(1);
-  useEffect(() => setPage(1), [query, country]);
+  useEffect(() => setPage(1), [qApplied, countryApplied]);
+
   const pageItems = useMemo(() => {
+    const arr = universities || [];
     const start = (page - 1) * PAGE_SIZE;
-    return filteredUniversities.slice(start, start + PAGE_SIZE);
-  }, [filteredUniversities, page]);
+    return arr.slice(start, start + PAGE_SIZE);
+  }, [universities, page]);
+
+  const t = (id, en) => (locale === "en" ? en : id);
 
   return (
     <>
@@ -730,7 +712,9 @@ export default function CollegeContent({ locale = "id" }) {
         <div className="major-stripe" style={majorStyles.stripe} />
         <div style={majorStyles.inner}>
           <div style={majorStyles.headingWrap}>
-            <h3 style={majorStyles.heading}>JURUSAN POPULER</h3>
+            <h3 style={majorStyles.heading}>
+              {t("JURUSAN POPULER", "POPULAR MAJORS")}
+            </h3>
             <div style={majorStyles.underline} />
           </div>
 
@@ -827,18 +811,24 @@ export default function CollegeContent({ locale = "id" }) {
             {/* Filter country pill */}
             <div style={searchStyles.filterPill}>
               <select
-                aria-label="Filter negara"
-                title="Filter negara"
+                aria-label={t("Filter negara", "Filter country")}
+                title={t("Filter negara", "Filter country")}
                 value={country}
                 onChange={(e) => {
                   setCountry(e.target.value);
-                  doSearch();
+                  // apply immediately when country changed
+                  setCountryApplied(e.target.value);
+                  if (typeof window !== "undefined") {
+                    const url = new URL(window.location.href);
+                    if (e.target.value)
+                      url.searchParams.set("country", e.target.value);
+                    else url.searchParams.delete("country");
+                    window.history.replaceState({}, "", url.toString());
+                  }
                 }}
                 style={searchStyles.countrySelect}
               >
-                <option value="">
-                  {locale === "en" ? "All Countries" : "Semua Negara"}
-                </option>
+                <option value="">{t("Semua Negara", "All Countries")}</option>
                 {countries.map((c) => (
                   <option key={c} value={c}>
                     {c}
@@ -875,16 +865,17 @@ export default function CollegeContent({ locale = "id" }) {
       <section ref={listRef} style={uniListStyles.section}>
         <style>{uniListStyles.media}</style>
 
-        {filteredUniversities.length === 0 ? (
+        {(universities || []).length === 0 ? (
           <div style={uniListStyles.empty}>
             {locale === "en"
-              ? `No university found for “${query || country || ""}”.`
-              : `Tidak ada kampus untuk “${query || country || ""}”.`}
+              ? `No university found for “${qApplied || countryApplied || ""}”.`
+              : `Tidak ada kampus untuk “${qApplied || countryApplied || ""}”.`}
           </div>
         ) : (
           <div style={uniListStyles.list}>
             {pageItems.map((u) => {
-              const src = normalizeImgSrc(pickLogo(u));
+              const raw = pickLogo(u);
+              const src = normalizeImgSrc(raw);
               const external = /^https?:\/\//i.test(src);
               return (
                 <article
@@ -921,11 +912,8 @@ export default function CollegeContent({ locale = "id" }) {
                   </div>
 
                   <div style={uniListStyles.footer}>
-                    <div style={uniListStyles.rating}>
-                      <Stars value={Number(u.rating || 0)} />
-                    </div>
                     <a href={u.href || "#"} style={uniListStyles.viewMore}>
-                      View More
+                      {t("Selengkapnya", "View More")}
                     </a>
                   </div>
                 </article>
@@ -936,7 +924,7 @@ export default function CollegeContent({ locale = "id" }) {
       </section>
 
       {/* Pagination */}
-      {filteredUniversities.length > 0 && (
+      {(universities || []).length > 0 && (
         <div
           style={{
             width: "min(1180px, 96%)",
@@ -947,8 +935,8 @@ export default function CollegeContent({ locale = "id" }) {
         >
           <Pagination
             current={page}
-            pageSize={PAGE_SIZE}
-            total={filteredUniversities.length}
+            pageSize={3}
+            total={(universities || []).length}
             showSizeChanger={false}
             onChange={(p) => {
               setPage(p);
@@ -967,7 +955,9 @@ export default function CollegeContent({ locale = "id" }) {
         <style>{relevantStyles.media}</style>
         <div style={relevantStyles.inner}>
           <div style={relevantStyles.titleWrap}>
-            <h2 style={relevantStyles.title}>RELEVANT CAMPUS</h2>
+            <h2 style={relevantStyles.title}>
+              {t("KAMPUS RELEVAN", "RELEVANT CAMPUS")}
+            </h2>
             <div style={relevantStyles.underline} />
           </div>
 
@@ -981,13 +971,12 @@ export default function CollegeContent({ locale = "id" }) {
                 autoplay={relevantCampusAutoplay}
                 slidesPerView="auto"
                 spaceBetween={24}
-                freeMode={marqueeAutoplay ? marqueeFreeMode : undefined}
+                freeMode={relevantCampusAutoplay ? marqueeFreeMode : undefined}
                 allowTouchMove={false}
               >
                 {relevantCampus.map((c, idx) => {
                   if (!c?.logo_url) return null;
-                  const isHttp = /^https?:\/\//i.test(c.logo_url);
-                  const src = isHttp ? c.logo_url : normalizeImgSrc(c.logo_url);
+                  const src = normalizeImgSrc(c.logo_url);
                   return (
                     <SwiperSlide
                       key={c.id || idx}
@@ -1018,7 +1007,6 @@ export default function CollegeContent({ locale = "id" }) {
                               objectFit: "contain",
                             }}
                             onError={(e) => {
-                              // Kalau URL rusak, hapus slidenya supaya tidak kosong
                               e.currentTarget
                                 ?.closest(".swiper-slide")
                                 ?.remove();
@@ -1046,9 +1034,7 @@ export default function CollegeContent({ locale = "id" }) {
             </>
           ) : (
             <div style={uniListStyles.empty}>
-              {locale === "en"
-                ? "No relevant campus yet."
-                : "Belum ada kampus relevan."}
+              {t("Belum ada kampus relevan.", "No relevant campus yet.")}
             </div>
           )}
         </div>

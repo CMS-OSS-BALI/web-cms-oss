@@ -35,10 +35,10 @@ const excerpt = (html = "", max = 180) => {
 // Robust date parse
 function toDate(v) {
   if (!v && v !== 0) return null;
-  if (v instanceof Date && !isNaN(v)) return v;
+  if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
   if (typeof v === "number") {
     const d = new Date(v);
-    return isNaN(d) ? null : d;
+    return isNaN(d.getTime()) ? null : d;
   }
   if (typeof v === "string") {
     let t = Date.parse(v);
@@ -131,11 +131,12 @@ export function useBlogUViewModel({ locale = "id", perPage = 6, q = "" } = {}) {
   // pagination
   const [page, setPage] = useState(1);
 
-  // popular
+  // popular → newest → oldest (server asks, client enforces)
   const keyPopular = buildUrl({
     page,
     perPage,
-    sort: "views_count:desc",
+    // minta server urut created_at desc (bisa multi-sort: "created_at:desc,updated_at:desc")
+    sort: "created_at:desc",
     q,
     locale,
     fallback: "id",
@@ -149,7 +150,18 @@ export function useBlogUViewModel({ locale = "id", perPage = 6, q = "" } = {}) {
   } = useSWR(keyPopular, fetcher);
 
   const popular = useMemo(() => {
-    const rows = popularJson?.data ?? [];
+    // fallback sort di client kalau API tidak mengurut
+    const rows = (popularJson?.data ?? []).slice().sort((a, b) => {
+      const ta =
+        toDate(
+          a?.created_ts ?? a?.updated_ts ?? a?.created_at ?? a?.updated_at
+        )?.getTime() ?? 0;
+      const tb =
+        toDate(
+          b?.created_ts ?? b?.updated_ts ?? b?.created_at ?? b?.updated_at
+        )?.getTime() ?? 0;
+      return tb - ta; // newest first
+    });
     return rows.map((r) => {
       const ts =
         r?.created_ts ?? r?.updated_ts ?? r?.created_at ?? r?.updated_at;
@@ -261,7 +273,7 @@ export function useBlogUViewModel({ locale = "id", perPage = 6, q = "" } = {}) {
     async (id) => {
       if (likedSet.has(id)) return;
 
-      // optimistic update
+      // optimistic update untuk popular
       mutatePopular((prev) => {
         if (!prev?.data) return prev;
         return {

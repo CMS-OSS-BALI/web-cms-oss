@@ -1,250 +1,165 @@
 "use client";
 
-import { useMemo, useState, useCallback } from "react";
-import useSWR from "swr";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-/** Fetcher untuk endpoint list calculator:
- *  - API mengembalikan ARRAY langsung (tanpa { data, meta })
- *  - Kalau ternyata bukan array, fallback ke json.data atau []
+/**
+ * Kategori yang dipakai kalkulator.
+ * Pastikan slug sama persis dengan tabel service_categories.
  */
-const fetcher = async (url) => {
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`Failed to load ${url}`);
+const KATEGORI = [
+  { key: "service_fee", name: "Service Fee", slug: "service-fee" },
+  { key: "asuransi", name: "Asuransi Kesehatan", slug: "asuransi-kesehatan" },
+  { key: "biaya_visa", name: "Biaya Visa", slug: "biaya-visa" },
+  { key: "addons", name: "Add-ons", slug: "add-ons" },
+];
+
+async function fetchServicesByCategory({
+  slug,
+  signal,
+  locale = "id",
+  fallback = "en",
+}) {
+  // pakai filter category_slug agar server hanya kirim service pada kategori tsb
+  const qs = new URLSearchParams({
+    category_slug: slug,
+    published: "true",
+    locale,
+    fallback,
+    sort: "price:asc",
+  }).toString();
+
+  const res = await fetch(`/api/services?${qs}`, {
+    signal,
+    headers: { accept: "application/json" },
+    cache: "no-store",
+  });
+  if (!res.ok)
+    throw new Error(`Fetch services failed (${slug}): ${res.status}`);
   const json = await res.json();
-  return Array.isArray(json) ? json : json?.data ?? [];
-};
+  const list = Array.isArray(json?.data) ? json.data : [];
 
-export default function useCalculatorViewModel() {
-  // Helpers
-  const formatIDR = useCallback((v) => {
-    const n = Number(v || 0);
-    return new Intl.NumberFormat("id-ID", {
-      style: "currency",
-      currency: "IDR",
-      maximumFractionDigits: 0,
-    }).format(n);
-  }, []);
-  const parseIDR = useCallback((str = "") => {
-    return Number(String(str).replace(/[^\d]/g, "")) || 0;
-  }, []);
+  // Amankan: jika server mengembalikan data lain, tetap filter by kategori slug
+  return list.filter((s) => s?.category?.slug === slug);
+}
 
-  // Fetch options from DB (API: return array langsung)
-  const {
-    data: sfRes = [],
-    error: sfErr,
-    isLoading: sfLoading,
-  } = useSWR("/api/calculator?type=SERVICE_FEE&per_page=200", fetcher, {
-    revalidateOnFocus: false,
-  });
-
-  const {
-    data: insRes = [],
-    error: insErr,
-    isLoading: insLoading,
-  } = useSWR("/api/calculator?type=INSURANCE&per_page=300", fetcher, {
-    revalidateOnFocus: false,
-  });
-
-  const {
-    data: visaRes = [],
-    error: visaErr,
-    isLoading: visaLoading,
-  } = useSWR("/api/calculator?type=VISA&per_page=300", fetcher, {
-    revalidateOnFocus: false,
-  });
-
-  const {
-    data: addonRes = [],
-    error: addonErr,
-    isLoading: addonLoading,
-  } = useSWR("/api/calculator?type=ADDON&per_page=300", fetcher, {
-    revalidateOnFocus: false,
-  });
-
-  const serviceFeeOptions = useMemo(
-    () =>
-      sfRes.map((r) => ({
-        value: r.code,
-        label: r.label,
-        amount: r.amount_idr ?? 0,
-      })),
-    [sfRes]
+/**
+ * Output:
+ * {
+ *   loading, error,
+ *   categories: {
+ *     service_fee: { key, name, slug, items: [{ id, name, price }] },
+ *     asuransi:    { ... },
+ *     biaya_visa:  { ... },
+ *     addons:      { ... },
+ *   },
+ *   flatList: [{ id, name, price }],
+ *   refetch()
+ * }
+ */
+export default function useCalculatorViewModel({
+  locale = "id",
+  fallback = "en",
+} = {}) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [data, setData] = useState(() =>
+    KATEGORI.reduce((acc, k) => {
+      acc[k.key] = { ...k, items: [] };
+      return acc;
+    }, {})
   );
 
-  const insuranceOptions = useMemo(
-    () =>
-      insRes.map((r) => ({
-        value: r.code,
-        label: r.label,
-        amount: r.amount_idr ?? 0,
-      })),
-    [insRes]
+  // Guards untuk dev StrictMode & de-dupe
+  const abortRef = useRef(null);
+  const inflightRef = useRef(null);
+  const mountedOnceRef = useRef(false);
+  const prevLocaleRef = useRef({ locale, fallback });
+
+  const load = useCallback(async () => {
+    if (inflightRef.current) return inflightRef.current;
+
+    setLoading(true);
+    setError(null);
+
+    // batalkan request sebelumnya jika ada
+    abortRef.current?.abort?.();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    inflightRef.current = (async () => {
+      try {
+        const results = await Promise.all(
+          KATEGORI.map(async (k) => {
+            const raw = await fetchServicesByCategory({
+              slug: k.slug,
+              signal: controller.signal,
+              locale,
+              fallback,
+            });
+            // dari /api/services sudah include terjemahan (field 'name')
+            const items = (raw || []).map((s) => ({
+              id: s.id,
+              name: s.name ?? "", // dari services_translate (locale/fallback)
+              price: s.price ?? 0, // harga dari tabel services
+            }));
+            return { key: k.key, meta: k, items };
+          })
+        );
+
+        if (controller.signal.aborted) return;
+
+        const shaped = results.reduce((acc, r) => {
+          acc[r.key] = { ...r.meta, items: r.items };
+          return acc;
+        }, {});
+        setData(shaped);
+      } catch (err) {
+        if (err?.name !== "AbortError") {
+          setError(err?.message || "Gagal memuat data services");
+        }
+      } finally {
+        setLoading(false);
+        inflightRef.current = null;
+      }
+    })();
+
+    return inflightRef.current;
+  }, [locale, fallback]);
+
+  // Jalankan sekali saat mount (hindari double fetch di StrictMode)
+  useEffect(() => {
+    if (mountedOnceRef.current) return;
+    mountedOnceRef.current = true;
+    load();
+    return () => {
+      mountedOnceRef.current = false; // allow StrictMode re-run to trigger load again
+      try {
+        abortRef.current?.abort();
+      } catch {}
+      abortRef.current = null;
+      inflightRef.current = null;
+    };
+  }, [load]);
+
+  // Refetch ketika locale/fallback berubah setelah mount
+  useEffect(() => {
+    const prev = prevLocaleRef.current;
+    if (prev.locale !== locale || prev.fallback !== fallback) {
+      prevLocaleRef.current = { locale, fallback };
+      load();
+    }
+  }, [locale, fallback, load]);
+
+  const flatList = useMemo(
+    () => KATEGORI.flatMap((k) => data[k.key]?.items || []),
+    [data]
   );
-
-  const visaOptions = useMemo(
-    () =>
-      visaRes.map((r) => ({
-        value: r.code,
-        label: r.label,
-        amount: r.amount_idr ?? 0,
-      })),
-    [visaRes]
-  );
-
-  const addonList = useMemo(
-    () =>
-      addonRes.map((r) => ({
-        key: r.code,
-        label: r.label,
-        note: r.note || null,
-        amount: r.amount_idr ?? 0,
-      })),
-    [addonRes]
-  );
-
-  const isOptionsLoading =
-    sfLoading || insLoading || visaLoading || addonLoading;
-
-  // Term options (static)
-  const termOptions = useMemo(
-    () =>
-      Array.from({ length: 8 }).map((_, i) => ({
-        value: i + 1,
-        label: `${i + 1}`,
-      })),
-    []
-  );
-
-  // Form state: SEMUA NULL
-  const [form, setForm] = useState({
-    namaStudent: null,
-    namaKampus: null,
-    lokasiKampus: null,
-    jurusan: null,
-    intake: null,
-    kurs: null,
-
-    serviceFeeKey: null,
-    insuranceKey: null,
-    visaKey: null,
-
-    biayaKuliahTerm: null,
-    jumlahTerm: null,
-
-    addons: {},
-  });
-
-  const update = useCallback((key, value) => {
-    setForm((p) => ({ ...p, [key]: value }));
-  }, []);
-
-  const toggleAddon = useCallback((key, checked) => {
-    setForm((p) => ({ ...p, addons: { ...p.addons, [key]: checked } }));
-  }, []);
-
-  // Derived selections (bisa null)
-  const serviceFee = useMemo(
-    () => serviceFeeOptions.find((x) => x.value === form.serviceFeeKey) || null,
-    [form.serviceFeeKey, serviceFeeOptions]
-  );
-  const insurance = useMemo(
-    () => insuranceOptions.find((x) => x.value === form.insuranceKey) || null,
-    [form.insuranceKey, insuranceOptions]
-  );
-  const visa = useMemo(
-    () => visaOptions.find((x) => x.value === form.visaKey) || null,
-    [form.visaKey, visaOptions]
-  );
-
-  const selectedAddons = useMemo(
-    () => addonList.filter((a) => !!form.addons[a.key]),
-    [addonList, form.addons]
-  );
-
-  const addonsTotal = useMemo(
-    () => selectedAddons.reduce((s, a) => s + (a.amount || 0), 0),
-    [selectedAddons]
-  );
-
-  // Kalkulasi (anggap kurs default 1 jika null)
-  const termCount = Number(form.jumlahTerm) || 0;
-  const tuitionPerTerm = Number(form.biayaKuliahTerm) || 0;
-  const kurs = Number(form.kurs) || 1;
-
-  const tuitionTotal = useMemo(
-    () => tuitionPerTerm * termCount,
-    [tuitionPerTerm, termCount]
-  );
-
-  const subtotalIDR = useMemo(
-    () =>
-      tuitionTotal +
-      (serviceFee?.amount || 0) +
-      (insurance?.amount || 0) +
-      (visa?.amount || 0) +
-      addonsTotal,
-    [
-      tuitionTotal,
-      serviceFee?.amount,
-      insurance?.amount,
-      visa?.amount,
-      addonsTotal,
-    ]
-  );
-
-  const totalIDR = useMemo(
-    () => Math.round(subtotalIDR * kurs),
-    [subtotalIDR, kurs]
-  );
-
-  // Utilities
-  const hasAddon = useCallback((key) => !!form.addons[key], [form.addons]);
-  const addonByKey = useCallback(
-    (key) => addonList.find((x) => x.key === key) || { amount: 0 },
-    [addonList]
-  );
-
-  // CTA
-  const goConsult = () => {
-    window.open(
-      "https://wa.me/6287785092020?text=Halo%20OSS%20Bali,%20saya%20ingin%20konsultasi%20biaya%20kuliah.",
-      "_blank"
-    );
-  };
 
   return {
-    // state & ops
-    form,
-    update,
-    toggleAddon,
-
-    // options
-    termOptions,
-    serviceFeeOptions,
-    insuranceOptions,
-    visaOptions,
-    addonList,
-
-    // loading / error
-    isOptionsLoading,
-    error: sfErr || insErr || visaErr || addonErr || null,
-
-    // derived
-    serviceFee,
-    insurance,
-    visa,
-    selectedAddons,
-    addonsTotal,
-    tuitionTotal,
-    totalIDR,
-
-    // helpers
-    formatIDR,
-    parseIDR,
-    hasAddon,
-    addonByKey,
-
-    // cta
-    goConsult,
+    loading,
+    error,
+    categories: data, // { service_fee: {key,name,slug,items:[{id,name,price}]}, ... }
+    flatList,
+    refetch: load,
   };
 }

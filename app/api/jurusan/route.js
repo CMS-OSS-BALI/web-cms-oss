@@ -1,72 +1,28 @@
 // app/api/jurusan/route.js
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import { randomUUID } from "crypto";
+import prisma from "@/lib/prisma";
 import { translate } from "@/app/utils/geminiTranslator";
-import { cookies } from "next/headers";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const BUCKET = process.env.SUPABASE_BUCKET;
-const STORAGE_PUBLIC_BASE = (() => {
-  const explicit = (process.env.NEXT_PUBLIC_STORAGE_BASE_URL || "").trim().replace(/\/$/, "");
-  if (explicit) return explicit;
-  const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").trim().replace(/\/$/, "");
-  const bucket = (process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "").trim().replace(/^\/+|\/+$/g, "");
-  if (supabaseUrl && bucket) {
-    return `${supabaseUrl}/storage/v1/object/public/${bucket}`;
-  }
-  return "";
-})();
+/* -------------------- utils -------------------- */
+const DEFAULT_LOCALE = "id";
+const EN_LOCALE = "en";
+const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
 
-/* ========= Helpers ========= */
-function isHttpUrl(path) {
-  return typeof path === "string" && /^https?:\/\//i.test(path);
+function normalizeLocale(v, fallback = DEFAULT_LOCALE) {
+  return (v || fallback).toLowerCase().slice(0, 5);
 }
-function normalizeImageInput(value) {
-  const raw = typeof value === "string" ? value : value ? String(value) : "";
-  const trimmed = raw.trim();
-  if (!trimmed) return "";
-  if (isHttpUrl(trimmed)) {
-    if (STORAGE_PUBLIC_BASE && trimmed.startsWith(`${STORAGE_PUBLIC_BASE}/`)) {
-      return trimmed.slice(STORAGE_PUBLIC_BASE.length + 1).replace(/^\/+/, "").slice(0, 255);
-    }
-    return trimmed.slice(0, 255);
-  }
-  return trimmed.replace(/^\/+/, "").slice(0, 255);
-}
-function ensureLeadingSlash(path) {
-  if (!path) return "";
-  return path.startsWith("/") ? path : `/${path}`;
-}
-function getPublicUrl(path) {
-  if (!path) return null;
-  if (isHttpUrl(path)) return path;
-  const cleaned = path.replace(/^\/+/, "");
-  if (!cleaned) return null;
-  if (BUCKET && supabaseAdmin?.storage) {
-    try {
-      const { data, error } = supabaseAdmin.storage
-        .from(BUCKET)
-        .getPublicUrl(cleaned);
-      if (!error && data?.publicUrl) {
-        return data.publicUrl;
-      }
-      if (error) {
-        console.error("supabase getPublicUrl error (jurusan):", error);
-      }
-    } catch (err) {
-      console.error("supabase getPublicUrl exception (jurusan):", err);
-    }
-  }
-  if (STORAGE_PUBLIC_BASE) {
-    return `${STORAGE_PUBLIC_BASE}/${cleaned}`;
-  }
-  return ensureLeadingSlash(cleaned);
+function pickTrans(
+  list = [],
+  primary = DEFAULT_LOCALE,
+  fallback = DEFAULT_LOCALE
+) {
+  const by = (loc) => list.find((t) => t.locale === loc);
+  return by(primary) || by(fallback) || null;
 }
 function sanitize(v) {
   if (v === null || v === undefined) return v;
@@ -89,191 +45,111 @@ function asInt(v, dflt) {
   const n = parseInt(v, 10);
   return Number.isFinite(n) ? n : dflt;
 }
-function pickLocale(req, key = "locale", dflt = "id") {
-  try {
-    const { searchParams } = new URL(req.url);
-    return (searchParams.get(key) || dflt).slice(0, 5).toLowerCase();
-  } catch {
-    return dflt;
-  }
-}
-function getOrderBy(param) {
-  // tambahkan likes_count ke allowed
-  const allowed = new Set([
-    "created_at",
-    "updated_at",
-    "register_price",
-    "likes_count",
-  ]);
-  if (!param) return [{ created_at: "desc" }];
-
-  // dukung alias "popular" => likes_count:desc
-  if (String(param).toLowerCase() === "popular") {
-    return [{ likes_count: "desc" }, { created_at: "desc" }];
-  }
-
-  const [field = "created_at", dir = "desc"] = String(param || "").split(":");
-  const key = allowed.has(field) ? field : "created_at";
-  const order = String(dir).toLowerCase() === "asc" ? "asc" : "desc";
-  return [{ [key]: order }];
-}
-function pickTrans(list, primary, fallback) {
-  const by = (loc) => list?.find((t) => t.locale === loc);
-  return by(primary) || by(fallback) || null;
-}
-async function assertAdmin() {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
-  if (!email) throw new Response("Unauthorized", { status: 401 });
-  const admin = await prisma.admin_users.findUnique({ where: { email } });
-  if (!admin) throw new Response("Forbidden", { status: 403 });
-  return admin;
-}
-function normalizeUrl255(v) {
-  return normalizeImageInput(v);
-}
-
-const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
-const ALLOWED_IMAGE_TYPES = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-]);
-
-const isFileObject = (value) =>
-  typeof File !== "undefined" && value instanceof File;
-
-function isExplicitFalse(value) {
-  if (value === false || value === 0) return true;
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    if (!normalized) return false;
-    return ["false", "0", "no", "off"].includes(normalized);
-  }
-  return false;
-}
-
-async function uploadJurusanImage(file) {
-  if (!isFileObject(file)) throw new Error("NO_FILE");
-  if (!BUCKET || !supabaseAdmin?.storage)
-    throw new Error("SUPABASE_NOT_CONFIGURED");
-
-  const size = Number(file.size) || 0;
-  if (size > MAX_IMAGE_SIZE) throw new Error("PAYLOAD_TOO_LARGE");
-
-  const type = file.type || "";
-  if (type && !ALLOWED_IMAGE_TYPES.has(type))
-    throw new Error("UNSUPPORTED_TYPE");
-
-  const rawExt = (file.name?.split(".").pop() || "").toLowerCase();
-  const safeExt = rawExt.replace(/[^a-z0-9]/g, "");
-  const ext = safeExt ? `.${safeExt}` : "";
-  const unique = `${Date.now()}-${randomUUID().replace(/-/g, "")}`;
-  const datePrefix = new Date().toISOString().slice(0, 10);
-  const objectPath = `jurusan/${datePrefix}/${unique}${ext}`;
-  const bytes = new Uint8Array(await file.arrayBuffer());
-
-  const { error } = await supabaseAdmin.storage
-    .from(BUCKET)
-    .upload(objectPath, bytes, {
-      contentType: type || "application/octet-stream",
-      upsert: false,
+/** Accept NextAuth session OR x-admin-key header (for Postman) */
+async function assertAdmin(req) {
+  const key = req.headers.get("x-admin-key");
+  if (key && ADMIN_TEST_KEY && key === ADMIN_TEST_KEY) {
+    const anyAdmin = await prisma.admin_users.findFirst({
+      select: { id: true },
     });
-
-  if (error) throw new Error(error.message || "UPLOAD_FAILED");
-  return objectPath;
+    if (!anyAdmin) throw new Response("Forbidden", { status: 403 });
+    return { adminId: anyAdmin.id, via: "header" };
+  }
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email)
+    throw new Response("Unauthorized", { status: 401 });
+  const admin = await prisma.admin_users.findUnique({
+    where: { email: session.user.email },
+    select: { id: true },
+  });
+  if (!admin) throw new Response("Forbidden", { status: 403 });
+  return { adminId: admin.id, via: "session" };
 }
-
-async function parseBodyWithFile(req) {
-  const contentType = req.headers.get("content-type") || "";
-  if (contentType.includes("multipart/form-data")) {
+/** Read JSON or multipart/x-www-form-urlencoded (tanpa file) */
+async function readBody(req) {
+  const ct = (req.headers.get("content-type") || "").toLowerCase();
+  if (
+    ct.startsWith("multipart/form-data") ||
+    ct.startsWith("application/x-www-form-urlencoded")
+  ) {
     const form = await req.formData();
     const body = {};
-    for (const [key, value] of form.entries()) {
-      if (key === "file") continue;
-      if (body[key] === undefined) body[key] = value;
+    for (const [k, v] of form.entries()) {
+      if (v instanceof File) continue;
+      body[k] = v;
     }
-    const file = form.get("file");
-    return { body, file: isFileObject(file) ? file : null };
+    return body;
   }
-  const body = await req.json().catch(() => ({}));
-  return { body: body ?? {}, file: null };
+  return (await req.json().catch(() => ({}))) ?? {};
+}
+function mapJurusan(row, locale, fallback) {
+  const t = pickTrans(row.jurusan_translate || [], locale, fallback);
+  return {
+    id: row.id,
+    college_id: row.college_id,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    deleted_at: row.deleted_at,
+    locale_used: t?.locale || null,
+    name: t?.name || null,
+    description: t?.description || null,
+  };
 }
 
-function mapUploadError(err) {
-  const message = err?.message || "";
-  if (message === "PAYLOAD_TOO_LARGE")
-    return { status: 413, message: "Maksimal 10MB" };
-  if (message === "UNSUPPORTED_TYPE")
-    return { status: 415, message: "Format harus JPEG/PNG/WebP" };
-  if (message === "SUPABASE_NOT_CONFIGURED")
-    return {
-      status: 500,
-      message: "Supabase bucket belum dikonfigurasi",
-    };
-  return { status: 500, message: "Upload gambar gagal" };
-}
-
-/* ====== Like actor helpers (login / anonymous via cookie) ====== */
-function getOrSetClientId() {
-  const jar = cookies();
-  let cid = jar.get("cid")?.value;
-  if (!cid) {
-    cid = randomUUID();
-    jar.set({
-      name: "cid",
-      value: cid,
-      httpOnly: true,
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 365, // 1 tahun
-      secure: process.env.NODE_ENV === "production",
-    });
-  }
-  return cid;
-}
-async function getActorKey() {
-  const session = await getServerSession(authOptions);
-  const userId = session?.user?.id;
-  if (userId) return { key: `user:${userId}`, type: "USER" };
-  const cid = getOrSetClientId();
-  return { key: `client:${cid}`, type: "CLIENT" };
-}
-
-/* ========= GET /api/jurusan (LIST) ========= */
+/* -------------------- GET (list) -------------------- */
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
-    const q = (searchParams.get("q") || "").trim();
-    const partner_id = (searchParams.get("partner_id") || "").trim() || null;
-
-    const locale = pickLocale(req, "locale", "id");
-    const fallback = pickLocale(req, "fallback", "id");
     const page = Math.max(1, asInt(searchParams.get("page"), 1));
     const perPage = Math.min(
       100,
       Math.max(1, asInt(searchParams.get("perPage"), 12))
     );
-    const orderBy = getOrderBy(searchParams.get("sort"));
+    const q = (searchParams.get("q") || "").trim();
+    const college_id =
+      (searchParams.get("college_id") || "").trim() || undefined;
+    const sort = String(searchParams.get("sort") || "created_at:desc");
+    const [sortField = "created_at", sortDir = "desc"] = sort.split(":");
+    const allowed = new Set(["created_at", "updated_at", "name"]);
+    const orderBy = allowed.has(sortField)
+      ? [
+          {
+            [sortField]:
+              sortField === "name"
+                ? undefined
+                : sortDir === "asc"
+                ? "asc"
+                : "desc",
+          },
+        ]
+      : [{ created_at: "desc" }];
+
+    const locale = normalizeLocale(searchParams.get("locale"));
+    const fallback = normalizeLocale(
+      searchParams.get("fallback") || DEFAULT_LOCALE
+    );
+    const locales = locale === fallback ? [locale] : [locale, fallback];
 
     const withDeleted = searchParams.get("with_deleted") === "1";
     const onlyDeleted = searchParams.get("only_deleted") === "1";
+    const baseDeleted = onlyDeleted
+      ? { NOT: { deleted_at: null } }
+      : withDeleted
+      ? {}
+      : { deleted_at: null };
 
     const where = {
-      ...(onlyDeleted
-        ? { NOT: { deleted_at: null } }
-        : withDeleted
-        ? {}
-        : { deleted_at: null }),
-      ...(partner_id ? { partner_id } : {}),
+      ...baseDeleted,
+      ...(college_id ? { college_id } : {}),
+      college_translate: undefined, // no need
       ...(q
         ? {
             jurusan_translate: {
               some: {
-                locale: { in: [locale, fallback] },
+                locale: { in: locales },
                 OR: [
-                  { name: { contains: q } },
-                  { description: { contains: q } },
+                  { name: { contains: q, mode: "insensitive" } },
+                  { description: { contains: q, mode: "insensitive" } },
                 ],
               },
             },
@@ -285,73 +161,40 @@ export async function GET(req) {
       prisma.jurusan.count({ where }),
       prisma.jurusan.findMany({
         where,
-        orderBy,
+        orderBy: orderBy[0]?.name ? undefined : orderBy, // ignore name sort here (not on parent)
         skip: (page - 1) * perPage,
         take: perPage,
-        include: {
+        select: {
+          id: true,
+          college_id: true,
+          created_at: true,
+          updated_at: true,
+          deleted_at: true,
           jurusan_translate: {
-            where: { locale: { in: [locale, fallback] } },
-            select: {
-              id: true,
-              id_jurusan: true,
-              locale: true,
-              name: true,
-              description: true,
-            },
+            where: { locale: { in: locales } },
+            select: { locale: true, name: true, description: true },
           },
         },
       }),
     ]);
 
-    // ==== hitung "liked" untuk aktor saat ini ====
-    const { key: actorKey } = await getActorKey();
-    const ids = rows.map((r) => r.id);
-    let likedSet = new Set();
-    if (ids.length > 0) {
-      const likedRows = await prisma.jurusan_like.findMany({
-        where: { actor_key: actorKey, id_jurusan: { in: ids } },
-        select: { id_jurusan: true },
+    // If sort by name, sort in memory using picked translation
+    let data = rows.map((r) => mapJurusan(r, locale, fallback));
+    if (sortField === "name") {
+      data.sort((a, b) => {
+        const A = (a.name || "").toLowerCase();
+        const B = (b.name || "").toLowerCase();
+        return (sortDir === "asc" ? 1 : -1) * (A > B ? 1 : A < B ? -1 : 0);
       });
-      likedSet = new Set(likedRows.map((r) => r.id_jurusan));
+      data = data.slice((page - 1) * perPage, (page - 1) * perPage + perPage);
     }
 
-    const data = rows.map((r) => {
-      const t = pickTrans(r.jurusan_translate, locale, fallback);
-      return {
-        id: r.id,
-        partner_id: r.partner_id,
-        image_url: r.image_url,
-        image_public_url: getPublicUrl(r.image_url),
-        register_price:
-          r.register_price == null
-            ? null
-            : typeof r.register_price === "object" &&
-              "toString" in r.register_price
-            ? r.register_price.toString()
-            : String(r.register_price),
-        created_at: r.created_at,
-        updated_at: r.updated_at,
-        deleted_at: r.deleted_at,
-        name: t?.name ?? null,
-        description: t?.description ?? null,
-        locale_used: t?.locale ?? null,
-        // NEW:
-        likes_count: r.likes_count, // BigInt -> string via sanitize()
-        liked: likedSet.has(r.id),
-      };
-    });
-
     return json({
+      page,
+      perPage,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / perPage)),
       data,
-      meta: {
-        page,
-        perPage,
-        total,
-        totalPages: Math.max(1, Math.ceil(total / perPage)),
-        locale,
-        fallback,
-        sort: searchParams.get("sort") || "created_at:desc",
-      },
     });
   } catch (err) {
     console.error("GET /api/jurusan error:", err);
@@ -362,124 +205,81 @@ export async function GET(req) {
   }
 }
 
-/* ========= POST /api/jurusan (CREATE) ========= */
+/* -------------------- POST (create) -------------------- */
 export async function POST(req) {
   try {
-    await assertAdmin();
+    await assertAdmin(req);
+    const body = await readBody(req);
 
-    const { body, file } = await parseBodyWithFile(req);
-    const partner_id = String(body?.partner_id || "").trim();
-    if (!partner_id) return badRequest("partner_id wajib diisi");
+    const college_id = String(body?.college_id || "").trim();
+    if (!college_id) return badRequest("college_id is required");
 
-    const priceRaw = body?.register_price;
-    if (
-      priceRaw === undefined ||
-      priceRaw === null ||
-      String(priceRaw).trim() === ""
-    ) {
-      return badRequest("register_price wajib diisi");
-    }
-    const register_price = String(priceRaw).trim();
+    const locale = normalizeLocale(body.locale);
+    const name = String(body?.name || "").trim();
+    if (!name) return badRequest("name is required");
 
-    // image_url Wajib (schema String non-null, 255)
-    let image_url;
-    if (file) {
-      try {
-        image_url = normalizeUrl255(await uploadJurusanImage(file));
-      } catch (err) {
-        const mapped = mapUploadError(err);
-        return NextResponse.json(
-          { message: mapped.message },
-          { status: mapped.status }
-        );
-      }
-    } else {
-      image_url = normalizeUrl255(body?.image_url);
-      if (!image_url) return badRequest("image_url wajib diisi");
-    }
+    const description =
+      body.description !== undefined && body.description !== null
+        ? String(body.description)
+        : null;
 
-    const name_id = String(body?.name_id ?? "").trim();
-    if (!name_id) return badRequest("name_id (Bahasa Indonesia) wajib diisi");
-    const description_id =
-      typeof body?.description_id === "string" ? body.description_id : null;
+    const autoTranslate =
+      String(body.autoTranslate ?? "true").toLowerCase() !== "false";
 
-    const autoTranslate = !isExplicitFalse(body?.autoTranslate);
-    let name_en = String(body?.name_en || "").trim();
-    let description_en =
-      typeof body?.description_en === "string" ? body.description_en : "";
-
-    const id = randomUUID();
-
-    await prisma.$transaction(async (tx) => {
-      await tx.jurusan.create({
-        data: { id, partner_id, register_price, image_url },
-      });
-
-      await tx.jurusan_translate.create({
+    const created = await prisma.$transaction(async (tx) => {
+      const parent = await tx.jurusan.create({
         data: {
-          id: randomUUID(),
-          id_jurusan: id,
-          locale: "id",
-          name: name_id.slice(0, 191),
-          description: description_id || null,
+          college_id,
+          created_at: new Date(),
+          updated_at: new Date(),
         },
       });
 
-      if (autoTranslate) {
-        if (!name_en && name_id) {
-          try {
-            name_en = await translate(name_id, "id", "en");
-          } catch (e) {
-            console.error(e);
-          }
-        }
-        if (!description_en && description_id) {
-          try {
-            description_en = await translate(description_id, "id", "en");
-          } catch (e) {
-            console.error(e);
-          }
-        }
-      }
+      // primary translation
+      await tx.jurusan_translate.upsert({
+        where: { id_jurusan_locale: { id_jurusan: parent.id, locale } },
+        update: { name, description },
+        create: { id_jurusan: parent.id, locale, name, description },
+      });
 
-      if (name_en || description_en) {
-        await tx.jurusan_translate.create({
-          data: {
-            id: randomUUID(),
-            id_jurusan: id,
-            locale: "en",
-            name: (name_en || "(no title)").slice(0, 191),
-            description: description_en || null,
+      // optional EN translation
+      if (autoTranslate && locale !== EN_LOCALE && (name || description)) {
+        const [nameEn, descEn] = await Promise.all([
+          name ? translate(name, locale, EN_LOCALE) : Promise.resolve(name),
+          description
+            ? translate(description, locale, EN_LOCALE)
+            : Promise.resolve(description),
+        ]);
+
+        await tx.jurusan_translate.upsert({
+          where: {
+            id_jurusan_locale: { id_jurusan: parent.id, locale: EN_LOCALE },
+          },
+          update: {
+            ...(nameEn ? { name: nameEn } : {}),
+            ...(descEn !== undefined ? { description: descEn ?? null } : {}),
+          },
+          create: {
+            id_jurusan: parent.id,
+            locale: EN_LOCALE,
+            name: nameEn || name,
+            description: descEn ?? description,
           },
         });
       }
+
+      return parent;
     });
 
-    return json(
-      {
-        data: {
-          id,
-          partner_id,
-          register_price,
-          image_url,
-          image_public_url: getPublicUrl(image_url),
-          name_id,
-          description_id,
-          name_en: name_en || null,
-          description_en: description_en || null,
-          likes_count: "0",
-          liked: false,
-        },
-      },
-      { status: 201 }
-    );
+    return json({ data: { id: created.id } }, { status: 201 });
   } catch (err) {
     if (err?.code === "P2003") {
       return NextResponse.json(
-        { message: "partner_id tidak valid (FK gagal)" },
+        { message: "college_id invalid (FK failed)" },
         { status: 400 }
       );
     }
+    if (err instanceof Response) return err;
     console.error("POST /api/jurusan error:", err);
     return NextResponse.json(
       { message: "Failed to create jurusan" },
@@ -487,5 +287,3 @@ export async function POST(req) {
     );
   }
 }
-
-

@@ -8,57 +8,53 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 
-/* ===================== Helpers ===================== */
+/* ===================== Auth & Helpers ===================== */
+async function assertAdmin() {
+  const session = await getServerSession(authOptions);
+  const email = session?.user?.email;
+  if (!email) throw new Error("UNAUTHORIZED");
+  const admin = await prisma.admin_users.findUnique({ where: { email } });
+  if (!admin) throw new Error("FORBIDDEN");
+  return admin;
+}
+
 const MAX_NAME_LENGTH = 191;
 const MAX_TEXT_LENGTH = 10000;
-
 const BUCKET = process.env.SUPABASE_BUCKET;
 
 function isHttpUrl(path) {
   return typeof path === "string" && /^https?:\/\//i.test(path);
 }
-
-/** Pastikan aman untuk next/image: absolute URL, atau local path SELALU diawali "/" */
-function normalizeImageUrl(pathOrUrl) {
-  if (!pathOrUrl) return null;
-  if (isHttpUrl(pathOrUrl)) return pathOrUrl;
-  return pathOrUrl.startsWith("/") ? pathOrUrl : `/${pathOrUrl}`;
+function normalizeImageUrl(path) {
+  if (!path) return null;
+  if (isHttpUrl(path)) return path;
+  return path.startsWith("/") ? path : `/${path}`;
 }
-
 function getPublicUrl(path) {
   if (!path) return null;
   if (isHttpUrl(path)) return path;
   if (!BUCKET) return normalizeImageUrl(path);
   try {
-    if (!supabaseAdmin?.storage) {
-      console.warn("Supabase admin not initialized; returning normalized path");
-      return normalizeImageUrl(path);
-    }
+    if (!supabaseAdmin?.storage) return normalizeImageUrl(path);
     const { data, error } = supabaseAdmin.storage
       .from(BUCKET)
       .getPublicUrl(path);
-    if (error) {
-      console.error("supabase getPublicUrl error:", error);
-      return normalizeImageUrl(path);
-    }
+    if (error) return normalizeImageUrl(path);
     return data?.publicUrl || normalizeImageUrl(path);
-  } catch (err) {
-    console.error("supabase getPublicUrl exception:", err);
+  } catch {
     return normalizeImageUrl(path);
   }
 }
 
 async function uploadTestimonialImage(file) {
-  if (typeof File === "undefined" || !(file instanceof File)) {
+  if (typeof File === "undefined" || !(file instanceof File))
     throw new Error("NO_FILE");
-  }
   if (!BUCKET) throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
 
   const MAX = 10 * 1024 * 1024;
   const allowed = ["image/jpeg", "image/png", "image/webp"];
   const size = file.size || 0;
   const type = file.type || "";
-
   if (size > MAX) throw new Error("PAYLOAD_TOO_LARGE");
   if (type && !allowed.includes(type)) throw new Error("UNSUPPORTED_TYPE");
 
@@ -77,16 +73,8 @@ async function uploadTestimonialImage(file) {
       contentType: type || "application/octet-stream",
       upsert: false,
     });
-
   if (error) throw new Error(error.message);
   return objectPath;
-}
-
-async function getAdminOrNull() {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
-  if (!email) return null;
-  return prisma.admin_users.findUnique({ where: { email } });
 }
 
 function getLocaleFromReq(req) {
@@ -97,7 +85,6 @@ function getLocaleFromReq(req) {
     return "id";
   }
 }
-
 function getLimitFromReq(req, fallback = 12) {
   try {
     const n = Number(new URL(req.url).searchParams.get("limit"));
@@ -106,8 +93,6 @@ function getLimitFromReq(req, fallback = 12) {
     return fallback;
   }
 }
-
-/** Accepts: category_id | category_slug | category (alias of slug) */
 function getCategoryFilterFromReq(req) {
   try {
     const url = new URL(req.url);
@@ -121,31 +106,25 @@ function getCategoryFilterFromReq(req) {
     return {};
   }
 }
-
-/** fields=name,description,image,... -> Set */
 function parseFields(req) {
   try {
     const url = new URL(req.url);
     const s = (url.searchParams.get("fields") || "").toLowerCase();
-    const set = new Set(
+    return new Set(
       s
         .split(",")
         .map((x) => x.trim())
         .filter(Boolean)
     );
-    return set;
   } catch {
     return new Set();
   }
 }
-
 function trimOrNull(v, max = 255) {
   if (typeof v !== "string") return null;
   const s = v.trim();
-  if (!s) return null;
-  return s.slice(0, max);
+  return s ? s.slice(0, max) : null;
 }
-
 function parseStar(input) {
   if (input === null || input === undefined || input === "") return null;
   const n = Number(input);
@@ -153,9 +132,8 @@ function parseStar(input) {
   const i = Math.trunc(n);
   return i >= 1 && i <= 5 ? i : null;
 }
-
 function normalizeYoutubeUrl(u) {
-  if (u === undefined) return undefined; // khusus PUT
+  if (u === undefined) return undefined;
   const s = trimOrNull(u, 255);
   if (!s) return null;
   try {
@@ -166,10 +144,7 @@ function normalizeYoutubeUrl(u) {
     return null;
   }
 }
-
-/** Resolve kategori dari {category_id|category_slug}, return id atau null (kalau unset). */
 async function resolveCategoryId({ category_id, category_slug }) {
-  // kosongkan kategori
   if (category_id === null || category_id === "") return null;
   if (category_slug === null || category_slug === "") return null;
 
@@ -189,7 +164,7 @@ async function resolveCategoryId({ category_id, category_slug }) {
     if (!found) throw new Error("CATEGORY_NOT_FOUND");
     return found.id;
   }
-  return undefined; // tidak diubah
+  return undefined;
 }
 
 /* ===================== GET (list) ===================== */
@@ -200,12 +175,15 @@ export async function GET(req) {
     const { category_id, category_slug } = getCategoryFilterFromReq(req);
     const fields = parseFields(req);
 
-    // dukung ringkas: image/name/description (id selalu dibawa)
-    const allowedMinimal = new Set(["image", "name", "description"]);
+    const allowedMinimal = new Set([
+      "image",
+      "image_public_url",
+      "name",
+      "description",
+    ]);
     const minimalOnly =
       fields.size > 0 && [...fields].every((f) => allowedMinimal.has(f));
 
-    // Jika filter by slug, dapatkan id dulu
     let categoryIdForFilter = category_id;
     if (!categoryIdForFilter && category_slug) {
       const cat = await prisma.testimonial_categories.findUnique({
@@ -224,7 +202,7 @@ export async function GET(req) {
       orderBy: { created_at: "desc" },
       take: limit,
       select: minimalOnly
-        ? { id: true, photo_url: true } // minimal butuh image source
+        ? { id: true, photo_url: true }
         : {
             id: true,
             photo_url: true,
@@ -253,7 +231,6 @@ export async function GET(req) {
       },
     });
 
-    // Pilih terjemahan paling cocok (locale target > id)
     const pick = new Map();
     for (const tr of translations) {
       const key = tr.id_testimonials;
@@ -263,14 +240,15 @@ export async function GET(req) {
       }
     }
 
-    // === Mode minimal (image + name + description) ===
     if (minimalOnly) {
       const data = rows.map((r) => {
         const t = pick.get(r.id);
-        const image = getPublicUrl(r.photo_url);
+        const image_public_url = getPublicUrl(r.photo_url);
         return {
           id: r.id,
-          ...(fields.has("image") ? { image } : {}),
+          // aliases for compatibility
+          ...(fields.has("image") ? { image: image_public_url } : {}),
+          ...(fields.has("image_public_url") ? { image_public_url } : {}),
           ...(fields.has("name") ? { name: t?.name ?? null } : {}),
           ...(fields.has("description")
             ? { description: t?.message ?? null }
@@ -280,8 +258,6 @@ export async function GET(req) {
       return NextResponse.json({ data });
     }
 
-    // === Mode lengkap (back-compat) ===
-    // Ambil info kategori (id, slug, name by locale)
     const categoryIds = Array.from(
       new Set(rows.map((r) => r.category_id).filter(Boolean))
     );
@@ -323,10 +299,13 @@ export async function GET(req) {
         r.category_id && categoriesById.size
           ? categoriesById.get(r.category_id) || null
           : null;
+      const image_public_url = getPublicUrl(r.photo_url);
       return {
         id: r.id,
         photo_url: r.photo_url,
-        photo_public_url: getPublicUrl(r.photo_url), // aman utk next/image
+        // keep old key + add new canonical key
+        photo_public_url: image_public_url,
+        image_public_url,
         star: r.star ?? null,
         youtube_url: r.youtube_url ?? null,
         kampus_negara_tujuan: r.kampus_negara_tujuan ?? null,
@@ -349,30 +328,53 @@ export async function GET(req) {
 /* ===================== POST (create) ===================== */
 export async function POST(req) {
   try {
-    const admin = await getAdminOrNull();
-    if (!admin)
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    const admin = await assertAdmin();
 
-    const contentType = req.headers.get("content-type") || "";
+    const contentType = (req.headers.get("content-type") || "").toLowerCase();
+    const isMultipart = contentType.startsWith("multipart/form-data");
+    const isUrlEncoded = contentType.startsWith(
+      "application/x-www-form-urlencoded"
+    );
+
     const entries = [];
     let inputWasArray = false;
 
-    if (contentType.includes("multipart/form-data")) {
-      const form = await req.formData();
-      const file = form.get("file");
-      const body = {};
-      for (const key of form.keys()) {
-        if (key === "file") continue;
-        body[key] = form.get(key);
+    if (isMultipart || isUrlEncoded) {
+      let form;
+      try {
+        form = await req.formData();
+      } catch {
+        return NextResponse.json(
+          {
+            message:
+              "Body form-data tidak valid. Di Postman pilih Body=form-data dan jangan set Content-Type manual.",
+          },
+          { status: 400 }
+        );
       }
-      entries.push({ body, file });
+
+      // dukung file di "file" ATAU "photo_url" (kalau berupa File)
+      let file = form.get("file");
+      const maybeFileInPhotoUrl = form.get("photo_url");
+      if (
+        !file &&
+        typeof File !== "undefined" &&
+        maybeFileInPhotoUrl instanceof File
+      ) {
+        file = maybeFileInPhotoUrl;
+      }
+
+      const body = {};
+      for (const [k, v] of form.entries()) {
+        if (v instanceof File) continue;
+        body[k] = v;
+      }
+      entries.push({ body, file: file ?? null });
     } else {
       const raw = await req.json().catch(() => ({}));
       inputWasArray = Array.isArray(raw);
       const arr = inputWasArray ? raw : [raw];
-      for (const item of arr) {
-        entries.push({ body: item ?? {}, file: null });
-      }
+      for (const item of arr) entries.push({ body: item ?? {}, file: null });
     }
 
     if (!entries.length) {
@@ -382,13 +384,13 @@ export async function POST(req) {
       );
     }
 
+    // Validasi dasar
     for (let i = 0; i < entries.length; i++) {
       const { body, file } = entries[i];
       const photoUrl = trimOrNull(body.photo_url, 255);
       const name = trimOrNull(body.name, MAX_NAME_LENGTH) || "";
       const message = trimOrNull(body.message, MAX_TEXT_LENGTH) || "";
-      const hasUpload =
-        typeof File !== "undefined" && file instanceof File ? true : false;
+      const hasUpload = typeof File !== "undefined" && file instanceof File;
       if ((!photoUrl && !hasUpload) || !name || !message) {
         return NextResponse.json(
           {
@@ -495,10 +497,14 @@ export async function POST(req) {
         });
       }
 
+      const image_public_url = getPublicUrl(storedPhotoPath);
+
       results.push({
         id,
         photo_url: storedPhotoPath,
-        photo_public_url: getPublicUrl(storedPhotoPath), // siap dipakai di next/image
+        // keep old + add new canonical key
+        photo_public_url: image_public_url,
+        image_public_url,
         star: star ?? null,
         youtube_url: youtube_url ?? null,
         kampus_negara_tujuan: kampus_negara_tujuan ?? null,
@@ -512,6 +518,10 @@ export async function POST(req) {
     const payload = inputWasArray ? results : results[0];
     return NextResponse.json({ data: payload }, { status: 201 });
   } catch (e) {
+    if (e?.message === "UNAUTHORIZED")
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    if (e?.message === "FORBIDDEN")
+      return NextResponse.json({ message: "Forbidden" }, { status: 403 });
     console.error("POST /api/testimonials error:", e);
     return NextResponse.json({ message: "Server error" }, { status: 500 });
   }

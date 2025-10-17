@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import React, { useRef, useCallback } from "react";
+import React, { useRef, useCallback, useMemo, useState } from "react";
 import {
   Row,
   Col,
@@ -57,7 +57,7 @@ const styles = {
     borderRadius: 18,
     border: "2px solid #cfe0ff",
     boxShadow: "0 18px 40px rgba(8,42,116,0.12)",
-    background: "#ffffff",
+    background: "#fff",
   },
   cardBody: { padding: 28 },
   sectionTitle: {
@@ -161,18 +161,144 @@ const styles = {
   },
 };
 
-export default function CalculatorContent() {
-  const vm = useCalculatorViewModel();
-  const loading = vm.isOptionsLoading;
-  const fetchError = vm.error;
+// currency helpers
+function formatIDR(n) {
+  const v = Number(n) || 0;
+  return v.toLocaleString("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0,
+  });
+}
+function parseIDR(str) {
+  if (str === null || str === undefined) return 0;
+  const num = Number(String(str).replace(/[^\d]/g, ""));
+  return Number.isFinite(num) ? num : 0;
+}
 
-  // === ref + handler download PDF (blok Estimated Costs) ===
+export default function CalculatorContent() {
+  const svc = useCalculatorViewModel(); // { loading, error, categories }
+  const loading = svc.loading;
+  const fetchError = svc.error;
+
+  // options
+  const serviceFeeOptions = useMemo(() => {
+    const items = svc.categories?.service_fee?.items || [];
+    return items.map((s) => ({
+      value: s.id,
+      label: s.name || "(no title)",
+      amount: Number(s.price || 0),
+      raw: s,
+    }));
+  }, [svc.categories]);
+
+  const insuranceOptions = useMemo(() => {
+    const items = svc.categories?.asuransi?.items || [];
+    return items.map((s) => ({
+      value: s.id,
+      label: s.name || "(no title)",
+      amount: Number(s.price || 0),
+      raw: s,
+    }));
+  }, [svc.categories]);
+
+  const visaOptions = useMemo(() => {
+    const items = svc.categories?.biaya_visa?.items || [];
+    return items.map((s) => ({
+      value: s.id,
+      label: s.name || "(no title)",
+      amount: Number(s.price || 0),
+      raw: s,
+    }));
+  }, [svc.categories]);
+
+  const addonList = useMemo(() => {
+    const items = svc.categories?.addons?.items || [];
+    return items.map((s) => ({
+      key: s.id,
+      label: s.name || "(no title)",
+      amount: Number(s.price || 0),
+      note: s.description || "",
+      raw: s,
+    }));
+  }, [svc.categories]);
+
+  // local form state
+  const [form, setForm] = useState({
+    namaStudent: "",
+    namaKampus: "",
+    lokasiKampus: "",
+    jurusan: "",
+    intake: "",
+    serviceFeeKey: null,
+    insuranceKey: null,
+    visaKey: null,
+    biayaKuliahTerm: 0,
+    jumlahTerm: null,
+    addons: {},
+  });
+
+  const update = useCallback(
+    (key, value) => setForm((p) => ({ ...p, [key]: value })),
+    []
+  );
+  const toggleAddon = useCallback((addonId, checked) => {
+    setForm((p) => ({ ...p, addons: { ...p.addons, [addonId]: !!checked } }));
+  }, []);
+
+  // selected values
+  const serviceFee = useMemo(
+    () => serviceFeeOptions.find((o) => o.value === form.serviceFeeKey) || null,
+    [serviceFeeOptions, form.serviceFeeKey]
+  );
+  const insurance = useMemo(
+    () => insuranceOptions.find((o) => o.value === form.insuranceKey) || null,
+    [insuranceOptions, form.insuranceKey]
+  );
+  const visa = useMemo(
+    () => visaOptions.find((o) => o.value === form.visaKey) || null,
+    [visaOptions, form.visaKey]
+  );
+  const selectedAddons = useMemo(
+    () => addonList.filter((a) => !!form.addons[a.key]),
+    [addonList, form.addons]
+  );
+
+  // totals
+  const termOptions = useMemo(
+    () =>
+      Array.from({ length: 6 }, (_, i) => ({
+        value: i + 1,
+        label: String(i + 1),
+      })),
+    []
+  );
+  const tuition = useMemo(
+    () => Number(form.biayaKuliahTerm || 0) * Number(form.jumlahTerm || 0),
+    [form.biayaKuliahTerm, form.jumlahTerm]
+  );
+  const addonsTotal = useMemo(
+    () => selectedAddons.reduce((sum, a) => sum + (a.amount || 0), 0),
+    [selectedAddons]
+  );
+  const totalIDR = useMemo(
+    () =>
+      (serviceFee?.amount || 0) +
+      (insurance?.amount || 0) +
+      (visa?.amount || 0) +
+      addonsTotal +
+      tuition,
+    [serviceFee, insurance, visa, addonsTotal, tuition]
+  );
+
+  // PDF
   const estimatedRef = useRef(null);
   const handleDownloadPDF = useCallback(async () => {
     const el = estimatedRef.current;
     if (!el) return;
     const html2canvas = (await import("html2canvas")).default;
     const { jsPDF } = await import("jspdf");
+
     const canvas = await html2canvas(el, {
       scale: 2,
       useCORS: true,
@@ -218,11 +344,18 @@ export default function CalculatorContent() {
         if (y < canvas.height) pdf.addPage();
       }
     }
-    const safeName = (vm.form.namaStudent || "Student")
+    const safeName = (form.namaStudent || "Student")
       .toString()
       .replace(/[^\w-]+/g, "_");
     pdf.save(`Estimated_Costs_${safeName}.pdf`);
-  }, [vm.form.namaStudent]);
+  }, [form.namaStudent]);
+
+  const goConsult = useCallback(() => {
+    if (typeof window !== "undefined") window.open("/contact", "_blank");
+  }, []);
+
+  // AntD dropdown: render ke parent agar tidak ketutup layout yang overflow hidden
+  const popupInParent = (trigger) => trigger?.parentElement || document.body;
 
   return (
     <div style={styles.wrap}>
@@ -260,8 +393,8 @@ export default function CalculatorContent() {
                       size="large"
                       placeholder="Isi nama student"
                       style={styles.input}
-                      value={vm.form.namaStudent ?? ""}
-                      onChange={(e) => vm.update("namaStudent", e.target.value)}
+                      value={form.namaStudent}
+                      onChange={(e) => update("namaStudent", e.target.value)}
                     />
                   </div>
                 </Col>
@@ -273,8 +406,8 @@ export default function CalculatorContent() {
                       size="large"
                       placeholder="Isi nama kampus"
                       style={styles.input}
-                      value={vm.form.namaKampus ?? ""}
-                      onChange={(e) => vm.update("namaKampus", e.target.value)}
+                      value={form.namaKampus}
+                      onChange={(e) => update("namaKampus", e.target.value)}
                     />
                   </div>
                 </Col>
@@ -286,10 +419,8 @@ export default function CalculatorContent() {
                       size="large"
                       placeholder="Alamat / kota, negara"
                       style={styles.input}
-                      value={vm.form.lokasiKampus ?? ""}
-                      onChange={(e) =>
-                        vm.update("lokasiKampus", e.target.value)
-                      }
+                      value={form.lokasiKampus}
+                      onChange={(e) => update("lokasiKampus", e.target.value)}
                     />
                   </div>
                 </Col>
@@ -301,8 +432,8 @@ export default function CalculatorContent() {
                       size="large"
                       placeholder="Contoh: Computer Science"
                       style={styles.input}
-                      value={vm.form.jurusan ?? ""}
-                      onChange={(e) => vm.update("jurusan", e.target.value)}
+                      value={form.jurusan}
+                      onChange={(e) => update("jurusan", e.target.value)}
                     />
                   </div>
                 </Col>
@@ -314,14 +445,13 @@ export default function CalculatorContent() {
                       size="large"
                       placeholder="Misal: 11 September 2024"
                       style={styles.input}
-                      value={vm.form.intake ?? ""}
-                      onChange={(e) => vm.update("intake", e.target.value)}
+                      value={form.intake}
+                      onChange={(e) => update("intake", e.target.value)}
                     />
                   </div>
                 </Col>
 
-                {/* --- HAPUS: Kolom "Kurs Hari Ini" --- */}
-
+                {/* Selects */}
                 <Col span={24} md={8}>
                   <div style={styles.formItem}>
                     <Text style={styles.label}>Service Fee</Text>
@@ -330,14 +460,16 @@ export default function CalculatorContent() {
                       loading={loading}
                       allowClear
                       placeholder="Pilih service fee"
-                      disabled={loading || !vm.serviceFeeOptions.length}
-                      options={(vm.serviceFeeOptions || []).map((o) => ({
+                      disabled={loading}
+                      getPopupContainer={popupInParent}
+                      notFoundContent="Tidak ada data"
+                      options={serviceFeeOptions.map((o) => ({
                         value: o.value,
-                        label: `${o.label} (${vm.formatIDR(o.amount)})`,
+                        label: `${o.label} (${formatIDR(o.amount)})`,
                       }))}
-                      value={vm.form.serviceFeeKey ?? undefined}
+                      value={form.serviceFeeKey ?? undefined}
                       onChange={(value) =>
-                        vm.update("serviceFeeKey", value ?? null)
+                        update("serviceFeeKey", value ?? null)
                       }
                       style={{ width: "100%" }}
                     />
@@ -352,14 +484,16 @@ export default function CalculatorContent() {
                       loading={loading}
                       allowClear
                       placeholder="Pilih asuransi"
-                      disabled={loading || !vm.insuranceOptions.length}
-                      options={(vm.insuranceOptions || []).map((o) => ({
+                      disabled={loading}
+                      getPopupContainer={popupInParent}
+                      notFoundContent="Tidak ada data"
+                      options={insuranceOptions.map((o) => ({
                         value: o.value,
-                        label: `${o.label} (${vm.formatIDR(o.amount)})`,
+                        label: `${o.label} (${formatIDR(o.amount)})`,
                       }))}
-                      value={vm.form.insuranceKey ?? undefined}
+                      value={form.insuranceKey ?? undefined}
                       onChange={(value) =>
-                        vm.update("insuranceKey", value ?? null)
+                        update("insuranceKey", value ?? null)
                       }
                       style={{ width: "100%" }}
                     />
@@ -376,13 +510,15 @@ export default function CalculatorContent() {
                       loading={loading}
                       allowClear
                       placeholder="Pilih biaya visa"
-                      disabled={loading || !vm.visaOptions.length}
-                      options={(vm.visaOptions || []).map((o) => ({
+                      disabled={loading}
+                      getPopupContainer={popupInParent}
+                      notFoundContent="Tidak ada data"
+                      options={visaOptions.map((o) => ({
                         value: o.value,
-                        label: `${o.label} (${vm.formatIDR(o.amount)})`,
+                        label: `${o.label} (${formatIDR(o.amount)})`,
                       }))}
-                      value={vm.form.visaKey ?? undefined}
-                      onChange={(value) => vm.update("visaKey", value ?? null)}
+                      value={form.visaKey ?? undefined}
+                      onChange={(value) => update("visaKey", value ?? null)}
                       style={{ width: "100%" }}
                     />
                   </div>
@@ -395,12 +531,12 @@ export default function CalculatorContent() {
                       size="large"
                       min={0}
                       style={{ ...styles.input, width: "100%" }}
-                      value={vm.form.biayaKuliahTerm ?? null}
+                      value={form.biayaKuliahTerm ?? null}
                       onChange={(value) =>
-                        vm.update("biayaKuliahTerm", Number(value ?? 0))
+                        update("biayaKuliahTerm", Number(value ?? 0))
                       }
-                      formatter={(value) => vm.formatIDR(value)}
-                      parser={(value) => vm.parseIDR(value)}
+                      formatter={(value) => formatIDR(value)}
+                      parser={(value) => parseIDR(value)}
                       placeholder="Rp 0"
                     />
                   </div>
@@ -415,11 +551,9 @@ export default function CalculatorContent() {
                       size="large"
                       allowClear
                       placeholder="Pilih term"
-                      options={vm.termOptions}
-                      value={vm.form.jumlahTerm ?? undefined}
-                      onChange={(value) =>
-                        vm.update("jumlahTerm", value ?? null)
-                      }
+                      options={termOptions}
+                      value={form.jumlahTerm ?? undefined}
+                      onChange={(value) => update("jumlahTerm", value ?? null)}
                       style={{ width: "100%" }}
                     />
                   </div>
@@ -445,12 +579,12 @@ export default function CalculatorContent() {
                 </Space>
               ) : (
                 <Space direction="vertical" size={12} style={{ width: "100%" }}>
-                  {vm.addonList.map((addon) => (
+                  {addonList.map((addon) => (
                     <div key={addon.key} style={styles.addonRow}>
                       <Checkbox
-                        checked={!!vm.form.addons[addon.key]}
+                        checked={!!form.addons[addon.key]}
                         onChange={(e) =>
-                          vm.toggleAddon(addon.key, e.target.checked)
+                          toggleAddon(addon.key, e.target.checked)
                         }
                       >
                         <div>
@@ -460,7 +594,7 @@ export default function CalculatorContent() {
                           ) : null}
                         </div>
                       </Checkbox>
-                      <Text strong>{vm.formatIDR(addon.amount)}</Text>
+                      <Text strong>{formatIDR(addon.amount)}</Text>
                     </div>
                   ))}
                 </Space>
@@ -469,7 +603,6 @@ export default function CalculatorContent() {
           </Card>
 
           <Card style={styles.card} bodyStyle={styles.cardBody}>
-            {/* area yang di-export PDF */}
             <div ref={estimatedRef} style={{ background: "#fff" }}>
               <Space direction="vertical" size={12} style={{ width: "100%" }}>
                 <Title level={4} style={styles.sectionTitle}>
@@ -478,42 +611,37 @@ export default function CalculatorContent() {
 
                 <div style={styles.estList}>
                   {[
-                    ["Nama Student", vm.form.namaStudent ?? "—"],
-                    ["Nama Kampus", vm.form.namaKampus ?? "—"],
-                    ["Lokasi Kampus", vm.form.lokasiKampus ?? "—"],
-                    ["Jurusan", vm.form.jurusan ?? "—"],
-                    ["Intake", vm.form.intake ?? "—"],
-                    // ["Kurs Hari Ini", vm.form.kurs ?? "—"],  // DIHAPUS
+                    ["Nama Student", form.namaStudent || "—"],
+                    ["Nama Kampus", form.namaKampus || "—"],
+                    ["Lokasi Kampus", form.lokasiKampus || "—"],
+                    ["Jurusan", form.jurusan || "—"],
+                    ["Intake", form.intake || "—"],
                     [
                       "Service Fee (Non-Refundable)",
-                      vm.serviceFee
-                        ? `${vm.serviceFee.label} (${vm.formatIDR(
-                            vm.serviceFee.amount
+                      serviceFee
+                        ? `${serviceFee.label} (${formatIDR(
+                            serviceFee.amount
                           )})`
                         : "—",
                     ],
                     [
                       "Asuransi Kesehatan (Refundable)",
-                      vm.insurance
-                        ? `${vm.insurance.label} (${vm.formatIDR(
-                            vm.insurance.amount
-                          )})`
+                      insurance
+                        ? `${insurance.label} (${formatIDR(insurance.amount)})`
                         : "—",
                     ],
                     [
                       "Jumlah Term Yang Dibayar ke Kampus",
-                      vm.form.jumlahTerm ?? "—",
+                      form.jumlahTerm || "—",
                     ],
                     [
                       "Biaya Visa (Non-Refundable)",
-                      vm.visa
-                        ? `${vm.visa.label} (${vm.formatIDR(vm.visa.amount)})`
-                        : "—",
+                      visa ? `${visa.label} (${formatIDR(visa.amount)})` : "—",
                     ],
                     [
                       "Add-Ons (Non-Refundable)",
-                      vm.selectedAddons.length
-                        ? vm.selectedAddons.map((i) => i.label).join(", ")
+                      selectedAddons.length
+                        ? selectedAddons.map((i) => i.label).join(", ")
                         : "—",
                     ],
                   ].map(([label, value]) => (
@@ -528,9 +656,7 @@ export default function CalculatorContent() {
 
                 <div style={styles.totalWrap}>
                   <span>Total Estimated Cost</span>
-                  <span style={styles.totalValue}>
-                    {vm.formatIDR(vm.totalIDR)}
-                  </span>
+                  <span style={styles.totalValue}>{formatIDR(totalIDR)}</span>
                 </div>
               </Space>
             </div>
@@ -540,7 +666,7 @@ export default function CalculatorContent() {
                 size="large"
                 type="primary"
                 icon={<MessageCircle size={18} />}
-                onClick={vm.goConsult}
+                onClick={goConsult}
                 style={styles.primaryBtn}
               >
                 Konsultasi

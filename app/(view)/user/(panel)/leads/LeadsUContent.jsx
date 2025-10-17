@@ -1,6 +1,7 @@
 "use client";
 
-import { Button, Card, Input, Typography, Alert } from "antd";
+import { useEffect } from "react";
+import { Button, Card, Input, Typography, notification } from "antd";
 
 const { Title, Text } = Typography;
 
@@ -133,14 +134,37 @@ export default function LeadsUContent({
   submit,
   canSubmit,
   loading,
-  msg,
+  msg, // { type: 'success' | 'error', text: string }
 }) {
   const lang = locale === "en" ? "en" : "id";
   const U = UI[lang];
   const status = (k) => (errors?.[k] ? "error" : undefined);
 
+  // antd notification (topRight)
+  const [api, contextHolder] = notification.useNotification();
+
+  useEffect(() => {
+    if (!msg?.text) return;
+    const isSuccess = msg.type === "success";
+    api[isSuccess ? "success" : "error"]({
+      message: isSuccess
+        ? lang === "en"
+          ? "Success"
+          : "Berhasil"
+        : lang === "en"
+        ? "Error"
+        : "Gagal",
+      description: msg.text,
+      placement: "topRight",
+      duration: 3.5,
+    });
+  }, [msg, api, lang]);
+
   return (
     <div style={styles.wrap}>
+      {/* notification holder */}
+      {contextHolder}
+
       {/* Header / Title */}
       <div style={styles.hero}>
         <div style={styles.heroInner}>
@@ -153,15 +177,6 @@ export default function LeadsUContent({
 
       {/* Form card */}
       <div style={styles.container}>
-        {msg?.text ? (
-          <Alert
-            type={msg.type === "success" ? "success" : "error"}
-            message={msg.text}
-            showIcon
-            style={{ marginBottom: 16 }}
-          />
-        ) : null}
-
         <Card style={styles.card} bodyStyle={styles.cardBody}>
           {/* Full Name */}
           <div style={styles.item}>

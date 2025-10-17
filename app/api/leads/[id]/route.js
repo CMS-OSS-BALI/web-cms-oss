@@ -1,3 +1,4 @@
+// app/api/leads/[id]/route.js
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
@@ -19,8 +20,6 @@ function sanitize(value) {
 function json(data, init) {
   return NextResponse.json(sanitize(data), init);
 }
-
-/* ---------- auth ---------- */
 async function assertAdmin() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id && !session?.user?.email) {
@@ -28,22 +27,32 @@ async function assertAdmin() {
   }
   return session.user;
 }
-
-/* ---------- small parsers ---------- */
-function parseBigInt(value) {
-  if (value === null || value === undefined || value === "") return null;
-  try {
-    const n = BigInt(value);
-    if (n < 0n) return null;
-    return n;
-  } catch {
-    return null;
-  }
-}
 function parseDate(value) {
   if (!value) return null;
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? null : d;
+}
+const parseId = (v) => {
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim();
+  return s.length ? s : null;
+};
+
+// accept form-data / urlencoded / json
+async function readBody(req) {
+  const ct = (req.headers.get("content-type") || "").toLowerCase();
+  if (
+    ct.startsWith("multipart/form-data") ||
+    ct.startsWith("application/x-www-form-urlencoded")
+  ) {
+    const form = await req.formData();
+    const body = {};
+    for (const [k, v] of form.entries()) {
+      body[k] = typeof v === "string" ? v : v?.name ?? "";
+    }
+    return body;
+  }
+  return (await req.json().catch(() => ({}))) ?? {};
 }
 
 /* ---------- whatsapp notify ---------- */
@@ -55,55 +64,35 @@ function normalizePhone(value) {
     return String(value).trim();
   }
 }
-
-/**
- * Kirim WA ke konsultan saat lead di-assign.
- * Tidak melempar error—kalau gagal, hanya log.
- */
-async function notifyConsultantAssignment(lead, consultant) {
-  // Pakai server env (bukan NEXT_PUBLIC)
+async function sendAssignmentWA(lead, consultant) {
   const apiKey = process.env.API_KEY_WATZAP;
   const numberKey = process.env.NUMBER_KEY_WATZAP;
-
-  if (!consultant?.whatsapp) return;
-  if (!apiKey || !numberKey) {
-    console.warn(
-      "[watzap] API_KEY_WATZAP / NUMBER_KEY_WATZAP tidak ditemukan. Lewati kirim WA."
-    );
-    return;
-  }
+  if (!consultant?.whatsapp || !apiKey || !numberKey) return;
 
   const phone = normalizePhone(consultant.whatsapp);
   if (!phone) return;
 
-  const messageLines = [
+  const msg = [
     "*Penugasan Lead Baru*",
     "",
-    `Halo ${consultant.name || "Konsultan"},`,
-    "Anda baru saja menerima lead baru. Detailnya:",
+    `Halo Konsultan,`,
+    "Anda baru saja menerima lead baru:",
     "",
-    `• *Nama*              : ${lead.full_name || "-"}`,
-    `• *Email*             : ${lead.email || "-"}`,
-    `• *WhatsApp*          : ${lead.whatsapp || "-"}`,
-    `• *Domisili*          : ${lead.domicile || "-"}`,
+    `• *Nama*               : ${lead.full_name || "-"}`,
+    `• *Email*              : ${lead.email || "-"}`,
+    `• *WhatsApp*           : ${lead.whatsapp || "-"}`,
+    `• *Domisili*           : ${lead.domicile || "-"}`,
     `• *Pendidikan Terakhir*: ${lead.education_last || "-"}`,
     "",
     "_Mohon ditindaklanjuti secepatnya._",
-    "Terima kasih 🙏",
-  ];
-
-  const message = messageLines.join("\n");
+  ].join("\n");
 
   try {
-    await sendWhatsAppMessage(phone, message);
+    await sendWhatsAppMessage(phone, msg);
   } catch (err) {
-    console.error(
-      "[watzap] Gagal kirim notifikasi ke konsultan:",
-      err?.message || err
-    );
-    if (err?.response?.data) {
+    console.error("[watzap] gagal kirim WA:", err?.message || err);
+    if (err?.response?.data)
       console.error("[watzap] response:", err.response.data);
-    }
   }
 }
 
@@ -112,14 +101,32 @@ export async function GET(req, { params }) {
   try {
     await assertAdmin();
   } catch {
-    return json({ error: { code: "UNAUTHORIZED" } }, { status: 401 });
+    return json(
+      {
+        error: {
+          code: "UNAUTHORIZED",
+          message: "Akses ditolak. Silakan login terlebih dahulu.",
+        },
+      },
+      { status: 401 }
+    );
   }
 
   const includeReferral =
     new URL(req.url).searchParams.get("include_referral") === "1";
-
-  const id = Number(params.id);
-  if (!id) return json({ error: { code: "BAD_ID" } }, { status: 400 });
+  const id = String(params.id || "").trim();
+  if (!id) {
+    return json(
+      {
+        error: {
+          code: "BAD_REQUEST",
+          message: "Parameter id wajib diisi.",
+          field: "id",
+        },
+      },
+      { status: 400 }
+    );
+  }
 
   const item = await prisma.leads.findUnique({
     where: { id },
@@ -146,8 +153,13 @@ export async function GET(req, { params }) {
     },
   });
 
-  if (!item) return json({ error: { code: "NOT_FOUND" } }, { status: 404 });
-  return json(item);
+  if (!item) {
+    return json(
+      { error: { code: "NOT_FOUND", message: "Data lead tidak ditemukan." } },
+      { status: 404 }
+    );
+  }
+  return json({ message: "OK", data: item });
 }
 
 /* ========== PATCH update ========== */
@@ -155,13 +167,32 @@ export async function PATCH(req, { params }) {
   try {
     await assertAdmin();
   } catch {
-    return json({ error: { code: "UNAUTHORIZED" } }, { status: 401 });
+    return json(
+      {
+        error: {
+          code: "UNAUTHORIZED",
+          message: "Akses ditolak. Silakan login terlebih dahulu.",
+        },
+      },
+      { status: 401 }
+    );
   }
 
-  const id = Number(params.id);
-  if (!id) return json({ error: { code: "BAD_ID" } }, { status: 400 });
+  const id = String(params.id || "").trim();
+  if (!id) {
+    return json(
+      {
+        error: {
+          code: "BAD_REQUEST",
+          message: "Parameter id wajib diisi.",
+          field: "id",
+        },
+      },
+      { status: 400 }
+    );
+  }
 
-  const body = await req.json().catch(() => ({}));
+  const body = await readBody(req);
   const data = {};
 
   const existing = await prisma.leads.findUnique({
@@ -178,9 +209,13 @@ export async function PATCH(req, { params }) {
       referral_id: true,
     },
   });
-  if (!existing) return json({ error: { code: "NOT_FOUND" } }, { status: 404 });
+  if (!existing) {
+    return json(
+      { error: { code: "NOT_FOUND", message: "Data lead tidak ditemukan." } },
+      { status: 404 }
+    );
+  }
 
-  // Validasi & mapping fields
   if (Object.prototype.hasOwnProperty.call(body, "full_name")) {
     if (
       typeof body.full_name !== "string" ||
@@ -188,7 +223,11 @@ export async function PATCH(req, { params }) {
     ) {
       return json(
         {
-          error: { code: "VALIDATION_ERROR", message: "full_name min 2 chars" },
+          error: {
+            code: "VALIDATION_ERROR",
+            message: "Nama lengkap minimal 2 karakter.",
+            field: "full_name",
+          },
         },
         { status: 422 }
       );
@@ -197,21 +236,20 @@ export async function PATCH(req, { params }) {
   }
 
   for (const key of ["domicile", "whatsapp", "email", "education_last"]) {
-    if (Object.prototype.hasOwnProperty.call(body, key)) {
-      data[key] = body[key];
-    }
+    if (Object.prototype.hasOwnProperty.call(body, key)) data[key] = body[key];
   }
 
   // assignment
   let assignedToChanged = false;
   if (Object.prototype.hasOwnProperty.call(body, "assigned_to")) {
-    const assignedToValue = parseBigInt(body.assigned_to);
+    const assignedToValue = parseId(body.assigned_to);
     if (body.assigned_to && assignedToValue === null) {
       return json(
         {
           error: {
             code: "VALIDATION_ERROR",
-            message: "assigned_to must be a positive integer",
+            message: "ID konsultan tidak boleh kosong.",
+            field: "assigned_to",
           },
         },
         { status: 422 }
@@ -229,7 +267,9 @@ export async function PATCH(req, { params }) {
         {
           error: {
             code: "VALIDATION_ERROR",
-            message: "assigned_at must be a valid ISO date",
+            message: "Tanggal penugasan tidak valid.",
+            field: "assigned_at",
+            hint: "Gunakan format ISO 8601, contoh: 2025-01-17T08:00:00Z",
           },
         },
         { status: 422 }
@@ -242,14 +282,14 @@ export async function PATCH(req, { params }) {
     data.assigned_at = new Date();
   }
 
-  // referral changes (by id OR code)
+  // referral changes
   let referralChange = false;
   let newReferralId = null;
   if (
     Object.prototype.hasOwnProperty.call(body, "referral_id") ||
     Object.prototype.hasOwnProperty.call(body, "referral_code")
   ) {
-    newReferralId = parseBigInt(body.referral_id);
+    newReferralId = parseId(body.referral_id);
     const code =
       typeof body.referral_code === "string" ? body.referral_code.trim() : "";
 
@@ -263,7 +303,8 @@ export async function PATCH(req, { params }) {
           {
             error: {
               code: "VALIDATION_ERROR",
-              message: "Kode referral tidak ditemukan",
+              message: "Kode referral tidak ditemukan atau sudah tidak aktif.",
+              field: "referral_code",
             },
           },
           { status: 422 }
@@ -271,18 +312,25 @@ export async function PATCH(req, { params }) {
       }
       newReferralId = found.id;
     }
-    data.referral_id = newReferralId; // boleh null (unassign)
+    data.referral_id = newReferralId; // boleh null
     referralChange = (existing.referral_id ?? null) !== (newReferralId ?? null);
   }
 
   if (!Object.keys(data).length) {
-    return json({ error: { code: "NO_CHANGES" } }, { status: 400 });
+    return json(
+      {
+        error: {
+          code: "NO_CHANGES",
+          message: "Tidak ada perubahan yang dikirim.",
+        },
+      },
+      { status: 400 }
+    );
   }
   data.updated_at = new Date();
 
   try {
     const updated = await prisma.$transaction(async (tx) => {
-      // update lead
       const upd = await tx.leads.update({
         where: { id },
         data,
@@ -302,7 +350,6 @@ export async function PATCH(req, { params }) {
         },
       });
 
-      // adjust referral counts if changed
       if (referralChange) {
         if (existing.referral_id) {
           await tx.referral
@@ -325,21 +372,27 @@ export async function PATCH(req, { params }) {
       return upd;
     });
 
-    // Kirim WA jika konsultan berubah & ada assigned_to yang baru
+    // notify WA jika konsultan berubah
     if (assignedToChanged && updated.assigned_to) {
       const consultant = await prisma.consultants.findUnique({
         where: { id: updated.assigned_to },
-        select: { id: true, name: true, whatsapp: true },
+        select: { id: true, whatsapp: true }, // name tidak ada di schema base
       });
-      if (consultant) {
-        await notifyConsultantAssignment(updated, consultant);
-      }
+      if (consultant) await sendAssignmentWA(updated, consultant);
     }
 
-    return json(updated);
+    return json({ message: "Lead berhasil diperbarui.", data: updated });
   } catch (e) {
-    console.error("PATCH /leads/:id error:", e?.message || e);
-    return json({ error: { code: "SERVER_ERROR" } }, { status: 500 });
+    console.error("[PATCH /api/leads/:id] error:", e?.message || e);
+    return json(
+      {
+        error: {
+          code: "SERVER_ERROR",
+          message: "Terjadi kesalahan di sisi server. Silakan coba lagi nanti.",
+        },
+      },
+      { status: 500 }
+    );
   }
 }
 
@@ -348,11 +401,30 @@ export async function DELETE(_req, { params }) {
   try {
     await assertAdmin();
   } catch {
-    return json({ error: { code: "UNAUTHORIZED" } }, { status: 401 });
+    return json(
+      {
+        error: {
+          code: "UNAUTHORIZED",
+          message: "Akses ditolak. Silakan login terlebih dahulu.",
+        },
+      },
+      { status: 401 }
+    );
   }
 
-  const id = Number(params.id);
-  if (!id) return json({ error: { code: "BAD_ID" } }, { status: 400 });
+  const id = String(params.id || "").trim();
+  if (!id) {
+    return json(
+      {
+        error: {
+          code: "BAD_REQUEST",
+          message: "Parameter id wajib diisi.",
+          field: "id",
+        },
+      },
+      { status: 400 }
+    );
+  }
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -377,12 +449,28 @@ export async function DELETE(_req, { params }) {
         }
       }
     });
-    return new NextResponse(null, { status: 204 });
+    // balas 200 + message agar mudah dipakai UI/automation
+    return json(
+      { message: "Lead berhasil dihapus (soft delete)." },
+      { status: 200 }
+    );
   } catch (e) {
     const status = e?.status || 500;
-    if (status === 404)
-      return json({ error: { code: "NOT_FOUND" } }, { status: 404 });
-    console.error("DELETE /leads/:id error:", e?.message || e);
-    return json({ error: { code: "SERVER_ERROR" } }, { status: 500 });
+    if (status === 404) {
+      return json(
+        { error: { code: "NOT_FOUND", message: "Data lead tidak ditemukan." } },
+        { status: 404 }
+      );
+    }
+    console.error("[DELETE /api/leads/:id] error:", e?.message || e);
+    return json(
+      {
+        error: {
+          code: "SERVER_ERROR",
+          message: "Terjadi kesalahan di sisi server. Silakan coba lagi nanti.",
+        },
+      },
+      { status: 500 }
+    );
   }
 }

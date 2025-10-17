@@ -4,8 +4,8 @@ import { useMemo } from "react";
 import useSWR from "swr";
 
 const fetcher = (url) =>
-  fetch(url).then((r) => {
-    if (!r.ok) throw new Error(`Failed to load ${url}`);
+  fetch(url, { headers: { "cache-control": "no-store" } }).then((r) => {
+    if (!r.ok) throw new Error(`Failed to load ${url} (${r.status})`);
     return r.json();
   });
 
@@ -21,38 +21,49 @@ const strip = (html = "") =>
 const fmtMoney = (n, currency) => {
   if (n === null || n === undefined || n === "") return null;
   try {
-    if (currency)
-      return new Intl.NumberFormat("en-US", {
-        style: "currency",
-        currency: (currency || "USD").toUpperCase(),
-        maximumFractionDigits: 0,
-      }).format(Number(n));
-    return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(
-      Number(n)
-    );
+    return new Intl.NumberFormat("en-US", {
+      style: currency ? "currency" : "decimal",
+      currency: (currency || "USD").toUpperCase(),
+      maximumFractionDigits: 0,
+    }).format(Number(n));
   } catch {
     return String(n);
   }
 };
 
-export default function useCollegeViewModel({ locale = "id" } = {}) {
+/**
+ * useCollegeViewModel
+ * @param {{ locale?: "id"|"en", q?: string, country?: string, perPage?: number }} opts
+ */
+export default function useCollegeViewModel({
+  locale = "id",
+  q = "",
+  country = "",
+  perPage = 100,
+} = {}) {
   const t = (id, en) => (locale === "en" ? en : id);
 
-  // Ambil data kampus dari /api/partners (bilingual + fallback)
-  const perPage = 100;
-  const fallback = "id";
-  const partnersUrl = `/api/partners?page=1&perPage=${perPage}&locale=${locale}&fallback=${fallback}`;
+  // ===== build URL ke /api/college =====
+  const collegeUrl = useMemo(() => {
+    const p = new URLSearchParams();
+    p.set("page", "1");
+    p.set("perPage", String(perPage));
+    p.set("locale", locale);
+    p.set("fallback", "id");
+    if (q) p.set("q", q);
+    if (country) p.set("country", country);
+    return `/api/college?${p.toString()}`;
+  }, [locale, q, country, perPage]);
 
-  const { data } = useSWR(partnersUrl, fetcher, {
+  const { data, error, isLoading } = useSWR(collegeUrl, fetcher, {
     revalidateOnFocus: false,
     shouldRetryOnError: false,
   });
 
   const vm = useMemo(() => {
-    const api = data || {};
-    const rows = Array.isArray(api.data) ? api.data : [];
+    const rows = Array.isArray(data?.data) ? data.data : [];
 
-    // ===== Universitas untuk daftar utama (boleh pakai gambar apapun yang ada) =====
+    // ===== Universitas untuk daftar utama =====
     const universities = rows.map((r, i) => {
       const name = r?.name || r?.slug || `Campus ${i + 1}`;
       const country = r?.country || "";
@@ -62,13 +73,7 @@ export default function useCollegeViewModel({ locale = "id" } = {}) {
       const min = fmtMoney(r?.tuition_min, r?.currency);
       const max = fmtMoney(r?.tuition_max, r?.currency);
       const moneyText =
-        min && max
-          ? `${min} - ${max}${r?.currency ? ` (${r.currency})` : ""}`
-          : min
-          ? `${min}${r?.currency ? ` (${r.currency})` : ""}`
-          : max
-          ? `${max}${r?.currency ? ` (${r.currency})` : ""}`
-          : "";
+        min && max ? `${min} - ${max}` : min ? `${min}` : max ? `${max}` : "";
 
       const bullets = [
         ...(r?.type ? [{ icon: "cap", text: r.type }] : []),
@@ -76,14 +81,8 @@ export default function useCollegeViewModel({ locale = "id" } = {}) {
         ...(moneyText ? [{ icon: "money", text: moneyText }] : []),
       ];
 
-      // Untuk daftar utama, tetap gunakan logo_url dulu, jika kosong boleh jatuh ke image_*
-      const logo =
-        r?.logo_url ||
-        r?.image_url ||
-        r?.image_public_url ||
-        r?.logo ||
-        r?.image ||
-        "";
+      // Gunakan hanya logo_url publik dari endpoint
+      const logo = r?.logo_url || "";
 
       return {
         id: r.id,
@@ -93,22 +92,23 @@ export default function useCollegeViewModel({ locale = "id" } = {}) {
         excerpt: strip(r?.description || ""),
         bullets,
         rating: 0,
-        href: r?.slug ? `/user/partners/${r.slug}` : r?.website || "#",
+        href: r?.slug ? `/user/college/${r.slug}` : r?.website || "#",
       };
     });
 
-    // ===== Relevant Campus: HANYA pakai logo_url dari endpoint =====
+    // ===== Relevant Campus (hanya yang punya logo_url valid) =====
     const relevantCampus = rows
-      // WAJIB ada logo_url string non-kosong
       .filter((r) => typeof r.logo_url === "string" && r.logo_url.trim() !== "")
       .slice(0, 16)
       .map((r) => ({
         id: r.id,
         name: r.name || r.slug || "",
-        logo_url: r.logo_url.trim(), // kirim sebagai logo_url
+        logo_url: r.logo_url.trim(),
       }));
 
     return {
+      loading: isLoading,
+      error: error ? error?.message || "Failed to load colleges" : "",
       hero: {
         titleLine1: t("KULIAH", "STUDY"),
         titleLine2: t("DI LUAR NEGERI", "ABROAD"),
@@ -154,23 +154,11 @@ export default function useCollegeViewModel({ locale = "id" } = {}) {
           "Temukan jalurmu di universitas-universitas terkemuka dunia",
           "Find Your Path At Leading Universities Worldwide"
         ),
-        relevantCampus, // ← sudah hanya pakai logo_url
+        relevantCampus,
       },
       universities,
-      scholarshipCTA: {
-        title: t(
-          "TEMUKAN KESEMPATAN BEASISWAMU",
-          "FIND YOUR SCHOLARSHIP OPPORTUNITIES"
-        ),
-        body: t(
-          "Jelajahi Beasiswa Luar Negeri Dan Peluang Pendanaan Bagi Mahasiswa Dari Indonesia Sepertimu. Tersedia Lebih Dari 5,000 Beasiswa Dari Berbagai Universitas Di Luar Negeri.",
-          "Explore overseas scholarships and funding opportunities. 5,000+ scholarships from universities abroad."
-        ),
-        ctaLabel: t("View More", "View More"),
-        href: "/scholarships",
-      },
     };
-  }, [data, locale]);
+  }, [data, error, isLoading, locale]);
 
   return vm;
 }

@@ -2,11 +2,13 @@
 import useSWR from "swr";
 import { fetcher } from "../../../../utils/fetcher";
 
-// default/pola fetch consultants
+/* ---------- constants ---------- */
 const DEFAULT_SORT = "created_at:desc";
 const DEFAULT_LOCALE = "id";
 const DEFAULT_FALLBACK = "id";
+const DEFAULT_AVATAR = "/images/avatars/default.jpg";
 
+/* ---------- utils ---------- */
 function consultantsKey({
   page = 1,
   perPage = 3,
@@ -18,31 +20,44 @@ function consultantsKey({
   const params = new URLSearchParams();
   params.set("page", String(page));
   params.set("perPage", String(perPage));
-  params.set("sort", sort);
-  params.set("locale", locale);
-  params.set("fallback", fallback);
-  params.set("public", "1"); // ← public
-  if (q && q.trim()) params.set("q", q.trim());
+  params.set("sort", String(sort || DEFAULT_SORT));
+  params.set("locale", String(locale || DEFAULT_LOCALE));
+  params.set("fallback", String(fallback || DEFAULT_FALLBACK));
+  params.set("public", "1"); // public listing
+  if (q && String(q).trim()) params.set("q", String(q).trim());
   return `/api/consultants?${params.toString()}`;
 }
 
-// safer fetcher (keeps page stable even if server returns non-OK)
-const publicFetcher = async (url) => {
-  const res = await fetch(url, { credentials: "omit" });
-  if (!res.ok) return { data: [] };
-  return res.json();
+// tolerant number cast (for ratings etc.)
+const toNumber = (value, fallback = 0) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
 };
 
-const toNumber = (value, fallback = 0) => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
+// prefer public URL fields; fall back to path/legacy keys -> default avatar
+const pickPublicImage = (obj, fallback = DEFAULT_AVATAR) =>
+  obj?.image_public_url ||
+  obj?.photo_public_url ||
+  obj?.profile_image_public_url ||
+  obj?.profile_image_url ||
+  obj?.program_consultant_image_url ||
+  obj?.photo_url ||
+  obj?.photoUrl ||
+  fallback;
+
+// safer fetcher for public endpoints (don’t throw on non-OK)
+const publicFetcher = async (url) => {
+  try {
+    const res = await fetch(url, { credentials: "omit" });
+    if (!res.ok) return { data: [] };
+    return await res.json();
+  } catch {
+    return { data: [] };
+  }
 };
 
 export function useLandingViewModel(arg) {
-  // Backward-compatible arg handling:
-  // - useLandingViewModel()
-  // - useLandingViewModel({ locale: "en" })
-  // - useLandingViewModel("en")
+  // allow: useLandingViewModel(), useLandingViewModel({ locale: "en" }), useLandingViewModel("en")
   let locale = DEFAULT_LOCALE;
   if (typeof arg === "string") locale = arg;
   else if (arg && typeof arg === "object" && arg.locale) locale = arg.locale;
@@ -153,7 +168,7 @@ export function useLandingViewModel(arg) {
     ),
   };
 
-  /* ===== Testimonials (GET) with locale & fallback ===== */
+  /* ===== Testimonials (GET) with locale & fallback) ===== */
   const testiKey = useMemo(
     () => `/api/testimonials?locale=${locale}&fallback=id&limit=12`,
     [locale]
@@ -164,7 +179,7 @@ export function useLandingViewModel(arg) {
     error: testiErr,
     isLoading: testiLoading,
     isValidating: testiValidating,
-  } = useSWR(testiKey, fetcher);
+  } = useSWR(testiKey, fetcher, { revalidateOnFocus: false });
 
   const testimonialsList = useMemo(() => {
     const source = Array.isArray(testiJson?.data)
@@ -172,14 +187,16 @@ export function useLandingViewModel(arg) {
       : Array.isArray(testiJson)
       ? testiJson
       : [];
+
     return source.map((t, index) => ({
-      id: t.id ?? t._id ?? `testimonial-${index}`,
-      name: t.name ?? "",
-      message: t.message ?? t.quote ?? "",
-      photoUrl: t.photo_url ?? t.photoUrl ?? "/images/avatars/default.jpg",
-      star: toNumber(t.star),
-      youtubeUrl: t.youtube_url ?? t.youtubeUrl ?? null,
-      campusCountry: t.kampus_negara_tujuan ?? t.campusCountry ?? "",
+      id: t?.id ?? t?._id ?? `testimonial-${index}`,
+      name: t?.name ?? "",
+      message: t?.message ?? t?.quote ?? "",
+      // prefer public image url from new API, fallback to old, then to path, then default avatar
+      photoUrl: pickPublicImage(t),
+      star: toNumber(t?.star),
+      youtubeUrl: t?.youtube_url ?? t?.youtubeUrl ?? null,
+      campusCountry: t?.kampus_negara_tujuan ?? t?.campusCountry ?? "",
     }));
   }, [testiJson]);
 
@@ -188,7 +205,7 @@ export function useLandingViewModel(arg) {
     () =>
       consultantsKey({
         page: 1,
-        perPage: 3, // tampilkan 3 di landing
+        perPage: 3,
         sort: DEFAULT_SORT,
         locale,
         fallback: "id",
@@ -203,24 +220,23 @@ export function useLandingViewModel(arg) {
   } = useSWR(consultantsReqKey, publicFetcher, { revalidateOnFocus: false });
 
   const consultantsItems = useMemo(() => {
-    const list = consultantsJson?.data ?? [];
+    const list = Array.isArray(consultantsJson?.data)
+      ? consultantsJson.data
+      : [];
     return list.map((c, i) => ({
-      id: c.id ?? c._id ?? `consultant-${i}`,
+      id: c?.id ?? c?._id ?? `consultant-${i}`,
       name:
-        (locale === "en" ? c.name_en : c.name_id) ??
-        c.name ??
-        c.name_id ??
-        c.name_en ??
+        (locale === "en" ? c?.name_en : c?.name_id) ??
+        c?.name ??
+        c?.name_id ??
+        c?.name_en ??
         "",
-      photo:
-        c.profile_image_url ??
-        c.program_consultant_image_url ??
-        "/images/avatars/default.jpg",
+      photo: pickPublicImage(c, DEFAULT_AVATAR),
       bio:
-        (locale === "en" ? c.description_en : c.description_id) ??
-        c.description ??
-        c.description_id ??
-        c.description_en ??
+        (locale === "en" ? c?.description_en : c?.description_id) ??
+        c?.description ??
+        c?.description_id ??
+        c?.description_en ??
         "",
     }));
   }, [consultantsJson, locale]);

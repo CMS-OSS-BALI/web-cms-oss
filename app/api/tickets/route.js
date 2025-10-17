@@ -32,8 +32,7 @@ async function assertAdmin() {
   return { adminId: admin.id, session };
 }
 function newTicketCode(len = 10) {
-  // Tanpa 0/O/I/1 agar mudah dibaca
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // tanpa 0/O/I/1
   let out = "";
   for (let i = 0; i < len; i++)
     out += chars[Math.floor(Math.random() * chars.length)];
@@ -44,9 +43,48 @@ function originFromReq(req) {
   return `${url.protocol}//${url.host}`;
 }
 
+/** Baca body baik dari JSON maupun (multipart/form-data|x-www-form-urlencoded) */
+async function readBody(req) {
+  const type = (req.headers.get("content-type") || "").toLowerCase();
+
+  if (
+    type.includes("multipart/form-data") ||
+    type.includes("application/x-www-form-urlencoded")
+  ) {
+    try {
+      const fd = await req.formData();
+      const obj = {};
+      for (const [k, v] of fd.entries()) obj[k] = typeof v === "string" ? v : v;
+      return obj;
+    } catch {
+      /* fallback ke JSON */
+    }
+  }
+
+  if (type.includes("application/json")) {
+    try {
+      return await req.json();
+    } catch {
+      return {};
+    }
+  }
+
+  // Fallback: coba formData → JSON (untuk klien yg salah set header)
+  try {
+    const fd = await req.formData();
+    const obj = {};
+    for (const [k, v] of fd.entries()) if (typeof v === "string") obj[k] = v;
+    return obj;
+  } catch {}
+  try {
+    return await req.json();
+  } catch {
+    return {};
+  }
+}
+
 /* ====================================================
    GET /api/tickets?event_id=&q=&status=&checkin_status=&page=&perPage=
-   q mencari di: full_name, email, whatsapp, ticket_code
 ==================================================== */
 export async function GET(req) {
   try {
@@ -102,27 +140,20 @@ export async function GET(req) {
 }
 
 /* ====================================================
-   POST /api/tickets
-   Body (minimal):
-     { event_id*, full_name*, email*, whatsapp?, school_or_campus?, class_or_semester?, domicile? }
-   Aturan:
-     - Maksimal 1 tiket per (event_id, email) yg masih aktif (PENDING/CONFIRMED)
-     - FREE  -> status CONFIRMED + total_price 0 + cek kapasitas (CONFIRMED)
-     - PAID  -> status PENDING + total_price = ticket_price (kapasitas dihitung PENDING+CONFIRMED)
-     - checkin_status default: NOT_CHECKED_IN
-     - generate ticket_code & qr_url (/api/tickets/qr?code=...)
-     - kirim email berisi QR (template QR-only via sendTicketEmail)
+   POST /api/tickets (form-data/JSON)
+   Fields:
+     event_id*, full_name*, email*, whatsapp?, school_or_campus?, class_or_semester?, domicile?
+     (PAID opsional): payment_method, payment_reference
 ==================================================== */
 export async function POST(req) {
   try {
-    // Publik boleh pesan; kalau mau batasi admin saja, uncomment berikut:
-    // await assertAdmin();
+    // publik boleh POST; batasi admin jika perlu → await assertAdmin();
 
-    const b = await req.json();
-    const event_id = (b?.event_id || "").trim();
-    const full_name = (b?.full_name || "").trim();
-    const email = (b?.email || "").trim().toLowerCase();
-    const whatsapp = b?.whatsapp?.toString().trim() || null;
+    const b = await readBody(req);
+    const event_id = (b?.event_id ?? "").toString().trim();
+    const full_name = (b?.full_name ?? "").toString().trim();
+    const email = (b?.email ?? "").toString().trim().toLowerCase();
+    const whatsapp = b?.whatsapp != null ? b.whatsapp.toString().trim() : null;
     const school_or_campus = b?.school_or_campus ?? null;
     const class_or_semester = b?.class_or_semester ?? null;
     const domicile = b?.domicile ?? null;
@@ -134,18 +165,21 @@ export async function POST(req) {
       );
     }
 
-    // Ambil event (+ published check)
+    // Ambil event (judul via events_translate)
     const event = await prisma.events.findFirst({
       where: { id: event_id, deleted_at: null, is_published: true },
       select: {
         id: true,
-        title: true,
         start_at: true,
         end_at: true,
         location: true,
         capacity: true,
-        pricing_type: true, // "FREE" | "PAID"
+        pricing_type: true, // FREE | PAID
         ticket_price: true,
+        events_translate: {
+          where: { locale: { in: ["id", "en"] } },
+          select: { locale: true, title: true },
+        },
       },
     });
     if (!event) {
@@ -154,6 +188,10 @@ export async function POST(req) {
         { status: 404 }
       );
     }
+    const eventTitle =
+      event.events_translate?.find((t) => t.locale === "id")?.title ??
+      event.events_translate?.find((t) => t.locale === "en")?.title ??
+      "Event";
 
     // Cek dobel (unik event_id+email, PENDING/CONFIRMED)
     const exists = await prisma.tickets.findFirst({
@@ -176,23 +214,18 @@ export async function POST(req) {
     }
 
     // Cek kapasitas
-    let usedForCapacity = 0;
     if (typeof event.capacity === "number") {
-      // Untuk FREE: hitung CONFIRMED saja (langsung kepakai).
-      // Untuk PAID : hitung PENDING + CONFIRMED (tahan slot ketika bayar).
       const statuses =
         event.pricing_type === "FREE"
           ? ["CONFIRMED"]
           : ["PENDING", "CONFIRMED"];
-
-      usedForCapacity = await prisma.tickets.count({
+      const usedForCapacity = await prisma.tickets.count({
         where: {
           event_id: event.id,
           status: { in: statuses },
           deleted_at: null,
         },
       });
-
       if (usedForCapacity >= event.capacity) {
         return NextResponse.json(
           { message: "Tiket SOLD OUT" },
@@ -201,7 +234,7 @@ export async function POST(req) {
       }
     }
 
-    // Tentukan status+harga sesuai tipe event (diabaikan kalau body mencoba override)
+    // Tipe event
     const isPaid = event.pricing_type === "PAID";
     const status = isPaid ? "PENDING" : "CONFIRMED";
     const total_price = isPaid ? Number(event.ticket_price || 0) : 0;
@@ -214,7 +247,6 @@ export async function POST(req) {
       process.env.NEXTAUTH_URL ||
       originFromReq(req)
     ).replace(/\/+$/, "");
-
     const qr_url = `${base}/api/tickets/qr?code=${encodeURIComponent(code)}`;
 
     const created = await prisma.tickets.create({
@@ -233,7 +265,7 @@ export async function POST(req) {
         total_price,
         payment_method: isPaid ? b?.payment_method ?? null : null,
         payment_reference: isPaid ? b?.payment_reference ?? null : null,
-        paid_at: isPaid ? null : new Date(), // FREE dianggap paid now (gratis)
+        paid_at: isPaid ? null : new Date(), // FREE dianggap paid now
         expires_at: null,
 
         checkin_status: "NOT_CHECKED_IN",
@@ -250,7 +282,7 @@ export async function POST(req) {
         to: email,
         full_name,
         event: {
-          title: event.title,
+          title: eventTitle,
           start_at: event.start_at,
           end_at: event.end_at,
           location: event.location,
@@ -270,7 +302,6 @@ export async function POST(req) {
 
     return NextResponse.json(created, { status: 201 });
   } catch (err) {
-    // unique (event_id,email)
     if (err?.code === "P2002") {
       return NextResponse.json(
         { message: "Email ini sudah terdaftar di event ini." },
@@ -288,7 +319,8 @@ export async function POST(req) {
 
 /* ====================================================
    PATCH /api/tickets?id=<uuid>
-   Body (opsional): status, payment_*, total_price, paid_at, expires_at, action=resend
+   Form-Data / JSON accepted:
+     status, payment_method, payment_reference, total_price, paid_at, expires_at, action=resend
 ==================================================== */
 export async function PATCH(req) {
   try {
@@ -299,7 +331,7 @@ export async function PATCH(req) {
     if (!id)
       return NextResponse.json({ message: "id is required" }, { status: 400 });
 
-    const b = await req.json();
+    const b = await readBody(req);
 
     const updated = await prisma.tickets.update({
       where: { id },
@@ -322,8 +354,7 @@ export async function PATCH(req) {
       },
     });
 
-    // resend email (opsional)
-    if (b?.action === "resend") {
+    if (String(b?.action || "").toLowerCase() === "resend") {
       try {
         const base = (
           process.env.NEXT_PUBLIC_APP_URL ||
@@ -335,12 +366,20 @@ export async function PATCH(req) {
           where: { id: updated.event_id },
           select: {
             id: true,
-            title: true,
             start_at: true,
             end_at: true,
             location: true,
+            events_translate: {
+              where: { locale: { in: ["id", "en"] } },
+              select: { locale: true, title: true },
+            },
           },
         });
+
+        const eventTitle =
+          event?.events_translate?.find((t) => t.locale === "id")?.title ??
+          event?.events_translate?.find((t) => t.locale === "en")?.title ??
+          "Event";
 
         const qr_url = `${base}/api/tickets/qr?code=${encodeURIComponent(
           updated.ticket_code
@@ -350,7 +389,7 @@ export async function PATCH(req) {
           to: updated.email,
           full_name: updated.full_name,
           event: {
-            title: event?.title || "Event",
+            title: eventTitle,
             start_at: event?.start_at,
             end_at: event?.end_at,
             location: event?.location,
