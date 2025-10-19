@@ -24,60 +24,18 @@ function getPublicUrl(path) {
   if (/^https?:\/\//i.test(path)) return path;
 
   const clean = String(path).replace(/^\/+/, "");
-  // Jika ada supabaseAdmin + BUCKET, gunakan API resmi
   if (supabaseAdmin && BUCKET) {
     const { data, error } = supabaseAdmin.storage
       .from(BUCKET)
       .getPublicUrl(clean);
-    if (error) {
-      console.error("supabase getPublicUrl error:", error);
-      // fallback manual di bawah
-    } else if (data?.publicUrl) {
-      return data.publicUrl;
-    }
+    if (!error && data?.publicUrl) return data.publicUrl;
   }
-
-  // Fallback manual kalau BUCKET/SDK bermasalah tapi SUPA_URL tersedia
   if (SUPA_URL) {
     const withBucket =
       BUCKET && !clean.startsWith(`${BUCKET}/`) ? `${BUCKET}/${clean}` : clean;
     return `${SUPA_URL}/storage/v1/object/public/${withBucket}`;
   }
-
-  // Terakhir: jangan balikin path mentah (raw) yang bikin 404 di client
   return null;
-}
-
-async function uploadConsultantProgramImage(file, consultantId) {
-  if (typeof File === "undefined" || !(file instanceof File))
-    throw new Error("NO_FILE");
-  if (!BUCKET) throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
-
-  const MAX = 10 * 1024 * 1024;
-  const allowed = ["image/jpeg", "image/png", "image/webp"];
-  const size = file.size || 0;
-  const type = file.type || "";
-
-  if (size > MAX) throw new Error("PAYLOAD_TOO_LARGE");
-  if (type && !allowed.includes(type)) throw new Error("UNSUPPORTED_TYPE");
-
-  const ext = (file.name?.split(".").pop() || "").toLowerCase();
-  const safe = `${Date.now()}-${Math.random().toString(36).slice(2)}${
-    ext ? "." + ext : ""
-  }`;
-  const objectPath = `consultants/${String(consultantId)}/programs/${new Date()
-    .toISOString()
-    .slice(0, 10)}/${safe}`;
-  const bytes = new Uint8Array(await file.arrayBuffer());
-
-  const { error } = await supabaseAdmin.storage
-    .from(BUCKET)
-    .upload(objectPath, bytes, {
-      contentType: type || "application/octet-stream",
-      upsert: false,
-    });
-  if (error) throw new Error(error.message);
-  return objectPath;
 }
 
 /* ===== Helpers ===== */
@@ -111,14 +69,11 @@ function handleAuthError(err) {
     { status }
   );
 }
-function parseId(raw) {
+/** Prisma expects String id → keep as string */
+function parseIdString(raw) {
   if (raw === null || raw === undefined) return null;
-  try {
-    const value = BigInt(raw);
-    return value > 0n ? value : null;
-  } catch {
-    return null;
-  }
+  const s = String(raw).trim();
+  return s.length ? s : null;
 }
 function pickLocale(req, key = "locale", dflt = "id") {
   try {
@@ -134,14 +89,7 @@ function pickTrans(list, primary, fallback) {
   return by(primary) || by(fallback) || list[0] || null;
 }
 
-/* ===== GET /api/consultants/:id (DETAIL) =====
-Query:
-- public=1  -> no auth, hide email/whatsapp
-- locale, fallback (default id)
-Behavior:
-- If :id numeric -> find by ID
-- If :id non-numeric + public=1 -> try find by name contains (consultants_translate)
-*/
+/* ===== GET /api/consultants/:id (DETAIL) ===== */
 export async function GET(req, { params }) {
   const { searchParams } = new URL(req.url);
   const isPublic = searchParams.get("public") === "1";
@@ -155,7 +103,7 @@ export async function GET(req, { params }) {
   }
 
   const rawParam = params?.id;
-  const id = parseId(rawParam);
+  const id = parseIdString(rawParam);
   const locale = pickLocale(req, "locale", "id");
   const fallback = pickLocale(req, "fallback", "id");
 
@@ -166,6 +114,7 @@ export async function GET(req, { params }) {
     created_at: true,
     updated_at: true,
     consultants_translate: {
+      where: { locale: { in: [locale, fallback] } }, // reduce payload
       select: { locale: true, name: true, description: true },
     },
     program_images: {
@@ -184,6 +133,7 @@ export async function GET(req, { params }) {
       select: isPublic ? selectPublic : selectAdmin,
     });
   } else if (isPublic && rawParam) {
+    // slug/name fallback for public
     const guessedName = String(rawParam).replace(/-/g, " ").trim();
     if (guessedName.length) {
       row = await prisma.consultants.findFirst({
@@ -228,20 +178,12 @@ export async function GET(req, { params }) {
   };
 
   const resp = json({ data });
-  if (isPublic) {
+  if (isPublic)
     resp.headers.set("Cache-Control", "public, max-age=60, s-maxage=300");
-  }
   return resp;
 }
 
-/* ===== PUT/PATCH /api/consultants/:id =====
-Accepts JSON or multipart/form-data
-- parent fields: email?, whatsapp?, profile_image_url?, program_consultant_image_url?
-- translations: name_id?, description_id?, name_en?, description_en?, autoTranslate?
-- program_images (JSON): string[] or {image_url, sort}[]
-- files[] (form): will be uploaded and appended/replaced
-- program_images_mode (form only): 'append' | 'replace' (default 'replace')
-*/
+/* ===== PUT/PATCH /api/consultants/:id ===== */
 export async function PUT(req, ctx) {
   return PATCH(req, ctx);
 }
@@ -253,18 +195,16 @@ export async function PATCH(req, { params }) {
     return handleAuthError(err);
   }
 
-  const id = parseId(params?.id);
+  const id = parseIdString(params?.id);
   if (!id) return json({ error: { code: "BAD_ID" } }, { status: 400 });
 
   const contentType = req.headers.get("content-type") || "";
-
   let payload = {};
   let uploadFiles = [];
-  let imagesMode = "replace"; // default behavior
+  let imagesMode = "replace";
 
   if (contentType.includes("multipart/form-data")) {
     const form = await req.formData();
-
     const toStr = (k) => (form.has(k) ? String(form.get(k)) : undefined);
 
     payload.email = form.has("email") ? toStr("email") || null : undefined;
@@ -296,7 +236,6 @@ export async function PATCH(req, { params }) {
         ? "append"
         : "replace";
 
-    // optional string images (images[] / program_images[])
     const strImages = [
       ...form.getAll("images"),
       ...form.getAll("images[]"),
@@ -307,7 +246,6 @@ export async function PATCH(req, { params }) {
       .filter(Boolean);
     if (strImages.length) payload.program_images = strImages;
 
-    // files (files / files[])
     uploadFiles = [...form.getAll("files"), ...form.getAll("files[]")].filter(
       (f) => f && typeof f !== "string"
     );
@@ -315,7 +253,7 @@ export async function PATCH(req, { params }) {
     payload = await req.json().catch(() => ({}));
   }
 
-  // Build parent data
+  // Parent update
   const parentData = {};
   if (payload.email !== undefined) parentData.email = payload.email;
   if (payload.whatsapp !== undefined) parentData.whatsapp = payload.whatsapp;
@@ -326,7 +264,6 @@ export async function PATCH(req, { params }) {
       payload.program_consultant_image_url;
   if (Object.keys(parentData).length) parentData.updated_at = new Date();
 
-  // Update parent or ensure exists
   if (Object.keys(parentData).length) {
     try {
       await prisma.consultants.update({ where: { id }, data: parentData });
@@ -439,7 +376,7 @@ export async function PATCH(req, { params }) {
     }
   }
 
-  // Handle program_images (strings + uploads)
+  // Program images (strings + uploads)
   const stringImages = Array.isArray(payload?.program_images)
     ? payload.program_images
         .map((v) => (v == null ? "" : String(v).trim()))
@@ -461,7 +398,6 @@ export async function PATCH(req, { params }) {
       payload?.program_images !== undefined ||
       uploadFiles.length)
   ) {
-    // wipe then insert
     ops.push(
       prisma.consultant_program_images.deleteMany({
         where: { id_consultant: id },
@@ -481,7 +417,6 @@ export async function PATCH(req, { params }) {
       );
     }
   } else if (imagesMode === "append" && toInsert.length) {
-    // append after current max sort
     const last = await prisma.consultant_program_images.findFirst({
       where: { id_consultant: id },
       orderBy: [{ sort: "desc" }, { id: "desc" }],
@@ -514,7 +449,7 @@ export async function DELETE(_req, { params }) {
     return handleAuthError(err);
   }
 
-  const id = parseId(params?.id);
+  const id = parseIdString(params?.id);
   if (!id) return json({ error: { code: "BAD_ID" } }, { status: 400 });
 
   try {

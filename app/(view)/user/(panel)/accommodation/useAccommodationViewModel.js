@@ -23,10 +23,6 @@ const TEXT = {
       title: "BOOKING AKOMODASI",
       subtitle:
         "Mulai perjalanan global Anda bersama Overseas Study, dan melangkah ke dunia penuh kemungkinan.",
-      bullets: [
-        { id: "b1", label: "Konsultasi Gratis" },
-        { id: "b2", label: "Jadwal Fleksibel" },
-      ],
       illustration: "/akomodasi.svg",
     },
     description:
@@ -63,37 +59,39 @@ const TEXT = {
       ],
     },
     why: {
-      heading: "MENGAPA PILIH OSS BALI",
+      heading: "MENGAPA PILIH AKOMODASI DI OSS BALI?",
       reasons: [
         {
           id: "w1",
           icon: "💲",
           title: "Harga Terjangkau",
-          sub: "Harga ramah & transparan.",
+          sub: "Harga yang terjangkau dan ramah",
         },
         {
           id: "w2",
-          icon: "🏫",
-          title: "Student Apartment",
-          sub: "Mitra resmi & tepercaya.",
+          icon: "🤝",
+          title: "Student Apartement",
+          sub: "Sudah terpercaya dan resmi",
         },
         {
           id: "w3",
           icon: "🔒",
           title: "Keamanan Data",
-          sub: "Privasi dan data Anda terlindungi.",
+          sub: "Memastikan keamanan data student",
         },
         {
           id: "w4",
-          icon: "🧳",
+          icon: "🚖",
           title: "Transportasi",
-          sub: "Operasional profesional.",
+          sub: "Bekerja secara profesional",
         },
       ],
     },
     cta: {
-      big: "ADA PERTANYAAN?",
-      button: { label: "CLICK HERE", href: "/user/leads" },
+      title: "SOLUSI AKOMODASI PROFESIONAL UNTUK KEHIDUPAN GLOBAL ANDA",
+      subtitle:
+        "Layanan Kami Menghadirkan Kemudahan, Keamanan, Dan Kenyamanan Bagi Setiap Individu Yang Siap Menapaki Perjalanan Internasional.",
+      button: { label: "COBA SEKARANG", href: "/user/leads" },
     },
   },
 
@@ -102,10 +100,6 @@ const TEXT = {
       title: "ACCOMMODATION BOOKING",
       subtitle:
         "Begin your global journey with Overseas Study and step into a world full of possibilities.",
-      bullets: [
-        { id: "b1", label: "Free Consultation" },
-        { id: "b2", label: "Flexible Schedule" },
-      ],
       illustration: "/akomodasi.svg",
     },
     description:
@@ -142,37 +136,39 @@ const TEXT = {
       ],
     },
     why: {
-      heading: "WHY GO WITH OSS BALI",
+      heading: "WHY CHOOSE ACCOMMODATION WITH OSS BALI?",
       reasons: [
         {
           id: "w1",
           icon: "💲",
           title: "Affordable Price",
-          sub: "Transparent pricing.",
+          sub: "Wallet-friendly & transparent.",
         },
         {
           id: "w2",
-          icon: "🏫",
+          icon: "🤝",
           title: "Student Apartment",
-          sub: "Official & trusted partners.",
+          sub: "Trusted & officially partnered.",
         },
         {
           id: "w3",
           icon: "🔒",
           title: "Data Security",
-          sub: "Your privacy is protected.",
+          sub: "We keep student data safe.",
         },
         {
           id: "w4",
-          icon: "🧳",
+          icon: "🚖",
           title: "Transportation",
           sub: "Professionally operated.",
         },
       ],
     },
     cta: {
-      big: "ANY QUESTION?",
-      button: { label: "CLICK HERE", href: "/user/leads" },
+      title: "PROFESSIONAL ACCOMMODATION SOLUTIONS FOR YOUR GLOBAL LIFE",
+      subtitle:
+        "We deliver ease, safety, and comfort for every individual ready to embark on an international journey.",
+      button: { label: "TRY NOW", href: "/user/leads" },
     },
   },
 };
@@ -181,19 +177,20 @@ const TEXT = {
 export default function useAccommodationViewModel({ locale = "id" } = {}) {
   const lk = pickLocale(locale);
 
-  // Ambil data server-side (kalau ada override per kampanye)
   const { data, error, isLoading } = useSWR(
     `/api/accommodation?locale=${lk}`,
     fetcher,
-    { revalidateOnFocus: false, shouldRetryOnError: false }
+    {
+      revalidateOnFocus: false,
+      shouldRetryOnError: false,
+    }
   );
 
   const fallback = useMemo(() => TEXT[lk], [lk]);
 
-  // Jika API memberikan sebagian field, gabungkan dengan fallback
   const content = useMemo(() => {
     if (!data || error) return fallback;
-    return { ...fallback, ...data }; // shallow merge cukup karena struktur datanya datar per blok
+    return { ...fallback, ...data };
   }, [data, error, fallback]);
 
   return {

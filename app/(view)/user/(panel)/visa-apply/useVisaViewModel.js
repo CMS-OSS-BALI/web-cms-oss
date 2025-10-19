@@ -1,14 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import useSWR from "swr";
-
-/* Generic fetcher for SWR */
-const fetcher = async (url) => {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`);
-  return res.json();
-};
 
 /* ===================== i18n ===================== */
 const TEXT = {
@@ -42,10 +34,12 @@ const TEXT = {
         icon: "/step3.svg",
       },
     ],
+    /* === CTA content: disamakan dengan desain === */
     cta: {
-      title: "ADA PERTANYAAN?",
-      subtitle: "Klik untuk konsultasi gratis bersama tim kami.",
-      button: { label: "CLICK HERE", href: "/user/leads" }, // <- sesuai request
+      title: "SIAPKAN LANGKAH GLOBAL DENGAN PENGURUSAN VISA TERPERCAYA",
+      subtitle:
+        "Dengan Layanan Visa Terpercaya, Kami Memastikan Setiap Dokumen Dan Proses Anda Ditangani Tepat Agar Perjalanan Studi Atau Karier Internasional Berjalan Lancar.",
+      button: { label: "COBA SEKARANG", href: "/user/leads" },
     },
   },
   en: {
@@ -79,9 +73,10 @@ const TEXT = {
       },
     ],
     cta: {
-      title: "ANY QUESTION?",
-      subtitle: "Click to get a free consultation with our team.",
-      button: { label: "CLICK HERE", href: "/user/leads" }, // <- sesuai request
+      title: "TAKE YOUR GLOBAL STEP WITH A TRUSTED VISA SERVICE",
+      subtitle:
+        "With our trusted visa service, every document and process is handled properly so your study or international career journey runs smoothly.",
+      button: { label: "TRY NOW", href: "/user/leads" },
     },
   },
 };
@@ -93,12 +88,8 @@ function pickLocale(locale) {
   return key === "en" ? "en" : "id";
 }
 
-/** ViewModel for Visa Apply page (JSX version) */
-export default function useVisaViewModel({
-  locale = "id",
-  testiLimit = 6, // override when calling the hook if needed
-} = {}) {
-  /* ---------- Static/Content (simulated) ---------- */
+/** ViewModel for Visa Apply page */
+export default function useVisaViewModel({ locale = "id" } = {}) {
   const [isLoading, setIsLoading] = useState(true);
   const [content, setContent] = useState({
     hero: {},
@@ -113,38 +104,13 @@ export default function useVisaViewModel({
       const lk = pickLocale(locale);
       setContent(TEXT[lk]);
       setIsLoading(false);
-    }, 300);
+    }, 250);
     return () => clearTimeout(t);
   }, [locale]);
 
-  /* ---------- Testimonials (category=visa-apply) ---------- */
-  const safeLimit = Number.isFinite(Number(testiLimit))
-    ? String(Number(testiLimit))
-    : "6";
-
-  const lk = pickLocale(locale);
-  const params = new URLSearchParams();
-  params.set("category", "visa-apply");
-  params.set("locale", lk);
-  params.set("limit", safeLimit);
-  params.set("fields", "image,name,description");
-
-  const testiKey = `/api/testimonials?${params.toString()}`;
-  const {
-    data: testiData,
-    error: testiError,
-    isLoading: isLoadingTesti,
-  } = useSWR(testiKey, fetcher);
-
-  const testimonials = Array.isArray(testiData?.data) ? testiData.data : [];
-
-  /* ---------- Expose ---------- */
   return {
-    content, // {hero, description, poster, benefits, cta} -> localized
-    isLoading, // loading for static content
-    testimonials, // testimonials for category "visa-apply"
-    isLoadingTesti, // loading for testimonials
-    testiError, // potential error
-    locale: lk,
+    content,
+    isLoading,
+    locale: pickLocale(locale),
   };
 }

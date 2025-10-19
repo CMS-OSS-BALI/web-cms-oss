@@ -84,6 +84,27 @@ function ensureServiceType(v) {
   }
   return val;
 }
+function normalizeSlug(s) {
+  return String(s || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+/* ---- Supabase public URL helper (no network call) ---- */
+function publicUrlFromPath(path) {
+  if (!path) return null;
+  if (/^https?:\/\//i.test(path)) return path; // already url
+  try {
+    if (!BUCKET || !supabaseAdmin?.storage) return null;
+    const { data } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path);
+    return data?.publicUrl || null;
+  } catch {
+    return null;
+  }
+}
 
 /* ---- Supabase upload helper ---- */
 async function uploadServiceImage(file) {
@@ -116,12 +137,11 @@ async function uploadServiceImage(file) {
     });
 
   if (error) throw new Error(error.message);
-  return objectPath; // path yang disimpan di DB
+  return objectPath;
 }
 
-/* ---- Category resolver ---- */
+/* ---- Category resolver (dipakai POST) ---- */
 async function resolveCategoryId({ category_id, category_slug }) {
-  // undefined => no change; null/"" => clear
   if (category_id === null || category_id === "") return null;
   if (category_slug === null || category_slug === "") return null;
 
@@ -134,8 +154,9 @@ async function resolveCategoryId({ category_id, category_slug }) {
     return found.id;
   }
   if (typeof category_slug === "string" && category_slug.trim()) {
+    const slug = normalizeSlug(category_slug);
     const found = await prisma.service_categories.findUnique({
-      where: { slug: category_slug.trim().toLowerCase() },
+      where: { slug },
       select: { id: true },
     });
     if (!found) throw new Error("CATEGORY_NOT_FOUND");
@@ -145,19 +166,11 @@ async function resolveCategoryId({ category_id, category_slug }) {
 }
 
 /* ===================== GET (list) ===================== */
-/**
- * Query:
- * - q, service_type(B2B|B2C), category_id, category_slug, published
- * - page, perPage, sort=created_at|updated_at|price:asc|desc
- * - locale, fallback
- * - fields=image,name,description  => minimal payload
- * - (opsional) id => jika dikirim, balikan satu item (quality-of-life)
- */
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
 
-    // --- optional single-item via ?id= ---
+    // optional single-item via ?id=
     const idParam = searchParams.get("id");
     if (idParam) {
       const locale = getLocaleFromReq(req);
@@ -193,6 +206,7 @@ export async function GET(req) {
           id: item.id,
           admin_user_id: item.admin_user_id,
           image_url: item.image_url,
+          image_public_url: publicUrlFromPath(item.image_url),
           service_type: item.service_type,
           category: item.category
             ? {
@@ -229,7 +243,13 @@ export async function GET(req) {
     const locale = getLocaleFromReq(req);
     const fallback = getFallbackFromReq(req);
     const fields = parseFields(req);
-    const allowedMinimal = new Set(["image", "name", "description"]);
+    const allowedMinimal = new Set([
+      "image",
+      "image_public",
+      "image_public_url",
+      "name",
+      "description",
+    ]);
     const minimalOnly =
       fields.size > 0 && [...fields].every((f) => allowedMinimal.has(f));
 
@@ -238,21 +258,16 @@ export async function GET(req) {
       typeFilter = service_type.toUpperCase();
     }
 
-    let categoryFilterId = category_id;
-    if (!categoryFilterId && category_slug) {
-      const cat = await prisma.service_categories.findUnique({
-        where: { slug: category_slug.toLowerCase() },
-        select: { id: true },
-      });
-      if (!cat) return NextResponse.json({ data: [] });
-      categoryFilterId = cat.id;
-    }
+    // strict filter by related category.slug (no `mode`)
+    const normalizedSlug =
+      category_slug && !category_id ? normalizeSlug(category_slug) : null;
 
     const where = {
       deleted_at: null,
       ...(typeFilter ? { service_type: typeFilter } : {}),
-      ...(categoryFilterId ? { category_id: categoryFilterId } : {}),
       ...(published !== undefined ? { is_published: published } : {}),
+      ...(category_id ? { category_id } : {}),
+      ...(normalizedSlug ? { category: { is: { slug: normalizedSlug } } } : {}),
       ...(q
         ? {
             services_translate: {
@@ -277,6 +292,7 @@ export async function GET(req) {
         ? {
             id: true,
             image_url: true,
+            updated_at: true,
             services_translate: {
               where: { locale: { in: [locale, fallback] } },
               select: { locale: true, name: true, description: true },
@@ -306,9 +322,13 @@ export async function GET(req) {
     if (minimalOnly) {
       const data = rows.map((s) => {
         const t = pickTrans(s.services_translate, locale, fallback);
+        const image_public_url = publicUrlFromPath(s.image_url);
         return {
           id: s.id,
           ...(fields.has("image") ? { image: s.image_url } : {}),
+          ...(fields.has("image_public") || fields.has("image_public_url")
+            ? { image_public_url }
+            : {}),
           ...(fields.has("name") ? { name: t?.name ?? null } : {}),
           ...(fields.has("description")
             ? { description: t?.description ?? null }
@@ -324,6 +344,7 @@ export async function GET(req) {
         id: s.id,
         admin_user_id: s.admin_user_id,
         image_url: s.image_url,
+        image_public_url: publicUrlFromPath(s.image_url),
         service_type: s.service_type,
         category: s.category
           ? { id: s.category.id, slug: s.category.slug, name: s.category.name }
@@ -350,13 +371,6 @@ export async function GET(req) {
 }
 
 /* ===================== POST (create + auto-translate) ===================== */
-/**
- * Accepts:
- * - form-data: file | image_url(File/string), name_id|name, description_id|description,
- *              name_en, description_en, service_type(B2B|B2C),
- *              price, phone, is_published, category_id|category_slug, autoTranslate
- * - application/json: field yang sama
- */
 export async function POST(req) {
   try {
     const admin = await assertAdmin();
@@ -419,7 +433,6 @@ export async function POST(req) {
     for (let i = 0; i < entries.length; i++) {
       const { body, file } = entries[i];
 
-      // Base fields (ID Bahasa)
       const name_id = (body.name_id ?? body.name ?? "")
         .toString()
         .trim()
@@ -443,7 +456,6 @@ export async function POST(req) {
           ? null
           : String(descRaw).slice(0, MAX_TEXT_LENGTH);
 
-      // EN optional (langsung atau auto-translate)
       let name_en = (body.name_en || "")
         .toString()
         .trim()
@@ -455,7 +467,6 @@ export async function POST(req) {
       const autoTranslate =
         String(body.autoTranslate ?? "true").toLowerCase() !== "false";
 
-      // service_type, price, phone, publish
       let service_type;
       try {
         service_type = ensureServiceType(body.service_type);
@@ -478,11 +489,9 @@ export async function POST(req) {
         body.phone === null || body.phone === undefined
           ? null
           : String(body.phone).trim() || null;
-
       const publishFlag = parseBool(body.is_published);
       const is_published = publishFlag === undefined ? false : !!publishFlag;
 
-      // Category resolve (optional)
       let category_id_resolved = undefined;
       try {
         category_id_resolved = await resolveCategoryId({
@@ -499,7 +508,7 @@ export async function POST(req) {
         throw e;
       }
 
-      // Image (file atau path)
+      // image (file atau path)
       let storedImagePath = (body.image_url || "").toString().trim();
       if (file && typeof File !== "undefined" && file instanceof File) {
         try {
@@ -532,14 +541,13 @@ export async function POST(req) {
           ? storedImagePath.trim()
           : null;
 
-      // Auto-translate ke EN bila kosong
+      // auto translate
       if (autoTranslate) {
         if (!name_en && name_id) name_en = await translate(name_id, "id", "en");
         if (!description_en && description_id)
           description_en = await translate(description_id, "id", "en");
       }
 
-      // Create
       const id = randomUUID();
 
       await prisma.services.create({
@@ -583,6 +591,7 @@ export async function POST(req) {
       results.push({
         id,
         image_url,
+        image_public_url: publicUrlFromPath(image_url),
         service_type,
         category_id: category_id_resolved ?? null,
         price,

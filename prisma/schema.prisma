@@ -7,9 +7,9 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/* =========================
-   Core & Auth
-   ========================= */
+/// =========================
+///    Core & Auth
+///    =========================
 model admin_users {
   id                    String                  @id @default(uuid()) @db.VarChar(36)
   email                 String                  @unique(map: "email")
@@ -19,19 +19,16 @@ model admin_users {
   deleted_at            DateTime?               @db.DateTime(6)
   password_changed_at   DateTime                @default(now()) @db.DateTime(6)
   name                  String?
-
+  aktivitas             aktivitas[]
   blog                  blog[]
   college               college[]
   events                events[]
+  mitra_dalam_negeri    mitra_dalam_negeri[]
+  mitra_reviews         mitra_dalam_negeri[]    @relation("mitra_reviewer")
   reset_password_tokens reset_password_tokens[]
   services              services[]
   testimonials          testimonials[]
   checkin_logs          ticket_checkin_logs[]
-  mitra_dalam_negeri    mitra_dalam_negeri[]        // creator (optional)
-  mitra_reviews         mitra_dalam_negeri[] @relation("mitra_reviewer") // reviewer (optional)
-
-  // NEW: aktivitas created by admin
-  aktivitas             aktivitas[]
 
   @@map("admin_users")
 }
@@ -50,9 +47,9 @@ model reset_password_tokens {
   @@map("reset_password_tokens")
 }
 
-/* =========================
-   Blog
-   ========================= */
+/// =========================
+///    Blog
+///    =========================
 model blog {
   id             String           @id @default(uuid()) @db.VarChar(36)
   admin_user_id  String           @db.VarChar(36)
@@ -62,12 +59,9 @@ model blog {
   created_at     DateTime         @default(now()) @db.DateTime(6)
   updated_at     DateTime         @default(now()) @db.DateTime(6)
   deleted_at     DateTime?        @db.DateTime(6)
-
-  // relasi ke kategori (opsional)
   category_id    String?          @db.VarChar(36)
-  category       blog_categories? @relation(fields: [category_id], references: [id], onDelete: SetNull, map: "fk_blog_category")
-
   admin_users    admin_users      @relation(fields: [admin_user_id], references: [id], map: "fk_blog_admin_users")
+  category       blog_categories? @relation(fields: [category_id], references: [id], map: "fk_blog_category")
   blog_translate blog_translate[]
 
   @@index([admin_user_id], map: "idx_blog_admin_user")
@@ -91,18 +85,14 @@ model blog_translate {
 }
 
 model blog_categories {
-  id          String                         @id @default(uuid()) @db.VarChar(36)
-  slug        String                         @unique @db.VarChar(100)
-  sort        Int                            @default(0) @db.UnsignedInt
-  created_at  DateTime                       @default(now()) @db.DateTime(6)
-  updated_at  DateTime                       @updatedAt @db.DateTime(6)
-  deleted_at  DateTime?                      @db.DateTime(6)
-
-  // i18n
-  translate   blog_categories_translate[]
-
-  // relasi balik ke blog
-  blog        blog[]
+  id         String                      @id @default(uuid()) @db.VarChar(36)
+  slug       String                      @unique @db.VarChar(100)
+  sort       Int                         @default(0) @db.UnsignedInt
+  created_at DateTime                    @default(now()) @db.DateTime(6)
+  updated_at DateTime                    @updatedAt @db.DateTime(6)
+  deleted_at DateTime?                   @db.DateTime(6)
+  blog       blog[]
+  translate  blog_categories_translate[]
 
   @@index([deleted_at], map: "idx_blogcat_deleted")
   @@index([sort], map: "idx_blogcat_sort")
@@ -110,24 +100,23 @@ model blog_categories {
 }
 
 model blog_categories_translate {
-  id          String           @id @default(uuid()) @db.VarChar(36)
-  category_id String           @db.VarChar(36)
-  locale      String           @db.Char(5)
+  id          String          @id @default(uuid()) @db.VarChar(36)
+  category_id String          @db.VarChar(36)
+  locale      String          @db.Char(5)
   name        String
-  description String?          @db.Text
-  created_at  DateTime?        @default(now()) @db.DateTime(6)
-  updated_at  DateTime?        @default(now()) @db.DateTime(6)
-
-  category    blog_categories  @relation(fields: [category_id], references: [id], onDelete: Cascade, map: "fk_blogcat_tr_category")
+  description String?         @db.Text
+  created_at  DateTime?       @default(now()) @db.DateTime(6)
+  updated_at  DateTime?       @default(now()) @db.DateTime(6)
+  category    blog_categories @relation(fields: [category_id], references: [id], onDelete: Cascade, map: "fk_blogcat_tr_category")
 
   @@unique([category_id, locale], map: "uniq_blogcat_locale")
   @@index([locale], map: "idx_blogcat_locale")
   @@map("blog_categories_translate")
 }
 
-/* =========================
-   Testimonials
-   ========================= */
+/// =========================
+///    Testimonials
+///    =========================
 model testimonials {
   id                     String                   @id @default(uuid()) @db.VarChar(36)
   admin_user_id          String                   @db.VarChar(36)
@@ -181,24 +170,16 @@ model testimonial_categories_translate {
   @@map("testimonial_categories_translate")
 }
 
-/* =========================
-   Events & Tickets
-   ========================= */
-
-/* ---- NEW: Event Categories ---- */
+/// ---- NEW: Event Categories ----
 model event_categories {
-  id          String                        @id @default(uuid()) @db.VarChar(36)
-  slug        String                        @unique @db.VarChar(100)
-  sort        Int                           @default(0) @db.UnsignedInt
-  created_at  DateTime                      @default(now()) @db.DateTime(6)
-  updated_at  DateTime                      @updatedAt @db.DateTime(6)
-  deleted_at  DateTime?                     @db.DateTime(6)
-
-  // i18n
-  translate   event_categories_translate[]
-
-  // relasi balik ke events
-  events      events[]
+  id         String                       @id @default(uuid()) @db.VarChar(36)
+  slug       String                       @unique @db.VarChar(100)
+  sort       Int                          @default(0) @db.UnsignedInt
+  created_at DateTime                     @default(now()) @db.DateTime(6)
+  updated_at DateTime                     @updatedAt @db.DateTime(6)
+  deleted_at DateTime?                    @db.DateTime(6)
+  translate  event_categories_translate[]
+  events     events[]
 
   @@index([deleted_at], map: "idx_eventcat_deleted")
   @@index([sort], map: "idx_eventcat_sort")
@@ -213,7 +194,6 @@ model event_categories_translate {
   description String?          @db.Text
   created_at  DateTime?        @default(now()) @db.DateTime(6)
   updated_at  DateTime?        @default(now()) @db.DateTime(6)
-
   category    event_categories @relation(fields: [category_id], references: [id], onDelete: Cascade, map: "fk_eventcat_tr_category")
 
   @@unique([category_id, locale], map: "uniq_eventcat_locale")
@@ -221,38 +201,31 @@ model event_categories_translate {
   @@map("event_categories_translate")
 }
 
-/* ---- Events ---- */
+/// ---- Events ----
 model events {
-  id               String              @id @default(uuid()) @db.VarChar(36)
-  admin_user_id    String              @db.VarChar(36)
-  start_at         DateTime            @db.DateTime(6)
-  end_at           DateTime            @db.DateTime(6)
-  location         String              @db.VarChar(255)
-  banner_url       String              @db.VarChar(512)
-  is_published     Boolean             @default(false)
+  id               String                 @id @default(uuid()) @db.VarChar(36)
+  admin_user_id    String                 @db.VarChar(36)
+  start_at         DateTime               @db.DateTime(6)
+  end_at           DateTime               @db.DateTime(6)
+  location         String                 @db.VarChar(255)
+  banner_url       String                 @db.VarChar(512)
+  is_published     Boolean                @default(false)
   capacity         Int?
-  created_at       DateTime            @default(now()) @db.DateTime(6)
-  updated_at       DateTime            @updatedAt @db.DateTime(6)
-  deleted_at       DateTime?           @db.DateTime(6)
-  pricing_type     events_pricing_type @default(FREE)
-  ticket_price     Int                 @default(0)
-
-  // NEW: relasi ke event_categories (opsional)
-  category_id      String?             @db.VarChar(36)
-  category         event_categories?   @relation(fields: [category_id], references: [id], onDelete: SetNull, map: "fk_events_category")
-
-  // NEW: Booth pricing & quota per event (harga sama untuk semua booth di event)
-  booth_price       Int                  @default(0)
-  booth_quota       Int?                 @db.UnsignedInt
-  booth_sold_count  Int                  @default(0) @db.UnsignedInt
-
-  admin_users      admin_users         @relation(fields: [admin_user_id], references: [id], map: "fk_events_admin")
+  created_at       DateTime               @default(now()) @db.DateTime(6)
+  updated_at       DateTime               @updatedAt @db.DateTime(6)
+  deleted_at       DateTime?              @db.DateTime(6)
+  pricing_type     events_pricing_type    @default(FREE)
+  ticket_price     Int                    @default(0)
+  category_id      String?                @db.VarChar(36)
+  booth_price      Int                    @default(0)
+  booth_quota      Int?                   @db.UnsignedInt
+  booth_sold_count Int                    @default(0) @db.UnsignedInt
+  booth_bookings   event_booth_bookings[]
+  admin_users      admin_users            @relation(fields: [admin_user_id], references: [id], map: "fk_events_admin")
+  category         event_categories?      @relation(fields: [category_id], references: [id], map: "fk_events_category")
   events_translate events_translate[]
   tickets          tickets[]
-  vouchers        vouchers[]
-
-  // NEW: Relasi ke booking booth
-  booth_bookings   event_booth_bookings[]
+  vouchers         vouchers[]
 
   @@index([admin_user_id], map: "idx_events_admin")
   @@index([start_at, end_at], map: "idx_events_dates")
@@ -323,40 +296,24 @@ model ticket_checkin_logs {
   @@map("ticket_checkin_logs")
 }
 
-/* =========================
-   NEW: Booth Booking & Payments
-   ========================= */
-enum booth_booking_status {
-  PENDING
-  PAID
-  EXPIRED
-  CANCELLED
-  FAILED
-  REVIEW
-}
-
 model event_booth_bookings {
-  id           String                @id @default(uuid()) @db.VarChar(36)
-  event_id     String                @db.VarChar(36)
-  order_id     String?               @unique
-  // pemesan
+  id           String               @id @default(uuid()) @db.VarChar(36)
+  event_id     String               @db.VarChar(36)
+  order_id     String?              @unique
   rep_name     String
   country      String
   campus_name  String
   address      String
-  whatsapp     String                @db.VarChar(32)
-  email        String?               @db.VarChar(150)
-  // voucher fixed rupiah (opsional, refer by code)
-  voucher_code String?               @db.VarChar(64)
-  // pembayaran
-  amount       Int                   // final dibayar (setelah diskon)
-  status       booth_booking_status  @default(PENDING)
-  paid_at      DateTime?             @db.DateTime(6)
-  created_at   DateTime              @default(now()) @db.DateTime(6)
-  updated_at   DateTime              @updatedAt @db.DateTime(6)
-
-  event    events   @relation(fields: [event_id], references: [id], map: "fk_boothbooking_event")
-  payments payments[]
+  whatsapp     String               @db.VarChar(32)
+  email        String?              @db.VarChar(150)
+  voucher_code String?              @db.VarChar(64)
+  amount       Int
+  status       booth_booking_status @default(PENDING)
+  paid_at      DateTime?            @db.DateTime(6)
+  created_at   DateTime             @default(now()) @db.DateTime(6)
+  updated_at   DateTime             @updatedAt @db.DateTime(6)
+  event        events               @relation(fields: [event_id], references: [id], map: "fk_boothbooking_event")
+  payments     payments[]
 
   @@index([event_id], map: "idx_boothbooking_event")
   @@index([status], map: "idx_boothbooking_status")
@@ -364,51 +321,49 @@ model event_booth_bookings {
 }
 
 model payments {
-  id           String                   @id @default(uuid()) @db.VarChar(36)
-  booking_id   String?                  @db.VarChar(36)
-  order_id     String                   @unique @db.VarChar(100)
-  channel      String?                  @db.VarChar(64)
-  status       String                   @db.VarChar(32)
+  id           String                @id @default(uuid()) @db.VarChar(36)
+  booking_id   String?               @db.VarChar(36)
+  order_id     String                @unique @db.VarChar(100)
+  channel      String?               @db.VarChar(64)
+  status       String                @db.VarChar(32)
   gross_amount Int
   raw          Json
-  created_at   DateTime                 @default(now()) @db.DateTime(6)
-  updated_at   DateTime                 @updatedAt @db.DateTime(6)
-
-  booking      event_booth_bookings?    @relation(fields: [booking_id], references: [id], onDelete: SetNull, map: "fk_payments_booking")
+  created_at   DateTime              @default(now()) @db.DateTime(6)
+  updated_at   DateTime              @updatedAt @db.DateTime(6)
+  booking      event_booth_bookings? @relation(fields: [booking_id], references: [id], map: "fk_payments_booking")
 
   @@index([booking_id], map: "idx_payments_booking")
   @@index([status], map: "idx_payments_status")
   @@map("payments")
 }
 
-/* =========================
-   NEW: Vouchers (Fixed IDR)
-   ========================= */
+/// =========================
+///    NEW: Vouchers (Fixed IDR)
+///    =========================
 model vouchers {
   id           String       @id @default(uuid()) @db.VarChar(36)
-  code         String       @unique @db.VarChar(64)   // simpan uppercase
-  type         voucher_type @default(FIXED)           // NEW: jenis voucher
-  value        Int                                         // FIXED: rupiah, PERCENT: 1..100
-  max_discount Int?        @db.UnsignedInt                 // NEW: batas diskon (IDR) saat PERCENT
-  is_active    Boolean     @default(true)
-  max_uses     Int?        @db.UnsignedInt
-  used_count   Int         @default(0) @db.UnsignedInt
-  valid_from   DateTime?   @db.DateTime(6)
-  valid_to     DateTime?   @db.DateTime(6)
-  event_id     String?     @db.VarChar(36)
-  created_at   DateTime    @default(now()) @db.DateTime(6)
-  updated_at   DateTime    @updatedAt @db.DateTime(6)
-
-  event        events?     @relation(fields: [event_id], references: [id], onDelete: SetNull, map: "fk_voucher_event")
+  code         String       @unique @db.VarChar(64)
+  value        Int
+  is_active    Boolean      @default(true)
+  max_uses     Int?         @db.UnsignedInt
+  used_count   Int          @default(0) @db.UnsignedInt
+  valid_from   DateTime?    @db.DateTime(6)
+  valid_to     DateTime?    @db.DateTime(6)
+  event_id     String?      @db.VarChar(36)
+  created_at   DateTime     @default(now()) @db.DateTime(6)
+  updated_at   DateTime     @updatedAt @db.DateTime(6)
+  max_discount Int?         @db.UnsignedInt
+  type         voucher_type @default(FIXED)
+  event        events?      @relation(fields: [event_id], references: [id], map: "fk_voucher_event")
 
   @@index([event_id], map: "idx_vouchers_event")
   @@index([is_active], map: "idx_vouchers_active")
   @@map("vouchers")
 }
 
-/* =========================
-   Analytics
-   ========================= */
+/// =========================
+///    Analytics
+///    =========================
 model analytics_pageviews {
   id         String   @id @default(uuid()) @db.VarChar(36)
   path       String   @db.VarChar(255)
@@ -425,9 +380,9 @@ model analytics_pageviews {
   @@map("analytics_pageviews")
 }
 
-/* =========================
-   Jurusan & Prodi
-   ========================= */
+/// =========================
+///    Jurusan & Prodi
+///    =========================
 model jurusan {
   id                String              @id @default(uuid()) @db.VarChar(36)
   college_id        String              @db.VarChar(36)
@@ -484,9 +439,9 @@ model prodi_translate {
   @@index([locale], map: "idx_jurusan_translate_locale")
 }
 
-/* =========================
-   Consultants & Leads
-   ========================= */
+/// =========================
+///    Consultants & Leads
+///    =========================
 model consultants {
   id                           String                      @id @default(uuid()) @db.VarChar(36)
   whatsapp                     String?                     @unique(map: "uq_consultants_whatsapp") @db.VarChar(30)
@@ -598,76 +553,55 @@ model referral {
   @@index([pic_consultant_id], map: "fk_referral_pic_consultant")
 }
 
-/* =========================
-   Mitra Dalam Negeri (REVISED)
-   ========================= */
-enum mitra_review_status {
-  PENDING
-  APPROVED
-  DECLINED
-}
-
 model mitra_dalam_negeri {
-  id               String   @id @default(uuid()) @db.Char(36)
-
-  // creator (optional when submitted by public)
-  admin_user_id    String?  @db.VarChar(36)
-  admin_users      admin_users? @relation(fields: [admin_user_id], references: [id], map: "fk_merchants_admin")
-
-  // review
-  status           mitra_review_status @default(PENDING)
-  reviewed_by      String?  @db.VarChar(36)
-  reviewer         admin_users? @relation("mitra_reviewer", fields: [reviewed_by], references: [id], map: "fk_merchants_reviewer")
-  reviewed_at      DateTime? @db.DateTime(6)
-  review_notes     String?   @db.VarChar(512)
-
-  // org info
-  email            String
-  phone            String   @db.VarChar(64)
-  website          String?
-  instagram        String?
-  twitter          String?
-  mou_url          String?
-  image_url        String?  @db.VarChar(1024)
-
-  // address
-  address          String   @db.Text
-  city             String?  @db.VarChar(64)
-  province         String?  @db.VarChar(64)
-  postal_code      String?  @db.VarChar(10)
-
-  // contact person
-  contact_name     String?  @db.VarChar(150)
-  contact_position String?  @db.VarChar(100)
-  contact_whatsapp String?  @db.VarChar(32)
-
-  // audit
-  created_at       DateTime @default(now()) @db.DateTime(6)
-  updated_at       DateTime @updatedAt @db.DateTime(6)
-  deleted_at       DateTime? @db.DateTime(6)
-
-  // i18n
+  id                           String                         @id @default(uuid()) @db.Char(36)
+  admin_user_id                String?                        @db.VarChar(36)
+  address                      String                         @db.Text
+  email                        String
+  phone                        String                         @db.VarChar(64)
+  created_at                   DateTime                       @default(now()) @db.DateTime(6)
+  updated_at                   DateTime                       @updatedAt @db.DateTime(6)
+  deleted_at                   DateTime?                      @db.DateTime(6)
+  mou_url                      String?
+  instagram                    String?
+  twitter                      String?
+  website                      String?
+  image_url                    String?                        @db.VarChar(1024)
+  city                         String?                        @db.VarChar(64)
+  contact_name                 String?                        @db.VarChar(150)
+  contact_position             String?                        @db.VarChar(100)
+  contact_whatsapp             String?                        @db.VarChar(32)
+  postal_code                  String?                        @db.VarChar(10)
+  province                     String?                        @db.VarChar(64)
+  review_notes                 String?                        @db.VarChar(512)
+  reviewed_at                  DateTime?                      @db.DateTime(6)
+  reviewed_by                  String?                        @db.VarChar(36)
+  status                       mitra_review_status            @default(PENDING)
+  category_id                  String?                        @db.VarChar(36)
+  category                     mitra_dalam_negeri_categories? @relation(fields: [category_id], references: [id], onDelete: SetNull, map: "fk_mitra_category")
+  admin_users                  admin_users?                   @relation(fields: [admin_user_id], references: [id], map: "fk_merchants_admin")
+  reviewer                     admin_users?                   @relation("mitra_reviewer", fields: [reviewed_by], references: [id], map: "fk_merchants_reviewer")
   mitra_dalam_negeri_translate mitra_dalam_negeri_translate[]
-
-  // attachments (optional)
-  files mitra_files[]
+  files                        mitra_files[]
 
   @@index([status], map: "idx_mitra_status")
   @@index([email], map: "idx_mitra_email")
   @@index([phone], map: "idx_mitra_phone")
   @@index([created_at], map: "idx_mitra_created_at")
+  @@index([category_id], map: "idx_mitra_category")
+  @@index([admin_user_id], map: "fk_merchants_admin")
+  @@index([reviewed_by], map: "fk_merchants_reviewer")
   @@map("mitra_dalam_negeri")
 }
 
 model mitra_dalam_negeri_translate {
-  id           String   @id @default(uuid()) @db.Char(36)
-  id_merchants String   @db.Char(36)
-  locale       String   @db.Char(5)
-  name         String
-  description  String?  @db.LongText
-  created_at   DateTime? @default(now()) @db.DateTime(6)
-  updated_at   DateTime? @default(now()) @db.DateTime(6)
-
+  id                 String             @id @default(uuid()) @db.Char(36)
+  id_merchants       String             @db.Char(36)
+  locale             String             @db.Char(5)
+  name               String
+  description        String?            @db.LongText
+  created_at         DateTime?          @default(now()) @db.DateTime(6)
+  updated_at         DateTime?          @default(now()) @db.DateTime(6)
   mitra_dalam_negeri mitra_dalam_negeri @relation(fields: [id_merchants], references: [id], onDelete: Cascade, map: "fk_merchants_translate_merchants")
 
   @@unique([id_merchants, locale], map: "uniq_merchants_locale")
@@ -676,21 +610,50 @@ model mitra_dalam_negeri_translate {
 }
 
 model mitra_files {
-  id         String          @id @default(uuid()) @db.Char(36)
-  mitra_id   String          @db.Char(36)
-  file_url   String          @db.VarChar(1024)
-  sort       Int             @default(0) @db.UnsignedInt
-  created_at DateTime        @default(now()) @db.DateTime(6)
-
+  id         String             @id @default(uuid()) @db.Char(36)
+  mitra_id   String             @db.Char(36)
+  file_url   String             @db.VarChar(1024)
+  sort       Int                @default(0) @db.UnsignedInt
+  created_at DateTime           @default(now()) @db.DateTime(6)
   mitra      mitra_dalam_negeri @relation(fields: [mitra_id], references: [id], onDelete: Cascade, map: "fk_mitra_files_mitra")
 
   @@index([mitra_id], map: "idx_mitra_files_mitra")
   @@map("mitra_files")
 }
 
-/* =========================
-   College & Requirements
-   ========================= */
+/// -------- NEW: Kategori Mitra (tanpa description) --------
+model mitra_dalam_negeri_categories {
+  id         String    @id @default(uuid()) @db.VarChar(36)
+  slug       String    @unique @db.VarChar(100)
+  sort       Int       @default(0) @db.UnsignedInt
+  created_at DateTime  @default(now()) @db.DateTime(6)
+  updated_at DateTime  @updatedAt @db.DateTime(6)
+  deleted_at DateTime? @db.DateTime(6)
+  translate  mitra_dalam_negeri_categories_translate[]
+  mitra      mitra_dalam_negeri[]
+
+  @@index([deleted_at], map: "idx_mdncat_deleted")
+  @@index([sort], map: "idx_mdncat_sort")
+  @@map("mitra_dalam_negeri_categories")
+}
+
+model mitra_dalam_negeri_categories_translate {
+  id          String    @id @default(uuid()) @db.VarChar(36)
+  category_id String    @db.VarChar(36)
+  locale      String    @db.Char(5)
+  name        String
+  created_at  DateTime? @default(now()) @db.DateTime(6)
+  updated_at  DateTime? @default(now()) @db.DateTime(6)
+  category    mitra_dalam_negeri_categories @relation(fields: [category_id], references: [id], onDelete: Cascade, map: "fk_mdncat_tr_category")
+
+  @@unique([category_id, locale], map: "uniq_mdncat_locale")
+  @@index([locale], map: "idx_mdncat_locale")
+  @@map("mitra_dalam_negeri_categories_translate")
+}
+
+/// =========================
+///    College & Requirements
+///    =========================
 model college {
   id                   String              @id @default(uuid()) @db.VarChar(36)
   admin_user_id        String              @db.VarChar(36)
@@ -738,13 +701,12 @@ model college_translate {
 }
 
 model college_requirement_item {
-  id         String   @id @default(uuid()) @db.VarChar(36)
-  college_id String   @db.VarChar(36)
-  prodi_id   String?  @db.VarChar(36)
-  sort       Int      @default(0) @db.UnsignedInt
-  created_at DateTime @default(now()) @db.DateTime(6)
-  updated_at DateTime @default(now()) @db.DateTime(6)
-
+  id         String                               @id @default(uuid()) @db.VarChar(36)
+  college_id String                               @db.VarChar(36)
+  prodi_id   String?                              @db.VarChar(36)
+  sort       Int                                  @default(0) @db.UnsignedInt
+  created_at DateTime                             @default(now()) @db.DateTime(6)
+  updated_at DateTime                             @default(now()) @db.DateTime(6)
   translate  college_requirement_item_translate[] @relation("RequirementItemToTranslate")
 
   @@index([college_id], map: "idx_cri_college")
@@ -754,13 +716,12 @@ model college_requirement_item {
 }
 
 model college_requirement_item_translate {
-  id         String    @id @default(uuid()) @db.VarChar(36)
-  item_id    String    @db.VarChar(36)
-  locale     String    @db.Char(5)
-  text       String    @db.Text
-  created_at DateTime? @default(now()) @db.DateTime(6)
-  updated_at DateTime? @default(now()) @db.DateTime(6)
-
+  id         String                   @id @default(uuid()) @db.VarChar(36)
+  item_id    String                   @db.VarChar(36)
+  locale     String                   @db.Char(5)
+  text       String                   @db.Text
+  created_at DateTime?                @default(now()) @db.DateTime(6)
+  updated_at DateTime?                @default(now()) @db.DateTime(6)
   item       college_requirement_item @relation("RequirementItemToTranslate", fields: [item_id], references: [id], onDelete: Cascade, map: "fk_cri_translate_item")
 
   @@unique([item_id, locale], map: "uniq_cri_item_locale")
@@ -768,9 +729,9 @@ model college_requirement_item_translate {
   @@map("college_requirement_item_translate")
 }
 
-/* =========================
-   Services
-   ========================= */
+/// =========================
+///    Services
+///    =========================
 model service_categories {
   id         String     @id @default(uuid()) @db.VarChar(36)
   slug       String     @unique @db.VarChar(100)
@@ -820,22 +781,20 @@ model services_translate {
   @@map("services_translate")
 }
 
-/* =========================
-   NEW: Aktivitas (i18n)
-   ========================= */
+/// =========================
+///    NEW: Aktivitas (i18n)
+///    =========================
 model aktivitas {
-  id             String                  @id @default(uuid()) @db.VarChar(36)
-  admin_user_id  String                  @db.VarChar(36)
-  image_url      String?                 @db.VarChar(512)
-  sort           Int                     @default(0) @db.UnsignedInt
-  is_published   Boolean                 @default(false)
-  created_at     DateTime                @default(now()) @db.DateTime(6)
-  updated_at     DateTime                @updatedAt @db.DateTime(6)
-  deleted_at     DateTime?               @db.DateTime(6)
-
-  // relations
-  admin_users    admin_users             @relation(fields: [admin_user_id], references: [id], map: "fk_aktivitas_admin")
-  translate      aktivitas_translate[]
+  id            String                @id @default(uuid()) @db.VarChar(36)
+  admin_user_id String                @db.VarChar(36)
+  image_url     String?               @db.VarChar(512)
+  sort          Int                   @default(0) @db.UnsignedInt
+  is_published  Boolean               @default(false)
+  created_at    DateTime              @default(now()) @db.DateTime(6)
+  updated_at    DateTime              @updatedAt @db.DateTime(6)
+  deleted_at    DateTime?             @db.DateTime(6)
+  admin_users   admin_users           @relation(fields: [admin_user_id], references: [id], map: "fk_aktivitas_admin")
+  translate     aktivitas_translate[]
 
   @@index([admin_user_id], map: "idx_aktivitas_admin")
   @@index([is_published, created_at], map: "idx_aktivitas_published_created")
@@ -845,24 +804,44 @@ model aktivitas {
 }
 
 model aktivitas_translate {
-  id            String     @id @default(uuid()) @db.VarChar(36)
-  id_aktivitas  String     @db.VarChar(36)
-  locale        String     @db.Char(5)
-  name          String
-  description   String?    @db.LongText
-  created_at    DateTime?  @default(now()) @db.DateTime(6)
-  updated_at    DateTime?  @default(now()) @db.DateTime(6)
-
-  aktivitas     aktivitas  @relation(fields: [id_aktivitas], references: [id], onDelete: Cascade, map: "fk_aktivitas_tr_aktivitas")
+  id           String    @id @default(uuid()) @db.VarChar(36)
+  id_aktivitas String    @db.VarChar(36)
+  locale       String    @db.Char(5)
+  name         String
+  description  String?   @db.LongText
+  created_at   DateTime? @default(now()) @db.DateTime(6)
+  updated_at   DateTime? @default(now()) @db.DateTime(6)
+  aktivitas    aktivitas @relation(fields: [id_aktivitas], references: [id], onDelete: Cascade, map: "fk_aktivitas_tr_aktivitas")
 
   @@unique([id_aktivitas, locale], map: "uniq_aktivitas_locale")
   @@index([locale], map: "idx_aktivitas_locale")
   @@map("aktivitas_translate")
 }
 
-/* =========================
-   Enums
-   ========================= */
+/// =========================
+///    NEW: Booth Booking & Payments
+///    =========================
+enum booth_booking_status {
+  PENDING
+  PAID
+  EXPIRED
+  CANCELLED
+  FAILED
+  REVIEW
+}
+
+/// =========================
+///    Mitra Dalam Negeri (REVISED)
+///    =========================
+enum mitra_review_status {
+  PENDING
+  APPROVED
+  DECLINED
+}
+
+/// =========================
+///    Enums
+///    =========================
 enum events_pricing_type {
   FREE
   PAID

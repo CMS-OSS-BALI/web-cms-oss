@@ -15,22 +15,25 @@ const FALLBACK_LOCALE = EN_LOCALE;
 const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
 const BUCKET = process.env.SUPABASE_BUCKET;
 
-/* ------------ helpers ------------ */
-async function assertAdmin(req) {
-  const headerKey = req.headers.get("x-admin-key");
-  if (headerKey && ADMIN_TEST_KEY && headerKey === ADMIN_TEST_KEY) {
-    const anyAdmin = await prisma.admin_users.findFirst({
-      select: { id: true, email: true },
-    });
-    if (!anyAdmin) throw new Error("UNAUTHORIZED");
-    return { id: anyAdmin.id, email: anyAdmin.email, via: "header" };
+/* ------------ shared helpers (sanitized JSON, parsing, etc.) ------------ */
+function sanitize(v) {
+  if (v === null || v === undefined) return v;
+  if (typeof v === "bigint") return v.toString();
+  if (Array.isArray(v)) return v.map(sanitize);
+  if (typeof v === "object") {
+    const o = {};
+    for (const [k, val] of Object.entries(v)) o[k] = sanitize(val);
+    return o;
   }
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id && !session?.user?.email)
-    throw new Error("UNAUTHORIZED");
-  return session.user;
+  return v;
 }
-
+function json(data, init) {
+  return NextResponse.json(sanitize(data), init);
+}
+function asInt(v, dflt) {
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) ? n : dflt;
+}
 function normalizeLocale(v, f = DEFAULT_LOCALE) {
   return (v || f).toLowerCase().slice(0, 5);
 }
@@ -50,6 +53,28 @@ function parseStatusFilter(s) {
     .map((x) => x.trim().toUpperCase())
     .filter((x) => ALLOWED.has(x));
   return arr.length ? arr : undefined;
+}
+function getOrderBy(param) {
+  const allowed = new Set(["created_at", "updated_at", "status"]);
+  const [field = "created_at", dir = "desc"] = String(param || "").split(":");
+  const key = allowed.has(field) ? field : "created_at";
+  const order = String(dir).toLowerCase() === "asc" ? "asc" : "desc";
+  return [{ [key]: order }];
+}
+async function assertAdmin(req) {
+  const headerKey = req.headers.get("x-admin-key");
+  if (headerKey && ADMIN_TEST_KEY && headerKey === ADMIN_TEST_KEY) {
+    const anyAdmin = await prisma.admin_users.findFirst({
+      select: { id: true, email: true },
+    });
+    if (!anyAdmin)
+      throw Object.assign(new Error("UNAUTHORIZED"), { status: 401 });
+    return { id: anyAdmin.id, email: anyAdmin.email, via: "header" };
+  }
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id && !session?.user?.email)
+    throw Object.assign(new Error("UNAUTHORIZED"), { status: 401 });
+  return session.user;
 }
 
 // form-data / urlencoded / json + ambil file (mendukung multi-attachments)
@@ -83,19 +108,16 @@ async function readBodyAndFiles(req) {
         body[k] = v;
         continue;
       }
-
       // logo / image utama
       if (!imageFile && (k === "image" || k === "logo" || k === "image_file")) {
         imageFile = v;
         continue;
       }
-
       // multi-attachments
       if (isAttachKey(k)) {
         attachments.push(v);
         continue;
       }
-
       // fallback: file lain dianggap attachment juga
       attachments.push(v);
     }
@@ -140,6 +162,18 @@ async function uploadToSupabase(
   return { path: objectPath, mime: type, size };
 }
 
+async function resolveCategoryId({ category_id, category_slug }) {
+  const id = category_id ? String(category_id).trim() : "";
+  const slug = category_slug ? String(category_slug).trim() : "";
+  if (!id && !slug) return null;
+  const found = await prisma.mitra_dalam_negeri_categories.findFirst({
+    where: id ? { id } : { slug },
+    select: { id: true },
+  });
+  if (!found) throw Object.assign(new Error("BAD_CATEGORY"), { status: 400 });
+  return found.id;
+}
+
 /* ---------- GET (admin) ---------- */
 export async function GET(req) {
   try {
@@ -147,12 +181,16 @@ export async function GET(req) {
 
     const { searchParams } = new URL(req.url);
     const q = (searchParams.get("q") || "").trim();
-    const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
+    const page = Math.max(1, asInt(searchParams.get("page"), 1));
     const perPage = Math.min(
       100,
-      Math.max(1, parseInt(searchParams.get("perPage") || "10", 10))
+      Math.max(1, asInt(searchParams.get("perPage"), 10))
     );
+    const orderBy = getOrderBy(searchParams.get("sort"));
+    // kompatibel: includeDeleted (lama) / with_deleted & only_deleted (baru)
     const includeDeleted = searchParams.get("includeDeleted") === "1";
+    const withDeleted = searchParams.get("with_deleted") === "1";
+    const onlyDeleted = searchParams.get("only_deleted") === "1";
     const statusFilter = parseStatusFilter(searchParams.get("status"));
     const locale = normalizeLocale(searchParams.get("locale"));
     const fallback = normalizeLocale(
@@ -160,10 +198,32 @@ export async function GET(req) {
     );
     const locales = locale === fallback ? [locale] : [locale, fallback];
 
-    const where = includeDeleted ? {} : { deleted_at: null };
+    const category_id = searchParams.get("category_id");
+    const category_slug = searchParams.get("category_slug");
+
+    const where = {
+      ...(onlyDeleted
+        ? { NOT: { deleted_at: null } }
+        : includeDeleted || withDeleted
+        ? {}
+        : { deleted_at: null }),
+    };
+
     const and = [];
     if (statusFilter) and.push({ status: { in: statusFilter } });
 
+    // category filter
+    if (category_id) {
+      and.push({ category_id: String(category_id) });
+    } else if (category_slug) {
+      const cat = await prisma.mitra_dalam_negeri_categories.findUnique({
+        where: { slug: String(category_slug) },
+        select: { id: true },
+      });
+      and.push({ category_id: cat?.id ?? "__nope__" });
+    }
+
+    // search
     if (q) {
       and.push({
         OR: [
@@ -171,15 +231,10 @@ export async function GET(req) {
             mitra_dalam_negeri_translate: {
               some: {
                 locale: { in: locales },
-                name: { contains: q, mode: "insensitive" },
-              },
-            },
-          },
-          {
-            mitra_dalam_negeri_translate: {
-              some: {
-                locale: { in: locales },
-                description: { contains: q, mode: "insensitive" },
+                OR: [
+                  { name: { contains: q } },
+                  { description: { contains: q } },
+                ],
               },
             },
           },
@@ -200,42 +255,28 @@ export async function GET(req) {
     }
     if (and.length) where.AND = and;
 
+    // pastikan ada translasi untuk locale/fallback
     where.mitra_dalam_negeri_translate = { some: { locale: { in: locales } } };
 
     const [total, rows] = await Promise.all([
       prisma.mitra_dalam_negeri.count({ where }),
       prisma.mitra_dalam_negeri.findMany({
         where,
-        orderBy: [{ created_at: "desc" }],
+        orderBy,
         skip: (page - 1) * perPage,
         take: perPage,
-        select: {
-          id: true,
-          admin_user_id: true,
-          email: true,
-          phone: true,
-          website: true,
-          instagram: true,
-          twitter: true,
-          mou_url: true,
-          image_url: true,
-          address: true,
-          city: true,
-          province: true,
-          postal_code: true,
-          contact_name: true,
-          contact_position: true,
-          contact_whatsapp: true,
-          status: true,
-          review_notes: true,
-          reviewed_at: true,
-          reviewed_by: true,
-          created_at: true,
-          updated_at: true,
-          deleted_at: true,
+        include: {
           mitra_dalam_negeri_translate: {
             where: { locale: { in: locales } },
             select: { locale: true, name: true, description: true },
+          },
+          category: {
+            include: {
+              translate: {
+                where: { locale: { in: locales } },
+                select: { locale: true, name: true },
+              },
+            },
           },
         },
       }),
@@ -247,9 +288,18 @@ export async function GET(req) {
         locale,
         fallback
       );
+      const ct = pickTrans(row.category?.translate || [], locale, fallback);
       return {
         id: row.id,
         admin_user_id: row.admin_user_id,
+        category: row.category
+          ? {
+              id: row.category.id,
+              slug: row.category.slug,
+              name: ct?.name ?? null,
+              locale_used: ct?.locale ?? null,
+            }
+          : null,
         email: row.email,
         phone: row.phone,
         website: row.website,
@@ -277,19 +327,30 @@ export async function GET(req) {
       };
     });
 
-    return NextResponse.json({
-      page,
-      perPage,
-      total,
-      totalPages: Math.max(1, Math.ceil(total / perPage)),
+    return json({
+      message: "OK",
       data,
+      meta: {
+        page,
+        perPage,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / perPage)),
+        locale,
+        fallback,
+      },
     });
   } catch (err) {
-    if (err?.message === "UNAUTHORIZED") {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    }
+    const status = err?.status || 500;
+    if (status === 401)
+      return json(
+        { error: { code: "UNAUTHORIZED", message: "Unauthorized" } },
+        { status: 401 }
+      );
     console.error("GET /api/mitra-dalam-negeri error:", err);
-    return NextResponse.json({ message: "Server error" }, { status: 500 });
+    return json(
+      { error: { code: "SERVER_ERROR", message: "Server error" } },
+      { status: 500 }
+    );
   }
 }
 
@@ -305,36 +366,61 @@ export async function POST(req) {
     const address = (body?.address || "").trim();
 
     if (!merchantName)
-      return NextResponse.json(
-        { message: "merchant_name wajib diisi" },
+      return json(
+        {
+          error: { code: "BAD_REQUEST", message: "merchant_name wajib diisi" },
+        },
         { status: 400 }
       );
     if (!email)
-      return NextResponse.json(
-        { message: "email wajib diisi" },
+      return json(
+        { error: { code: "BAD_REQUEST", message: "email wajib diisi" } },
         { status: 400 }
       );
     if (!phone)
-      return NextResponse.json(
-        { message: "phone wajib diisi" },
+      return json(
+        { error: { code: "BAD_REQUEST", message: "phone wajib diisi" } },
         { status: 400 }
       );
     if (!address)
-      return NextResponse.json(
-        { message: "address wajib diisi" },
+      return json(
+        { error: { code: "BAD_REQUEST", message: "address wajib diisi" } },
         { status: 400 }
       );
 
-    // === Wajib ada logo/image (either URL atau file)
+    // kategori (opsional) via id/slug
+    let categoryId = null;
+    try {
+      categoryId = await resolveCategoryId({
+        category_id: body.category_id,
+        category_slug: body.category_slug,
+      });
+    } catch (e) {
+      if (e?.message === "BAD_CATEGORY")
+        return json(
+          {
+            error: {
+              code: "BAD_REQUEST",
+              message: "Kategori tidak ditemukan.",
+            },
+          },
+          { status: 400 }
+        );
+      throw e;
+    }
+
+    // wajib ada logo/image (URL atau file)
     let image_url = body.image_url ? String(body.image_url).trim() : null;
     if (!image_url && !imageFile) {
-      return NextResponse.json(
-        { message: "logo/image wajib diunggah" },
+      return json(
+        {
+          error: { code: "BAD_REQUEST", message: "logo/image wajib diunggah" },
+        },
         { status: 400 }
       );
     }
 
-    // === 1) Upload logo lebih dulu (DI LUAR transaksi)
+    // 1) Upload logo (luar transaksi)
     if (imageFile) {
       try {
         const up = await uploadToSupabase(imageFile, "mitra/images", {
@@ -349,29 +435,36 @@ export async function POST(req) {
         image_url = up?.path ?? image_url;
       } catch (e) {
         if (e?.message === "PAYLOAD_TOO_LARGE")
-          return NextResponse.json(
-            { message: "Gambar max 10MB" },
+          return json(
+            {
+              error: { code: "PAYLOAD_TOO_LARGE", message: "Gambar max 10MB" },
+            },
             { status: 413 }
           );
         if (e?.message === "UNSUPPORTED_TYPE")
-          return NextResponse.json(
-            { message: "Gambar harus JPEG/PNG/WebP/SVG" },
+          return json(
+            {
+              error: {
+                code: "UNSUPPORTED_TYPE",
+                message: "Gambar harus JPEG/PNG/WebP/SVG",
+              },
+            },
             { status: 415 }
           );
         if (e?.message === "SUPABASE_BUCKET_NOT_CONFIGURED")
-          return NextResponse.json(
-            { message: "Bucket belum diset" },
+          return json(
+            { error: { code: "SERVER_ERROR", message: "Bucket belum diset" } },
             { status: 500 }
           );
         console.error("upload image error:", e);
-        return NextResponse.json(
-          { message: "Upload gambar gagal" },
+        return json(
+          { error: { code: "SERVER_ERROR", message: "Upload gambar gagal" } },
           { status: 500 }
         );
       }
     }
 
-    // === 2) Siapkan terjemahan (DI LUAR transaksi)
+    // 2) Siapkan terjemahan (luar transaksi)
     const aboutRaw =
       body.about !== undefined && body.about !== null
         ? String(body.about)
@@ -392,91 +485,85 @@ export async function POST(req) {
       aboutEn = aEn ?? aboutRaw;
     }
 
-    // === 3) Transaksi SINGKAT (DB only)
-    const created = await prisma.$transaction(
-      async (tx) => {
-        const mitra = await tx.mitra_dalam_negeri.create({
-          data: {
-            // org info
-            email,
-            phone,
-            website: body.website ? String(body.website).trim() : null,
-            instagram: body.instagram ? String(body.instagram).trim() : null,
-            twitter: body.twitter ? String(body.twitter).trim() : null,
-            mou_url: body.mou_url ? String(body.mou_url).trim() : null,
-            image_url,
+    // 3) Transaksi singkat (DB)
+    const created = await prisma.$transaction(async (tx) => {
+      const mitra = await tx.mitra_dalam_negeri.create({
+        data: {
+          // org info
+          email,
+          phone,
+          website: body.website ? String(body.website).trim() : null,
+          instagram: body.instagram ? String(body.instagram).trim() : null,
+          twitter: body.twitter ? String(body.twitter).trim() : null,
+          mou_url: body.mou_url ? String(body.mou_url).trim() : null,
+          image_url,
 
-            // address
-            address,
-            city: body.city ? String(body.city).trim() : null,
-            province: body.province ? String(body.province).trim() : null,
-            postal_code: body.postal_code
-              ? String(body.postal_code).trim()
-              : null,
+          // address
+          address,
+          city: body.city ? String(body.city).trim() : null,
+          province: body.province ? String(body.province).trim() : null,
+          postal_code: body.postal_code
+            ? String(body.postal_code).trim()
+            : null,
 
-            // contact person
-            contact_name: body.contact_name
-              ? String(body.contact_name).trim()
-              : null,
-            contact_position: body.contact_position
-              ? String(body.contact_position).trim()
-              : null,
-            contact_whatsapp: body.contact_whatsapp
-              ? String(body.contact_whatsapp).trim()
-              : null,
+          // contact person
+          contact_name: body.contact_name
+            ? String(body.contact_name).trim()
+            : null,
+          contact_position: body.contact_position
+            ? String(body.contact_position).trim()
+            : null,
+          contact_whatsapp: body.contact_whatsapp
+            ? String(body.contact_whatsapp).trim()
+            : null,
 
-            // workflow
-            status: "PENDING",
-            review_notes: null,
-            reviewed_by: null,
-            reviewed_at: null,
+          // category
+          category_id: categoryId,
 
-            created_at: new Date(),
-            updated_at: new Date(),
+          // workflow
+          status: "PENDING",
+          review_notes: null,
+          reviewed_by: null,
+          reviewed_at: null,
+
+          created_at: new Date(),
+          updated_at: new Date(),
+        },
+      });
+
+      // translasi utama (locale user)
+      await tx.mitra_dalam_negeri_translate.create({
+        data: {
+          id_merchants: mitra.id,
+          locale,
+          name: merchantName,
+          description: aboutRaw,
+        },
+      });
+
+      // translasi EN (kalau perlu)
+      if (locale !== EN_LOCALE) {
+        await tx.mitra_dalam_negeri_translate.upsert({
+          where: {
+            id_merchants_locale: { id_merchants: mitra.id, locale: EN_LOCALE },
           },
-        });
-
-        // translasi utama (locale user)
-        await tx.mitra_dalam_negeri_translate.create({
-          data: {
+          update: {
+            ...(nameEn ? { name: nameEn } : {}),
+            ...(aboutEn !== undefined ? { description: aboutEn ?? null } : {}),
+          },
+          create: {
             id_merchants: mitra.id,
-            locale,
-            name: merchantName,
-            description: aboutRaw,
+            locale: EN_LOCALE,
+            name: nameEn || merchantName,
+            description: aboutEn ?? aboutRaw,
           },
         });
+      }
 
-        // translasi EN (kalau perlu)
-        if (locale !== EN_LOCALE) {
-          await tx.mitra_dalam_negeri_translate.upsert({
-            where: {
-              id_merchants_locale: {
-                id_merchants: mitra.id,
-                locale: EN_LOCALE,
-              },
-            },
-            update: {
-              ...(nameEn ? { name: nameEn } : {}),
-              ...(aboutEn !== undefined
-                ? { description: aboutEn ?? null }
-                : {}),
-            },
-            create: {
-              id_merchants: mitra.id,
-              locale: EN_LOCALE,
-              name: nameEn || merchantName,
-              description: aboutEn ?? aboutRaw,
-            },
-          });
-        }
+      return mitra;
+    });
 
-        return mitra;
-      },
-      // opsi (boleh dihapus jika tidak perlu)
-      { timeout: 15000, maxWait: 5000 }
-    );
-
-    // === 4) Upload ATTACHMENTS (DI LUAR transaksi)
+    // 4) Upload ATTACHMENTS (luar transaksi)
     let uploaded = [];
     if (attachments?.length) {
       for (const f of attachments) {
@@ -506,7 +593,7 @@ export async function POST(req) {
       }
     }
 
-    // === 5) Simpan metadata lampiran (sekali jalan)
+    // 5) Simpan metadata lampiran (sekali jalan)
     if (uploaded.length) {
       try {
         const agg = await prisma.mitra_files.aggregate({
@@ -530,16 +617,18 @@ export async function POST(req) {
       }
     }
 
-    return NextResponse.json(
+    return json(
       {
-        id: created.id,
-        status: "PENDING",
         message: "Terima kasih! Pengajuan Anda akan direview.",
+        data: { id: created.id, status: "PENDING" },
       },
       { status: 201 }
     );
   } catch (err) {
     console.error("POST /api/mitra-dalam-negeri error:", err);
-    return NextResponse.json({ message: "Server error" }, { status: 500 });
+    return json(
+      { error: { code: "SERVER_ERROR", message: "Server error" } },
+      { status: 500 }
+    );
   }
 }

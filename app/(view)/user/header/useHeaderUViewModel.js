@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 
-/* helpers */
+/* ======================= Helpers ======================= */
 const cleanPath = (s) =>
   !s ? "/" : s.length > 1 && s.endsWith("/") ? s.slice(0, -1) : s;
 
@@ -36,7 +36,7 @@ const replaceUrlLang = (l) => {
   window.history.replaceState({}, "", url.toString());
 };
 
-/* -------- i18n nav -------- */
+/* ======================= i18n Nav ======================= */
 /* ID */
 const NAV_ID = [
   {
@@ -68,9 +68,14 @@ const NAV_ID = [
   },
   {
     id: "partners",
-    label: "Mitra Dalam Negeri", // <= was "Mitra"
-    href: "/user/partners?menu=partners",
-    matchers: ["/user/partners", "/user/leads"],
+    label: "Mitra Dalam Negeri",
+    href: "/user/mitra-dalam-negeri?menu=partners",
+    matchers: [
+      "/user/mitra-dalam-negeri", // NEW primary route
+      "/user/partners", // legacy support
+      "/user/form-mitra", // alias support if ever used
+      "/user/leads",
+    ],
   },
   {
     id: "college",
@@ -130,8 +135,13 @@ const NAV_EN = [
   {
     id: "partners",
     label: "Partners",
-    href: "/user/partners?menu=partners",
-    matchers: ["/user/partners", "/user/leads"],
+    href: "/user/mitra-dalam-negeri?menu=partners",
+    matchers: [
+      "/user/mitra-dalam-negeri", // NEW primary route
+      "/user/partners", // legacy support
+      "/user/form-mitra", // alias support
+      "/user/leads",
+    ],
   },
   {
     id: "college",
@@ -167,16 +177,20 @@ const LANG_OPTIONS = [
 const normalizeMenuId = (m) => {
   const x = String(m || "").toLowerCase();
   if (x === "majors" || x === "jurusan") return "college";
+  // Map various partner aliases to the same nav id
+  if (["partners", "partner", "mitra", "mitra-dalam-negeri"].includes(x))
+    return "partners";
   return x;
 };
 
+/* ======================= Hook ======================= */
 export function useHeaderUViewModel() {
   const pathname = usePathname();
   const search = useSearchParams();
 
   const [isMenuOpen, setMenuOpen] = useState(false);
 
-  // IMPORTANT: match server render first -> "id"
+  // IMPORTANT: match server render first -> default "id"
   const [lang, setLang] = useState("id");
   const [mounted, setMounted] = useState(false);
 

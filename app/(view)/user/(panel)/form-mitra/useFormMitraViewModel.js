@@ -1,3 +1,4 @@
+// useFormMitraViewModel.js
 "use client";
 
 import { useMemo, useState } from "react";
@@ -33,15 +34,20 @@ export default function useFormMitraViewModel({ locale = "id" } = {}) {
     contact_position: "",
     contact_whatsapp: "",
     about: "",
-    image: null, // ⚠️ sekarang WAJIB (logo)
+    category_id: "",
 
-    // optional
+    // logo: boleh file ATAU url (salah satu wajib)
+    image: null, // file
+    image_url: "",
+
+    // Website & Socials (opsional)
     website: "",
     instagram: "",
     twitter: "",
     mou_url: "",
-    image_url: "",
-    attachments: [], // optional multi
+
+    // attachments optional multi
+    attachments: [],
   });
 
   const [errors, setErrors] = useState({});
@@ -55,7 +61,7 @@ export default function useFormMitraViewModel({ locale = "id" } = {}) {
 
   const onPickImage = (fileOrNull) => {
     setValues((s) => ({ ...s, image: fileOrNull || null }));
-    setErrors((e) => ({ ...e, image: null }));
+    setErrors((e) => ({ ...e, image: null, image_url: null }));
   };
 
   // merge files (multi pick) + dedup
@@ -72,9 +78,17 @@ export default function useFormMitraViewModel({ locale = "id" } = {}) {
     });
   };
 
+  const removeAttachment = (idx) => {
+    setValues((s) => {
+      const copy = [...(s.attachments || [])];
+      copy.splice(idx, 1);
+      return { ...s, attachments: copy };
+    });
+  };
+
   const validate = () => {
     const e = {};
-    // required text/number fields
+    // required utama
     if (!trim(values.merchant_name)) e.merchant_name = "Required";
     if (!isEmail(values.email)) e.email = "Invalid email";
     if (!isPhone(values.phone)) e.phone = "Invalid phone";
@@ -86,8 +100,15 @@ export default function useFormMitraViewModel({ locale = "id" } = {}) {
     if (!trim(values.contact_position)) e.contact_position = "Required";
     if (!isPhone(values.contact_whatsapp)) e.contact_whatsapp = "Invalid phone";
     if (!trim(values.about)) e.about = "Required";
-    // required file
-    if (!values.image) e.image = "Required";
+    if (!trim(values.category_id)) e.category_id = "Required";
+
+    // logo wajib: file ATAU url
+    if (!values.image && !trim(values.image_url)) {
+      e.image = "Image file or URL is required";
+      e.image_url = e.image;
+    }
+
+    // Website & Socials -> opsional (tak divalidasi)
     return e;
   };
 
@@ -106,7 +127,9 @@ export default function useFormMitraViewModel({ locale = "id" } = {}) {
     values.contact_position,
     values.contact_whatsapp,
     values.about,
+    values.category_id,
     values.image,
+    values.image_url,
   ]);
 
   const submit = async () => {
@@ -134,16 +157,20 @@ export default function useFormMitraViewModel({ locale = "id" } = {}) {
       fd.append("contact_position", trim(values.contact_position));
       fd.append("contact_whatsapp", trim(values.contact_whatsapp));
       fd.append("about", trim(values.about));
-      fd.append("image", values.image); // ⚠️ wajib kirim
+      fd.append("category_id", trim(values.category_id));
 
-      // optional
-      ["website", "instagram", "twitter", "mou_url", "image_url"].forEach(
-        (k) => {
-          const v = trim(values[k]);
-          if (v) fd.append(k, v);
-        }
-      );
+      // logo
+      if (values.image) fd.append("image", values.image);
+      if (trim(values.image_url))
+        fd.append("image_url", trim(values.image_url));
 
+      // Website & Socials (opsional)
+      ["website", "instagram", "twitter", "mou_url"].forEach((k) => {
+        const v = trim(values[k]);
+        if (v) fd.append(k, v);
+      });
+
+      // attachments (opsional multi)
       if (values.attachments?.length) {
         values.attachments.forEach((f) => fd.append("attachments", f));
       }
@@ -153,7 +180,11 @@ export default function useFormMitraViewModel({ locale = "id" } = {}) {
         body: fd,
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.message || "Submit failed");
+      if (!res.ok) {
+        throw new Error(
+          data?.error?.message || data?.message || "Submit failed"
+        );
+      }
 
       setMsg({ type: "success", text: data?.message || "Success" });
 
@@ -170,12 +201,13 @@ export default function useFormMitraViewModel({ locale = "id" } = {}) {
         contact_position: "",
         contact_whatsapp: "",
         about: "",
+        category_id: "",
         image: null,
+        image_url: "",
         website: "",
         instagram: "",
         twitter: "",
         mou_url: "",
-        image_url: "",
         attachments: [],
       });
     } catch (err) {
@@ -192,6 +224,7 @@ export default function useFormMitraViewModel({ locale = "id" } = {}) {
     onChange,
     onPickImage,
     onPickAttachments,
+    removeAttachment,
     submit,
     canSubmit,
     loading,
