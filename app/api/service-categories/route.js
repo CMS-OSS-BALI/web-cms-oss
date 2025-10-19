@@ -1,3 +1,4 @@
+// app/api/service-categories/route.js
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
@@ -5,7 +6,7 @@ import prisma from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
-/* =============== Auth Helper =============== */
+/* Auth */
 async function assertAdmin() {
   const session = await getServerSession(authOptions);
   const email = session?.user?.email;
@@ -15,7 +16,20 @@ async function assertAdmin() {
   return admin;
 }
 
-/* =============== Utils =============== */
+/* Utils */
+function truthy(param) {
+  if (param == null) return false;
+  const v = String(param).toLowerCase();
+  return v === "1" || v === "true" || v === "yes" || v === "y";
+}
+function includeCountsFromReq(req) {
+  try {
+    const url = new URL(req.url);
+    return truthy(url.searchParams.get("include_counts"));
+  } catch {
+    return false;
+  }
+}
 function getLimitFromReq(req, fallback = 20) {
   try {
     const n = Number(new URL(req.url).searchParams.get("limit"));
@@ -30,27 +44,6 @@ function getPageFromReq(req, fallback = 1) {
     return Number.isFinite(n) && n >= 1 ? Math.trunc(n) : fallback;
   } catch {
     return fallback;
-  }
-}
-function getQuery(req) {
-  try {
-    const url = new URL(req.url);
-    return (url.searchParams.get("q") || "").trim();
-  } catch {
-    return "";
-  }
-}
-function truthy(param) {
-  if (param == null) return false;
-  const v = String(param).toLowerCase();
-  return v === "1" || v === "true" || v === "yes" || v === "y";
-}
-function includeCountsFromReq(req) {
-  try {
-    const url = new URL(req.url);
-    return truthy(url.searchParams.get("include_counts"));
-  } catch {
-    return false;
   }
 }
 function slugify(input) {
@@ -76,11 +69,11 @@ async function readBody(req) {
   return (await req.json().catch(() => ({}))) ?? {};
 }
 
-/* =============== GET (list) =============== */
-// NOTE: response hanya { data: [...] } (tanpa meta)
+/* GET list */
 export async function GET(req) {
   try {
-    const q = getQuery(req);
+    const url = new URL(req.url);
+    const q = (url.searchParams.get("q") || "").trim().toLowerCase();
     const limit = getLimitFromReq(req, 20);
     const page = getPageFromReq(req, 1);
     const skip = (page - 1) * limit;
@@ -89,8 +82,8 @@ export async function GET(req) {
     const where = q
       ? {
           OR: [
-            { slug: { contains: q, mode: "insensitive" } },
-            { name: { contains: q, mode: "insensitive" } },
+            { slug: { contains: q } }, // no `mode`
+            { name: { contains: q } },
           ],
         }
       : undefined;
@@ -121,7 +114,7 @@ export async function GET(req) {
   }
 }
 
-/* =============== POST (create) =============== */
+/* POST create */
 export async function POST(req) {
   try {
     await assertAdmin();

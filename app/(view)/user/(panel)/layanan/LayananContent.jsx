@@ -17,11 +17,14 @@ const { Title, Paragraph } = Typography;
 const SERVICE_SWIPER_CLASS = "layanan-services-swiper";
 const TESTI_SWIPER_CLASS = "layanan-testimoni-swiper";
 const MARQUEE_SPEED = 6000;
+
 const marqueeAutoplay = {
   delay: 0,
   disableOnInteraction: false,
   pauseOnMouseEnter: false,
 };
+const marqueeFreeMode = { enabled: true, momentum: false, sticky: false };
+
 const STORAGE_BASE_URL = (() => {
   const explicit = (process.env.NEXT_PUBLIC_STORAGE_BASE_URL || "")
     .trim()
@@ -42,8 +45,6 @@ const STORAGE_BASE_URL = (() => {
 const DEFAULT_TESTI_PLACEHOLDER =
   "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=1200&auto=format&fit=crop";
 const shouldUseStorage = (path = "") => /testimonials\//i.test(path);
-
-const marqueeFreeMode = { enabled: true, momentum: false, sticky: false };
 
 /* ================== Helpers ================== */
 function normalizeImgSrc(input) {
@@ -282,8 +283,8 @@ const styles = {
   testiWrap: {
     width: "min(1180px, 92%)",
     margin: "0 auto 90px",
-    "--testi-card-w": "clamp(260px, 30vw, 340px)", // width unchanged
-    "--testi-card-h": "clamp(220px, 26vw, 260px)", // << shorter height
+    "--testi-card-w": "clamp(260px, 30vw, 340px)",
+    "--testi-card-h": "clamp(220px, 26vw, 260px)",
     "--testi-avatar-size": "clamp(80px, 16vw, 120px)",
     "--testi-avatar-overlap": "calc(var(--testi-avatar-size) * 0.45)",
     "--testi-avatar-offset": "calc(var(--testi-avatar-size) * 0.45 + 20px)",
@@ -296,9 +297,7 @@ const styles = {
     fontSize: "clamp(28px, 3.2vw, 44px)",
     marginBottom: 20,
   },
-
   testiSlide: { width: "var(--testi-card-w, 340px)" },
-
   testiCardShell: {
     position: "relative",
     background: "#0B3E91",
@@ -309,13 +308,13 @@ const styles = {
     width: "100%",
     maxWidth: "var(--testi-card-w, 340px)",
     paddingTop: "var(--testi-avatar-offset, 84px)",
-    minHeight: "var(--testi-card-h, 260px)", // << shorter
+    minHeight: "var(--testi-card-h, 260px)",
     display: "flex",
     flexDirection: "column",
-    marginTop: "70px", // clearance avatar (was 100px)
+    marginTop: "70px",
   },
   testiCardBody: {
-    padding: "12px 16px 14px", // tighter
+    padding: "12px 16px 14px",
     display: "grid",
     gridTemplateRows: "auto 1fr",
     gap: 6,
@@ -373,7 +372,14 @@ export default function LayananContent({ locale = "id" }) {
   } = useLayananViewModel({ locale });
 
   const hasMultipleServices = services.length > 1;
-  const serviceAutoplay = hasMultipleServices ? marqueeAutoplay : undefined;
+
+  // Our Service -> ke kanan
+  const serviceAutoplay = hasMultipleServices
+    ? { ...marqueeAutoplay, reverseDirection: true }
+    : undefined;
+
+  // Testimoni -> ke kiri
+  const testiAutoplay = { ...marqueeAutoplay, reverseDirection: false };
 
   return (
     <div>
@@ -496,7 +502,7 @@ export default function LayananContent({ locale = "id" }) {
             loop={hasMultipleServices}
             speed={MARQUEE_SPEED}
             allowTouchMove={false}
-            autoplay={serviceAutoplay}
+            autoplay={serviceAutoplay} // kanan
             freeMode={marqueeFreeMode}
           >
             {services.map((s) => (
@@ -566,7 +572,7 @@ export default function LayananContent({ locale = "id" }) {
               modules={[Autoplay, FreeMode]}
               loop
               speed={MARQUEE_SPEED}
-              autoplay={marqueeAutoplay}
+              autoplay={testiAutoplay} // kiri
               slidesPerView="auto"
               spaceBetween={16}
               allowTouchMove={false}

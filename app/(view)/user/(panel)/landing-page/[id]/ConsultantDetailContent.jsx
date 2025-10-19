@@ -22,6 +22,8 @@ const styles = {
     margin: "0 auto",
     fontFamily: FONT_FAMILY,
   },
+
+  /* ================= HERO ================= */
   hero: {
     section: {
       marginTop: "calc(-1 * clamp(48px, 8vw, 84px))",
@@ -113,6 +115,7 @@ const styles = {
     },
   },
 
+  /* ================= ABOUT ================= */
   about: {
     section: { padding: "clamp(48px, 8vw, 96px) 0 0", marginTop: "-75px" },
     grid: {
@@ -170,6 +173,7 @@ const styles = {
     },
   },
 
+  /* ================= PROGRAMS ================= */
   programs: {
     section: { padding: "36px 0 8px" },
     title: {
@@ -224,33 +228,58 @@ const styles = {
     navIcon: { display: "block" },
   },
 
-  /* ==== CTA baru (sesuai screenshot) ==== */
+  /* ================= CTA (kartu seperti screenshot) ================= */
   cta: {
-    section: { padding: "24px 0 80px" },
-    heading: {
-      textAlign: "center",
-      fontWeight: 900,
-      letterSpacing: "0.02em",
-      color: "#0b3a82",
-      textTransform: "uppercase",
-      fontSize: "clamp(28px, 5.4vw, 48px)",
-      marginBottom: 18,
+    section: { padding: "36px 0 88px" },
+    container: {
+      background: "#fff",
+      borderRadius: 20,
+      boxShadow: "0 18px 44px rgba(9, 28, 76, 0.14)",
+      border: "1px solid #E6EEF9",
+      display: "grid",
+      gridTemplateColumns: "1.15fr .85fr",
+      alignItems: "center",
+      gap: 24,
+      padding: "clamp(18px, 3vw, 28px)",
     },
-    bar: { display: "grid", placeItems: "center" },
+    copy: { padding: "clamp(8px, 1.6vw, 10px) clamp(6px,1.2vw,10px)" },
+    title: {
+      margin: 0,
+      fontWeight: 900,
+      color: "#0b3a82",
+      fontSize: "clamp(22px, 3.8vw, 32px)",
+      lineHeight: 1.2,
+      textTransform: "uppercase",
+    },
+    desc: {
+      marginTop: 10,
+      color: "#3a4a6a",
+      fontSize: "clamp(12px, 1.4vw, 14px)",
+      lineHeight: 1.8,
+      maxWidth: 640,
+    },
+    btnWrap: { marginTop: 16 },
     button: {
       display: "inline-block",
-      padding: "16px 36px",
-      borderRadius: 999,
-      background: "linear-gradient(180deg,#1950ff 0%, #0a2ecf 85%)",
+      padding: "16px 32px",
+      borderRadius: 12,
+      background: "#1056c8",
+      boxShadow: "0 12px 24px rgba(16,86,200,.28)",
       color: "#fff",
       fontWeight: 800,
-      letterSpacing: "0.8px",
+      letterSpacing: ".6px",
       textTransform: "uppercase",
-      boxShadow: "0 12px 28px rgba(0,80,255,.35)",
       border: "none",
       userSelect: "none",
-      marginTop: "25px",
       textDecoration: "none",
+    },
+    artWrap: { display: "grid", placeItems: "center" },
+    artImg: {
+      maxWidth: "min(420px, 88%)",
+      width: "100%",
+      height: "auto",
+      display: "block",
+      transform: "translateY(8px)",
     },
   },
 };
@@ -260,7 +289,7 @@ export default function ConsultantDetailContent({
   hero,
   about,
   programs,
-  wa, // not used in CTA anymore (tetap diterima biar kompatibel)
+  wa,
   locale,
 }) {
   const aboutHtml = useMemo(() => {
@@ -281,7 +310,7 @@ export default function ConsultantDetailContent({
 
   return (
     <>
-      {/* HERO */}
+      {/* ===== HERO ===== */}
       <section style={styles.hero.section}>
         <div style={styles.hero.bleed}>
           <div className="heroGrid" style={styles.hero.wrapper}>
@@ -332,7 +361,7 @@ export default function ConsultantDetailContent({
         </div>
       </section>
 
-      {/* ABOUT */}
+      {/* ===== ABOUT ===== */}
       <section style={styles.about.section}>
         <div style={styles.sectionInner}>
           <div className="aboutGrid" style={styles.about.grid}>
@@ -379,7 +408,7 @@ export default function ConsultantDetailContent({
         </div>
       </section>
 
-      {/* PROGRAMS */}
+      {/* ===== PROGRAMS ===== */}
       <section style={styles.programs.section}>
         <div style={styles.sectionInner}>
           <Title level={1} style={styles.programs.title}>
@@ -388,7 +417,6 @@ export default function ConsultantDetailContent({
 
           {Array.isArray(programs) && programs.length > 0 ? (
             <div style={styles.programs.wrap}>
-              {/* nav buttons */}
               <button
                 className="prog-prev"
                 aria-label="Previous"
@@ -483,18 +511,41 @@ export default function ConsultantDetailContent({
         </div>
       </section>
 
-      {/* CTA (baru) */}
+      {/* ===== CTA ===== */}
       <section style={styles.cta.section}>
         <div style={styles.sectionInner}>
-          <h2 style={styles.cta.heading}>JADWALKAN KONSULTASI</h2>
-          <div style={styles.cta.bar}>
-            <Link
-              href="/user/leads"
-              className="ctaBtn"
-              style={styles.cta.button}
-            >
-              CLICK HERE
-            </Link>
+          <div className="ctaContainer" style={styles.cta.container}>
+            <div style={styles.cta.copy}>
+              <h3 style={styles.cta.title}>
+                KONSULTASI SEKARANG,
+                <br />
+                RAIH IMPIANMU
+              </h3>
+              <p style={styles.cta.desc}>
+                Bersama Konsultan Kami, Wujudkan Rencana Studimu ke Tingkat
+                Global dengan Percaya Diri.
+              </p>
+              <div style={styles.cta.btnWrap}>
+                <Link
+                  href="/user/leads"
+                  className="ctaBtn"
+                  style={styles.cta.button}
+                >
+                  KONSULTASI
+                </Link>
+              </div>
+            </div>
+
+            <div style={styles.cta.artWrap}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/tanya.svg"
+                alt="Maskot bertanya"
+                style={styles.cta.artImg}
+                loading="lazy"
+                onError={(e) => (e.currentTarget.src = "/tanya.svg")}
+              />
+            </div>
           </div>
         </div>
       </section>
@@ -518,7 +569,14 @@ export default function ConsultantDetailContent({
           opacity: 1;
         }
 
-        /* CTA hover/active */
+        /* Link CTA tanpa underline */
+        :global(.ctaBtn),
+        :global(.ctaBtn:hover),
+        :global(.ctaBtn:focus),
+        :global(.ctaBtn:active),
+        :global(.ctaBtn:visited) {
+          text-decoration: none !important;
+        }
         :global(.ctaBtn:hover) {
           filter: brightness(1.06);
           transform: translateY(-1px);
@@ -528,15 +586,22 @@ export default function ConsultantDetailContent({
           transform: translateY(0);
         }
 
-        @media (max-width: 900px) {
+        /* Responsive */
+        @media (max-width: 1024px) {
           .heroGrid {
             grid-template-columns: 1fr;
             row-gap: 24px;
             padding-bottom: 72px;
           }
+        }
+        @media (max-width: 900px) {
           .aboutGrid {
             grid-template-columns: 1fr !important;
             grid-template-rows: auto auto !important;
+          }
+          :global(.ctaContainer) {
+            grid-template-columns: 1fr !important;
+            text-align: center;
           }
         }
         @media (max-width: 640px) {

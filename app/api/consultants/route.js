@@ -12,7 +12,7 @@ const DEFAULT_ORDER = [{ created_at: "desc" }];
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-/* ===== Supabase helpers (same pattern as /api/programs) ===== */
+/* ===== Supabase helpers ===== */
 const BUCKET =
   process.env.SUPABASE_BUCKET || process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "";
 const SUPA_URL = (
@@ -26,60 +26,19 @@ function getPublicUrl(path) {
   if (/^https?:\/\//i.test(path)) return path;
 
   const clean = String(path).replace(/^\/+/, "");
-  // Jika ada supabaseAdmin + BUCKET, gunakan API resmi
   if (supabaseAdmin && BUCKET) {
     const { data, error } = supabaseAdmin.storage
       .from(BUCKET)
       .getPublicUrl(clean);
-    if (error) {
-      console.error("supabase getPublicUrl error:", error);
-      // fallback manual di bawah
-    } else if (data?.publicUrl) {
-      return data.publicUrl;
-    }
+    if (!error && data?.publicUrl) return data.publicUrl;
+    // fall through → manual fallback
   }
-
-  // Fallback manual kalau BUCKET/SDK bermasalah tapi SUPA_URL tersedia
   if (SUPA_URL) {
     const withBucket =
       BUCKET && !clean.startsWith(`${BUCKET}/`) ? `${BUCKET}/${clean}` : clean;
     return `${SUPA_URL}/storage/v1/object/public/${withBucket}`;
   }
-
-  // Terakhir: jangan balikin path mentah (raw) yang bikin 404 di client
   return null;
-}
-
-async function uploadConsultantProgramImage(file, consultantId) {
-  if (typeof File === "undefined" || !(file instanceof File))
-    throw new Error("NO_FILE");
-  if (!BUCKET) throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
-
-  const MAX = 10 * 1024 * 1024;
-  const allowed = ["image/jpeg", "image/png", "image/webp"];
-  const size = file.size || 0;
-  const type = file.type || "";
-
-  if (size > MAX) throw new Error("PAYLOAD_TOO_LARGE");
-  if (type && !allowed.includes(type)) throw new Error("UNSUPPORTED_TYPE");
-
-  const ext = (file.name?.split(".").pop() || "").toLowerCase();
-  const safe = `${Date.now()}-${Math.random().toString(36).slice(2)}${
-    ext ? "." + ext : ""
-  }`;
-  const objectPath = `consultants/${String(consultantId)}/programs/${new Date()
-    .toISOString()
-    .slice(0, 10)}/${safe}`;
-  const bytes = new Uint8Array(await file.arrayBuffer());
-
-  const { error } = await supabaseAdmin.storage
-    .from(BUCKET)
-    .upload(objectPath, bytes, {
-      contentType: type || "application/octet-stream",
-      upsert: false,
-    });
-  if (error) throw new Error(error.message);
-  return objectPath;
 }
 
 /* ===== Helpers ===== */
@@ -133,23 +92,21 @@ function pickTrans(list, primary, fallback) {
   const by = (loc) => list?.find((t) => t.locale === loc);
   return by(primary) || by(fallback) || null;
 }
-function parseId(raw) {
+/** Prisma expects String id → keep as string, not BigInt/Number. */
+function parseIdString(raw) {
   if (raw === null || raw === undefined) return null;
-  try {
-    const value = BigInt(raw);
-    return value > 0n ? value : null;
-  } catch {
-    return null;
-  }
+  const s = String(raw).trim();
+  return s.length ? s : null;
 }
 
 /* ===== GET /api/consultants (LIST) =====
 Query:
-- q: search di name/description (consultants_translate) + email/whatsapp (admin only)
-- id: (opsional) filter exact by ID (memudahkan fallback publik)
-- page, perPage, sort (created_at|updated_at|email):(asc|desc)
-- locale (default id), fallback (default id)
-- public=1 untuk akses publik
+- q                 search by name/description (public) + email/whatsapp (admin)
+- id                exact id (short-circuits listing)
+- page, perPage     pagination
+- sort              created_at|updated_at|email : asc|desc
+- locale, fallback  i18n selection (default: id)
+- public=1          public access (no auth, hides PII)
 */
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
@@ -163,9 +120,7 @@ export async function GET(req) {
     }
   }
 
-  const rawId = searchParams.get("id");
-  const idFilter = parseId(rawId);
-
+  const idFilter = parseIdString(searchParams.get("id"));
   const q = (searchParams.get("q") || "").trim();
   const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
   const perPage = Math.min(
@@ -180,28 +135,7 @@ export async function GET(req) {
   const locale = pickLocale(req, "locale", "id");
   const fallback = pickLocale(req, "fallback", "id");
 
-  // WHERE builder
-  let where = {};
-  if (idFilter) {
-    where.id = idFilter;
-  } else if (q.length > 0) {
-    where = {
-      OR: [
-        {
-          consultants_translate: {
-            some: {
-              locale: { in: [locale, fallback] },
-              OR: [{ name: { contains: q } }, { description: { contains: q } }],
-            },
-          },
-        },
-        ...(isPublic
-          ? []
-          : [{ email: { contains: q } }, { whatsapp: { contains: q } }]),
-      ],
-    };
-  }
-
+  // Common select
   const selectPublic = {
     id: true,
     profile_image_url: true,
@@ -218,6 +152,84 @@ export async function GET(req) {
     },
   };
   const selectAdmin = { ...selectPublic, email: true, whatsapp: true };
+
+  // Short-circuit: if id is provided, avoid full COUNT + list query
+  if (idFilter) {
+    const row = await prisma.consultants.findUnique({
+      where: { id: idFilter },
+      select: isPublic ? selectPublic : selectAdmin,
+    });
+
+    const data = row
+      ? [
+          {
+            id: row.id,
+            email: isPublic ? null : row.email ?? null,
+            whatsapp: isPublic ? null : row.whatsapp ?? null,
+            profile_image_url: row.profile_image_url,
+            profile_image_public_url: getPublicUrl(row.profile_image_url),
+            program_consultant_image_url: row.program_consultant_image_url,
+            program_consultant_image_public_url: getPublicUrl(
+              row.program_consultant_image_url
+            ),
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+            // translations already filtered by locale/fallback above
+            name:
+              pickTrans(row.consultants_translate, locale, fallback)?.name ??
+              null,
+            description:
+              pickTrans(row.consultants_translate, locale, fallback)
+                ?.description ?? null,
+            locale_used:
+              pickTrans(row.consultants_translate, locale, fallback)?.locale ??
+              null,
+            program_images: (row.program_images || []).map((pi) => ({
+              id: pi.id,
+              image_url: pi.image_url,
+              image_public_url: getPublicUrl(pi.image_url),
+              sort: pi.sort ?? 0,
+            })),
+          },
+        ]
+      : [];
+
+    const resp = json({
+      data,
+      meta: {
+        page: 1,
+        perPage: 1,
+        total: data.length,
+        totalPages: 1,
+        locale,
+        fallback,
+        public: isPublic,
+      },
+    });
+    if (isPublic)
+      resp.headers.set("Cache-Control", "public, max-age=60, s-maxage=300");
+    return resp;
+  }
+
+  // Build WHERE for normal listing
+  let where = {};
+  if (q.length > 0) {
+    where = {
+      OR: [
+        {
+          consultants_translate: {
+            some: {
+              locale: { in: [locale, fallback] },
+              OR: [{ name: { contains: q } }, { description: { contains: q } }],
+            },
+          },
+        },
+        ...(isPublic
+          ? []
+          : [{ email: { contains: q } }, { whatsapp: { contains: q } }]),
+      ],
+    };
+  }
 
   const [total, rows] = await Promise.all([
     prisma.consultants.count({ where }),
@@ -268,22 +280,12 @@ export async function GET(req) {
       public: isPublic,
     },
   });
-
-  if (isPublic) {
+  if (isPublic)
     resp.headers.set("Cache-Control", "public, max-age=60, s-maxage=300");
-  }
   return resp;
 }
 
-/* ===== POST /api/consultants (CREATE + optional uploads) =====
-Accepts JSON or multipart/form-data
-Fields:
-- email?, whatsapp?, profile_image_url?, program_consultant_image_url?
-- name_id (required), description_id?
-- name_en?, description_en?, autoTranslate?=true
-- program_images?: string[]  (array of paths/URLs)  [JSON]
-- files?: File[]            (repeatable in form-data) [FORM]
-*/
+/* ===== POST /api/consultants (CREATE + optional uploads) ===== */
 export async function POST(req) {
   try {
     await requireAdmin();
@@ -313,7 +315,6 @@ export async function POST(req) {
         String(form.get("autoTranslate") ?? "true").toLowerCase() !== "false",
     };
 
-    // strings array (images[] or program_images[])
     const strImages = [
       ...form.getAll("images"),
       ...form.getAll("images[]"),
@@ -325,7 +326,6 @@ export async function POST(req) {
 
     if (strImages.length) body.program_images = strImages;
 
-    // files array (files or files[])
     uploadFiles = [...form.getAll("files"), ...form.getAll("files[]")].filter(
       (f) => f && typeof f !== "string"
     );
@@ -372,7 +372,6 @@ export async function POST(req) {
 
   try {
     const created = await prisma.$transaction(async (tx) => {
-      // parent
       const parent = await tx.consultants.create({
         data: {
           email,
@@ -391,7 +390,6 @@ export async function POST(req) {
         },
       });
 
-      // translate id
       await tx.consultants_translate.create({
         data: {
           id: randomUUID(),
@@ -402,7 +400,6 @@ export async function POST(req) {
         },
       });
 
-      // auto translate to en (optional)
       if (autoTranslate) {
         try {
           if (!name_en && name_id)
@@ -430,7 +427,7 @@ export async function POST(req) {
         });
       }
 
-      // Upload files (if any) AFTER we have consultant id
+      // Upload files AFTER we have consultant id
       let uploadedPaths = [];
       if (uploadFiles.length) {
         for (const f of uploadFiles) {

@@ -1,11 +1,20 @@
+// FormMitraContent.jsx
 "use client";
 
-import { useEffect } from "react";
-import { Button, Card, Input, Typography, notification } from "antd";
+import { useEffect, useState } from "react";
+import {
+  Button,
+  Card,
+  Input,
+  Typography,
+  notification,
+  Select,
+  Divider,
+} from "antd";
 
 const { Title, Text } = Typography;
 
-/* ==== UI copy ==== */
+/* ==== UI copy (tanpa URL Logo) ==== */
 const UI = {
   id: {
     title: "FORM MITRA DALAM NEGERI",
@@ -33,8 +42,9 @@ const UI = {
       twitter: "Twitter/X",
       mou_url: "URL MoU",
       about: "Deskripsi Singkat",
-      image: "Logo/Gambar",
+      image: "Logo/Gambar (wajib)",
       attachments: "Lampiran (multi-file, opsional)",
+      category: "Kategori Mitra",
       submit: "KIRIM",
     },
     placeholders: {
@@ -53,16 +63,15 @@ const UI = {
       twitter: "@akun_twitter",
       mou_url: "URL MoU bila ada",
       about: "Ceritakan singkat tentang mitra",
+      category: "Pilih kategori…",
     },
     help: {
       img: "JPEG/PNG/WebP/SVG, maks 10MB.",
       att: "PDF/DOC/XLS/PPT/IMG/TXT, maks 20MB per file. Bisa pilih berkali-kali.",
     },
     reqMark: "*",
-    notif: {
-      successTitle: "Berhasil",
-      errorTitle: "Gagal",
-    },
+    notif: { successTitle: "Berhasil", errorTitle: "Gagal" },
+    list: { loading: "Memuat kategori…", empty: "Tidak ada kategori" },
   },
   en: {
     title: "LOCAL PARTNER FORM",
@@ -90,8 +99,9 @@ const UI = {
       twitter: "Twitter/X",
       mou_url: "MoU URL",
       about: "Short Description",
-      image: "Logo/Image",
+      image: "Logo/Image (required)",
       attachments: "Attachments (multi-file, optional)",
+      category: "Partner Category",
       submit: "SUBMIT",
     },
     placeholders: {
@@ -110,20 +120,19 @@ const UI = {
       twitter: "@twitter_handle",
       mou_url: "MoU URL if available",
       about: "Tell us briefly about the partner",
+      category: "Select a category…",
     },
     help: {
       img: "JPEG/PNG/WebP/SVG, max 10MB.",
-      att: "PDF/DOC/XLS/PPT/IMG/TXT, max 20MB per file. You can select multiple times.",
+      att: "PDF/DOC/XLS/PPT/IMG/TXT, max 20MB each. You can select multiple times.",
     },
     reqMark: "*",
-    notif: {
-      successTitle: "Success",
-      errorTitle: "Failed",
-    },
+    notif: { successTitle: "Success", errorTitle: "Failed" },
+    list: { loading: "Loading categories…", empty: "No categories" },
   },
 };
 
-/* ==== Styles ==== */
+/* ==== Styles (unchanged) ==== */
 const styles = {
   wrap: { width: "100vw", marginLeft: "calc(50% - 50vw)" },
   hero: {
@@ -159,7 +168,6 @@ const styles = {
   },
   cardBody: { padding: 24 },
   hGroup: { marginBottom: 8, fontWeight: 900, color: "#0b3e91" },
-
   label: {
     display: "block",
     fontSize: 12,
@@ -185,7 +193,6 @@ const styles = {
   file: { display: "block", width: "100%" },
   fileList: { marginTop: 8, fontSize: 12, color: "#335" },
   err: { color: "#ff4d4f", fontSize: 12, marginTop: 6 },
-
   btnWrap: { marginTop: 16, textAlign: "center" },
   btn: {
     minWidth: 240,
@@ -207,19 +214,21 @@ export default function FormMitraContent({
   onChange,
   onPickImage,
   onPickAttachments,
+  removeAttachment,
   submit,
   canSubmit,
   loading,
-  msg, // { type: 'success'|'error', text: string }
+  msg,
 }) {
   const lang = locale === "en" ? "en" : "id";
   const U = UI[lang];
   const status = (k) => (errors?.[k] ? "error" : undefined);
 
-  // antd notification (topRight)
   const [api, contextHolder] = notification.useNotification();
 
-  // Tampilkan notification jika msg berubah
+  const [catLoading, setCatLoading] = useState(true);
+  const [categories, setCategories] = useState([]);
+
   useEffect(() => {
     if (!msg?.text) return;
     const isSuccess = msg.type === "success";
@@ -231,6 +240,33 @@ export default function FormMitraContent({
     });
   }, [msg, api, U.notif]);
 
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        setCatLoading(true);
+        const res = await fetch(
+          `/api/mitra-dalam-negeri-categories?locale=${encodeURIComponent(
+            lang
+          )}&fallback=${lang === "id" ? "en" : "id"}&perPage=100&sort=sort:asc`
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!alive) return;
+        const list = Array.isArray(data?.data) ? data.data : [];
+        setCategories(
+          list.map((c) => ({ value: c.id, label: c.name || c.slug }))
+        );
+      } catch {
+        setCategories([]);
+      } finally {
+        if (alive) setCatLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [lang]);
+
   const LabelReq = ({ children }) => (
     <Text style={styles.label}>
       {children} <span style={styles.req}>{U.reqMark}</span>
@@ -239,10 +275,8 @@ export default function FormMitraContent({
 
   return (
     <div style={styles.wrap}>
-      {/* notification holder */}
       {contextHolder}
 
-      {/* Header / Title */}
       <div style={styles.hero}>
         <div style={styles.heroInner}>
           <Title level={2} style={styles.heroTitle}>
@@ -252,10 +286,9 @@ export default function FormMitraContent({
         </div>
       </div>
 
-      {/* Card */}
       <div style={styles.container}>
         <Card style={styles.card} bodyStyle={styles.cardBody}>
-          {/* ========== Organization ========== */}
+          {/* Organization */}
           <h4 style={styles.hGroup}>{U.sections.org}</h4>
 
           <div style={styles.item}>
@@ -309,7 +342,30 @@ export default function FormMitraContent({
             </div>
           </div>
 
-          {/* ========== Address ========== */}
+          {/* Category (required) */}
+          <div style={styles.item}>
+            <LabelReq>{U.labels.category}</LabelReq>
+            <Select
+              style={{ width: "100%" }}
+              placeholder={U.placeholders.category}
+              value={values.category_id || undefined}
+              onChange={(v) => onChange("category_id", v)}
+              loading={catLoading}
+              options={categories}
+              allowClear={false}
+              status={errors?.category_id ? "error" : undefined}
+              notFoundContent={catLoading ? U.list.loading : U.list.empty}
+            />
+            {errors?.category_id ? (
+              <div style={styles.err}>
+                {lang === "en"
+                  ? "Category is required."
+                  : "Kategori wajib dipilih."}
+              </div>
+            ) : null}
+          </div>
+
+          {/* Address */}
           <h4 style={{ ...styles.hGroup, marginTop: 8 }}>{U.sections.addr}</h4>
 
           <div style={styles.item}>
@@ -377,7 +433,7 @@ export default function FormMitraContent({
             />
           </div>
 
-          {/* ========== Contact Person ========== */}
+          {/* Contact Person */}
           <h4 style={{ ...styles.hGroup, marginTop: 8 }}>{U.sections.cp}</h4>
 
           <div style={styles.grid2}>
@@ -428,11 +484,15 @@ export default function FormMitraContent({
               aria-invalid={!!errors?.contact_whatsapp}
               allowClear
             />
+            {errors?.contact_whatsapp ? (
+              <div style={styles.err}>
+                {lang === "en" ? "Invalid phone." : "Nomor tidak valid."}
+              </div>
+            ) : null}
           </div>
 
-          {/* ========== Website & Socials (OPTIONAL) ========== */}
+          {/* Website & Socials (Optional) */}
           <h4 style={{ ...styles.hGroup, marginTop: 8 }}>{U.sections.web}</h4>
-
           <div style={styles.item}>
             <Text style={styles.label}>{U.labels.website}</Text>
             <Input
@@ -444,7 +504,6 @@ export default function FormMitraContent({
               allowClear
             />
           </div>
-
           <div style={styles.grid2}>
             <div style={styles.item}>
               <Text style={styles.label}>{U.labels.instagram}</Text>
@@ -469,7 +528,6 @@ export default function FormMitraContent({
               />
             </div>
           </div>
-
           <div style={styles.item}>
             <Text style={styles.label}>{U.labels.mou_url}</Text>
             <Input
@@ -482,7 +540,7 @@ export default function FormMitraContent({
             />
           </div>
 
-          {/* ========== About (REQUIRED) ========== */}
+          {/* About (Required) */}
           <h4 style={{ ...styles.hGroup, marginTop: 8 }}>{U.sections.about}</h4>
           <div style={styles.item}>
             <LabelReq>{U.labels.about}</LabelReq>
@@ -501,12 +559,12 @@ export default function FormMitraContent({
             />
           </div>
 
-          {/* ========== Upload ========== */}
+          {/* Upload */}
           <h4 style={{ ...styles.hGroup, marginTop: 8 }}>
             {U.sections.upload}
           </h4>
 
-          {/* Logo/Gambar — REQUIRED */}
+          {/* Logo (Required) */}
           <div style={styles.item}>
             <LabelReq>{U.labels.image}</LabelReq>
             <input
@@ -529,7 +587,9 @@ export default function FormMitraContent({
             ) : null}
           </div>
 
-          {/* Attachments — OPTIONAL multi */}
+          <Divider style={{ margin: "8px 0 16px" }} />
+
+          {/* Attachments — optional */}
           <div style={styles.item}>
             <Text style={styles.label}>{U.labels.attachments}</Text>
             <input
@@ -548,7 +608,19 @@ export default function FormMitraContent({
             {values.attachments?.length ? (
               <div style={styles.fileList}>
                 {values.attachments.map((f, i) => (
-                  <div key={`${f.name}-${f.size}-${i}`}>• {f.name}</div>
+                  <div
+                    key={`${f.name}-${f.size}-${i}`}
+                    style={{ display: "flex", alignItems: "center", gap: 8 }}
+                  >
+                    <span>• {f.name}</span>
+                    <Button
+                      size="small"
+                      type="text"
+                      onClick={() => removeAttachment(i)}
+                    >
+                      ✕
+                    </Button>
+                  </div>
                 ))}
               </div>
             ) : null}

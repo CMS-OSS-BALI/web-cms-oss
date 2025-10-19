@@ -3,13 +3,12 @@
 import useSWR from "swr";
 import { useMemo } from "react";
 
-/* ============== tiny utils ============== */
 const fetcher = (url) =>
   fetch(url, { cache: "no-store" }).then(async (r) => {
-    if (!r.ok) {
-      const t = await r.text().catch(() => "");
-      throw new Error(t || `Request failed: ${r.status}`);
-    }
+    if (!r.ok)
+      throw new Error(
+        (await r.text().catch(() => "")) || `Request failed: ${r.status}`
+      );
     return r.json();
   });
 
@@ -18,14 +17,28 @@ const PLACEHOLDER =
 
 const t = (locale, id, en) => (locale === "en" ? en : id);
 
-/* ============== helper: benefits by name ============== */
+const CATEGORY_SLUG = "english-course";
+
+const normalizeLocale = (value) => {
+  const raw = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (raw.startsWith("en")) return "en";
+  return "id";
+};
+
+const normalizeServiceType = (value) => {
+  const upper = String(value || "")
+    .trim()
+    .toUpperCase();
+  return upper === "B2B" || upper === "B2C" ? upper : undefined;
+};
+
 function getBenefitsByName(name, locale) {
   const n = String(name || "")
     .toLowerCase()
     .trim();
-
   const F = (idArr, enArr) => (locale === "en" ? enArr : idArr);
-
   const fallback = F(
     [
       "20x Pertemuan",
@@ -40,8 +53,7 @@ function getBenefitsByName(name, locale) {
       "Structured materials",
     ]
   );
-
-  if (n.includes("intensive")) {
+  if (n.includes("intensive"))
     return F(
       [
         "20x Pertemuan",
@@ -56,7 +68,7 @@ function getBenefitsByName(name, locale) {
         "Qualified & certified tutor",
       ]
     );
-  } else if (n.includes("group")) {
+  if (n.includes("group"))
     return F(
       [
         "20x Pertemuan",
@@ -71,7 +83,7 @@ function getBenefitsByName(name, locale) {
         "Covers school exam grids",
       ]
     );
-  } else if (n.includes("ielts")) {
+  if (n.includes("ielts"))
     return F(
       [
         "30x Pertemuan",
@@ -86,7 +98,7 @@ function getBenefitsByName(name, locale) {
         "Measured target (IELTS)",
       ]
     );
-  } else if (n.includes("profesional") || n.includes("professional")) {
+  if (n.includes("profesional") || n.includes("professional"))
     return F(
       [
         "20x Pertemuan",
@@ -101,85 +113,96 @@ function getBenefitsByName(name, locale) {
         "Industry-experienced instructors",
       ]
     );
-  }
   return fallback;
 }
 
-/* ============== ViewModel ============== */
-export default function useEnglishCViewModel({ locale = "id" } = {}) {
+/** Selalu ambil kategori 'english-course' saja. */
+export default function useEnglishCViewModel({
+  locale = "id",
+  serviceType = "B2C",
+} = {}) {
   const LEAD_URL = "/user/leads";
+  const safeLocale = normalizeLocale(locale);
+  const safeServiceType = normalizeServiceType(serviceType);
+  const fallbackLocale = safeLocale === "en" ? "id" : "en";
 
   const hero = useMemo(
     () => ({
-      title: t(locale, "KURSUS BAHASA INGGRIS", "ENGLISH COURSE"),
+      title: t(safeLocale, "KURSUS BAHASA INGGRIS", "ENGLISH COURSE"),
       subtitle: t(
-        locale,
+        safeLocale,
         "Raih skor TOEFL/IELTS terbaikmu dengan pendampingan intensif dan materi terstruktur.",
         "Achieve your best TOEFL/IELTS score with intensive guidance and structured materials."
       ),
       bullets: [
         {
           id: "free-consult",
-          label: t(locale, "Konsultasi Gratis", "Free Consultation"),
+          label: t(safeLocale, "Konsultasi Gratis", "Free Consultation"),
         },
         {
           id: "flex",
-          label: t(locale, "Jadwal Fleksibel", "Flexible Schedule"),
+          label: t(safeLocale, "Jadwal Fleksibel", "Flexible Schedule"),
         },
       ],
       whatsapp: {
-        label: t(locale, "Chat Konsultan", "Chat Consultant"),
+        label: t(safeLocale, "Chat Konsultan", "Chat Consultant"),
         href: LEAD_URL,
       },
       illustration: "/buku.svg",
     }),
-    [locale]
+    [safeLocale]
   );
 
+  // TEKS SAMA DENGAN DESAIN
   const description = t(
-    locale,
-    "English Course OSS Bali membantu kamu meningkatkan kemampuan bahasa Inggris untuk studi dan kerja—mulai dari dasar, komunikasi harian, hingga persiapan TOEFL/IELTS. Belajar dengan materi terstruktur, jadwal fleksibel, dan pendampingan tutor berpengalaman agar progresmu terasa setiap pertemuan.",
-    "OSS Bali’s English Course helps you improve English for study and work—from basics and daily communication to TOEFL/IELTS prep. Learn with structured materials, flexible schedules, and experienced tutors so you make progress every session."
+    safeLocale,
+    "Layanan kursus Bahasa Inggris di OSS Bali dirancang untuk membantu peserta meningkatkan kemampuan berbahasa Inggris, baik untuk keperluan akademik, profesional, maupun komunikasi sehari-hari. Program ini mencakup berbagai tingkat kemampuan, dari pemula hingga lanjutan, dengan metode pengajaran yang interaktif dan berbasis kebutuhan peserta. Program kursus bahasa inggris kami merupakan program paling lengkap yang ada di Bali mulai dari IELTS, TOEFL, TOEIC, PTE, Duolingo, Basic, CAE, IPT, dan lainnya.",
+    "OSS Bali's English course is designed to help learners improve their English for academic, professional, and everyday communication. It covers all levels—from beginner to advanced—with interactive, needs-based teaching. Our program is among the most complete in Bali, including IELTS, TOEFL, TOEIC, PTE, Duolingo, Basic, CAE, IPT, and more."
   );
 
-  const params = new URLSearchParams({
-    program_category: "LANGUAGE_COURSE",
-    published: "true",
-    perPage: "100",
-    sort: "price:asc",
-    locale, // ← localized content
-    fallback: "id",
-    public: "1",
+  const servicesKey = useMemo(() => {
+    const p = new URLSearchParams({
+      published: "true",
+      perPage: "100",
+      sort: "price:asc",
+      locale: safeLocale,
+      fallback: fallbackLocale,
+      category_slug: CATEGORY_SLUG,
+    });
+    if (safeServiceType) p.set("service_type", safeServiceType);
+    return `/api/services?${p.toString()}`;
+  }, [safeLocale, safeServiceType, fallbackLocale]);
+
+  const { data, error, isLoading, mutate } = useSWR(servicesKey, fetcher, {
+    revalidateOnFocus: false,
+    shouldRetryOnError: false,
+    dedupingInterval: 2000,
+    keepPreviousData: true,
   });
 
-  const { data, error, isLoading, mutate } = useSWR(
-    `/api/programs?${params.toString()}`,
-    fetcher,
-    { revalidateOnFocus: false }
-  );
-
-  // Map API → UI packages
   const packages = useMemo(() => {
-    const rows = data?.data || [];
-    return rows.map((p) => {
+    const rows = Array.isArray(data?.data) ? data.data : [];
+    const filtered = rows.filter(
+      (item) => item?.category?.slug === CATEGORY_SLUG
+    );
+    return filtered.map((p) => {
       const ver = p.updated_at ? `?v=${new Date(p.updated_at).getTime()}` : "";
-      const imgSrc = (p.image_public_url || p.image_url || PLACEHOLDER) + ver;
-
+      const imgSrc = (p.image_url || PLACEHOLDER) + ver;
       return {
         id: p.id,
         price: Number(p.price ?? 0),
-        title: p.name || t(locale, "(Tanpa judul)", "(No title)"),
+        title: p.name || t(safeLocale, "(Tanpa judul)", "(No title)"),
         image: imgSrc,
         desc: p.description || "",
-        benefits: getBenefitsByName(p.name, locale),
+        benefits: getBenefitsByName(p.name, safeLocale),
         icon: "/tutoring.svg",
         cta: {
-          label: t(locale, "Daftar Sekarang", "Enroll Now"),
+          label: t(safeLocale, "Daftar Sekarang", "Enroll Now"),
           href: LEAD_URL,
         },
       };
     });
-  }, [data, locale]);
+  }, [data, safeLocale]);
 
   return {
     hero,

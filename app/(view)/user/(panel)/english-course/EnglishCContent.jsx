@@ -2,14 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Row, Col, Card, Typography, Button, Skeleton, Alert } from "antd";
-import { Check, MessageCircle } from "lucide-react";
-import { sanitizeHtml } from "@/app/utils/dompurify";
+import { Check, MessageCircle, Calendar } from "lucide-react";
 
 const { Title } = Typography;
 
 const FONT_FAMILY = '"Poppins", sans-serif';
 
-/* ----------------- Base Styles (do not mutate) ----------------- */
+/* ----------------- Base Styles ----------------- */
 const styles = {
   sectionInner: {
     width: "min(1360px, 96%)",
@@ -22,20 +21,19 @@ const styles = {
   hero: {
     wrapper: {
       background: "#0b56c9",
-      backgroundImage:
-        "linear-gradient(180deg,#0b56c9 0%, #0a50bb 55%, #0a469f 100%)",
-      borderRadius: 56,
-      minHeight: 420,
-      padding: "44px 56px",
-      marginTop: "-36px",
+      borderRadius: 28,
+      borderTopRightRadius: 120,
+      borderBottomLeftRadius: 120,
+      minHeight: 380,
+      padding: "38px 48px",
+      marginTop: "-8px",
       display: "grid",
-      gridTemplateColumns: "1fr 1fr",
+      gridTemplateColumns: "1.1fr .9fr",
       gap: 28,
       alignItems: "center",
       color: "#fff",
-      fontFamily: FONT_FAMILY,
       boxShadow: "0 24px 54px rgba(3, 30, 88, 0.28)",
-      width: "calc(100% - 100px)",
+      fontFamily: FONT_FAMILY,
     },
     left: {
       minWidth: 0,
@@ -43,7 +41,6 @@ const styles = {
       display: "flex",
       flexDirection: "column",
       alignItems: "flex-start",
-      fontFamily: FONT_FAMILY,
     },
     right: { display: "flex", justifyContent: "center" },
     heading: {
@@ -62,7 +59,7 @@ const styles = {
       textAlign: "left",
       maxWidth: 640,
     },
-    chips: { display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 },
+    chips: { display: "flex", gap: 12, flexWrap: "wrap", marginTop: 6 },
     chip: {
       appearance: "none",
       border: "1px solid rgba(255,255,255,.55)",
@@ -70,14 +67,14 @@ const styles = {
       color: "#0a4ea7",
       borderRadius: 999,
       padding: "10px 16px",
-      fontWeight: 600,
-      boxShadow: "0 6px 14px rgba(7, 49, 140, .18)",
+      fontWeight: 700,
+      boxShadow: "0 6px 14px rgba(7,49,140,.18)",
       display: "inline-flex",
       alignItems: "center",
       gap: 8,
       cursor: "default",
     },
-    chipIcon: {
+    chipIconWrap: {
       display: "inline-flex",
       width: 18,
       height: 18,
@@ -86,36 +83,31 @@ const styles = {
       background: "#e8f1ff",
       borderRadius: 999,
       color: "#0a4ea7",
+      flex: "0 0 18px",
     },
     illustration: { width: "min(500px, 92%)", height: 320 },
   },
 
   /* ---------- DESCRIPTION ---------- */
   desc: {
-    wrap: { marginTop: 75 },
+    wrap: { marginTop: 64 },
     title: {
-      margin: "0 0 14px",
+      margin: "0 0 12px",
       fontFamily: FONT_FAMILY,
       fontWeight: 800,
-      fontSize: 40,
+      fontSize: 44,
       lineHeight: 1.1,
       color: "#0f172a",
       letterSpacing: "0.01em",
     },
-    box: {
-      background: "#fff",
-      border: "2px solid #e5e7eb",
-      borderRadius: 14,
-      padding: "22px 24px",
-      boxShadow: "0 6px 20px rgba(15,23,42,0.04)",
-    },
     text: {
       fontFamily: FONT_FAMILY,
       fontSize: 18,
-      lineHeight: "32px",
-      letterSpacing: "0.06em",
+      lineHeight: 1.9,
+      letterSpacing: "0.04em",
       color: "#0f172a",
       margin: 0,
+      textAlign: "justify", // ← rata kanan-kiri
     },
   },
 
@@ -182,7 +174,6 @@ const styles = {
       marginLeft: 10,
       lineHeight: 1.6,
       letterSpacing: ".01em",
-      // full, no clamp
     },
     benefitTitle: {
       marginTop: 14,
@@ -232,13 +223,18 @@ function Img({ src, alt, style }) {
   );
 }
 
-// Hapus seluruh tag HTML → teks polos (dipakai untuk package desc)
 function stripHtml(html) {
   if (!html) return "";
   return String(html)
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function ChipIcon({ type }) {
+  if (type === "free-consult") return <MessageCircle size={14} />;
+  if (type === "flex" || type === "schedule") return <Calendar size={14} />;
+  return <Check size={14} />;
 }
 
 /* ----------------- Component ----------------- */
@@ -250,25 +246,14 @@ export default function EnglishCContent({
   error,
 }) {
   const {
-    title = "ENGLISH COURSE",
+    title = "KURSUS BAHASA INGGRIS",
     subtitle = "",
     bullets = [],
-    whatsapp,
     illustration,
   } = hero || {};
-
   const heroBullets = Array.isArray(bullets) ? bullets : [];
-  const whatsappHref = whatsapp?.href;
-  const whatsappLabel = whatsapp?.label || "Chat Konsultan";
 
-  // sanitize allowed tags only
-  const safeDescription = sanitizeHtml(description || "", {
-    allowedTags: ["b", "strong", "i", "em", "u", "a", "br", "ul", "ol", "li"],
-  });
-
-  /* --------- Responsive state (no mutation) --------- */
   const [isNarrow, setIsNarrow] = useState(false);
-
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 960px)");
     const update = () => setIsNarrow(mq.matches);
@@ -283,7 +268,6 @@ export default function EnglishCContent({
     };
   }, []);
 
-  /* --------- Derived styles (immutable merges) --------- */
   const sectionInnerStyle = useMemo(
     () => ({
       ...styles.sectionInner,
@@ -291,34 +275,25 @@ export default function EnglishCContent({
     }),
     [isNarrow]
   );
-
   const sectionStyle = useMemo(
-    () => ({
-      ...styles.section,
-      padding: isNarrow ? "0 0 12px" : "0 0 16px",
-    }),
+    () => ({ ...styles.section, padding: isNarrow ? "0 0 12px" : "0 0 16px" }),
     [isNarrow]
   );
 
   const heroWrapperStyle = useMemo(
     () => ({
       ...styles.hero.wrapper,
-      gridTemplateColumns: isNarrow ? "1fr" : "1fr 1fr",
-      padding: isNarrow ? "28px 24px" : "44px 56px",
-      minHeight: isNarrow ? 380 : 420,
-      marginTop: isNarrow ? "-12px" : "-36px",
+      gridTemplateColumns: isNarrow ? "1fr" : "1.1fr .9fr",
+      padding: isNarrow ? "28px 24px" : "38px 48px",
+      minHeight: isNarrow ? 340 : 380,
+      marginTop: isNarrow ? "-6px" : "-8px",
     }),
     [isNarrow]
   );
-
   const heroHeadingStyle = useMemo(
-    () => ({
-      ...styles.hero.heading,
-      fontSize: isNarrow ? 38 : 54,
-    }),
+    () => ({ ...styles.hero.heading, fontSize: isNarrow ? 38 : 54 }),
     [isNarrow]
   );
-
   const heroIllustrationStyle = useMemo(
     () => ({
       ...styles.hero.illustration,
@@ -329,27 +304,14 @@ export default function EnglishCContent({
   );
 
   const descTitleStyle = useMemo(
-    () => ({
-      ...styles.desc.title,
-      fontSize: isNarrow ? 28 : 40,
-    }),
+    () => ({ ...styles.desc.title, fontSize: isNarrow ? 30 : 44 }),
     [isNarrow]
   );
-
-  const descBoxStyle = useMemo(
-    () => ({
-      ...styles.desc.box,
-      padding: isNarrow ? "16px 18px" : "22px 24px",
-    }),
-    [isNarrow]
-  );
-
   const descTextStyle = useMemo(
     () => ({
       ...styles.desc.text,
       fontSize: isNarrow ? 16 : 18,
-      lineHeight: isNarrow ? "28px" : "32px",
-      letterSpacing: isNarrow ? "0.04em" : "0.06em",
+      lineHeight: isNarrow ? 1.8 : 1.9,
     }),
     [isNarrow]
   );
@@ -365,22 +327,20 @@ export default function EnglishCContent({
           <div style={heroWrapperStyle}>
             <div style={styles.hero.left}>
               <h1 style={heroHeadingStyle}>{title}</h1>
-
               {subtitle ? <p style={styles.hero.tagline}>{subtitle}</p> : null}
-
               {heroBullets.length ? (
                 <div style={styles.hero.chips}>
                   {heroBullets.map((b) => (
-                    <button
-                      type="button"
-                      style={styles.hero.chip}
+                    <span
                       key={b.id || b.label}
+                      style={styles.hero.chip}
+                      role="text"
                     >
-                      <span style={styles.hero.chipIcon} aria-hidden>
-                        ✓
+                      <span aria-hidden style={styles.hero.chipIconWrap}>
+                        <ChipIcon type={b.id} />
                       </span>
                       {b.label}
-                    </button>
+                    </span>
                   ))}
                 </div>
               ) : null}
@@ -405,17 +365,12 @@ export default function EnglishCContent({
         </div>
       </section>
 
-      {/* ===== DESCRIPTION ===== */}
+      {/* ===== DESCRIPTION (justify) ===== */}
       <section style={sectionStyle}>
         <div style={sectionInnerStyle}>
           <div style={styles.desc.wrap}>
             <h2 style={descTitleStyle}>Deskripsi Program</h2>
-            <div style={descBoxStyle}>
-              <div
-                style={descTextStyle}
-                dangerouslySetInnerHTML={{ __html: safeDescription }}
-              />
-            </div>
+            <p style={descTextStyle}>{description}</p>
           </div>
         </div>
       </section>

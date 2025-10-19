@@ -13,17 +13,14 @@ const SUPA_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").replace(
   ""
 );
 const SUPA_BUCKET =
-  process.env.NEXT_PUBLIC_SUPABASE_BUCKET ||
-  process.env.SUPABASE_BUCKET || // fallback kalau kebetulan diekspos
-  "";
+  process.env.NEXT_PUBLIC_SUPABASE_BUCKET || process.env.SUPABASE_BUCKET || "";
 
-/** Bentuk public URL dari path Supabase (kalau belum https). */
+/** Pastikan path Supabase jadi public URL ketika bukan http(s). */
 function ensurePublicUrl(src) {
   const v = String(src || "").trim();
   if (!v) return "";
   if (/^https?:\/\//i.test(v)) return v;
 
-  // kalau ada SUPA_URL, kita paksa jadi public URL
   if (SUPA_URL) {
     const clean = v.replace(/^\/+/, "");
     const withBucket =
@@ -32,8 +29,6 @@ function ensurePublicUrl(src) {
         : clean;
     return `${SUPA_URL}/storage/v1/object/public/${withBucket}`;
   }
-
-  // fallback terakhir (lebih baik daripada 404 ke /consultants/...)
   return v.startsWith("/") ? v : `/${v}`;
 }
 
@@ -51,6 +46,7 @@ const DUMMY = {
   whatsapp: "620909090909",
 };
 
+/** Key untuk SWR → tembak ke DETAIL: /api/consultants/:id */
 function consultantDetailKey({ id, locale, fallback, isPublic }) {
   if (!id) return null;
   const p = new URLSearchParams();
@@ -66,8 +62,8 @@ function toHtml(str = "") {
   return /<\/?[a-z][\s\S]*>/i.test(s) ? s : s.replace(/\n/g, "<br/>");
 }
 
+/** Pilih gambar profil prioritas public_url jika ada. */
 function pickConsultantImage(row = {}) {
-  // prioritas: public url, lalu path → dipaksa jadi public
   const candidate =
     row.profile_image_public_url ||
     row.profile_image_url ||
@@ -102,6 +98,7 @@ function fmtPriceLabel(v, locale) {
   }).format(n);
 }
 
+/** Map API program_images → array untuk slider. */
 function mapImagesToPrograms(imgs = [], locale = DEFAULT_LOCALE) {
   return imgs.map((it, idx) => {
     const rawThumb =
@@ -134,7 +131,7 @@ export default function useConsultantDetailViewModel({
   const key = useMemo(
     () =>
       consultantDetailKey({
-        id,
+        id, // bisa numeric id atau slug/name (API detail support untuk public=1)
         locale,
         fallback: fallbackFor(locale),
         isPublic: true,
@@ -147,16 +144,17 @@ export default function useConsultantDetailViewModel({
     shouldRetryOnError: false,
   });
 
-  const api = data?.data || data || {};
+  // API detail: { data: { id, name, description, profile_image_* , program_images: [...] , ... } }
+  const api = data?.data || {};
 
-  // API detail already FLATTENS { name, description } by locale/fallback
   const name = (api.name || DUMMY.name || "").trim();
   const descriptionRaw = (api.description || "").trim();
-  const role = api.role || "Consultant Education";
+  const role = api.role || "Consultant Education"; // role belum keluar dari API → fallback
 
-  // ---- gambar program
-  const programImages =
-    api.program_images || api.consultant_program_images || [];
+  // dari API detail: program_images: [{ id, image_url, image_public_url, sort }]
+  const programImages = Array.isArray(api.program_images)
+    ? api.program_images
+    : [];
 
   const mappedPrograms = mapImagesToPrograms(programImages, locale);
 
@@ -169,15 +167,13 @@ export default function useConsultantDetailViewModel({
     circleColor: DUMMY.circleColor,
   };
 
-  // pakai 2 gambar pertama buat kartu About jika tidak ada field khusus
+  // pakai 2 gambar pertama sebagai kiri/kanan ABOUT bila tidak ada field khusus
   const leftImgSrc =
-    api.gallery?.left ||
     programImages?.[0]?.image_public_url ||
     programImages?.[0]?.image_url ||
     DUMMY.galleryLeft;
 
   const rightImgSrc =
-    api.gallery?.right ||
     programImages?.[1]?.image_public_url ||
     programImages?.[1]?.image_url ||
     DUMMY.galleryRight;
@@ -189,6 +185,7 @@ export default function useConsultantDetailViewModel({
     rightImg: ensurePublicUrl(rightImgSrc),
   };
 
+  // public detail menyembunyikan whatsapp → pakai dummy (tidak dipakai CTA juga)
   const whatsapp = api.whatsapp || DUMMY.whatsapp;
   const wa = {
     link: `https://wa.me/${String(whatsapp || "")
@@ -204,7 +201,7 @@ export default function useConsultantDetailViewModel({
     error: !!error,
     hero,
     about,
-    programs: mappedPrograms, // slider source
+    programs: mappedPrograms,
     wa,
   };
 }

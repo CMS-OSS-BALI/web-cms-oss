@@ -60,7 +60,20 @@ function parseBool(v) {
   return s === "true" || s === "1" || s === "y" || s === "yes";
 }
 
-/* ---- Supabase helpers ---- */
+/* ---- Supabase public URL helper ---- */
+function publicUrlFromPath(path) {
+  if (!path) return null;
+  if (/^https?:\/\//i.test(path)) return path;
+  try {
+    if (!BUCKET || !supabaseAdmin?.storage) return null;
+    const { data } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path);
+    return data?.publicUrl || null;
+  } catch {
+    return null;
+  }
+}
+
+/* ---- Supabase upload helper ---- */
 async function uploadServiceImage(file) {
   if (typeof File === "undefined" || !(file instanceof File)) {
     throw new Error("NO_FILE");
@@ -160,6 +173,7 @@ export async function GET(req, { params }) {
         id: item.id,
         admin_user_id: item.admin_user_id,
         image_url: item.image_url,
+        image_public_url: publicUrlFromPath(item.image_url),
         service_type: item.service_type,
         category: item.category
           ? {
@@ -242,7 +256,6 @@ export async function PATCH(req, { params }) {
     const base = await prisma.services.findUnique({ where: { id } });
     if (!base || base.deleted_at) return notFound();
 
-    // === Parent fields update ===
     const data = {};
 
     // image
@@ -332,15 +345,12 @@ export async function PATCH(req, { params }) {
     }
 
     if (Object.keys(data).length) data.updated_at = new Date();
-
-    if (Object.keys(data).length) {
+    if (Object.keys(data).length)
       await prisma.services.update({ where: { id }, data });
-    }
 
-    // === Translations upsert ===
+    // Translations upsert
     const ops = [];
 
-    // Bahasa Indonesia
     if (body.name_id !== undefined || body.description_id !== undefined) {
       ops.push(
         prisma.services_translate.upsert({
@@ -363,7 +373,6 @@ export async function PATCH(req, { params }) {
       );
     }
 
-    // English manual
     if (body.name_en !== undefined || body.description_en !== undefined) {
       ops.push(
         prisma.services_translate.upsert({
@@ -386,7 +395,6 @@ export async function PATCH(req, { params }) {
       );
     }
 
-    // Auto-translate (ID -> EN) bila diminta
     if (String(body.autoTranslate ?? "false").toLowerCase() === "true") {
       if (body.name_id !== undefined || body.description_id !== undefined) {
         const name_en =
@@ -420,7 +428,6 @@ export async function PATCH(req, { params }) {
 
     if (ops.length) await prisma.$transaction(ops);
 
-    // === Fetch latest state & translations; mirror POST response shape ===
     const latest = await prisma.services.findUnique({
       where: { id },
       select: {
@@ -433,7 +440,6 @@ export async function PATCH(req, { params }) {
         is_published: true,
       },
     });
-
     if (!latest) return notFound();
 
     const trs = await prisma.services_translate.findMany({
@@ -445,7 +451,6 @@ export async function PATCH(req, { params }) {
       description_id = null,
       name_en = null,
       description_en = null;
-
     for (const t of trs) {
       if (t.locale === "id") {
         name_id = t.name ?? null;
@@ -460,6 +465,7 @@ export async function PATCH(req, { params }) {
       data: {
         id,
         image_url: latest.image_url ?? null,
+        image_public_url: publicUrlFromPath(latest.image_url ?? null),
         service_type: latest.service_type ?? null,
         category_id: latest.category_id ?? null,
         price: latest.price ?? null,
@@ -485,7 +491,7 @@ export async function PATCH(req, { params }) {
   }
 }
 
-/* ========= DELETE (always HARD delete) ========= */
+/* ========= DELETE ========= */
 export async function DELETE(_req, { params }) {
   try {
     await assertAdmin();
@@ -496,7 +502,6 @@ export async function DELETE(_req, { params }) {
         { status: 400 }
       );
 
-    // Ambil dulu record untuk dapat path gambar
     const existing = await prisma.services.findUnique({
       where: { id },
       select: { id: true, image_url: true },
@@ -504,13 +509,11 @@ export async function DELETE(_req, { params }) {
     if (!existing)
       return NextResponse.json({ message: "Not found" }, { status: 404 });
 
-    // Hapus translations + parent dalam 1 transaksi
     await prisma.$transaction([
       prisma.services_translate.deleteMany({ where: { id_services: id } }),
       prisma.services.delete({ where: { id } }),
     ]);
 
-    // (opsional) Hapus file di Supabase kalau path bukan http(s)
     try {
       const path = existing.image_url || "";
       if (
@@ -525,7 +528,6 @@ export async function DELETE(_req, { params }) {
       }
     } catch (err) {
       console.warn("Supabase remove image failed:", err?.message || err);
-      // tidak mempengaruhi hasil delete
     }
 
     return NextResponse.json({ data: { id, deleted: true } });

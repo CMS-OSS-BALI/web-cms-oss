@@ -1,40 +1,38 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Row, Col, Card, Typography, Skeleton } from "antd";
+import { Skeleton } from "antd";
 import useOverseasViewModel from "./useOverseasViewModel";
 import { sanitizeHtml } from "@/app/utils/dompurify";
 
-const { Title } = Typography;
 const FONT_FAMILY = '"Poppins", sans-serif';
 
-/* ----------------- Styles ----------------- */
 const styles = {
   sectionInner: {
     width: "min(1360px, 96%)",
     margin: "0 auto",
     fontFamily: FONT_FAMILY,
   },
-  section: { padding: "0 0 16px" },
 
-  /* ---------- HERO ---------- */
+  /* ---------- HERO (NEW) ---------- */
   hero: {
     wrapper: {
       background: "#0b56c9",
-      backgroundImage:
-        "linear-gradient(180deg,#0b56c9 0%, #0a50bb 55%, #0a469f 100%)",
-      borderRadius: 56,
-      minHeight: 420,
-      padding: "44px 56px",
-      marginTop: "-36px",
+      borderRadius: 28,
+      borderTopRightRadius: 80,
+      borderBottomLeftRadius: 120,
+      minHeight: 380,
+      padding: "38px 48px",
+      marginTop: "-8px",
       display: "grid",
-      gridTemplateColumns: "1fr 1fr",
-      gap: 28,
+      gridTemplateColumns: "1.1fr .9fr",
+      gap: 24,
       alignItems: "center",
       color: "#fff",
       fontFamily: FONT_FAMILY,
-      boxShadow: "0 24px 54px rgba(3, 30, 88, 0.28)",
-      width: "calc(100% - 100px)",
+      boxShadow: "0 22px 44px rgba(11,86,201,.22)",
+      width: "100%",
+      overflow: "hidden",
     },
     left: {
       minWidth: 0,
@@ -42,122 +40,104 @@ const styles = {
       display: "flex",
       flexDirection: "column",
       alignItems: "flex-start",
-      fontFamily: FONT_FAMILY,
     },
-    right: { display: "flex", justifyContent: "center" },
+    right: { display: "flex", justifyContent: "flex-end" },
+
     heading: {
       margin: 0,
-      fontSize: 54,
-      lineHeight: 1.06,
-      fontWeight: 800,
-      letterSpacing: 0.2,
+      fontSize: 52,
+      lineHeight: 1.08,
+      fontWeight: 900,
+      letterSpacing: ".015em",
+      textTransform: "uppercase",
       color: "#fff",
     },
     tagline: {
-      margin: "16px 0 18px",
+      margin: "16px 0 0",
       fontSize: 17,
-      lineHeight: 1.7,
-      color: "rgba(255,255,255,.92)",
-      textAlign: "left",
-      maxWidth: 640,
-    },
-    chips: { display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 },
-    chip: {
-      appearance: "none",
-      border: "1px solid rgba(255,255,255,.55)",
-      background: "#fff",
-      color: "#0a4ea7",
-      borderRadius: 999,
-      padding: "10px 16px",
-      fontWeight: 600,
-      boxShadow: "0 6px 14px rgba(7,49,140,.18)",
-      display: "inline-flex",
-      alignItems: "center",
-      gap: 8,
-      cursor: "default",
-    },
-    chipIcon: {
-      display: "inline-flex",
-      width: 18,
-      height: 18,
-      alignItems: "center",
-      justifyContent: "center",
-      background: "#e8f1ff",
-      borderRadius: 999,
-      color: "#0a4ea7",
-    },
-    illustration: { width: "min(500px, 92%)", height: 320 },
-  },
-
-  /* ---------- DESCRIPTION ---------- */
-  desc: {
-    wrap: { marginTop: 75 },
-    title: {
-      margin: "0 0 14px",
-      fontFamily: FONT_FAMILY,
-      fontWeight: 800,
-      fontSize: 40,
-      lineHeight: 1.1,
-      color: "#0f172a",
-      letterSpacing: "0.01em",
-    },
-    box: {
-      background: "#fff",
-      border: "2px solid #e5e7eb",
-      borderRadius: 14,
-      padding: "22px 24px",
-      boxShadow: "0 6px 20px rgba(15,23,42,0.04)",
-    },
-    text: {
-      fontFamily: FONT_FAMILY,
-      fontSize: 18,
-      lineHeight: "32px",
-      letterSpacing: "0.06em",
-      color: "#0f172a",
-      margin: 0,
-    },
-  },
-
-  /* ---------- TRACK BUTTONS ---------- */
-  tracks: {
-    wrap: {
-      marginTop: 22,
-      display: "flex",
-      justifyContent: "center",
-      gap: 28,
-      flexWrap: "wrap",
-    },
-    btn: {
-      position: "relative",
-      border: 0,
-      height: 56,
-      padding: "0 28px",
-      borderRadius: 16,
-      fontWeight: 800,
+      lineHeight: 1.85,
+      color: "rgba(255,255,255,.95)",
       letterSpacing: ".02em",
-      color: "#fff",
-      textDecoration: "none",
-      display: "inline-flex",
-      alignItems: "center",
-      justifyContent: "center",
-      background:
-        "linear-gradient(135deg, rgba(86,169,255,1) 0%, rgba(58,228,206,1) 100%)",
-      boxShadow:
-        "0 6px 16px rgba(24,72,192,.25), 0 16px 40px rgba(82,208,255,.28), 0 0 0 1px rgba(255,255,255,.2) inset",
-      transition: "transform .15s ease, box-shadow .2s ease, opacity .2s ease",
+      maxWidth: 560,
+      textAlign: "left",
     },
-    btnAlt: {
-      background:
-        "linear-gradient(135deg, rgba(123,168,255,1) 0%, rgba(114,236,205,1) 100%)",
+
+    /** illustration cluster */
+    artWrap: { position: "relative", width: "min(520px, 92%)", height: 300 },
+    globe: {
+      width: "100%",
+      height: "100%",
+      objectFit: "contain",
+      filter: "drop-shadow(0 12px 24px rgba(0,0,0,.18))",
     },
-    btnHover: {
-      transform: "translateY(-2px)",
-      boxShadow:
-        "0 10px 22px rgba(24,72,192,.28), 0 24px 54px rgba(82,208,255,.34), 0 0 0 1px rgba(255,255,255,.28) inset",
+    capTop: {
+      position: "absolute",
+      right: -6,
+      top: -14,
+      width: 140,
+      height: 100,
+      objectFit: "contain",
+    },
+    capBottom: {
+      position: "absolute",
+      right: 24,
+      bottom: -8,
+      width: 140,
+      height: 100,
+      objectFit: "contain",
+      transform: "rotate(8deg)",
+    },
+
+    /** responsive */
+    wrapperNarrow: {
+      gridTemplateColumns: "1fr",
+      padding: "26px 22px",
+      minHeight: 320,
+      borderTopRightRadius: 56,
+      borderBottomLeftRadius: 80,
+    },
+    headingNarrow: { fontSize: 34, lineHeight: 1.12 },
+    artWrapNarrow: {
+      width: "100%",
+      height: 220,
+      marginTop: 14,
+      justifySelf: "start",
     },
   },
 
-  /* ---------- STUDY SECTION ---------- */
+  /* ---------- DESCRIPTION (sesuai desain) ---------- */
+  desc: {
+    section: { padding: "0 0 28px" },
+    wrap: { marginTop: 75 }, // jarak dari hero
+    title: {
+      margin: 0,
+      fontFamily: FONT_FAMILY,
+      fontWeight: 900,
+      fontSize: 44,
+      lineHeight: 1.1,
+      letterSpacing: ".005em",
+      color: "#0b0d12",
+    },
+    bodyWrap: {
+      marginTop: 14,
+      maxWidth: 1900, // lebar baca yang nyaman
+    },
+    body: {
+      margin: 0,
+      color: "#0b0d12",
+      fontSize: 18,
+      lineHeight: 1.9,
+      letterSpacing: ".01em",
+      textAlign: "justify",
+      textJustify: "inter-word",
+    },
+
+    // responsive
+    titleNarrow: { fontSize: 30 },
+    bodyNarrow: { fontSize: 16, lineHeight: 1.8 },
+  },
+
+  /* ---------- STUDY ---------- */
   study: {
     section: { padding: "12px 0 28px", marginTop: "100px" },
     grid: {
@@ -214,7 +194,7 @@ const styles = {
     textNarrow: { fontSize: 16, lineHeight: 1.7 },
   },
 
-  /* ---------- INTERN (MAGANG) SECTION ---------- */
+  /* ---------- INTERN ---------- */
   intern: {
     band: {
       background: "#0b56c9",
@@ -223,7 +203,6 @@ const styles = {
       placeItems: "center",
       margin: "80px 0 24px",
       boxShadow: "0 8px 22px rgba(11,86,201,.28)",
-      borderRadius: 0,
       width: "100vw",
       marginLeft: "calc(50% - 50vw)",
       marginRight: "calc(50% - 50vw)",
@@ -236,39 +215,39 @@ const styles = {
       letterSpacing: ".02em",
       fontSize: 28,
     },
-
     section: { padding: "6px 0 28px" },
     grid: {
       display: "grid",
-      gridTemplateColumns: "560px 1fr",
+      gridTemplateColumns: "1fr 560px",
       gap: 28,
       alignItems: "center",
     },
-
-    collageWrap: { position: "relative", marginTop: "70px" },
-    mainBox: {
-      width: "78%",
-      marginLeft: "auto",
-      height: "clamp(380px, 52vh, 560px)",
+    collageArea: { position: "relative", width: "100%", height: 420 },
+    backBox: {
+      position: "absolute",
+      left: 0,
+      bottom: 0,
+      width: 340,
+      height: 340,
       borderRadius: 28,
       overflow: "hidden",
-      background: "#0f172a",
-      zIndex: 2,
+      background: "#f3f4f6",
+      border: "0px solid transparent",
+      boxShadow: "0 24px 44px rgba(15,23,42,.16)",
     },
-    subBox: {
+    frontBox: {
       position: "absolute",
-      left: "-6%",
-      bottom: "-12%",
-      width: "58%",
-      height: "52%",
-      borderRadius: 24,
+      left: 120,
+      top: 40,
+      width: 340,
+      height: 340,
+      borderRadius: 32,
       overflow: "hidden",
-      border: 0,
-      boxShadow: "0 16px 32px rgba(15,23,42,.18)",
       background: "#fff",
-      zIndex: 1,
+      border: "10px solid #0f172a",
+      boxShadow: "0 28px 52px rgba(15,23,42,.22)",
     },
-
+    imgCover: { width: "100%", height: "100%", objectFit: "cover" },
     textWrap: { paddingRight: 8 },
     body: {
       color: "#0f172a",
@@ -277,27 +256,15 @@ const styles = {
       letterSpacing: ".01em",
       textAlign: "justify",
     },
-
     gridNarrow: { gridTemplateColumns: "1fr", gap: 18, alignItems: "start" },
-    mainNarrow: { height: 300, borderRadius: 20, borderWidth: 5 },
-    subNarrow: {
-      position: "static",
-      width: "100%",
-      height: 180,
-      marginTop: 12,
-      borderRadius: 18,
-    },
-    bandNarrow: {
-      height: 56,
-      margin: "48px 0 16px",
-      width: "100vw",
-      marginLeft: "calc(50% - 50vw)",
-      marginRight: "calc(50% - 50vw)",
-    },
+    collageNarrow: { height: 320 },
+    backNarrow: { width: 280, height: 280 },
+    frontNarrow: { left: 90, top: 20, width: 280, height: 280, borderWidth: 8 },
+    bandNarrow: { height: 56, margin: "48px 0 16px" },
     bandTitleNarrow: { fontSize: 22 },
   },
 
-  /* ---------- CTA BANNER (NEW) ---------- */
+  /* ---------- CTA ---------- */
   cta: {
     section: { padding: "20px 0 48px", marginTop: "150px" },
     wrap: {
@@ -306,7 +273,7 @@ const styles = {
         "linear-gradient(90deg, rgba(200,232,255,1) 0%, rgba(205,234,255,1) 45%, rgba(219,243,255,1) 100%)",
       borderRadius: 14,
       padding: "24px 28px",
-      boxShadow: "0 10px 28px rgba(15,23,42,.08)",
+      boxShadow: "0 10px 28px rgba(15,23,42,0.08)",
       overflow: "hidden",
     },
     spine: {
@@ -360,7 +327,6 @@ const styles = {
   },
 };
 
-/* ----------------- Helpers ----------------- */
 function Img({ src, alt, style }) {
   // eslint-disable-next-line @next/next/no-img-element
   return (
@@ -380,13 +346,29 @@ function Img({ src, alt, style }) {
 export default function OverseasContent({ locale = "id" }) {
   const { content, isLoading } = useOverseasViewModel({ locale });
   const hero = content.hero || {};
-  const bullets = Array.isArray(hero.bullets) ? hero.bullets : [];
 
-  const safeDescription = sanitizeHtml(content.description || "", {
-    allowedTags: ["b", "strong", "i", "em", "u", "a", "br", "ul", "ol", "li"],
-  });
+  // sanitize sekali saja (tadinya double)
+  const safeDescription = useMemo(
+    () =>
+      sanitizeHtml(content.description || "", {
+        allowedTags: [
+          "b",
+          "strong",
+          "i",
+          "em",
+          "u",
+          "a",
+          "br",
+          "ul",
+          "ol",
+          "li",
+          "p",
+        ],
+      }),
+    [content.description]
+  );
 
-  /* --------- Responsive flag --------- */
+  /* --------- Responsive --------- */
   const [isNarrow, setIsNarrow] = useState(false);
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 960px)");
@@ -402,7 +384,6 @@ export default function OverseasContent({ locale = "id" }) {
     };
   }, []);
 
-  /* --------- Derived styles --------- */
   const sectionInnerStyle = useMemo(
     () => ({
       ...styles.sectionInner,
@@ -413,48 +394,26 @@ export default function OverseasContent({ locale = "id" }) {
   const heroWrapperStyle = useMemo(
     () => ({
       ...styles.hero.wrapper,
-      gridTemplateColumns: isNarrow ? "1fr" : "1fr 1fr",
-      padding: isNarrow ? "28px 24px" : "44px 56px",
-      minHeight: isNarrow ? 380 : 420,
-      marginTop: isNarrow ? "-12px" : "-36px",
-      width: isNarrow ? "100%" : "calc(100% - 100px)",
+      ...(isNarrow ? styles.hero.wrapperNarrow : {}),
     }),
     [isNarrow]
   );
   const heroHeadingStyle = useMemo(
-    () => ({ ...styles.hero.heading, fontSize: isNarrow ? 38 : 54 }),
-    [isNarrow]
-  );
-  const heroIllustrationStyle = useMemo(
     () => ({
-      ...styles.hero.illustration,
-      width: isNarrow ? "100%" : "min(500px, 92%)",
-      height: isNarrow ? 220 : 320,
+      ...styles.hero.heading,
+      ...(isNarrow ? styles.hero.headingNarrow : {}),
     }),
     [isNarrow]
   );
-  const descTitleStyle = useMemo(
-    () => ({ ...styles.desc.title, fontSize: isNarrow ? 28 : 40 }),
-    [isNarrow]
-  );
-  const descBoxStyle = useMemo(
+  const heroArtWrapStyle = useMemo(
     () => ({
-      ...styles.desc.box,
-      padding: isNarrow ? "16px 18px" : "22px 24px",
-    }),
-    [isNarrow]
-  );
-  const descTextStyle = useMemo(
-    () => ({
-      ...styles.desc.text,
-      fontSize: isNarrow ? 16 : 18,
-      lineHeight: isNarrow ? "28px" : "32px",
-      letterSpacing: isNarrow ? "0.04em" : "0.06em",
+      ...styles.hero.artWrap,
+      ...(isNarrow ? styles.hero.artWrapNarrow : {}),
     }),
     [isNarrow]
   );
 
-  // Study derived
+  /* --------- Study derived --------- */
   const studyGridStyle = useMemo(
     () => ({
       ...styles.study.grid,
@@ -484,25 +443,33 @@ export default function OverseasContent({ locale = "id" }) {
     [isNarrow]
   );
 
-  // Intern derived
+  /* --------- Intern derived --------- */
   const internGridStyle = useMemo(
     () => ({
       ...styles.intern.grid,
       ...(isNarrow ? styles.intern.gridNarrow : {}),
+      gridTemplateColumns: isNarrow ? "1fr" : "1fr 560px",
     }),
     [isNarrow]
   );
-  const internMainBoxStyle = useMemo(
+  const collageArea = useMemo(
     () => ({
-      ...styles.intern.mainBox,
-      ...(isNarrow ? styles.intern.mainNarrow : {}),
+      ...styles.intern.collageArea,
+      ...(isNarrow ? styles.intern.collageNarrow : {}),
     }),
     [isNarrow]
   );
-  const internSubBoxStyle = useMemo(
+  const backBox = useMemo(
     () => ({
-      ...styles.intern.subBox,
-      ...(isNarrow ? styles.intern.subNarrow : {}),
+      ...styles.intern.backBox,
+      ...(isNarrow ? styles.intern.backNarrow : {}),
+    }),
+    [isNarrow]
+  );
+  const frontBox = useMemo(
+    () => ({
+      ...styles.intern.frontBox,
+      ...(isNarrow ? styles.intern.frontNarrow : {}),
     }),
     [isNarrow]
   );
@@ -521,103 +488,68 @@ export default function OverseasContent({ locale = "id" }) {
     [isNarrow]
   );
 
-  // CTA derived
-  const ctaInnerStyle = useMemo(
-    () => ({
-      ...styles.cta.inner,
-      ...(isNarrow ? styles.cta.innerNarrow : {}),
-    }),
-    [isNarrow]
-  );
-  const ctaTitleStyle = useMemo(
-    () => ({
-      ...styles.cta.title,
-      ...(isNarrow ? styles.cta.titleNarrow : {}),
-    }),
-    [isNarrow]
-  );
-  const ctaSubStyle = useMemo(
-    () => ({ ...styles.cta.sub, ...(isNarrow ? styles.cta.subNarrow : {}) }),
-    [isNarrow]
-  );
-  const ctaBtnStyle = useMemo(
-    () => ({ ...styles.cta.btn, ...(isNarrow ? styles.cta.btnNarrow : {}) }),
-    [isNarrow]
-  );
-
-  // hover state for track buttons (kept if you still render tracks somewhere)
-  const [hoverIdx, setHoverIdx] = useState(null);
-
   return (
     <div style={{ paddingBottom: 48, fontFamily: FONT_FAMILY }}>
       {/* ===== HERO ===== */}
-      <section style={{ padding: "0 0 24px" }}>
+      <section style={{ padding: "0 0 24px", marginRight: 75 }}>
         <div style={sectionInnerStyle}>
           <div style={heroWrapperStyle}>
             <div style={styles.hero.left}>
               {isLoading ? (
-                <Skeleton active paragraph={{ rows: 3 }} />
+                <Skeleton active paragraph={{ rows: 2 }} />
               ) : (
                 <>
                   <h1 style={heroHeadingStyle}>{hero.title}</h1>
                   {hero.subtitle ? (
                     <p style={styles.hero.tagline}>{hero.subtitle}</p>
                   ) : null}
-
-                  {bullets.length ? (
-                    <div style={styles.hero.chips}>
-                      {bullets.map((b) => (
-                        <button
-                          key={b.id || b.label}
-                          type="button"
-                          style={styles.hero.chip}
-                        >
-                          <span style={styles.hero.chipIcon} aria-hidden>
-                            ✓
-                          </span>
-                          {b.label}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
                 </>
               )}
             </div>
 
-            <div style={styles.hero.right}>
+            <div style={styles.hero.right} aria-hidden>
               {isLoading ? (
-                <Skeleton.Image active style={{ width: "100%", height: 260 }} />
-              ) : hero.illustration ? (
-                <div style={heroIllustrationStyle}>
-                  <Img
-                    src={hero.illustration}
-                    alt="Overseas Study Illustration"
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "contain",
-                    }}
-                  />
+                <Skeleton.Image active style={{ width: "100%", height: 240 }} />
+              ) : (
+                <div style={heroArtWrapStyle}>
+                  {hero.illustration ? (
+                    <Img
+                      src={hero.illustration}
+                      alt=""
+                      style={styles.hero.globe}
+                    />
+                  ) : null}
                 </div>
-              ) : null}
+              )}
             </div>
           </div>
         </div>
       </section>
 
       {/* ===== DESCRIPTION ===== */}
-      <section style={{ padding: "0 0 16px" }}>
+      <section style={styles.desc.section}>
         <div style={sectionInnerStyle}>
           <div style={styles.desc.wrap}>
-            <h2 style={descTitleStyle}>
-              {locale === "id" ? "Deskripsi Program" : "Program Description"}
+            <h2
+              style={{
+                ...styles.desc.title,
+                ...(isNarrow ? styles.desc.titleNarrow : {}),
+              }}
+            >
+              {String(locale).slice(0, 2).toLowerCase() === "en"
+                ? "Program Description"
+                : "Deskripsi Program"}
             </h2>
-            <div style={descBoxStyle}>
+
+            <div style={styles.desc.bodyWrap}>
               {isLoading ? (
                 <Skeleton active paragraph={{ rows: 4 }} />
               ) : (
                 <div
-                  style={descTextStyle}
+                  style={{
+                    ...styles.desc.body,
+                    ...(isNarrow ? styles.desc.bodyNarrow : {}),
+                  }}
                   dangerouslySetInnerHTML={{ __html: safeDescription }}
                 />
               )}
@@ -626,11 +558,10 @@ export default function OverseasContent({ locale = "id" }) {
         </div>
       </section>
 
-      {/* ===== STUDY LUAR NEGERI ===== */}
+      {/* ===== STUDY ===== */}
       <section style={styles.study.section}>
         <div style={sectionInnerStyle}>
           <div style={studyGridStyle}>
-            {/* image left */}
             <div style={studyImgStyle}>
               <Img
                 src={content.studySection?.image}
@@ -644,7 +575,6 @@ export default function OverseasContent({ locale = "id" }) {
               />
             </div>
 
-            {/* text & blue pills */}
             <div>
               <h2 style={studyTitleStyle}>{content.studySection?.title}</h2>
               <p style={studyTextStyle}>{content.studySection?.text}</p>
@@ -662,60 +592,80 @@ export default function OverseasContent({ locale = "id" }) {
         </div>
       </section>
 
-      {/* ===== MAGANG LUAR NEGERI ===== */}
+      {/* ===== INTERN ===== */}
       <section style={{ padding: "0 0 12px" }}>
-        {/* full-bleed band */}
         <div style={internBandStyle}>
           <h2 style={internBandTitleStyle}>{content.internSection?.title}</h2>
         </div>
 
         <div style={sectionInnerStyle}>
           <div style={internGridStyle}>
-            {/* collage images left */}
-            <div style={styles.intern.collageWrap}>
-              <div style={internMainBoxStyle}>
-                <Img
-                  src={content.internSection?.mainImage}
-                  alt="Internship abroad - main"
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                    objectPosition: "center",
-                  }}
-                />
-              </div>
-
-              <div style={internSubBoxStyle}>
-                <Img
-                  src={content.internSection?.subImage}
-                  alt="Internship abroad - secondary"
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                />
-              </div>
+            <div style={{ ...styles.intern.textWrap, paddingRight: 18 }}>
+              <p style={styles.intern.body}>{content.internSection?.text}</p>
             </div>
 
-            {/* text right */}
-            <div style={styles.intern.textWrap}>
-              <p style={styles.intern.body}>{content.internSection?.text}</p>
+            <div
+              style={{ position: "relative", minHeight: isNarrow ? 320 : 420 }}
+            >
+              <div style={collageArea}>
+                <div style={backBox}>
+                  <Img
+                    src={content.internSection?.subImage}
+                    alt="Internship secondary"
+                    style={styles.intern.imgCover}
+                  />
+                </div>
+                <div style={frontBox}>
+                  <Img
+                    src={content.internSection?.mainImage}
+                    alt="Internship main"
+                    style={styles.intern.imgCover}
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* ===== CTA BANNER (NEW) ===== */}
+      {/* ===== CTA ===== */}
       <section style={styles.cta.section}>
-        <div style={{ ...sectionInnerStyle }}>
+        <div style={sectionInnerStyle}>
           <div style={styles.cta.wrap}>
             <div style={styles.cta.spine} />
-            <div style={ctaInnerStyle}>
+            <div
+              style={{
+                ...styles.cta.inner,
+                ...(isNarrow ? styles.cta.innerNarrow : {}),
+              }}
+            >
               <div>
-                <h3 style={ctaTitleStyle}>{content.cta?.title}</h3>
-                <p style={ctaSubStyle}>{content.cta?.subtitle}</p>
+                <h3
+                  style={{
+                    ...styles.cta.title,
+                    ...(isNarrow ? styles.cta.titleNarrow : {}),
+                  }}
+                >
+                  {content.cta?.title}
+                </h3>
+                <p
+                  style={{
+                    ...styles.cta.sub,
+                    ...(isNarrow ? styles.cta.subNarrow : {}),
+                  }}
+                >
+                  {content.cta?.subtitle}
+                </p>
               </div>
 
               {content.cta?.button?.href && (
-                <a href="/user/leads" style={ctaBtnStyle}>
+                <a
+                  href={content.cta.button.href}
+                  style={{
+                    ...styles.cta.btn,
+                    ...(isNarrow ? styles.cta.btnNarrow : {}),
+                  }}
+                >
                   {content.cta.button.label}
                 </a>
               )}

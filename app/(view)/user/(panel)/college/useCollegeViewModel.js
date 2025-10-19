@@ -9,7 +9,6 @@ const fetcher = (url) =>
     return r.json();
   });
 
-/* helpers */
 const strip = (html = "") =>
   String(html)
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
@@ -31,10 +30,6 @@ const fmtMoney = (n, currency) => {
   }
 };
 
-/**
- * useCollegeViewModel
- * @param {{ locale?: "id"|"en", q?: string, country?: string, perPage?: number }} opts
- */
 export default function useCollegeViewModel({
   locale = "id",
   q = "",
@@ -43,7 +38,6 @@ export default function useCollegeViewModel({
 } = {}) {
   const t = (id, en) => (locale === "en" ? en : id);
 
-  // ===== build URL ke /api/college =====
   const collegeUrl = useMemo(() => {
     const p = new URLSearchParams();
     p.set("page", "1");
@@ -63,7 +57,6 @@ export default function useCollegeViewModel({
   const vm = useMemo(() => {
     const rows = Array.isArray(data?.data) ? data.data : [];
 
-    // ===== Universitas untuk daftar utama =====
     const universities = rows.map((r, i) => {
       const name = r?.name || r?.slug || `Campus ${i + 1}`;
       const country = r?.country || "";
@@ -81,22 +74,17 @@ export default function useCollegeViewModel({
         ...(moneyText ? [{ icon: "money", text: moneyText }] : []),
       ];
 
-      // Gunakan hanya logo_url publik dari endpoint
-      const logo = r?.logo_url || "";
-
       return {
         id: r.id,
         name,
         country,
-        logo,
+        logo_url: r?.logo_url || "",
         excerpt: strip(r?.description || ""),
         bullets,
-        rating: 0,
         href: r?.slug ? `/user/college/${r.slug}` : r?.website || "#",
       };
     });
 
-    // ===== Relevant Campus (hanya yang punya logo_url valid) =====
     const relevantCampus = rows
       .filter((r) => typeof r.logo_url === "string" && r.logo_url.trim() !== "")
       .slice(0, 16)
@@ -157,6 +145,20 @@ export default function useCollegeViewModel({
         relevantCampus,
       },
       universities,
+
+      // ====== NEW: scholarship CTA content (fallback) ======
+      scholarshipCTA: {
+        title: t(
+          "TEMUKAN KESEMPATAN BEASISWAMU",
+          "DISCOVER YOUR SCHOLARSHIP OPPORTUNITIES"
+        ),
+        body: t(
+          "Jelajahi beasiswa luar negeri dan peluang pendanaan bagi mahasiswa dari Indonesia sepertimu. Tersedia lebih dari 5.000 beasiswa dari berbagai universitas di luar negeri.",
+          "Explore overseas scholarships and funding opportunities for Indonesian students like you. Access 5,000+ scholarships from universities worldwide."
+        ),
+        ctaLabel: t("Lihat selengkapnya", "Learn more"),
+        href: "/user/blog",
+      },
     };
   }, [data, error, isLoading, locale]);
 

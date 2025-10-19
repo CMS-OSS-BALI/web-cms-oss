@@ -1,11 +1,30 @@
+// useBlogUViewModel.js
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/lib/swr/fetcher";
 
-/* ---------- helpers (bilingual) ---------- */
-function buildUrl({ page, perPage, sort, q, locale = "id", fallback = "id" }) {
+/* -------------------- helpers -------------------- */
+
+// slugify ringan utk bandingkan nama kategori ke slug
+const slugify = (s = "") =>
+  String(s)
+    .toLowerCase()
+    .trim()
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/^-+|-+$/g, "");
+
+function buildUrl({
+  page,
+  perPage,
+  sort,
+  q,
+  categoryId,
+  categorySlug,
+  locale = "id",
+  fallback = "id",
+}) {
   const p = new URLSearchParams();
   p.set("page", String(page));
   p.set("perPage", String(perPage));
@@ -13,6 +32,17 @@ function buildUrl({ page, perPage, sort, q, locale = "id", fallback = "id" }) {
   p.set("locale", locale);
   p.set("fallback", fallback);
   if (q?.trim()) p.set("q", q.trim());
+
+  // kirim berbagai kemungkinan key agar kompatibel
+  if (categoryId) {
+    p.set("categoryId", String(categoryId));
+    p.set("category_id", String(categoryId));
+    p.set("category", String(categoryId));
+  }
+  if (categorySlug) {
+    p.set("categorySlug", String(categorySlug));
+    p.set("category_slug", String(categorySlug));
+  }
   return `/api/blog?${p.toString()}`;
 }
 
@@ -111,11 +141,42 @@ function saveLikedIds(set) {
   } catch {}
 }
 
+// Ambil category id/slug/name dari beragam bentuk field
+const getCatId = (r) =>
+  String(
+    r?.category_id ??
+      r?.categoryId ??
+      (typeof r?.category === "object" ? r?.category?.id : r?.category ?? "")
+  );
+
+const getCatSlug = (r) =>
+  String(
+    r?.category_slug ??
+      (typeof r?.category === "object" ? r?.category?.slug : r?.slug ?? "")
+  ).toLowerCase();
+
+const getCatName = (r) =>
+  String(
+    r?.category_name ??
+      (typeof r?.category === "object" ? r?.category?.name : r?.name ?? "")
+  );
+
+/* -------------------- main hook -------------------- */
 /**
- * Bilingual Blog VM
- * Gunakan: const vm = useBlogUViewModel({ locale: "id" | "en", perPage?: 6, q?: "" })
+ * useBlogUViewModel
+ * @param {"id"|"en"}   locale
+ * @param {number}      perPage
+ * @param {string}      q                search judul
+ * @param {string}      categoryId       filter kategori by id
+ * @param {string}      categorySlug     filter kategori by slug
  */
-export function useBlogUViewModel({ locale = "id", perPage = 6, q = "" } = {}) {
+export function useBlogUViewModel({
+  locale = "id",
+  perPage = 6,
+  q = "",
+  categoryId = "",
+  categorySlug = "",
+} = {}) {
   // like-once
   const [likedSet, setLikedSet] = useState(() => new Set());
   useEffect(() => setLikedSet(loadLikedIds()), []);
@@ -131,13 +192,30 @@ export function useBlogUViewModel({ locale = "id", perPage = 6, q = "" } = {}) {
   // pagination
   const [page, setPage] = useState(1);
 
-  // popular → newest → oldest (server asks, client enforces)
+  const nameQuery = (q || "").trim().toLowerCase();
+  const selectedCatId = String(categoryId || "");
+  const selectedCatSlug = String(categorySlug || "").toLowerCase();
+
+  const matchesCategory = (row) => {
+    if (!selectedCatId && !selectedCatSlug) return true;
+    const rid = getCatId(row);
+    const rslug = getCatSlug(row);
+    const rnameSlug = slugify(getCatName(row));
+    return (
+      (selectedCatId && rid === selectedCatId) ||
+      (selectedCatSlug &&
+        (rslug === selectedCatSlug || rnameSlug === selectedCatSlug))
+    );
+  };
+
+  /* -------- popular (utama) -------- */
   const keyPopular = buildUrl({
     page,
     perPage,
-    // minta server urut created_at desc (bisa multi-sort: "created_at:desc,updated_at:desc")
     sort: "created_at:desc",
     q,
+    categoryId: selectedCatId || undefined,
+    categorySlug: selectedCatSlug || undefined,
     locale,
     fallback: "id",
   });
@@ -147,11 +225,16 @@ export function useBlogUViewModel({ locale = "id", perPage = 6, q = "" } = {}) {
     isLoading: popularLoading,
     error: popularErr,
     mutate: mutatePopular,
-  } = useSWR(keyPopular, fetcher);
+  } = useSWR(keyPopular, fetcher, { keepPreviousData: true });
 
   const popular = useMemo(() => {
-    // fallback sort di client kalau API tidak mengurut
-    const rows = (popularJson?.data ?? []).slice().sort((a, b) => {
+    let rows = (popularJson?.data ?? []).slice();
+
+    // filter kategori (client-side fallback)
+    rows = rows.filter(matchesCategory);
+
+    // urut terbaru
+    rows.sort((a, b) => {
       const ta =
         toDate(
           a?.created_ts ?? a?.updated_ts ?? a?.created_at ?? a?.updated_at
@@ -160,8 +243,18 @@ export function useBlogUViewModel({ locale = "id", perPage = 6, q = "" } = {}) {
         toDate(
           b?.created_ts ?? b?.updated_ts ?? b?.created_at ?? b?.updated_at
         )?.getTime() ?? 0;
-      return tb - ta; // newest first
+      return tb - ta;
     });
+
+    // search by title only
+    if (nameQuery) {
+      rows = rows.filter((r) =>
+        String(r?.name || "")
+          .toLowerCase()
+          .includes(nameQuery)
+      );
+    }
+
     return rows.map((r) => {
       const ts =
         r?.created_ts ?? r?.updated_ts ?? r?.created_at ?? r?.updated_at;
@@ -173,18 +266,19 @@ export function useBlogUViewModel({ locale = "id", perPage = 6, q = "" } = {}) {
         excerpt: excerpt(r.description || "", 220),
       };
     });
-  }, [popularJson, now, locale]);
+  }, [popularJson, now, locale, nameQuery, matchesCategory]);
 
   const total = popularJson?.meta?.total ?? 0;
   const totalPages =
     popularJson?.meta?.totalPages ?? Math.max(1, Math.ceil(total / perPage));
 
-  // top likes
+  /* -------- top likes -------- */
   const keyTopLike = buildUrl({
     page: 1,
     perPage: 3,
     sort: "likes_count:desc",
-    q,
+    categoryId: selectedCatId || undefined,
+    categorySlug: selectedCatSlug || undefined,
     locale,
     fallback: "id",
   });
@@ -193,10 +287,11 @@ export function useBlogUViewModel({ locale = "id", perPage = 6, q = "" } = {}) {
     isLoading: likeLoading,
     error: likeErr,
     mutate: mutateTopLike,
-  } = useSWR(keyTopLike, fetcher);
+  } = useSWR(keyTopLike, fetcher, { keepPreviousData: true });
 
   const topLikes = useMemo(() => {
-    const rows = topLikeJson?.data ?? [];
+    let rows = topLikeJson?.data ?? [];
+    rows = rows.filter(matchesCategory);
     return rows.map((r, i) => {
       const ts =
         r?.created_ts ?? r?.updated_ts ?? r?.created_at ?? r?.updated_at;
@@ -209,14 +304,15 @@ export function useBlogUViewModel({ locale = "id", perPage = 6, q = "" } = {}) {
         excerpt: excerpt(r.description || "", 140),
       };
     });
-  }, [topLikeJson, now, locale]);
+  }, [topLikeJson, now, locale, matchesCategory]);
 
-  // late posts
+  /* -------- late posts (terkini) -------- */
   const keyLate = buildUrl({
     page: 1,
     perPage: 3,
     sort: "created_at:desc",
-    q,
+    categoryId: selectedCatId || undefined,
+    categorySlug: selectedCatSlug || undefined,
     locale,
     fallback: "id",
   });
@@ -225,10 +321,11 @@ export function useBlogUViewModel({ locale = "id", perPage = 6, q = "" } = {}) {
     isLoading: lateLoading,
     error: lateErr,
     mutate: mutateLate,
-  } = useSWR(keyLate, fetcher);
+  } = useSWR(keyLate, fetcher, { keepPreviousData: true });
 
   const latePosts = useMemo(() => {
-    const rows = lateJson?.data ?? [];
+    let rows = lateJson?.data ?? [];
+    rows = rows.filter(matchesCategory);
     return rows.map((r, i) => {
       const ts =
         r?.created_ts ?? r?.updated_ts ?? r?.created_at ?? r?.updated_at;
@@ -241,14 +338,14 @@ export function useBlogUViewModel({ locale = "id", perPage = 6, q = "" } = {}) {
         excerpt: excerpt(r.description || "", 140),
       };
     });
-  }, [lateJson, now, locale]);
+  }, [lateJson, now, locale, matchesCategory]);
 
   const goTo = useCallback(
     (p) => setPage(Math.max(1, Math.min(p, totalPages))),
     [totalPages]
   );
 
-  // stats
+  /* -------------- actions -------------- */
   async function bumpStat(id, type = "view", inc = 1) {
     await fetch(`/api/blog/${encodeURIComponent(id)}/stats`, {
       method: "POST",
@@ -302,6 +399,7 @@ export function useBlogUViewModel({ locale = "id", perPage = 6, q = "" } = {}) {
     [likedSet, mutatePopular, mutateTopLike, mutateLate]
   );
 
+  /* -------------- return -------------- */
   return {
     locale,
 
@@ -332,3 +430,5 @@ export function useBlogUViewModel({ locale = "id", perPage = 6, q = "" } = {}) {
     onLike,
   };
 }
+
+export default useBlogUViewModel;

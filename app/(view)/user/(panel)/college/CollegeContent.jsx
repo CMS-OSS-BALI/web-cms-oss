@@ -7,12 +7,73 @@ import { Swiper, SwiperSlide } from "swiper/react";
 import { Autoplay, FreeMode } from "swiper/modules";
 import "swiper/css";
 import "swiper/css/free-mode";
-
-/* Ant Design Pagination */
 import { Pagination } from "antd";
 import "antd/dist/reset.css";
 
-/* ================= HERO ================= */
+/* ---------- util kecil ---------- */
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const SUPABASE_BUCKET = process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "";
+const buildSupabasePublicUrl = (objectPath = "") => {
+  const path = String(objectPath).replace(/^\/+/, "");
+  if (!path) return "";
+  if (/^https?:\/\//i.test(path)) return path;
+  if (path.startsWith("/")) return path;
+  if (!SUPABASE_URL || !SUPABASE_BUCKET) return `/${path}`;
+  return `${SUPABASE_URL.replace(
+    /\/+$/,
+    ""
+  )}/storage/v1/object/public/${SUPABASE_BUCKET}/${path}`;
+};
+const normalizeImgSrc = (input) => {
+  const raw = (input || "").trim();
+  if (!raw)
+    return "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>";
+  const storage = buildSupabasePublicUrl(raw);
+  if (storage) return storage;
+  if (/^https?:\/\//i.test(raw)) return raw;
+  return raw.startsWith("/") ? raw : `/${raw}`;
+};
+const BulletIcon = ({ type }) => {
+  const p = {
+    width: 18,
+    height: 18,
+    fill: "none",
+    stroke: "#1E56B6",
+    strokeWidth: 2,
+  };
+  if (type === "pin")
+    return (
+      <svg viewBox="0 0 24 24" {...p}>
+        <path d="M12 22s7-5.33 7-12a7 7 0 1 0-14 0c0 6.67 7 12 7 12Z" />
+        <circle cx="12" cy="10" r="3" />
+      </svg>
+    );
+  if (type === "money")
+    return (
+      <svg viewBox="0 0 24 24" {...p}>
+        <rect x="3" y="6" width="18" height="12" rx="2" />
+        <circle cx="12" cy="12" r="3" />
+      </svg>
+    );
+  return (
+    <svg viewBox="0 0 24 24" {...p}>
+      <path d="M22 10L12 5 2 10l10 5 10-5Z" />
+      <path d="M6 12v4c3 2 9 2 12 0v-4" />
+    </svg>
+  );
+};
+
+/* ---------- constants swiper ---------- */
+const RELEVANT_CAMPUS_SWIPER_CLASS = "college-relevant-campus-swiper";
+const MARQUEE_SPEED = 6000;
+const marqueeAutoplay = {
+  delay: 0,
+  disableOnInteraction: false,
+  pauseOnMouseEnter: false,
+};
+const marqueeFreeMode = { enabled: true, momentum: false, sticky: false };
+
+/* ================== styles (ringkas) ================== */
 const styles = {
   hero: { marginTop: "calc(-1 * clamp(48px, 8vw, 84px))", background: "#fff" },
   heroBleed: { width: "100vw", marginLeft: "calc(50% - 50vw)" },
@@ -49,23 +110,24 @@ const styles = {
     textTransform: "uppercase",
     fontSize: "clamp(36px, 6.2vw, 96px)",
   },
-};
 
-/* ========== FIND YOUR PROGRAM (Full Bleed Title) ========== */
-const findStyles = {
-  bleed: {
+  findBleed: {
     width: "100vw",
     marginLeft: "calc(50% - 50vw)",
     marginRight: "calc(50% - 50vw)",
     background: "linear-gradient(90deg, #E6F3FF 0%, #F5FAFF 35%, #FFFFFF 70%)",
   },
-  section: {
+  findSection: {
     position: "relative",
     padding: "clamp(32px, 6vw, 80px) 16px",
     overflow: "hidden",
   },
-  inner: { width: "min(1180px, 92%)", margin: "0 auto", textAlign: "center" },
-  title: {
+  findInner: {
+    width: "min(1180px, 92%)",
+    margin: "0 auto",
+    textAlign: "center",
+  },
+  findTitle: {
     margin: 0,
     lineHeight: 1.1,
     fontWeight: 900,
@@ -77,458 +139,326 @@ const findStyles = {
     backgroundClip: "text",
     color: "transparent",
   },
-};
 
-/* ================= POPULER JURUSAN ================= */
-const majorStyles = {
-  section: { position: "relative", padding: "40px 0 36px" },
-  inner: { width: "min(1180px, 92%)", margin: "0 auto" },
-  headingWrap: { marginBottom: 28 },
-  heading: {
-    margin: 0,
-    color: "#0B2F74",
-    fontWeight: 900,
-    letterSpacing: ".04em",
-    textTransform: "uppercase",
-    fontSize: "clamp(22px, 3.2vw, 34px)",
-  },
-  underline: {
-    width: 120,
-    height: 6,
-    background: "#1F4EA3",
-    borderRadius: 8,
-    marginTop: 10,
-  },
-  stripe: {
-    position: "absolute",
-    left: "50%",
-    transform: "translateX(-50%)",
-    top: "calc(50% + 6px)",
-    width: "min(1600px, 96vw)",
-    height: 86,
-    background: "#0B3E91",
-    borderRadius: 8,
-    zIndex: 0,
-  },
-  grid: {
-    position: "relative",
-    zIndex: 1,
-    display: "grid",
-    gridTemplateColumns: "repeat(3, 1fr)",
-    gap: 24,
-  },
-  card: {
-    background: "#fff",
-    borderRadius: 20,
-    padding: "26px 22px 20px",
-    boxShadow: "0 12px 28px rgba(15,23,42,.12)",
-    display: "grid",
-    placeItems: "center",
-    gap: 16,
-    transition: "transform .18s ease, box-shadow .18s ease",
-  },
-  cardHover: {
-    transform: "translateY(-2px)",
-    boxShadow: "0 16px 36px rgba(15,23,42,.16)",
-  },
-  iconWrap: {
-    width: 140,
-    height: 140,
-    borderRadius: 16,
-    background: "linear-gradient(180deg,#F6FAFF 0%,#FFFFFF 100%)",
-    display: "grid",
-    placeItems: "center",
-    boxShadow: "0 6px 14px rgba(15,23,42,.08) inset",
-  },
-  iconImg: { width: 120, height: 120, objectFit: "contain" },
-  majorTitle: {
-    margin: 0,
-    color: "#0B2F74",
-    fontWeight: 900,
-    letterSpacing: ".04em",
-    textTransform: "uppercase",
-    fontSize: 18,
-  },
-  media: `
-    @media (max-width: 1024px) { .majors-grid { grid-template-columns: repeat(2, 1fr); } }
-    @media (max-width: 640px)  { .majors-grid { grid-template-columns: 1fr; } .major-stripe { height: 72px; } }
-  `,
-};
+  majors: {
+    section: { position: "relative", padding: "40px 0 36px" },
+    inner: { width: "min(1180px, 92%)", margin: "0 auto" },
+    heading: {
+      margin: 0,
+      color: "#0B2F74",
+      fontWeight: 900,
+      letterSpacing: ".04em",
+      textTransform: "uppercase",
+      fontSize: "clamp(22px, 3.2vw, 34px)",
+    },
+    underline: {
+      width: 120,
+      height: 6,
+      background: "#1F4EA3",
+      borderRadius: 8,
+      marginTop: 10,
+    },
+    grid: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 24 },
+    card: {
+      background: "#fff",
+      borderRadius: 20,
+      padding: "26px 22px 20px",
+      boxShadow: "0 12px 28px rgba(15,23,42,.12)",
+      display: "grid",
+      placeItems: "center",
+      gap: 16,
+      transition: "transform .18s ease, box-shadow .18s ease",
+    },
 
-/* ========== RECOMMENDED UNIVERSITY (heading) ========== */
-const recUniStyles = {
-  block: {
-    width: "min(1180px, 96%)",
-    margin: "0 auto 12px",
-    textAlign: "center",
-  },
-  title: {
-    margin: 0,
-    lineHeight: 1.1,
-    fontWeight: 900,
-    letterSpacing: ".06em",
-    textTransform: "uppercase",
-    fontSize: "clamp(22px, 4.2vw, 44px)",
-    backgroundImage: "linear-gradient(180deg, #1F4EA3 0%, #69A9FF 100%)",
-    WebkitBackgroundClip: "text",
-    backgroundClip: "text",
-    color: "transparent",
-  },
-  subtitle: {
-    marginTop: 8,
-    color: "#1F4EA3",
-    fontWeight: 700,
-    letterSpacing: ".02em",
-    fontSize: "clamp(14px, 1.8vw, 20px)",
-  },
-};
+    /* HAPUS iconWrap, dan gunakan iconPlain di bawah */
+    iconPlain: { width: 140, height: 140, objectFit: "contain" },
 
-/* ================= SEARCH BAR ================= */
-const searchStyles = {
-  wrap: { width: "min(1180px, 96%)", margin: "50px auto 36px" },
-  row: { display: "flex", gap: 16, alignItems: "center" },
-  shell: {
-    position: "relative",
-    display: "grid",
-    alignItems: "center",
-    gridTemplateColumns: "48px 1fr 1px 48px",
-    gap: 0,
-    height: 62,
-    flex: 1,
-    borderRadius: 999,
-    background: "#fff",
-    border: "2px solid #1962BF",
-    boxShadow:
-      "0 10px 24px rgba(15,23,42,.10), inset 0 -3px 0 rgba(25,98,191,.15), 0 2px 0 #e7d1e2",
-    padding: "0 6px",
+    majorTitle: {
+      margin: 0,
+      color: "#0B2F74",
+      fontWeight: 900,
+      letterSpacing: ".04em",
+      textTransform: "uppercase",
+      fontSize: 18,
+    },
   },
-  input: {
-    width: "100%",
-    height: "100%",
-    border: "none",
-    outline: "none",
-    fontSize: 18,
-    color: "#0B2F74",
-    padding: "0 8px",
-    background: "transparent",
-  },
-  iconBtn: {
-    display: "grid",
-    placeItems: "center",
-    width: 48,
-    height: 48,
-    borderRadius: "50%",
-    background: "transparent",
-    border: "none",
-    cursor: "pointer",
-  },
-  icon: { width: 24, height: 24 },
-  divider: {
-    height: "70%",
-    width: 0,
-    borderLeft: "2px dotted #1962BF",
-    justifySelf: "center",
-  },
-  filterPill: {
-    height: 62,
-    minWidth: 180,
-    display: "flex",
-    alignItems: "center",
-    position: "relative",
-    padding: "0 18px",
-    borderRadius: 999,
-    background: "#fff",
-    border: "2px solid #1962BF",
-    boxShadow:
-      "0 10px 24px rgba(15,23,42,.10), inset 0 -3px 0 rgba(25,98,191,.15), 0 2px 0 #e7d1e2",
-  },
-  countrySelect: {
-    width: "100%",
-    height: 44,
-    border: "none",
-    outline: "none",
-    background: "transparent",
-    fontWeight: 800,
-    fontSize: 18,
-    color: "#0B2F74",
-    paddingRight: 28,
-    cursor: "pointer",
-    appearance: "none",
-    WebkitAppearance: "none",
-    MozAppearance: "none",
-  },
-  chevron: {
-    position: "absolute",
-    right: 12,
-    top: "50%",
-    transform: "translateY(-50%)",
-    width: 16,
-    height: 16,
-    pointerEvents: "none",
-  },
-};
 
-/* ================= UNIVERSITY LIST ================= */
-const uniListStyles = {
-  section: { width: "min(1180px, 96%)", margin: "0 auto 80px" },
-  list: { display: "grid", gap: 24 },
-  card: {
-    position: "relative",
-    display: "grid",
-    gridTemplateColumns: "180px 1fr",
-    gap: 18,
-    padding: "18px 18px 48px",
-    background: "#fff",
-    borderRadius: 14,
-    border: "1px solid rgba(13,38,78,.08)",
-    boxShadow: "0 10px 28px rgba(15,23,42,.10)",
+  rec: {
+    block: {
+      width: "min(1180px, 96%)",
+      margin: "0 auto 12px",
+      textAlign: "center",
+    },
+    title: {
+      margin: 0,
+      lineHeight: 1.1,
+      fontWeight: 900,
+      letterSpacing: ".06em",
+      textTransform: "uppercase",
+      fontSize: "clamp(22px, 4.2vw, 44px)",
+      backgroundImage: "linear-gradient(180deg, #1F4EA3 0%, #69A9FF 100%)",
+      WebkitBackgroundClip: "text",
+      backgroundClip: "text",
+      color: "transparent",
+    },
+    subtitle: {
+      marginTop: 8,
+      color: "#1F4EA3",
+      fontWeight: 700,
+      letterSpacing: ".02em",
+      fontSize: "clamp(14px, 1.8vw, 20px)",
+    },
   },
-  logoWrap: {
-    position: "relative",
-    width: "100%",
-    aspectRatio: "1 / 1",
-    borderRadius: 12,
-    overflow: "hidden",
-    background: "#f6f7fb",
-    display: "grid",
-    placeItems: "center",
-  },
-  title: {
-    margin: "2px 0 10px",
-    color: "#0B2F74",
-    fontWeight: 900,
-    letterSpacing: ".04em",
-    textTransform: "uppercase",
-    fontSize: "clamp(20px, 2.6vw, 26px)",
-  },
-  excerpt: { margin: 0, color: "#3a4c74", lineHeight: 1.6, fontSize: 14 },
-  bullets: {
-    marginTop: 10,
-    display: "grid",
-    gap: 8,
-    color: "#16366c",
-    fontWeight: 600,
-    fontSize: 14,
-  },
-  bulletItem: { display: "flex", alignItems: "center", gap: 8 },
-  footer: {
-    position: "absolute",
-    left: 18,
-    right: 18,
-    bottom: 12,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "flex-end", // moved button to the right
-  },
-  viewMore: {
-    border: "1px solid rgba(13,38,78,.18)",
-    background: "#f7fbff",
-    color: "#0B2F74",
-    padding: "8px 14px",
-    borderRadius: 999,
-    fontWeight: 700,
-    fontSize: 12,
-    textDecoration: "none",
-    boxShadow: "0 6px 16px rgba(15,23,42,.10)",
-  },
-  empty: {
-    padding: "28px 18px",
-    borderRadius: 12,
-    background: "#f7fbff",
-    color: "#0B2F74",
-    fontWeight: 700,
-    textAlign: "center",
-    border: "1px dashed rgba(13,38,78,.25)",
-  },
-  media: `
-    @media (max-width: 860px) {
-      .uni-card { grid-template-columns: 1fr; padding-bottom: 56px; }
-      .uni-logo { height: 120px; aspect-ratio: auto; }
-    }
-  `,
-};
 
-/* ================= RELEVANT CAMPUS ================= */
-const relevantStyles = {
-  section: { padding: "12px 0 88px", background: "#fff" },
-  inner: { width: "min(1180px, 96%)", margin: "0 auto" },
-  titleWrap: { textAlign: "center", marginBottom: 26 },
-  title: {
-    margin: 0,
-    color: "#4b8dd9",
-    fontWeight: 900,
-    letterSpacing: ".06em",
-    textTransform: "uppercase",
-    fontSize: "clamp(24px,4.6vw,48px)",
+  search: {
+    wrap: { width: "min(1180px, 96%)", margin: "50px auto 36px" },
+    row: { display: "flex", gap: 16, alignItems: "center" },
+    shell: {
+      position: "relative",
+      display: "grid",
+      alignItems: "center",
+      gridTemplateColumns: "48px 1fr 1px 48px",
+      gap: 0,
+      height: 62,
+      flex: 1,
+      borderRadius: 999,
+      background: "#fff",
+      border: "2px solid #1962BF",
+      boxShadow:
+        "0 10px 24px rgba(15,23,42,.10), inset 0 -3px 0 rgba(25,98,191,.15)",
+      padding: "0 6px",
+    },
+    input: {
+      width: "100%",
+      height: "100%",
+      border: "none",
+      outline: "none",
+      fontSize: 18,
+      color: "#0B2F74",
+      padding: "0 8px",
+      background: "transparent",
+    },
+    iconBtn: {
+      display: "grid",
+      placeItems: "center",
+      width: 48,
+      height: 48,
+      borderRadius: "50%",
+      background: "transparent",
+      border: "none",
+      cursor: "pointer",
+    },
+    icon: { width: 24, height: 24 },
+    divider: {
+      height: "70%",
+      width: 0,
+      borderLeft: "2px dotted #1962BF",
+      justifySelf: "center",
+    },
+    filterPill: {
+      height: 62,
+      minWidth: 180,
+      display: "flex",
+      alignItems: "center",
+      position: "relative",
+      padding: "0 18px",
+      borderRadius: 999,
+      background: "#fff",
+      border: "2px solid #1962BF",
+      boxShadow:
+        "0 10px 24px rgba(15,23,42,.10), inset 0 -3px 0 rgba(25,98,191,.15)",
+    },
+    countrySelect: {
+      width: "100%",
+      height: 44,
+      border: "none",
+      outline: "none",
+      background: "transparent",
+      fontWeight: 800,
+      fontSize: 18,
+      color: "#0B2F74",
+      paddingRight: 28,
+      cursor: "pointer",
+      appearance: "none",
+    },
+    chevron: {
+      position: "absolute",
+      right: 12,
+      top: "50%",
+      transform: "translateY(-50%)",
+      width: 16,
+      height: 16,
+      pointerEvents: "none",
+    },
   },
-  underline: {
-    width: 220,
-    height: 4,
-    background: "#4b8dd9",
-    borderRadius: 999,
-    margin: "8px auto 0",
-  },
-  grid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(4, 1fr)",
-    gap: 24,
-    marginTop: 28,
-  },
-  card: {
-    background: "#fff",
-    borderRadius: 18,
-    boxShadow: "0 10px 26px rgba(15,23,42,.10)",
-    padding: 18,
-    height: 132,
-    display: "grid",
-    placeItems: "center",
-    transition: "transform .18s ease, box-shadow .18s ease",
-  },
-  logoBox: {
-    position: "relative",
-    width: "100%",
-    height: "100%",
-    borderRadius: 12,
-    overflow: "hidden",
-    display: "grid",
-    placeItems: "center",
-  },
-  media: `
-    .relcamp-grid img{object-fit:contain}
-    @media (max-width: 980px){ .relcamp-grid{grid-template-columns: repeat(3,1fr)} }
-    @media (max-width: 640px){ .relcamp-grid{grid-template-columns: repeat(2,1fr)} }
-  `,
-};
 
-const RELEVANT_CAMPUS_SWIPER_CLASS = "college-relevant-campus-swiper";
-const MARQUEE_SPEED = 6000;
-const marqueeAutoplay = {
-  delay: 0,
-  disableOnInteraction: false,
-  pauseOnMouseEnter: false,
-};
-const marqueeFreeMode = { enabled: true, momentum: false, sticky: false };
+  uni: {
+    section: { width: "min(1180px, 96%)", margin: "0 auto 80px" },
+    list: { display: "grid", gap: 24 },
+    card: {
+      position: "relative",
+      display: "grid",
+      gridTemplateColumns: "180px 1fr",
+      gap: 18,
+      padding: "18px 18px 48px",
+      background: "#fff",
+      borderRadius: 14,
+      border: "1px solid rgba(13,38,78,.08)",
+      boxShadow: "0 10px 28px rgba(15,23,42,.10)",
+    },
+    logoWrap: {
+      position: "relative",
+      width: "100%",
+      aspectRatio: "1 / 1",
+      borderRadius: 12,
+      overflow: "hidden",
+      background: "#f6f7fb",
+      display: "grid",
+      placeItems: "center",
+    },
+    title: {
+      margin: "2px 0 10px",
+      color: "#0B2F74",
+      fontWeight: 900,
+      letterSpacing: ".04em",
+      textTransform: "uppercase",
+      fontSize: "clamp(20px, 2.6vw, 26px)",
+    },
+    excerpt: { margin: 0, color: "#3a4c74", lineHeight: 1.6, fontSize: 14 },
+    bullets: {
+      marginTop: 10,
+      display: "grid",
+      gap: 8,
+      color: "#16366c",
+      fontWeight: 600,
+      fontSize: 14,
+    },
+    bulletItem: { display: "flex", alignItems: "center", gap: 8 },
+    footer: {
+      position: "absolute",
+      left: 18,
+      right: 18,
+      bottom: 12,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "flex-end",
+    },
+    viewMore: {
+      border: "1px solid rgba(13,38,78,.18)",
+      background: "#f7fbff",
+      color: "#0B2F74",
+      padding: "8px 14px",
+      borderRadius: 999,
+      fontWeight: 700,
+      fontSize: 12,
+      textDecoration: "none",
+      boxShadow: "0 6px 16px rgba(15,23,42,.10)",
+    },
+    empty: {
+      padding: "28px 18px",
+      borderRadius: 12,
+      background: "#f7fbff",
+      color: "#0B2F74",
+      fontWeight: 700,
+      textAlign: "center",
+      border: "1px dashed rgba(13,38,78,.25)",
+    },
+  },
 
-/* ========== SCHOLARSHIP CTA (styles) ========== */
-const scholarshipStyles = {
-  section: { padding: "10px 0 110px", background: "#fff" },
-  title: {
-    margin: 0,
-    fontWeight: 900,
-    letterSpacing: ".06em",
-    textTransform: "uppercase",
-    fontSize: "clamp(22px,4.6vw,44px)",
+  relevant: {
+    section: { padding: "12px 0 88px", background: "#fff" },
+    inner: { width: "min(1180px, 96%)", margin: "0 auto" },
+    titleWrap: { textAlign: "center", marginBottom: 26 },
+    title: {
+      margin: 0,
+      color: "#4b8dd9",
+      fontWeight: 900,
+      letterSpacing: ".06em",
+      textTransform: "uppercase",
+      fontSize: "clamp(24px,4.6vw,48px)",
+    },
+    underline: {
+      width: 220,
+      height: 4,
+      background: "#4b8dd9",
+      borderRadius: 999,
+      margin: "8px auto 0",
+    },
+    card: {
+      background: "#fff",
+      borderRadius: 18,
+      boxShadow: "0 10px 26px rgba(15,23,42,.10)",
+      padding: 18,
+      height: 132,
+      display: "grid",
+      placeItems: "center",
+      transition: "transform .18s ease, box-shadow .18s ease",
+    },
+    logoBox: {
+      position: "relative",
+      width: "100%",
+      height: "100%",
+      borderRadius: 12,
+      overflow: "hidden",
+      display: "grid",
+      placeItems: "center",
+    },
   },
-  body: {
-    margin: "14px 0 28px",
-    fontSize: "clamp(14px,2.1vw,20px)",
-    lineHeight: 1.6,
-    opacity: 0.98,
-  },
+
+  /* ====== NEW: CTA Beasiswa sesuai desain ====== */
   cta: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 10,
-    background: "#fff",
-    color: "#0B4DA6",
-    padding: "10px 18px",
-    borderRadius: 999,
-    fontWeight: 800,
-    fontSize: 14,
-    textDecoration: "none",
-    boxShadow: "0 10px 20px rgba(0,0,0,.12)",
-    transition: "transform .18s ease, box-shadow .18s ease",
+    section: { padding: "10px 0 110px", background: "#fff" },
+    container: { width: "min(1180px, 96%)", margin: "0 auto" },
+    card: {
+      background: "#0B56B8",
+      color: "#fff",
+      padding: "32px clamp(18px,3vw,40px) 40px",
+      borderRadius: "24px 120px 20px 80px", // TL TR BR BL
+      boxShadow: "0 20px 44px rgba(11,86,184,.25)",
+    },
+    title: {
+      margin: 0,
+      fontWeight: 900,
+      textTransform: "uppercase",
+      letterSpacing: ".06em",
+      fontSize: "clamp(24px,4.6vw,48px)",
+    },
+    body: {
+      margin: "14px 0 26px",
+      maxWidth: 900,
+      fontSize: "clamp(14px,2.1vw,20px)",
+      lineHeight: 1.75,
+      letterSpacing: ".02em",
+      opacity: 0.98,
+    },
+    btn: {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 12,
+      height: 48,
+      padding: "0 22px",
+      background: "#fff",
+      color: "#0B56B8",
+      border: "2px solid #CFE0FF",
+      borderRadius: 999,
+      fontWeight: 800,
+      fontSize: 16,
+      textDecoration: "none",
+      boxShadow:
+        "0 10px 22px rgba(10,40,110,.18), inset 0 -3px 0 rgba(10,40,110,.06)",
+      transition: "transform .18s ease, box-shadow .18s ease",
+    },
+    btnHover: {
+      transform: "translateY(-2px)",
+      boxShadow:
+        "0 14px 28px rgba(10,40,110,.22), inset 0 -3px 0 rgba(10,40,110,.06)",
+    },
+    btnIcon: { width: 20, height: 20 },
   },
 };
 
-/* ================= Helpers ================= */
-const BulletIcon = ({ type }) => {
-  const common = { width: 18, height: 18 };
-  if (type === "pin") {
-    return (
-      <svg
-        viewBox="0 0 24 24"
-        {...common}
-        fill="none"
-        stroke="#1E56B6"
-        strokeWidth="2"
-      >
-        <path d="M12 22s7-5.33 7-12a7 7 0 1 0-14 0c0 6.67 7 12 7 12Z" />
-        <circle cx="12" cy="10" r="3" />
-      </svg>
-    );
-  }
-  if (type === "money") {
-    return (
-      <svg
-        viewBox="0 0 24 24"
-        {...common}
-        fill="none"
-        stroke="#1E56B6"
-        strokeWidth="2"
-      >
-        <rect x="3" y="6" width="18" height="12" rx="2" />
-        <circle cx="12" cy="12" r="3" />
-      </svg>
-    );
-  }
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      {...common}
-      fill="none"
-      stroke="#1E56B6"
-      strokeWidth="2"
-    >
-      <path d="M22 10L12 5 2 10l10 5 10-5Z" />
-      <path d="M6 12v4c3 2 9 2 12 0v-4" />
-    </svg>
-  );
-};
-
-/* ===== Supabase public URL resolver (no image_public_url needed) ===== */
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const SUPABASE_BUCKET = process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "";
-
-const buildSupabasePublicUrl = (objectPath = "") => {
-  const path = String(objectPath).replace(/^\/+/, "");
-  if (!path) return "";
-  if (/^https?:\/\//i.test(path)) return path;
-  if (path.startsWith("/")) return path; // local asset
-  if (!SUPABASE_URL || !SUPABASE_BUCKET) {
-    // fallback: try as local path (will 404 if not hosted)
-    return `/${path}`;
-  }
-  const base = SUPABASE_URL.replace(/\/+$/, "");
-  return `${base}/storage/v1/object/public/${SUPABASE_BUCKET}/${path}`;
-};
-
-const normalizeImgSrc = (input) => {
-  const raw = (input || "").trim();
-  if (!raw)
-    return "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>";
-  // try supabase first if it's an object path
-  const maybeStorage = buildSupabasePublicUrl(raw);
-  if (maybeStorage) return maybeStorage;
-  if (/^https?:\/\//i.test(raw)) return raw;
-  return raw.startsWith("/") ? raw : `/${raw}`;
-};
-
-const pickLogo = (obj) =>
-  // prioritise logo_url (Supabase objectPath), optional fallbacks to app assets
-  obj?.logo_url || obj?.logo || obj?.image || obj?.image_url || "";
-
-/* ================= Component ================= */
+/* ================== Component ================== */
 export default function CollegeContent({ locale = "id" }) {
-  // local UI state (typing)
-  const [query, setQuery] = useState("");
-  const [country, setCountry] = useState("");
-
-  // applied filters (fetch only when user submits)
-  const [qApplied, setQApplied] = useState("");
-  const [countryApplied, setCountryApplied] = useState("");
-
-  // fetch with applied filters
   const {
     hero,
     findProgram,
@@ -536,54 +466,33 @@ export default function CollegeContent({ locale = "id" }) {
     search,
     recommendedUniversity,
     universities,
-    scholarshipCTA: scholarshipCTARaw,
-  } = useCollegeViewModel({ locale, q: qApplied, country: countryApplied });
+    scholarshipCTA,
+  } = useCollegeViewModel({ locale });
 
-  const scholarshipCTA =
-    scholarshipCTARaw && typeof scholarshipCTARaw === "object"
-      ? scholarshipCTARaw
-      : {};
+  const t = (id, en) => (locale === "en" ? en : id);
 
-  /* ------- Relevant Campus (robust) ------- */
-  const relevantCampus = useMemo(() => {
-    const raw =
-      recommendedUniversity?.relevantCampus ??
-      recommendedUniversity?.relevant_colleges ??
-      recommendedUniversity?.relevant_college ??
-      [];
-    return Array.isArray(raw) ? raw : [];
-  }, [recommendedUniversity]);
-
+  /* relevant campus */
+  const relevantCampus = useMemo(
+    () =>
+      Array.isArray(recommendedUniversity?.relevantCampus)
+        ? recommendedUniversity.relevantCampus
+        : [],
+    [recommendedUniversity]
+  );
   const hasMultipleRelevantCampus = relevantCampus.length > 1;
   const relevantCampusAutoplay = hasMultipleRelevantCampus
     ? marqueeAutoplay
     : undefined;
 
-  /* ------- refs & voice ------- */
+  /* search state */
+  const [query, setQuery] = useState("");
+  const [country, setCountry] = useState("");
+  const [qApplied, setQApplied] = useState("");
+  const [countryApplied, setCountryApplied] = useState("");
   const inputRef = useRef(null);
   const listRef = useRef(null);
   const [listening, setListening] = useState(false);
 
-  const inferCountry = (u) => {
-    if (u.country) return String(u.country).trim();
-    const pinText = (u.bullets || []).find((b) => b.icon === "pin")?.text || "";
-    return String(pinText)
-      .split(/[–—-]|,/)[0]
-      .trim();
-  };
-
-  // country options from current data
-  const countries = useMemo(() => {
-    const set = new Set(
-      (universities || [])
-        .map(inferCountry)
-        .filter(Boolean)
-        .map((s) => s.replace(/\s+/g, " "))
-    );
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [universities]);
-
-  // url -> state on first render
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
@@ -595,10 +504,13 @@ export default function CollegeContent({ locale = "id" }) {
     setCountryApplied(c);
   }, []);
 
-  const SpeechRecognition = useMemo(() => {
-    if (typeof window === "undefined") return null;
-    return window.SpeechRecognition || window.webkitSpeechRecognition || null;
-  }, []);
+  const SpeechRecognition = useMemo(
+    () =>
+      typeof window !== "undefined"
+        ? window.SpeechRecognition || window.webkitSpeechRecognition || null
+        : null,
+    []
+  );
 
   const startVoice = () => {
     if (!SpeechRecognition) {
@@ -612,9 +524,6 @@ export default function CollegeContent({ locale = "id" }) {
     try {
       const rec = new SpeechRecognition();
       rec.lang = locale === "en" ? "en-US" : "id-ID";
-      rec.interimResults = false;
-      rec.maxAlternatives = 1;
-
       rec.onstart = () => setListening(true);
       rec.onend = () => setListening(false);
       rec.onerror = () => setListening(false);
@@ -626,12 +535,10 @@ export default function CollegeContent({ locale = "id" }) {
         listRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
         if (typeof window !== "undefined") {
           const url = new URL(window.location.href);
-          if (text) url.searchParams.set("q", text);
-          else url.searchParams.delete("q");
+          text ? url.searchParams.set("q", text) : url.searchParams.delete("q");
           window.history.replaceState({}, "", url.toString());
         }
       };
-
       rec.start();
     } catch {
       setListening(false);
@@ -639,22 +546,20 @@ export default function CollegeContent({ locale = "id" }) {
   };
 
   const doSearch = () => {
-    // apply filters → triggers fetch
     setQApplied(query);
     setCountryApplied(country);
-
     listRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
-      if (query) url.searchParams.set("q", query);
-      else url.searchParams.delete("q");
-      if (country) url.searchParams.set("country", country);
-      else url.searchParams.delete("country");
+      query ? url.searchParams.set("q", query) : url.searchParams.delete("q");
+      country
+        ? url.searchParams.set("country", country)
+        : url.searchParams.delete("country");
       window.history.replaceState({}, "", url.toString());
     }
   };
 
-  /* Pagination (AntD) */
+  /* pagination */
   const PAGE_SIZE = 3;
   const [page, setPage] = useState(1);
   useEffect(() => setPage(1), [qApplied, countryApplied]);
@@ -665,7 +570,22 @@ export default function CollegeContent({ locale = "id" }) {
     return arr.slice(start, start + PAGE_SIZE);
   }, [universities, page]);
 
-  const t = (id, en) => (locale === "en" ? en : id);
+  const inferCountry = (u) => {
+    if (u.country) return String(u.country).trim();
+    const pinText = (u.bullets || []).find((b) => b.icon === "pin")?.text || "";
+    return String(pinText)
+      .split(/[–—-]|,/)[0]
+      .trim();
+  };
+  const countries = useMemo(() => {
+    const set = new Set(
+      (universities || [])
+        .map(inferCountry)
+        .filter(Boolean)
+        .map((s) => s.replace(/\s+/g, " "))
+    );
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [universities]);
 
   return (
     <>
@@ -698,73 +618,84 @@ export default function CollegeContent({ locale = "id" }) {
       </section>
 
       {/* FIND PROGRAM */}
-      <div style={findStyles.bleed}>
-        <section style={findStyles.section}>
-          <div style={findStyles.inner}>
-            <h2 style={findStyles.title}>{findProgram.title}</h2>
+      <div style={styles.findBleed}>
+        <section style={styles.findSection}>
+          <div style={styles.findInner}>
+            <h2 style={styles.findTitle}>{findProgram.title}</h2>
           </div>
         </section>
       </div>
 
-      {/* POPULER JURUSAN */}
-      <section style={majorStyles.section}>
-        <style>{majorStyles.media}</style>
-        <div className="major-stripe" style={majorStyles.stripe} />
-        <div style={majorStyles.inner}>
-          <div style={majorStyles.headingWrap}>
-            <h3 style={majorStyles.heading}>
-              {t("JURUSAN POPULER", "POPULAR MAJORS")}
+      {/* POPULAR MAJORS */}
+      <section style={styles.majors.section}>
+        <div style={styles.majors.inner}>
+          <div style={{ marginBottom: 28 }}>
+            <h3 style={styles.majors.heading}>
+              {locale === "en" ? "POPULAR MAJORS" : "JURUSAN POPULER"}
             </h3>
-            <div style={majorStyles.underline} />
+            <div style={styles.majors.underline} />
           </div>
 
-          <div className="majors-grid" style={majorStyles.grid}>
+          <div className="majors-grid" style={styles.majors.grid}>
             {(popularMajors || []).map((m) => (
               <article
                 key={m.id}
-                style={majorStyles.card}
+                style={styles.majors.card}
                 onMouseEnter={(e) =>
-                  Object.assign(e.currentTarget.style, majorStyles.cardHover)
+                  Object.assign(e.currentTarget.style, {
+                    transform: "translateY(-2px)",
+                    boxShadow: "0 16px 36px rgba(15,23,42,.16)",
+                  })
                 }
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = "";
-                  e.currentTarget.style.boxShadow =
-                    "0 12px 28px rgba(15,23,42,.12)";
-                }}
+                onMouseLeave={(e) =>
+                  Object.assign(e.currentTarget.style, {
+                    transform: "",
+                    boxShadow: "0 12px 28px rgba(15,23,42,.12)",
+                  })
+                }
               >
+                {/* LANGSUNG IKON — pembungkus dihapus */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <div style={majorStyles.iconWrap}>
-                  <img src={m.icon} alt={m.title} style={majorStyles.iconImg} />
-                </div>
-                <h4 style={majorStyles.majorTitle}>
+                <img
+                  src={m.icon}
+                  alt={m.title}
+                  style={styles.majors.iconPlain}
+                />
+
+                <h4 style={styles.majors.majorTitle}>
                   {(m.title || "").toUpperCase()}
                 </h4>
               </article>
             ))}
           </div>
         </div>
+
+        {/* responsif grid */}
+        <style>{`
+          @media (max-width: 1024px) { .majors-grid { grid-template-columns: repeat(2, 1fr); } }
+          @media (max-width: 640px)  { .majors-grid { grid-template-columns: 1fr; } }
+        `}</style>
       </section>
 
-      {/* HEADING + SEARCH BAR */}
+      {/* HEADING + SEARCH */}
       <section style={{ paddingBottom: 0 }}>
-        <div style={recUniStyles.block}>
-          <h2 style={recUniStyles.title}>{recommendedUniversity.title}</h2>
-          <p style={recUniStyles.subtitle}>{recommendedUniversity.subtitle}</p>
+        <div style={styles.rec.block}>
+          <h2 style={styles.rec.title}>{recommendedUniversity.title}</h2>
+          <p style={styles.rec.subtitle}>{recommendedUniversity.subtitle}</p>
         </div>
 
-        <div style={searchStyles.wrap}>
-          <div className="search-row-stack" style={searchStyles.row}>
-            {/* Search shell */}
-            <div style={searchStyles.shell}>
+        <div style={styles.search.wrap}>
+          <div className="search-row-stack" style={styles.search.row}>
+            <div style={styles.search.shell}>
               <button
                 type="button"
                 aria-label="Search"
-                style={searchStyles.iconBtn}
+                style={styles.search.iconBtn}
                 onClick={doSearch}
               >
                 <svg
                   viewBox="0 0 24 24"
-                  style={searchStyles.icon}
+                  style={styles.search.icon}
                   fill="none"
                   stroke="#0B4DA6"
                   strokeWidth="2"
@@ -781,22 +712,22 @@ export default function CollegeContent({ locale = "id" }) {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && doSearch()}
-                style={searchStyles.input}
+                style={styles.search.input}
                 aria-label={search.label}
               />
 
-              <div style={searchStyles.divider} />
+              <div style={styles.search.divider} />
 
               <button
                 type="button"
                 aria-label={search.voiceHint}
                 title={search.voiceHint}
-                style={searchStyles.iconBtn}
+                style={styles.search.iconBtn}
                 onClick={startVoice}
               >
                 <svg
                   viewBox="0 0 24 24"
-                  style={searchStyles.icon}
+                  style={styles.search.icon}
                   fill={listening ? "#0B4DA6" : "none"}
                   stroke="#0B4DA6"
                   strokeWidth="2"
@@ -808,37 +739,37 @@ export default function CollegeContent({ locale = "id" }) {
               </button>
             </div>
 
-            {/* Filter country pill */}
-            <div style={searchStyles.filterPill}>
+            <div style={styles.search.filterPill}>
               <select
-                aria-label={t("Filter negara", "Filter country")}
-                title={t("Filter negara", "Filter country")}
+                aria-label={
+                  locale === "en" ? "Filter country" : "Filter negara"
+                }
                 value={country}
                 onChange={(e) => {
                   setCountry(e.target.value);
-                  // apply immediately when country changed
                   setCountryApplied(e.target.value);
                   if (typeof window !== "undefined") {
                     const url = new URL(window.location.href);
-                    if (e.target.value)
-                      url.searchParams.set("country", e.target.value);
-                    else url.searchParams.delete("country");
+                    e.target.value
+                      ? url.searchParams.set("country", e.target.value)
+                      : url.searchParams.delete("country");
                     window.history.replaceState({}, "", url.toString());
                   }
                 }}
-                style={searchStyles.countrySelect}
+                style={styles.search.countrySelect}
               >
-                <option value="">{t("Semua Negara", "All Countries")}</option>
+                <option value="">
+                  {locale === "en" ? "All Countries" : "Semua Negara"}
+                </option>
                 {countries.map((c) => (
                   <option key={c} value={c}>
                     {c}
                   </option>
                 ))}
               </select>
-
               <svg
                 viewBox="0 0 24 24"
-                style={searchStyles.chevron}
+                style={styles.search.chevron}
                 fill="none"
                 stroke="#1962BF"
                 strokeWidth="2"
@@ -849,41 +780,36 @@ export default function CollegeContent({ locale = "id" }) {
           </div>
         </div>
 
-        {/* Responsive stack for small screens */}
-        <style
-          dangerouslySetInnerHTML={{
-            __html: `
-              @media (max-width: 640px){
-                .search-row-stack { flex-direction: column; gap: 12px; }
-              }
-            `,
-          }}
-        />
+        <style>{`@media (max-width: 640px){ .search-row-stack { flex-direction: column; gap: 12px; } }`}</style>
       </section>
 
       {/* UNIVERSITY LIST */}
-      <section ref={listRef} style={uniListStyles.section}>
-        <style>{uniListStyles.media}</style>
+      <section ref={listRef} style={styles.uni.section}>
+        <style>{`
+          @media (max-width: 860px) {
+            .uni-card { grid-template-columns: 1fr; padding-bottom: 56px; }
+            .uni-logo { height: 120px; aspect-ratio: auto; }
+          }
+        `}</style>
 
         {(universities || []).length === 0 ? (
-          <div style={uniListStyles.empty}>
+          <div style={styles.uni.empty}>
             {locale === "en"
               ? `No university found for “${qApplied || countryApplied || ""}”.`
               : `Tidak ada kampus untuk “${qApplied || countryApplied || ""}”.`}
           </div>
         ) : (
-          <div style={uniListStyles.list}>
+          <div style={styles.uni.list}>
             {pageItems.map((u) => {
-              const raw = pickLogo(u);
-              const src = normalizeImgSrc(raw);
+              const src = normalizeImgSrc(u.logo_url);
               const external = /^https?:\/\//i.test(src);
               return (
                 <article
                   key={u.id}
                   className="uni-card"
-                  style={uniListStyles.card}
+                  style={styles.uni.card}
                 >
-                  <div className="uni-logo" style={uniListStyles.logoWrap}>
+                  <div className="uni-logo" style={styles.uni.logoWrap}>
                     <Image
                       src={src}
                       alt={`${u.name} logo`}
@@ -895,15 +821,13 @@ export default function CollegeContent({ locale = "id" }) {
                   </div>
 
                   <div>
-                    <h3 style={uniListStyles.title}>
+                    <h3 style={styles.uni.title}>
                       {(u.name || "").toUpperCase()}
                     </h3>
-                    <p style={uniListStyles.excerpt}>{u.excerpt || ""}</p>
-
-                    {/* bullets aman meski kosong */}
-                    <div style={uniListStyles.bullets}>
+                    <p style={styles.uni.excerpt}>{u.excerpt || ""}</p>
+                    <div style={styles.uni.bullets}>
                       {(u.bullets || []).map((b, i) => (
-                        <div key={i} style={uniListStyles.bulletItem}>
+                        <div key={i} style={styles.uni.bulletItem}>
                           <BulletIcon type={b.icon} />
                           <span>{b.text}</span>
                         </div>
@@ -911,9 +835,9 @@ export default function CollegeContent({ locale = "id" }) {
                     </div>
                   </div>
 
-                  <div style={uniListStyles.footer}>
-                    <a href={u.href || "#"} style={uniListStyles.viewMore}>
-                      {t("Selengkapnya", "View More")}
+                  <div style={styles.uni.footer}>
+                    <a href={u.href || "#"} style={styles.uni.viewMore}>
+                      {locale === "en" ? "View More" : "Selengkapnya"}
                     </a>
                   </div>
                 </article>
@@ -950,15 +874,14 @@ export default function CollegeContent({ locale = "id" }) {
         </div>
       )}
 
-      {/* RELEVANT CAMPUS (Marquee) */}
-      <section style={relevantStyles.section}>
-        <style>{relevantStyles.media}</style>
-        <div style={relevantStyles.inner}>
-          <div style={relevantStyles.titleWrap}>
-            <h2 style={relevantStyles.title}>
-              {t("KAMPUS RELEVAN", "RELEVANT CAMPUS")}
+      {/* RELEVANT CAMPUS (marquee) */}
+      <section style={styles.relevant.section}>
+        <div style={styles.relevant.inner}>
+          <div style={styles.relevant.titleWrap}>
+            <h2 style={styles.relevant.title}>
+              {locale === "en" ? "RELEVANT CAMPUS" : "KAMPUS RELEVAN"}
             </h2>
-            <div style={relevantStyles.underline} />
+            <div style={styles.relevant.underline} />
           </div>
 
           {relevantCampus.length > 0 ? (
@@ -983,19 +906,21 @@ export default function CollegeContent({ locale = "id" }) {
                       style={{ width: "min(240px, 72vw)" }}
                     >
                       <div
-                        style={relevantStyles.card}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.transform = "translateY(-3px)";
-                          e.currentTarget.style.boxShadow =
-                            "0 14px 32px rgba(15,23,42,.14)";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.transform = "";
-                          e.currentTarget.style.boxShadow =
-                            "0 10px 26px rgba(15,23,42,.10)";
-                        }}
+                        style={styles.relevant.card}
+                        onMouseEnter={(e) =>
+                          Object.assign(e.currentTarget.style, {
+                            transform: "translateY(-3px)",
+                            boxShadow: "0 14px 32px rgba(15,23,42,.14)",
+                          })
+                        }
+                        onMouseLeave={(e) =>
+                          Object.assign(e.currentTarget.style, {
+                            transform: "",
+                            boxShadow: "0 10px 26px rgba(15,23,42,.10)",
+                          })
+                        }
                       >
-                        <div style={relevantStyles.logoBox}>
+                        <div style={styles.relevant.logoBox}>
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={src}
@@ -1006,11 +931,11 @@ export default function CollegeContent({ locale = "id" }) {
                               height: "100%",
                               objectFit: "contain",
                             }}
-                            onError={(e) => {
+                            onError={(e) =>
                               e.currentTarget
                                 ?.closest(".swiper-slide")
-                                ?.remove();
-                            }}
+                                ?.remove()
+                            }
                           />
                         </div>
                       </div>
@@ -1019,63 +944,49 @@ export default function CollegeContent({ locale = "id" }) {
                 })}
               </Swiper>
 
-              <style
-                dangerouslySetInnerHTML={{
-                  __html: `
-                    .${RELEVANT_CAMPUS_SWIPER_CLASS} { overflow: visible; padding: 6px 2px; }
-                    .${RELEVANT_CAMPUS_SWIPER_CLASS} .swiper-wrapper { align-items: stretch; }
-                    .${RELEVANT_CAMPUS_SWIPER_CLASS} .swiper-slide { height: auto; display: flex; align-items: stretch; }
-                    .${RELEVANT_CAMPUS_SWIPER_CLASS} .swiper-pagination,
-                    .${RELEVANT_CAMPUS_SWIPER_CLASS} .swiper-button-next,
-                    .${RELEVANT_CAMPUS_SWIPER_CLASS} .swiper-button-prev { display: none !important; }
-                  `,
-                }}
-              />
+              <style>{`
+                .${RELEVANT_CAMPUS_SWIPER_CLASS} { overflow: visible; padding: 6px 2px; }
+                .${RELEVANT_CAMPUS_SWIPER_CLASS} .swiper-wrapper { align-items: stretch; }
+                .${RELEVANT_CAMPUS_SWIPER_CLASS} .swiper-slide { height: auto; display: flex; align-items: stretch; }
+                .${RELEVANT_CAMPUS_SWIPER_CLASS} .swiper-pagination,
+                .${RELEVANT_CAMPUS_SWIPER_CLASS} .swiper-button-next,
+                .${RELEVANT_CAMPUS_SWIPER_CLASS} .swiper-button-prev { display: none !important; }
+              `}</style>
             </>
           ) : (
-            <div style={uniListStyles.empty}>
-              {t("Belum ada kampus relevan.", "No relevant campus yet.")}
+            <div style={styles.uni.empty}>
+              {locale === "en"
+                ? "No relevant campus yet."
+                : "Belum ada kampus relevan."}
             </div>
           )}
         </div>
       </section>
 
-      {/* SCHOLARSHIP CTA */}
-      <section style={scholarshipStyles.section}>
-        <div style={{ width: "min(1180px, 96%)", margin: "0 auto" }}>
-          <article
-            style={{
-              background: "#0B4DA6",
-              color: "#fff",
-              padding: "34px clamp(18px,3vw,40px) 40px",
-              borderRadius: "28px 28px 20px 56px",
-              boxShadow: "0 20px 44px rgba(11,77,166,.25)",
-              position: "relative",
-            }}
-          >
-            <h2 style={scholarshipStyles.title}>{scholarshipCTA.title}</h2>
-            <p style={scholarshipStyles.body}>{scholarshipCTA.body}</p>
+      {/* ====== SCHOLARSHIP CTA (sesuai desain) ====== */}
+      <section style={styles.cta.section}>
+        <div style={styles.cta.container}>
+          <article style={styles.cta.card}>
+            <h2 style={styles.cta.title}>{scholarshipCTA.title}</h2>
+            <p style={styles.cta.body}>{scholarshipCTA.body}</p>
 
             <a
               href={scholarshipCTA.href}
-              style={scholarshipStyles.cta}
+              style={styles.cta.btn}
               onMouseEnter={(e) =>
-                Object.assign(e.currentTarget.style, {
-                  transform: "translateY(-2px)",
-                  boxShadow: "0 14px 24px rgba(0,0,0,.16)",
-                })
+                Object.assign(e.currentTarget.style, styles.cta.btnHover)
               }
               onMouseLeave={(e) => {
                 e.currentTarget.style.transform = "";
-                e.currentTarget.style.boxShadow = "0 10px 20px rgba(0,0,0,.12)";
+                e.currentTarget.style.boxShadow = styles.cta.btn.boxShadow;
               }}
             >
               {scholarshipCTA.ctaLabel}
               <svg
                 viewBox="0 0 24 24"
-                style={{ width: 22, height: 22 }}
+                style={styles.cta.btnIcon}
                 fill="none"
-                stroke="#9AA0A6"
+                stroke="#4A76C8"
                 strokeWidth="2"
               >
                 <path d="M5 12h14" />
