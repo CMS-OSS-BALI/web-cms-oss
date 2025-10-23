@@ -4,12 +4,15 @@ import prisma from "@/lib/prisma";
 import { fetchStatus, mapStatus } from "@/lib/midtrans";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { sendBoothInvoiceEmail } from "@/lib/mailer";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
 const CRON_SECRET = process.env.CRON_SECRET || "";
+const ALLOW_PUBLIC_RECONCILE =
+  String(process.env.ALLOW_PUBLIC_RECONCILE || "").trim() === "1";
 
 function sanitize(v) {
   if (v == null) return v;
@@ -37,7 +40,7 @@ function toInt(v, d = null) {
   return Number.isFinite(n) ? Math.trunc(n) : d;
 }
 
-// ⬇ NEW
+// Reader fleksibel
 async function readBodyFlexible(req) {
   const ct = (req.headers.get("content-type") || "").toLowerCase();
   const isMultipart = ct.startsWith("multipart/form-data");
@@ -51,6 +54,7 @@ async function readBodyFlexible(req) {
   return (await req.json().catch(() => ({}))) ?? {};
 }
 
+// Admin/cron guard (bulk)
 async function assertAdminOrCron(req) {
   const key = req.headers.get("x-admin-key");
   if (key && ADMIN_TEST_KEY && key === ADMIN_TEST_KEY) return true;
@@ -79,8 +83,10 @@ async function reconcileOne(order_id) {
       amount: true,
       event_id: true,
       voucher_code: true,
+      email: true,
     },
   });
+
   if (!booking) return { order_id, ok: false, reason: "BOOKING_NOT_FOUND" };
 
   const mid = await fetchStatus(order_id);
@@ -114,6 +120,7 @@ async function reconcileOne(order_id) {
       gross_amount == null
         ? true
         : Number(booking.amount || 0) === gross_amount;
+    let becamePaid = false;
 
     await prisma.$transaction(
       async (tx) => {
@@ -146,6 +153,8 @@ async function reconcileOne(order_id) {
         });
 
         if (updated.count > 0) {
+          becamePaid = true;
+
           if (quota == null || sold < quota) {
             await tx.events.update({
               where: { id: booking.event_id },
@@ -159,6 +168,7 @@ async function reconcileOne(order_id) {
               where: { id: booking.id },
               data: { status: "REVIEW", updated_at: new Date() },
             });
+            becamePaid = false;
           }
 
           if (booking.voucher_code) {
@@ -174,6 +184,23 @@ async function reconcileOne(order_id) {
       },
       { isolationLevel: "Serializable" }
     );
+
+    if (becamePaid && booking.email) {
+      try {
+        await sendBoothInvoiceEmail({
+          to: booking.email,
+          order_id,
+          amount: Number(booking.amount || 0),
+          status: "PAID",
+          paid_at: new Date(),
+          channel: payment_type,
+          event: booking.event || {},
+          support_email: process.env.SUPPORT_EMAIL || process.env.MAIL_FROM,
+        });
+      } catch (e) {
+        console.error("[MAILER] send invoice error:", e?.message || e);
+      }
+    }
 
     return { order_id, ok: true, mapped, reconciled: true };
   }
@@ -194,11 +221,25 @@ async function reconcileOne(order_id) {
 
 export async function POST(req) {
   try {
-    await assertAdminOrCron(req);
-
-    const body = await readBodyFlexible(req); // ⬅ form-data or JSON
+    const isPublicHeader = req.headers.get("x-public-reconcile") === "1";
+    const body = await readBodyFlexible(req);
     const order_id =
       typeof body?.order_id === "string" ? body.order_id.trim() : "";
+
+    // PUBLIC QUICK RECONCILE (aman karena server cek langsung ke Midtrans).
+    if (isPublicHeader && ALLOW_PUBLIC_RECONCILE) {
+      if (!order_id) return bad("order_id wajib diisi", "order_id");
+      const res = await reconcileOne(order_id);
+      const status = res.ok
+        ? 200
+        : res.reason === "BOOKING_NOT_FOUND"
+        ? 404
+        : 400;
+      return json({ message: "OK", data: res }, { status });
+    }
+
+    // Admin/Cron mode (bulk)
+    await assertAdminOrCron(req);
 
     if (order_id) {
       const res = await reconcileOne(order_id);

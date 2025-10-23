@@ -109,7 +109,7 @@ export async function GET(req) {
         midtrans: mid?.error
           ? { error: mid.message, info: mid.info }
           : mid_summary,
-        advice, // front-end bisa tampilkan "Menunggu webhook..." atau trigger reconcile di admin
+        advice,
       },
     });
   } catch (err) {

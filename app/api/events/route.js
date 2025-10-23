@@ -20,6 +20,7 @@ const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
 /* -------------------- utils -------------------- */
 function sanitize(v) {
   if (v === null || v === undefined) return v;
+  if (v instanceof Date) return v.toISOString(); // ✅ keep dates usable
   if (typeof v === "bigint") return v.toString();
   if (Array.isArray(v)) return v.map(sanitize);
   if (typeof v === "object") {
@@ -289,26 +290,6 @@ export async function GET(req) {
         orderBy,
         skip: (page - 1) * perPage,
         take: perPage,
-        include: {
-          events_translate: {
-            where: { locale: { in: [locale, fallback] } },
-            select: { locale: true, title: true, description: true },
-          },
-          ...(includeCategory
-            ? {
-                category: {
-                  select: {
-                    id: true,
-                    slug: true,
-                    translate: {
-                      where: { locale: { in: [locale, fallback] } },
-                      select: { locale: true, name: true, description: true },
-                    },
-                  },
-                },
-              }
-            : { category: { select: { id: true, slug: true } } }),
-        },
         select: {
           id: true,
           admin_user_id: true,
@@ -323,13 +304,28 @@ export async function GET(req) {
           category_id: true,
           created_at: true,
           updated_at: true,
-          events_translate: true,
-          category: true,
           deleted_at: true,
-          // ⬇️ booth fields
+          // booth fields
           booth_price: true,
           booth_quota: true,
           booth_sold_count: true,
+
+          events_translate: {
+            where: { locale: { in: [locale, fallback] } },
+            select: { locale: true, title: true, description: true },
+          },
+          category: includeCategory
+            ? {
+                select: {
+                  id: true,
+                  slug: true,
+                  translate: {
+                    where: { locale: { in: [locale, fallback] } },
+                    select: { locale: true, name: true, description: true },
+                  },
+                },
+              }
+            : { select: { id: true, slug: true } },
         },
       }),
     ]);
@@ -373,7 +369,6 @@ export async function GET(req) {
       const remaining =
         r.capacity == null ? null : Math.max(0, Number(r.capacity) - sold);
 
-      // booth remaining berdasar counter di events (disinkron saat webhook/payment)
       const booth_remaining =
         r.booth_quota == null
           ? null
@@ -384,10 +379,10 @@ export async function GET(req) {
 
       return {
         id: r.id,
-        banner_url: toPublicUrl(r.banner_url), // ⬅️ public URL
+        banner_url: toPublicUrl(r.banner_url),
         is_published: r.is_published,
-        start_at: r.start_at,
-        end_at: r.end_at,
+        start_at: r.start_at, // Date → ISO by sanitize()
+        end_at: r.end_at, // Date → ISO by sanitize()
         start_ts,
         end_ts,
         location: r.location,
@@ -396,11 +391,11 @@ export async function GET(req) {
         ticket_price: r.ticket_price,
         category_id: r.category?.id ?? null,
         category_slug: r.category?.slug ?? null,
-        created_at: r.created_at,
-        updated_at: r.updated_at,
+        created_at: r.created_at, // Date → ISO by sanitize()
+        updated_at: r.updated_at, // Date → ISO by sanitize()
         created_ts,
         updated_ts,
-        deleted_at: r.deleted_at,
+        deleted_at: r.deleted_at, // Date|null → ISO|null by sanitize()
         title: t?.title ?? null,
         description: t?.description ?? null,
         locale_used: t?.locale ?? null,
@@ -413,7 +408,7 @@ export async function GET(req) {
               category_locale_used,
             }
           : {}),
-        // ⬇️ booth fields
+        // booth fields
         booth_price: r.booth_price,
         booth_quota: r.booth_quota,
         booth_sold_count: r.booth_sold_count,
@@ -552,7 +547,7 @@ export async function POST(req) {
         "ticket_price"
       );
 
-    // ⬇️ Booth fields (validasi angka)
+    // Booth fields
     const booth_price = toInt(body?.booth_price, 0);
     if (!Number.isFinite(booth_price) || booth_price < 0)
       return badRequest("booth_price harus >= 0", "booth_price");
@@ -610,7 +605,7 @@ export async function POST(req) {
       const parent = await tx.events.create({
         data: {
           id,
-          // ⬇️ RELASI WAJIB: connect ke admin_users
+          // RELASI WAJIB
           admin_users: { connect: { id: adminId } },
           banner_url: banner_url || null,
           is_published: !!is_published,
@@ -620,14 +615,13 @@ export async function POST(req) {
           capacity,
           pricing_type,
           ticket_price: pricing_type === "PAID" ? ticket_price : 0,
-          // ⬇️ RELASI OPSIONAL: kategori via connect
+          // RELASI OPSIONAL: kategori
           ...(resolvedCategoryId
             ? { category: { connect: { id: resolvedCategoryId } } }
             : {}),
-          // ⬇️ booth fields
+          // Booth fields
           booth_price,
           booth_quota,
-          // booth_sold_count default 0 by schema
         },
       });
 
@@ -659,13 +653,12 @@ export async function POST(req) {
         message: "Event berhasil dibuat.",
         data: {
           id: created.id,
-          banner_url: toPublicUrl(banner_url), // ⬅️ public URL
+          banner_url: toPublicUrl(banner_url),
           title_id,
           description_id,
           title_en: title_en || null,
           description_en: description_en || null,
           category_id: resolvedCategoryId,
-          // ⬇️ booth fields echo
           booth_price,
           booth_quota,
           booth_sold_count: 0,

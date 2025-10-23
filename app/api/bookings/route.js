@@ -6,6 +6,8 @@ import { randomUUID } from "crypto";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
+
 function sanitize(v) {
   if (v == null) return v;
   if (typeof v === "bigint") return v.toString();
@@ -39,7 +41,7 @@ function sanitizeCode(s) {
     .slice(0, 64);
 }
 
-// ⇩⇩ NEW: baca body fleksibel (JSON, urlencoded, multipart) ⇩⇩
+// Body reader fleksibel (JSON, urlencoded, multipart)
 async function readBodyFlexible(req) {
   const ct = (req.headers.get("content-type") || "").toLowerCase();
   const isMultipart = ct.startsWith("multipart/form-data");
@@ -58,9 +60,12 @@ async function readBodyFlexible(req) {
 
 export async function POST(req) {
   try {
-    const body = await readBodyFlexible(req); // <<< ganti dari req.json()
+    const body = await readBodyFlexible(req);
 
+    // HANYA event_id (price dihitung server-side)
     const event_id = String(body?.event_id || "").trim();
+
+    // data form (boleh tampil di network karena dari user)
     const rep_name = String(body?.rep_name || "").trim();
     const campus_name = String(body?.campus_name || "").trim();
     const country = String(body?.country || "").trim();
@@ -75,6 +80,7 @@ export async function POST(req) {
     if (!address) return bad("address wajib diisi", "address");
     if (!whatsapp) return bad("whatsapp wajib diisi", "whatsapp");
 
+    // Ambil harga & kuota dari server (TIDAK diekspos ke client)
     const event = await prisma.events.findUnique({
       where: { id: event_id },
       select: {
@@ -92,7 +98,6 @@ export async function POST(req) {
       );
     if (!event.is_published) return bad("Event belum dipublish", "event_id");
 
-    // Kuota awal
     const quota = event.booth_quota;
     const sold = Number(event.booth_sold_count || 0);
     if (quota != null && sold >= quota) {
@@ -102,11 +107,12 @@ export async function POST(req) {
       );
     }
 
-    // Voucher opsional
+    // Voucher opsional — diverifikasi server-side
     let voucher = null;
     let voucher_code = body?.voucher_code
       ? sanitizeCode(body.voucher_code)
       : null;
+
     if (voucher_code) {
       const now = new Date();
       const v = await prisma.vouchers.findUnique({
@@ -114,7 +120,7 @@ export async function POST(req) {
         select: {
           id: true,
           code: true,
-          type: true,
+          type: true, // FIXED | PERCENT
           value: true,
           max_discount: true,
           is_active: true,
@@ -138,9 +144,9 @@ export async function POST(req) {
       voucher = v;
     }
 
+    // HITUNG amount sepenuhnya di server (TIDAK dikembalikan ke client)
     const basePrice = Math.max(0, toInt(event.booth_price, 0) || 0);
 
-    // Hitung diskon
     let discount = 0;
     if (voucher) {
       if (voucher.type === "FIXED") {
@@ -157,10 +163,12 @@ export async function POST(req) {
       }
     }
     const amount = Math.max(0, basePrice - discount);
-    // NOTE: kalau mau melarang booking amount=0, aktifkan guard di sini.
+    // NOTE: kalau mau larang amount=0, aktifkan guard di sini.
 
+    // Generate ref yang hanya dipakai di server/flow pembayaran
     const order_id = `BB-${Date.now()}-${randomUUID().slice(0, 8)}`;
 
+    // Simpan booking + amount di DB — amount TIDAK dikirim balik ke client
     const created = await prisma.event_booth_bookings.create({
       data: {
         event_id,
@@ -176,24 +184,34 @@ export async function POST(req) {
         status: "PENDING",
       },
       select: {
-        id: true,
-        order_id: true,
-        status: true,
-        amount: true,
-        voucher_code: true,
-        event_id: true,
-        created_at: true,
+        id: true, // ← hanya ini yang dipakai client untuk /charge
+        event_id: true, // ← konfirmasi di UI
+        // order_id dan amount sengaja tidak dipilih ke response publik
       },
     });
 
-    return json(
-      {
-        message: "Booking booth dibuat. Silakan lanjutkan pembayaran.",
-        data: created,
-        meta: { base_price: basePrice, discount_applied: discount },
-      },
-      { status: 201 }
-    );
+    // ====== RESPONSE MINIMAL (AMAN) ======
+    // Hanya berikan ID booking & event_id.
+    // order_id + amount akan diberikan oleh /api/payments/charge (bukan di sini).
+    const res = {
+      message: "Booking booth dibuat. Silakan lanjutkan pembayaran.",
+      data: created, // { id, event_id }
+    };
+
+    // OPTIONAL: debugging untuk Admin saja (tidak aktif di production)
+    const adminKey = req.headers.get("x-admin-key");
+    const exposePricing =
+      adminKey && ADMIN_TEST_KEY && adminKey === ADMIN_TEST_KEY;
+
+    if (exposePricing) {
+      res.meta = {
+        base_price: basePrice,
+        discount_applied: discount,
+        amount, // hanya untuk admin debug
+      };
+    }
+
+    return json(res, { status: 201 });
   } catch (err) {
     console.error("POST /api/bookings error:", err);
     return json(

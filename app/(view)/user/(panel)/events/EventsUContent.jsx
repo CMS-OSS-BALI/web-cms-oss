@@ -1,30 +1,36 @@
-// app/(whatever)/events/EventsUContent.jsx
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import Link from "next/link";
 import useEventsUViewModel from "./useEventsUViewModel";
+import { Pagination, ConfigProvider } from "antd";
 
-/* ====== SHARED ====== */
+/* ===== Tokens ===== */
 const CONTAINER = { width: "92%", maxWidth: 1220, margin: "0 auto" };
 const BLUE = "#0b56c9";
 const TEXT = "#0f172a";
-const HEADER_H = 84;
+const PAGE_SIZE = 3;
+const Z = { heroBase: 0, heroDecor: 1, heroCopy: 2, topSection: 10 };
 
-/* Z-Index layers */
-const Z = {
-  heroBase: 0,
-  heroDecor: 1,
-  heroCopy: 2,
-  topSection: 10,
+/* ===== Utils ===== */
+const safeText = (v) => {
+  if (v == null) return "";
+  if (typeof v === "string" || typeof v === "number") return String(v);
+  if (typeof v === "boolean") return v ? "true" : "false";
+  try {
+    return String(v);
+  } catch {
+    return "";
+  }
 };
 
-/* ====== HERO ====== */
+/* ===== Hero ===== */
 const hero = {
   section: {
     width: "100vw",
     marginLeft: "calc(50% - 50vw)",
     marginRight: "calc(50% - 50vw)",
-    marginTop: -HEADER_H,
+    marginTop: -90, // flush ke header
     overflow: "hidden",
     color: "#0B3E91",
     position: "relative",
@@ -36,14 +42,13 @@ const hero = {
     width: "100vw",
     marginLeft: "calc(50% - 50vw)",
     marginRight: "calc(50% - 50vw)",
-    minHeight: 560 + HEADER_H,
-    paddingTop: 24 + HEADER_H,
+    minHeight: 560,
+    paddingTop: 24,
     paddingBottom: 48,
     display: "grid",
     placeItems: "start center",
     background:
       "linear-gradient(180deg, #f8fbff 0%, #edf4ff 42%, #e5efff 70%, #f9fbff 100%)",
-    zIndex: Z.heroBase,
   },
   glowLeft: {
     position: "absolute",
@@ -53,7 +58,7 @@ const hero = {
     height: 640,
     borderRadius: "50%",
     background:
-      "radial-gradient(closest-side, rgba(155, 202, 255, .55), rgba(155,202,255,0))",
+      "radial-gradient(closest-side, rgba(155,202,255,.55), rgba(155,202,255,0))",
     filter: "blur(22px)",
     opacity: 0.9,
     zIndex: Z.heroDecor,
@@ -67,7 +72,7 @@ const hero = {
     height: 540,
     borderRadius: "50%",
     background:
-      "radial-gradient(closest-side, rgba(120, 182, 255, .45), rgba(120,182,255,0))",
+      "radial-gradient(closest-side, rgba(120,182,255,.45), rgba(120,182,255,0))",
     filter: "blur(18px)",
     opacity: 0.9,
     zIndex: Z.heroDecor,
@@ -112,7 +117,7 @@ const hero = {
     right: 0,
     bottom: 0,
     height: 140,
-    background: "linear-gradient(180deg, rgba(255,255,255,0) 0%, #ffffff 70%)",
+    background: "linear-gradient(180deg, rgba(255,255,255,0) 0%, #fff 70%)",
     zIndex: Z.heroDecor,
     pointerEvents: "none",
   },
@@ -131,16 +136,16 @@ const hero = {
     margin: 0,
     fontSize: 56,
     lineHeight: 1.06,
+    marginTop: 75,
     fontWeight: 800,
     letterSpacing: "0.06em",
     textTransform: "uppercase",
     color: BLUE,
-    textShadow:
-      "0 10px 28px rgba(0, 48, 128, .14), 0 2px 0 rgba(255,255,255,.35)",
+    textShadow: "0 10px 28px rgba(0,48,128,.14), 0 2px 0 rgba(255,255,255,.35)",
   },
 };
 
-/* ===== COUNTDOWN ===== */
+/* ===== Countdown panel ===== */
 const panel = {
   shell: {
     width: "100%",
@@ -149,7 +154,7 @@ const panel = {
     padding: "20px 24px",
     borderRadius: 28,
     background: "linear-gradient(180deg, #eef6ff 0%, #e6f0ff 100%)",
-    border: "1px solid rgba(11,79,183,0.06)",
+    border: "1px solid rgba(11,79,183,.06)",
     boxShadow:
       "0 12px 26px rgba(15,23,42,.06), inset 0 1px 0 rgba(255,255,255,.6)",
     textAlign: "center",
@@ -163,12 +168,7 @@ const panel = {
     textTransform: "uppercase",
     marginBottom: 12,
   },
-  row: {
-    display: "flex",
-    justifyContent: "center",
-    gap: 28,
-    flexWrap: "wrap",
-  },
+  row: { display: "flex", justifyContent: "center", gap: 28, flexWrap: "wrap" },
   pill: {
     display: "inline-block",
     padding: "12px 20px",
@@ -192,18 +192,18 @@ function Chip({ value, label }) {
   return (
     <div style={{ minWidth: 120, textAlign: "center" }} aria-live="polite">
       <div style={panel.pill}>{v}</div>
-      <div style={panel.label}>{label}</div>
+      <div style={panel.label}>{safeText(label)}</div>
     </div>
   );
 }
 
-/* ===== REUSABLE EVENT CARD ===== */
-const cardCss = {
-  bar: (text) => ({
+/* ===== Section title bar ===== */
+const sectionBar = {
+  bar: {
     width: "100vw",
     marginLeft: "calc(50% - 50vw)",
     marginRight: "calc(50% - 50vw)",
-    marginTop: 100,
+    marginTop: 90,
     background: BLUE,
     color: "#fff",
     display: "grid",
@@ -214,37 +214,34 @@ const cardCss = {
     fontSize: 28,
     textTransform: "uppercase",
     boxShadow: "0 14px 26px rgba(11,86,201,.25)",
-    content: text,
-    position: "relative",
-    zIndex: Z.topSection,
-  }),
-  wrap: {
-    ...CONTAINER,
-    marginTop: 26,
-    marginBottom: 40,
     position: "relative",
     zIndex: Z.topSection,
   },
-  shell: {
+};
+
+/* ===== Card ===== */
+const cardCss = {
+  wrap: {
+    ...CONTAINER,
+    marginTop: 26,
+    marginBottom: 16,
     position: "relative",
-    borderRadius: 22,
-    padding: 22,
-    background: "transparent",
-    boxShadow:
-      "0 24px 60px rgba(15,23,42,.08), 0 2px 0 rgba(255,255,255,0.6) inset",
     zIndex: Z.topSection,
   },
   card: {
     display: "grid",
     gridTemplateColumns: "520px 1fr",
     gridTemplateRows: "1fr auto",
-    alignItems: "stretch",
     gap: 26,
+    alignItems: "stretch",
     background: "#fff",
     borderRadius: 18,
     padding: "22px 22px",
     border: "1px solid rgba(14,56,140,.06)",
-    boxShadow: "0 16px 42px rgba(15,23,42,.08)",
+    boxShadow:
+      "0 6px 16px rgba(15,23,42,.08), 0 16px 42px rgba(15,23,42,.10), inset 0 1px 0 rgba(255,255,255,.6)",
+    transition: "box-shadow 220ms ease, transform 220ms ease",
+    marginTop: 26,
   },
   poster: {
     gridRow: "1 / 2",
@@ -278,7 +275,7 @@ const cardCss = {
   },
   desc: {
     margin: "12px 0 0",
-    color: TEXT,
+    color: "#0f172a",
     opacity: 0.9,
     fontSize: 15.5,
     lineHeight: 1.7,
@@ -327,76 +324,67 @@ const cardCss = {
 };
 
 function EventCard({
-  barTitle,
   poster,
   title,
   desc,
   location,
   price,
   dateLong,
+  dateLabel = "Date",
   priceLabel = "Price",
   ctaText = "Ambil tiketmu",
   ctaHref = "#",
 }) {
   return (
-    <>
-      <div style={cardCss.bar(barTitle)}>{barTitle}</div>
-      <section style={cardCss.wrap}>
-        <div style={cardCss.shell}>
-          <div className="events-card" style={cardCss.card}>
-            <div style={cardCss.poster}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={poster}
-                alt={title}
-                style={cardCss.posterImg}
-                onError={(e) => {
-                  e.currentTarget.onerror = null;
-                  e.currentTarget.src =
-                    "https://images.unsplash.com/photo-1521737604893-d14cc237f11d?q=80&w=1200&auto=format&fit=crop";
-                }}
-              />
-            </div>
+    <section style={cardCss.wrap}>
+      <div className="events-card" style={cardCss.card} tabIndex={0}>
+        <div style={cardCss.poster}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={poster}
+            alt={safeText(title)}
+            style={cardCss.posterImg}
+            onError={(e) => {
+              e.currentTarget.onerror = null;
+              e.currentTarget.src =
+                "https://images.unsplash.com/photo-1521737604893-d14cc237f11d?q=80&w=1200&auto=format&fit=crop";
+            }}
+          />
+        </div>
 
-            <div style={cardCss.copy}>
-              <h2 style={cardCss.title}>{title}</h2>
-              <p style={cardCss.desc}>{desc}</p>
-            </div>
+        <div style={cardCss.copy}>
+          <h2 style={cardCss.title}>{safeText(title)}</h2>
+          <p style={cardCss.desc}>{safeText(desc)}</p>
+        </div>
 
-            <div className="events-meta" style={cardCss.metaRow}>
-              <div style={cardCss.metaItem}>
-                <div style={cardCss.metaIcon}>📍</div>
-                <div style={cardCss.metaText}>
-                  <p style={cardCss.metaLabel}>Location</p>
-                  <p style={cardCss.metaValue}>{location}</p>
-                </div>
-              </div>
-
-              <div style={cardCss.metaItem}>
-                <div style={cardCss.metaIcon}>💳</div>
-                <div style={cardCss.metaText}>
-                  <p style={cardCss.metaLabel}>{priceLabel}</p>
-                  <p style={cardCss.metaValue}>{price}</p>
-                </div>
-              </div>
-
-              <div style={cardCss.metaItem}>
-                <div style={cardCss.metaIcon}>🗓️</div>
-                <div style={cardCss.metaText}>
-                  <p style={cardCss.metaLabel}>Date</p>
-                  <p style={cardCss.metaValue}>{dateLong}</p>
-                </div>
-              </div>
-
-              <a href={ctaHref} style={cardCss.cta}>
-                {ctaText}
-              </a>
+        <div className="events-meta" style={cardCss.metaRow}>
+          <div style={cardCss.metaItem}>
+            <div style={cardCss.metaIcon}>📍</div>
+            <div style={cardCss.metaText}>
+              <p style={cardCss.metaLabel}>Location</p>
+              <p style={cardCss.metaValue}>{safeText(location)}</p>
             </div>
           </div>
+          <div style={cardCss.metaItem}>
+            <div style={cardCss.metaIcon}>💳</div>
+            <div style={cardCss.metaText}>
+              <p style={cardCss.metaLabel}>{safeText(priceLabel)}</p>
+              <p style={cardCss.metaValue}>{safeText(price)}</p>
+            </div>
+          </div>
+          <div style={cardCss.metaItem}>
+            <div style={cardCss.metaIcon}>🗓️</div>
+            <div style={cardCss.metaText}>
+              <p style={cardCss.metaLabel}>{safeText(dateLabel)}</p>
+              <p style={cardCss.metaValue}>{safeText(dateLong)}</p>
+            </div>
+          </div>
+          <Link href={ctaHref} style={cardCss.cta} prefetch={false}>
+            {safeText(ctaText)}
+          </Link>
         </div>
-      </section>
+      </div>
 
-      {/* responsive */}
       <style jsx>{`
         @media (max-width: 1000px) {
           .events-card {
@@ -410,12 +398,133 @@ function EventCard({
             gap: 12px !important;
           }
         }
+        .events-card:hover,
+        .events-card:focus-within {
+          transform: translateY(-2px);
+          box-shadow: 0 10px 24px rgba(11, 86, 201, 0.1),
+            0 26px 60px rgba(11, 86, 201, 0.14),
+            inset 0 1px 0 rgba(255, 255, 255, 0.6) !important;
+        }
+        .events-card:active {
+          transform: translateY(-1px);
+          box-shadow: 0 8px 20px rgba(11, 86, 201, 0.1),
+            0 20px 48px rgba(11, 86, 201, 0.12),
+            inset 0 1px 0 rgba(255, 255, 255, 0.6) !important;
+        }
       `}</style>
-    </>
+    </section>
   );
 }
 
-/* ===== WHY SECTION (V2) ===== */
+/* ===== Pager ===== */
+function SectionPager({ current, total, onChange }) {
+  return (
+    <ConfigProvider
+      theme={{
+        token: { colorPrimary: BLUE, borderRadius: 8, colorText: TEXT },
+        components: { Pagination: { itemActiveBg: BLUE } },
+      }}
+    >
+      <section
+        style={{
+          ...CONTAINER,
+          display: "flex",
+          justifyContent: "center",
+          margin: "32px auto 24px",
+        }}
+      >
+        <Pagination
+          className="events-mini-pagination"
+          current={current}
+          pageSize={PAGE_SIZE}
+          total={total}
+          onChange={onChange}
+          showSizeChanger={false}
+          showLessItems
+          itemRender={(pg, type, original) => {
+            if (type === "prev")
+              return (
+                <span className="ant-pagination-item-link pg-arrow">‹</span>
+              );
+            if (type === "next")
+              return (
+                <span className="ant-pagination-item-link pg-arrow">›</span>
+              );
+            return original;
+          }}
+        />
+      </section>
+
+      <style jsx global>{`
+        .events-mini-pagination .ant-pagination-item,
+        .events-mini-pagination .ant-pagination-prev .ant-pagination-item-link,
+        .events-mini-pagination .ant-pagination-next .ant-pagination-item-link {
+          height: 26px;
+          min-width: 26px;
+          padding: 0 6px;
+          border-radius: 8px;
+          border: 1px solid #d4e2ff;
+          background: #fff;
+          box-shadow: 0 3px 8px rgba(11, 86, 201, 0.06);
+          transition: all 160ms ease;
+        }
+        .events-mini-pagination .ant-pagination-item {
+          display: grid;
+          place-items: center;
+          margin-inline: 4px;
+          font-weight: 800;
+          line-height: 1;
+        }
+        .events-mini-pagination .ant-pagination-item a {
+          color: #0b56c9;
+          font-size: 12px;
+        }
+        .events-mini-pagination .ant-pagination-item-active {
+          background: #0b56c9;
+          border-color: #0b56c9;
+        }
+        .events-mini-pagination .ant-pagination-item-active a {
+          color: #fff;
+        }
+        .events-mini-pagination .ant-pagination-prev .ant-pagination-item-link,
+        .events-mini-pagination .ant-pagination-next .ant-pagination-item-link {
+          display: grid;
+          place-items: center;
+          font-weight: 900;
+          color: #0b56c9;
+        }
+        .events-mini-pagination .pg-arrow {
+          font-size: 12px;
+          line-height: 1;
+        }
+        .events-mini-pagination .ant-pagination-item:hover,
+        .events-mini-pagination
+          .ant-pagination-prev:hover
+          .ant-pagination-item-link,
+        .events-mini-pagination
+          .ant-pagination-next:hover
+          .ant-pagination-item-link {
+          border-color: #0b56c9;
+          box-shadow: 0 5px 12px rgba(11, 86, 201, 0.12);
+          transform: translateY(-1px);
+        }
+        .events-mini-pagination
+          .ant-pagination-disabled
+          .ant-pagination-item-link {
+          color: #9fb6e6;
+          border-color: #e5edff;
+          background: #f8fbff;
+          box-shadow: none;
+        }
+        .events-mini-pagination .ant-pagination-item-ellipsis {
+          color: #9fb6e6;
+        }
+      `}</style>
+    </ConfigProvider>
+  );
+}
+
+/* ===== Why v2 ===== */
 const why2 = {
   wrap: {
     ...CONTAINER,
@@ -468,22 +577,82 @@ const why2 = {
     fontSize: 18,
     lineHeight: 1.35,
   },
-  desc: {
-    marginTop: 10,
-    color: "#476aa4",
-    fontSize: 14,
-    lineHeight: 1.7,
-  },
+  desc: { marginTop: 10, color: "#476aa4", fontSize: 14, lineHeight: 1.7 },
 };
 
+/* ===== Empty state ===== */
+const emptyCss = {
+  wrap: {
+    ...CONTAINER,
+    marginTop: 40,
+    marginBottom: 80,
+    padding: "32px 24px",
+    borderRadius: 20,
+    border: "1px dashed #cfe1ff",
+    background: "linear-gradient(180deg, #f6faff 0%, #f9fbff 100%)",
+    display: "grid",
+    placeItems: "center",
+    textAlign: "center",
+  },
+  big: { fontSize: 64, lineHeight: 1, marginBottom: 12 },
+  title: {
+    margin: "8px 0 6px",
+    fontWeight: 900,
+    color: "#0b3e91",
+    fontSize: 28,
+  },
+  sub: { color: "#476aa4", maxWidth: 640, margin: "0 auto" },
+};
+
+function NoEvents({ locale = "id" }) {
+  const t = (id, en) => (locale === "en" ? en : id);
+  return (
+    <section style={emptyCss.wrap}>
+      <div style={emptyCss.big}>🗓️</div>
+      <h3 style={emptyCss.title}>
+        {t("Belum ada event yang tersedia", "No events available yet")}
+      </h3>
+      <p style={emptyCss.sub}>
+        {t(
+          "Pantau halaman ini secara berkala; event baru akan segera hadir.",
+          "Check back soon—new events are on the way."
+        )}
+      </p>
+    </section>
+  );
+}
+
+/* ===== Page ===== */
 export default function EventsUContent({ locale = "id" }) {
   const vm = useEventsUViewModel({ locale });
-  const se = vm.studentEvent;
-  const re = vm.repEvent;
+
+  const [pageStu, setPageStu] = useState(1);
+  const [pageRep, setPageRep] = useState(1);
+
+  const stuStart = (pageStu - 1) * PAGE_SIZE;
+  const repStart = (pageRep - 1) * PAGE_SIZE;
+
+  // inject CTA target
+  const stuItems = vm.studentEvents
+    .slice(stuStart, stuStart + PAGE_SIZE)
+    .map((e) => ({
+      ...e,
+      ctaHref: `/user/events/peserta?id=${e.id}&lang=${locale}`,
+    }));
+
+  const repItems = vm.repEvents
+    .slice(repStart, repStart + PAGE_SIZE)
+    .map((e) => {
+      const baseId = String(e.id).replace(/-rep$/, "");
+      return { ...e, ctaHref: `/user/events/rep?id=${baseId}&lang=${locale}` };
+    });
+
+  const hasAny =
+    (vm.studentEvents?.length || 0) > 0 || (vm.repEvents?.length || 0) > 0;
 
   return (
     <main style={{ position: "relative", zIndex: 0 }}>
-      {/* ===== HERO ===== */}
+      {/* HERO */}
       <section style={hero.section}>
         <div style={hero.inner}>
           <div style={hero.glowLeft} />
@@ -495,13 +664,13 @@ export default function EventsUContent({ locale = "id" }) {
 
           <div style={hero.copy}>
             <h1 style={hero.title2}>
-              <span>{vm.titleLine1}</span>
+              <span>{safeText(vm.titleLine1)}</span>
               <br />
-              <span>{vm.titleLine2}</span>
+              <span>{safeText(vm.titleLine2)}</span>
             </h1>
 
             <div style={panel.shell}>
-              <div style={panel.title}>{vm.panelTitle}</div>
+              <div style={panel.title}>{safeText(vm.panelTitle)}</div>
               <div style={panel.row}>
                 <Chip value={vm.countdown.days} label={vm.labels.days} />
                 <Chip value={vm.countdown.hours} label={vm.labels.hours} />
@@ -513,18 +682,17 @@ export default function EventsUContent({ locale = "id" }) {
         </div>
       </section>
 
-      {/* ===== BENEFITS ===== */}
+      {/* BENEFITS */}
       <section
         style={{
           ...CONTAINER,
-          marginTop: -170,
+          marginTop: -100,
           marginBottom: 28,
           position: "relative",
           zIndex: Z.topSection,
         }}
       >
         <div
-          className="benefits-grid"
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(3, 1fr)",
@@ -544,7 +712,7 @@ export default function EventsUContent({ locale = "id" }) {
               }}
             >
               <div style={{ fontSize: 30, lineHeight: 1, marginBottom: 8 }}>
-                {b.icon}
+                {safeText(b.icon)}
               </div>
               <div
                 style={{
@@ -554,17 +722,17 @@ export default function EventsUContent({ locale = "id" }) {
                   fontSize: 16,
                 }}
               >
-                {b.title}
+                {safeText(b.title)}
               </div>
               <div style={{ color: "#476aa4", fontSize: 13, lineHeight: 1.5 }}>
-                {b.desc}
+                {safeText(b.desc)}
               </div>
             </div>
           ))}
         </div>
       </section>
 
-      {/* ===== UPCOMING ===== */}
+      {/* UPCOMING */}
       <section
         style={{
           ...CONTAINER,
@@ -577,7 +745,7 @@ export default function EventsUContent({ locale = "id" }) {
       >
         <h2
           style={{
-            margin: 0,
+            marginTop: 70,
             fontWeight: 900,
             textTransform: "uppercase",
             color: "#0b3e91",
@@ -585,89 +753,77 @@ export default function EventsUContent({ locale = "id" }) {
             letterSpacing: ".02em",
           }}
         >
-          {vm.upcomingTitle}
+          {safeText(vm.upcomingTitle)}
         </h2>
         <p
           style={{
-            marginTop: 10,
+            marginTop: -20,
             color: "#164a8a",
             fontWeight: 600,
             lineHeight: 1.6,
             fontSize: 16,
           }}
         >
-          {vm.upcomingSub}
+          {safeText(vm.upcomingSub)}
         </p>
       </section>
 
-      {/* ===== STUDENT CARD ===== */}
-      <EventCard
-        barTitle={vm.studentBarTitle}
-        poster={se.poster}
-        title={se.title}
-        desc={se.desc}
-        location={se.location}
-        price={se.price}
-        dateLong={se.dateLong}
-        priceLabel={se.priceLabel}
-        ctaText={se.ctaText}
-        ctaHref={se.ctaHref}
-      />
+      {/* EMPTY */}
+      {!hasAny && <NoEvents locale={locale} />}
 
-      {/* ===== REPRESENTATIVE CARD ===== */}
-      <EventCard
-        barTitle={vm.repBarTitle}
-        poster={re.poster}
-        title={re.title}
-        desc={re.desc}
-        location={re.location}
-        price={re.price}
-        dateLong={re.dateLong}
-        priceLabel={re.priceLabel}
-        ctaText={re.ctaText}
-        ctaHref={re.ctaHref}
-      />
+      {/* STUDENT */}
+      {vm.studentEvents.length > 0 && (
+        <>
+          <div style={sectionBar.bar}>{safeText(stuItems[0]?.barTitle)}</div>
+          {stuItems.map((it) => (
+            <EventCard key={it.id} {...it} />
+          ))}
+          <SectionPager
+            current={pageStu}
+            total={vm.studentEvents.length}
+            onChange={setPageStu}
+          />
+        </>
+      )}
 
-      {/* ===== WHY ===== */}
+      {/* REP */}
+      {vm.repEvents.length > 0 && (
+        <>
+          <div style={sectionBar.bar}>{safeText(repItems[0]?.barTitle)}</div>
+          {repItems.map((it) => (
+            <EventCard key={it.id} {...it} />
+          ))}
+          <SectionPager
+            current={pageRep}
+            total={vm.repEvents.length}
+            onChange={setPageRep}
+          />
+        </>
+      )}
+
+      {/* WHY */}
       <section style={why2.wrap}>
-        <h2 style={why2.title}>{vm.why2Title}</h2>
-        <div className="why-v2-grid" style={why2.grid}>
+        <h2 style={why2.title}>{safeText(vm.why2Title)}</h2>
+        <div style={why2.grid}>
           {vm.why2Cards.map((c, i) => (
             <div key={i} style={why2.card}>
               {c.img ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={c.img}
-                  alt={c.title}
+                  alt={safeText(c.title)}
                   style={why2.img}
                   onError={(e) => (e.currentTarget.style.display = "none")}
                 />
               ) : (
-                <div style={why2.iconFallback}>{c.icon || "🎓"}</div>
+                <div style={why2.iconFallback}>{safeText(c.icon || "🎓")}</div>
               )}
-              <h3 style={why2.titleSmall}>{c.title}</h3>
-              <p style={why2.desc}>{c.desc}</p>
+              <h3 style={why2.titleSmall}>{safeText(c.title)}</h3>
+              <p style={why2.desc}>{safeText(c.desc)}</p>
             </div>
           ))}
         </div>
       </section>
-
-      {/* Responsive overrides */}
-      <style jsx>{`
-        @media (max-width: 900px) {
-          .benefits-grid {
-            grid-template-columns: 1fr !important;
-          }
-          .why-v2-grid {
-            grid-template-columns: 1fr !important;
-          }
-        }
-        @media (max-width: 1200px) and (min-width: 901px) {
-          .why-v2-grid {
-            grid-template-columns: repeat(2, 1fr) !important;
-          }
-        }
-      `}</style>
     </main>
   );
 }

@@ -1,28 +1,34 @@
-﻿"use client";
+"use client";
 
-import { Suspense, lazy, useMemo } from "react";
+import { Suspense, lazy, useMemo, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import Loading from "@/app/components/loading/LoadingImage";
 
-const LandingContentLazy = lazy(() => import("./LandingContent"));
+const FormRepContentLazy = lazy(() => import("./FormRepContent"));
 
 function pickLocale(q, ls) {
   const v = (q || ls || "id").slice(0, 2).toLowerCase();
   return v === "en" ? "en" : "id";
 }
 
-export default function LandingPage() {
+export default function FormRepPage() {
   const search = useSearchParams();
+  const q = search?.get("lang") || "";
 
-  // Prefer ?lang= dari URL, fallback ke localStorage
   const locale = useMemo(() => {
-    const q = search?.get("lang") || "";
     const ls =
       typeof window !== "undefined"
         ? localStorage.getItem("oss.lang") || ""
         : "";
     return pickLocale(q, ls);
-  }, [search]);
+  }, [q]);
+
+  // Persist pilihan lang bila datang dari query
+  useEffect(() => {
+    if (typeof window !== "undefined" && q) {
+      localStorage.setItem("oss.lang", pickLocale(q, ""));
+    }
+  }, [q]);
 
   return (
     <Suspense
@@ -32,8 +38,8 @@ export default function LandingPage() {
         </div>
       }
     >
-      {/* key memastikan remount saat ?lang= berubah */}
-      <LandingContentLazy key={locale} locale={locale} />
+      {/* key agar remount saat ?lang berubah */}
+      <FormRepContentLazy key={locale} locale={locale} />
     </Suspense>
   );
 }

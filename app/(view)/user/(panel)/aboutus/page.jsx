@@ -1,41 +1,42 @@
 "use client";
 
-import { Suspense, lazy, useMemo } from "react";
+import dynamic from "next/dynamic";
+import { useMemo, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
-import Loading from "@/app/components/loading/LoadingImage";
 import useAboutUsViewModel from "./useAboutUsViewModel";
 
-const AboutUsContentLazy = lazy(() => import("./AboutUsContent"));
+const AboutUsContent = dynamic(() => import("./AboutUsContent"), {
+  ssr: false,
+  loading: () => <div style={{ padding: 24 }}>Loading…</div>,
+});
 
-const pickLocale = (q, ls) => {
-  const v = (q || ls || "id").slice(0, 2).toLowerCase();
-  return v === "en" ? "en" : "id";
-};
+const SUPPORTED = ["id", "en"];
+const DEFAULT_LOCALE = "id";
+
+function normalizeLocale(input) {
+  const v = (input || "").toLowerCase().slice(0, 2);
+  return SUPPORTED.includes(v) ? v : DEFAULT_LOCALE;
+}
 
 export default function AboutUsPage() {
   const search = useSearchParams();
 
   const locale = useMemo(() => {
-    const q = search?.get("lang") || "";
+    const q = search?.get("lang");
     const ls =
-      typeof window !== "undefined"
-        ? localStorage.getItem("oss.lang") || ""
-        : "";
-    return pickLocale(q, ls);
+      typeof window !== "undefined" ? localStorage.getItem("oss.lang") : "";
+    const nav =
+      typeof navigator !== "undefined" ? navigator.language : DEFAULT_LOCALE;
+    return normalizeLocale(q || ls || nav);
   }, [search]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("oss.lang", locale);
+    }
+  }, [locale]);
 
   const vm = useAboutUsViewModel({ locale });
 
-  return (
-    <Suspense
-      fallback={
-        <div className="page-wrap">
-          <Loading />
-        </div>
-      }
-    >
-      {/* key ensures remount when ?lang changes */}
-      <AboutUsContentLazy key={locale} {...vm} />
-    </Suspense>
-  );
+  return <AboutUsContent key={locale} {...vm} />;
 }

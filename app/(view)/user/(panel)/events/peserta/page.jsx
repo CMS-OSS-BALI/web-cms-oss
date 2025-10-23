@@ -1,20 +1,19 @@
-﻿"use client";
+"use client";
 
 import { Suspense, lazy, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import Loading from "@/app/components/loading/LoadingImage";
 
-const LandingContentLazy = lazy(() => import("./LandingContent"));
+const EventsPContentLazy = lazy(() => import("./EventsPContent"));
 
 function pickLocale(q, ls) {
   const v = (q || ls || "id").slice(0, 2).toLowerCase();
   return v === "en" ? "en" : "id";
 }
 
-export default function LandingPage() {
+export default function EventsPesertaPage() {
   const search = useSearchParams();
 
-  // Prefer ?lang= dari URL, fallback ke localStorage
   const locale = useMemo(() => {
     const q = search?.get("lang") || "";
     const ls =
@@ -32,8 +31,7 @@ export default function LandingPage() {
         </div>
       }
     >
-      {/* key memastikan remount saat ?lang= berubah */}
-      <LandingContentLazy key={locale} locale={locale} />
+      <EventsPContentLazy key={locale} locale={locale} />
     </Suspense>
   );
 }

@@ -1,7 +1,12 @@
 // app/api/payments/charge/route.js
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { snapCreate, fetchStatus, ensureIntegerIDR } from "@/lib/midtrans";
+import {
+  snapCreate,
+  fetchStatus,
+  ensureIntegerIDR,
+  normalizeEnabledPayments,
+} from "@/lib/midtrans";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -36,7 +41,7 @@ function toInt(v, d = null) {
   return Number.isFinite(n) ? Math.trunc(n) : d;
 }
 
-// ⬇⬇⬇ NEW: body reader fleksibel (JSON / form-data / x-www-form-urlencoded)
+// Body reader fleksibel (JSON / form-data / x-www-form-urlencoded)
 async function readBodyFlexible(req) {
   const ct = (req.headers.get("content-type") || "").toLowerCase();
   const isMultipart = ct.startsWith("multipart/form-data");
@@ -49,21 +54,21 @@ async function readBodyFlexible(req) {
   }
   return (await req.json().catch(() => ({}))) ?? {};
 }
-/** Env config */
-const ENABLED_PAYMENTS = (process.env.MIDTRANS_ENABLED_PAYMENTS || "other_qris")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
+
+/** Env config
+ * Default "all": TIDAK mengirim enabled_payments → Snap tampilkan semua channel aktif
+ */
+const ENABLED_PAYMENTS_RAW = process.env.MIDTRANS_ENABLED_PAYMENTS || "all";
 const EXPIRY_MINUTES = toInt(process.env.MIDTRANS_EXPIRY_MINUTES, 30);
 
 /**
  * POST /api/payments/charge
- * Body: { booking_id?: string, order_id?: string } (JSON / form-data)
+ * Body: { booking_id?: string, order_id?: string, enabled_payments?: string|string[] } (opsional override)
  * Return: { token, redirect_url, order_id, amount }
  */
 export async function POST(req) {
   try {
-    const body = await readBodyFlexible(req); // ⬅ gunakan fleksibel
+    const body = await readBodyFlexible(req);
     const booking_id = String(body?.booking_id || "").trim();
     const order_id_in = String(body?.order_id || "").trim();
 
@@ -138,6 +143,7 @@ export async function POST(req) {
 
     const amount = ensureIntegerIDR(booking.amount, booking.amount);
 
+    // Idempoten SNAP token reuse
     const existingPay = await prisma.payments.findUnique({
       where: { order_id: booking.order_id },
       select: { id: true, status: true, raw: true },
@@ -165,15 +171,23 @@ export async function POST(req) {
       phone: booking.whatsapp || undefined,
     };
 
+    // Tentukan enabled_payments final:
+    // - Prioritas: body.enabled_payments (boleh string/array)
+    // - Fallback: ENV MIDTRANS_ENABLED_PAYMENTS (default "all")
+    const enabledFromBody =
+      body?.enabled_payments != null ? body.enabled_payments : undefined;
+    const normalizedEnabled = normalizeEnabledPayments(
+      enabledFromBody ?? ENABLED_PAYMENTS_RAW
+    );
+
     let snapRes;
     try {
       snapRes = await snapCreate({
         order_id: booking.order_id,
         amount,
         customer,
-        enabled_payments: ENABLED_PAYMENTS.length
-          ? ENABLED_PAYMENTS
-          : ["other_qris"],
+        // Jika normalizedEnabled === null → JANGAN kirim field ini (Snap tampilkan semua channel aktif)
+        enabled_payments: normalizedEnabled ?? null,
         expiry: {
           unit: "minutes",
           duration: Math.max(5, Math.min(1440, EXPIRY_MINUTES)),

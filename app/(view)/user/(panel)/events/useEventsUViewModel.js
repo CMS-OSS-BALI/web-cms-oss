@@ -1,17 +1,67 @@
-// app/(whatever)/events/useEventsUViewModel.js
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/lib/swr/fetcher";
 
+/* =========================
+   Helpers
+========================= */
 const t = (locale, id, en) => (String(locale).toLowerCase() === "en" ? en : id);
+
+const stripHtml = (html = "") =>
+  String(html)
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const fmtIDR = (n) => {
+  if (n === null || n === undefined) return null;
+  try {
+    return new Intl.NumberFormat("id-ID", {
+      style: "currency",
+      currency: "IDR",
+      maximumFractionDigits: 0,
+    }).format(Number(n));
+  } catch {
+    return String(n);
+  }
+};
+
+const fmtDateLong = (iso, locale) => {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    return new Intl.DateTimeFormat(locale === "en" ? "en-US" : "id-ID", {
+      weekday: "long",
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    }).format(d);
+  } catch {
+    return iso;
+  }
+};
 
 function makeFallbackStart() {
   const d = new Date();
-  d.setDate(d.getDate() + 55);
+  d.setDate(d.getDate() + 30);
   d.setHours(9, 0, 0, 0);
   return d.toISOString();
+}
+
+/** ambil start ISO terdekat yang masih di masa depan */
+function pickNearestFutureStart(rows = []) {
+  const now = Date.now();
+  let nearest = null;
+  for (const e of rows) {
+    const t = new Date(e?.start_at ?? "").getTime();
+    if (!Number.isFinite(t) || t <= now) continue;
+    if (nearest === null || t < nearest) nearest = t;
+  }
+  return nearest ? new Date(nearest).toISOString() : makeFallbackStart();
 }
 
 function useCountdown(startAtISO) {
@@ -31,14 +81,29 @@ function useCountdown(startAtISO) {
   return { days, hours, minutes, seconds, finished: diff <= 0 };
 }
 
+/* =========================
+   Hook
+========================= */
 export default function useEventsUViewModel({ locale = "id" } = {}) {
-  const { data } = useSWR("/api/events/hero", fetcher, {
+  // Ambil event publish & upcoming (urut terdekat dari API tetap ok, tapi countdown tidak bergantung urutan)
+  const sp = new URLSearchParams();
+  sp.set("is_published", "1");
+  sp.set("status", "upcoming");
+  sp.set("sort", "start_at:asc");
+  sp.set("perPage", "100");
+  sp.set("locale", locale);
+  sp.set("fallback", locale === "id" ? "en" : "id");
+
+  const { data, error } = useSWR(`/api/events?${sp.toString()}`, fetcher, {
     revalidateOnFocus: false,
     shouldRetryOnError: false,
   });
 
-  const startAt = data?.startAt || makeFallbackStart();
-  const cd = useCountdown(startAt);
+  const rows = Array.isArray(data?.data) ? data.data : [];
+
+  // Countdown → ke event paling dekat yang belum mulai (fallback 30 hari bila kosong)
+  const nearestStartISO = pickNearestFutureStart(rows);
+  const cd = useCountdown(nearestStartISO);
 
   return useMemo(() => {
     const labels =
@@ -51,50 +116,85 @@ export default function useEventsUViewModel({ locale = "id" } = {}) {
           }
         : { days: "Hari", hours: "Jam", minutes: "Menit", seconds: "Detik" };
 
-    /* ===== EVENT CARDS ===== */
-    const studentEvent = {
-      title: t(locale, "EXPO EDUCATION OSS BALI", "EXPO EDUCATION OSS BALI"),
-      desc: t(
-        locale,
-        "Ikuti pameran pendidikan, temui universitas favorit, dan dapatkan informasi beasiswa.",
-        "Join the education fair, meet top universities, and get scholarship info."
-      ),
-      location: "BSCC",
-      price: t(locale, "FREE for entry", "FREE for entry"),
-      priceLabel: t(locale, "Price", "Price"),
-      dateLong: t(
-        locale,
-        "Jumat, 17 Desember 2025",
-        "Friday, 17 December 2025"
-      ),
-      ctaText: t(locale, "Ambil Tiket", "Get Ticket"),
-      ctaHref: "#",
-      poster:
-        "https://images.unsplash.com/photo-1551836022-d5d88e9218df?q=80&w=1200&auto=format&fit=crop",
+    const studentBarTitle = t(
+      locale,
+      "GABUNG EVENT KITA SEBAGAI STUDENT",
+      "JOIN OUR EVENT AS A STUDENT"
+    );
+    const repBarTitle = t(
+      locale,
+      "GABUNG EVENT KITA SEBAGAI REPRESENTATIF",
+      "JOIN OUR EVENT AS A REPRESENTATIVE"
+    );
+
+    const FALLBACK_POSTER =
+      "https://images.unsplash.com/photo-1551836022-d5d88e9218df?q=80&w=1200&auto=format&fit=crop";
+
+    // Mapper: API -> props EventCard untuk STUDENT (tanggal diambil dari start_at)
+    const mapStudent = (e) => {
+      const isFree = String(e.pricing_type).toUpperCase() === "FREE";
+      const priceText = isFree
+        ? t(locale, "FREE untuk masuk", "FREE for entry")
+        : fmtIDR(e.ticket_price);
+
+      return {
+        id: e.id,
+        barTitle: studentBarTitle,
+        title: e.title || "(no title)",
+        desc: stripHtml(e.description || "").slice(0, 260),
+        location: e.location || "-",
+        price: priceText,
+        priceLabel: t(locale, "Harga", "Price"),
+        dateLabel: t(locale, "Tanggal", "Date"),
+        dateLong: fmtDateLong(e.start_at, locale), // <-- dari start_at
+        ctaText: isFree
+          ? t(locale, "Ambil tiketmu", "Get Ticket")
+          : t(locale, "Beli tiket", "Buy Ticket"),
+        ctaHref: `/user/events/${e.id}`,
+        poster: e.banner_url || FALLBACK_POSTER,
+      };
     };
 
-    const repEvent = {
-      title: t(locale, "EXPO EDUCATION OSS BALI", "EXPO EDUCATION OSS BALI"),
-      desc: t(
-        locale,
-        "Buka booth Anda, perluas jaringan, dan temui calon mahasiswa berkualitas.",
-        "Open your booth, expand network, and meet quality students."
-      ),
-      location: "BSCC",
-      price: t(locale, "IDR 2.000.000", "IDR 2,000,000"),
-      priceLabel: t(locale, "Booth Fee", "Booth Fee"),
-      dateLong: t(
-        locale,
-        "Jumat, 17 Desember 2025",
-        "Friday, 17 December 2025"
-      ),
-      ctaText: t(locale, "Booking Booth", "Book a Booth"),
-      ctaHref: "#",
-      poster:
-        "https://images.unsplash.com/photo-1521737604893-d14cc237f11d?q=80&w=1200&auto=format&fit=crop",
+    // Mapper: API -> props EventCard untuk REPRESENTATIVE (Booth) — tanggal dari start_at
+    const mapRep = (e) => {
+      const boothEnabled =
+        e.booth_quota !== null &&
+        e.booth_quota !== undefined &&
+        Number(e.booth_quota) > 0;
+
+      return {
+        id: `${e.id}-rep`,
+        barTitle: repBarTitle,
+        title: e.title || "(no title)",
+        desc:
+          stripHtml(e.description || "").slice(0, 260) ||
+          t(
+            locale,
+            "Buka booth Anda, perluas jaringan, dan temui calon mahasiswa berkualitas.",
+            "Open your booth, expand your network, and meet quality students."
+          ),
+        location: e.location || "-",
+        price: boothEnabled
+          ? fmtIDR(e.booth_price || 0)
+          : t(locale, "Hubungi kami", "Contact us"),
+        priceLabel: t(locale, "Biaya Booth", "Booth Fee"),
+        dateLabel: t(locale, "Tanggal", "Date"),
+        dateLong: fmtDateLong(e.start_at, locale), // <-- dari start_at
+        ctaText: t(locale, "Booking Booth", "Book a Booth"),
+        ctaHref: `/user/events/${e.id}#booth`,
+        poster: e.banner_url || FALLBACK_POSTER,
+      };
     };
 
-    /* ===== BENEFITS ===== */
+    const studentEvents = rows.map(mapStudent);
+
+    const repEvents = rows
+      .filter((e) => {
+        const q = e.booth_quota;
+        return q !== null && q !== undefined && Number(q) > 0;
+      })
+      .map(mapRep);
+
     const benefits = [
       {
         icon: "🌍",
@@ -137,13 +237,11 @@ export default function useEventsUViewModel({ locale = "id" } = {}) {
       },
     ];
 
-    /* ===== WHY (V2) — 3 cards sesuai Figma ===== */
     const why2Title = t(
       locale,
       "MENGAPA ANDA TIDAK BOLEH MELEWATKANNYA?",
       "WHY YOU SHOULDN'T MISS IT?"
     );
-
     const why2Cards = [
       {
         title: t(locale, "Peluang Global", "Global Opportunities"),
@@ -191,7 +289,7 @@ export default function useEventsUViewModel({ locale = "id" } = {}) {
         "SHAPE YOUR FUTURE WITHOUT LIMITS"
       ),
       panelTitle: t(locale, "MULAI EVENT", "EVENT STARTS IN"),
-      countdown: cd,
+      countdown: cd, // <-- countdown ke event terdekat
       labels,
 
       benefits,
@@ -203,25 +301,15 @@ export default function useEventsUViewModel({ locale = "id" } = {}) {
         "Join our events and experience inspiring journeys to the global world."
       ),
 
-      // Bars
-      studentBarTitle: t(
-        locale,
-        "GABUNG EVENT KITA SEBAGAI STUDENT",
-        "JOIN OUR EVENT AS A STUDENT"
-      ),
-      repBarTitle: t(
-        locale,
-        "GABUNG EVENT KITA SEBAGAI REPRESENTATIF",
-        "JOIN OUR EVENT AS A REPRESENTATIVE"
-      ),
+      studentEvents,
+      repEvents,
 
-      // Cards
-      studentEvent,
-      repEvent,
-
-      // WHY (v2)
       why2Title,
       why2Cards,
+
+      // optional flags
+      ready: !error && !!data,
+      errorMessage: error?.message || (data?.error?.message ?? ""),
     };
-  }, [locale, cd]);
+  }, [locale, cd, rows, data, error]);
 }

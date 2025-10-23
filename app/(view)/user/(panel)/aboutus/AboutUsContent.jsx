@@ -3,6 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Card, Typography, Row, Col } from "antd";
+import { Swiper, SwiperSlide } from "swiper/react";
+import { Autoplay, FreeMode } from "swiper/modules";
+import "swiper/css";
 
 const { Title, Paragraph } = Typography;
 
@@ -18,10 +21,12 @@ function useIsNarrow(breakpoint = 900) {
   return isNarrow;
 }
 
+const ACT_SWIPER_CLASS = "about-activity-swiper";
+const CARD = { W: 340, H: 300, IMG_H: 170, GAP: 20 };
+
 const styles = {
   page: { width: "100%", overflow: "hidden" },
   container: { width: "min(1100px, 92%)", margin: "0 auto" },
-
   heroWrap: {
     paddingTop: "clamp(16px, 6vw, 40px)",
     paddingBottom: "clamp(40px, 10vw, 72px)",
@@ -54,7 +59,6 @@ const styles = {
     background: "#1E56B7",
     border: "none",
   },
-
   heroImgWrap: {
     position: "relative",
     display: "grid",
@@ -66,13 +70,13 @@ const styles = {
     position: "absolute",
     inset: "auto",
     width: "min(360px, 68%)",
-    aspectRatio: "1 / 1",
+    aspectRatio: "1/1",
     backgroundSize: "contain",
     backgroundRepeat: "no-repeat",
     backgroundPosition: "center",
     zIndex: 0,
     filter: "drop-shadow(0 6px 20px rgba(0,0,0,.08))",
-    transform: "translate(10%, -0%)",
+    transform: "translate(10%, 0)",
   },
   heroImg: {
     maxWidth: "560px",
@@ -96,6 +100,7 @@ const styles = {
     maxWidth: 680,
     margin: "0 auto 22px",
   },
+
   standCard: {
     borderRadius: 12,
     background: "#114A9C",
@@ -135,7 +140,9 @@ const styles = {
     color: "#fff",
     padding: "clamp(20px, 6vw, 40px)",
     marginTop: "clamp(28px, 8vw, 64px)",
+    overflow: "hidden",
   },
+  actTrackMask: { position: "relative", overflow: "hidden", borderRadius: 18 },
   activityTitle: {
     color: "#fff",
     fontWeight: 900,
@@ -150,50 +157,118 @@ const styles = {
     maxWidth: 720,
     margin: "0 auto 26px",
   },
+
   actCard: {
     background: "rgba(255,255,255,.07)",
     border: "1px solid rgba(255,255,255,.12)",
     borderRadius: 16,
     overflow: "hidden",
+    height: "var(--act-card-h)",
+    display: "flex",
+    flexDirection: "column",
   },
-  actImg: { width: "100%", height: 180, objectFit: "cover" },
-  actBody: { padding: 16 },
+  actImg: {
+    width: "100%",
+    height: "var(--act-img-h)",
+    objectFit: "cover",
+    flex: "0 0 auto",
+  },
+  actBody: {
+    padding: 16,
+    height: "calc(var(--act-card-h) - var(--act-img-h))",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
+    gap: 6,
+  },
   actTitle: {
     color: "#fff",
     fontWeight: 800,
     letterSpacing: "0.02em",
-    marginBottom: 4,
+    margin: 0,
     fontSize: 18,
+    display: "-webkit-box",
+    WebkitLineClamp: 1,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
   },
-  actDesc: { color: "rgba(255,255,255,.92)", margin: 0, fontSize: 13 },
+  actDesc: {
+    color: "rgba(255,255,255,.92)",
+    margin: 0,
+    fontSize: 13,
+    lineHeight: 1.45,
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
+  },
 
-  careerWrap: { position: "relative", padding: "clamp(28px, 9vw, 64px) 0" },
-  careerTitle: {
-    color: "#1E56B7",
-    fontWeight: 900,
-    letterSpacing: "0.05em",
-    textAlign: "center",
-    fontSize: "clamp(28px, 5vw, 56px)",
-    margin: "0 0 16px",
-  },
-  careerBtnWrap: { textAlign: "center" },
-  careerBtn: {
-    height: 54,
-    borderRadius: 999,
-    paddingInline: 36,
-    fontWeight: 900,
-    letterSpacing: "0.04em",
-    background: "linear-gradient(180deg, #2C6BD3 0%, #114A9C 100%)",
-    border: "none",
-  },
-  careerWatermark: {
-    position: "absolute",
-    inset: 0,
-    backgroundSize: "contain",
-    backgroundRepeat: "no-repeat",
-    backgroundPosition: "center",
-    opacity: 0.08,
-    pointerEvents: "none",
+  career2: {
+    section: { padding: "clamp(28px, 9vw, 72px) 0" },
+    title: {
+      textAlign: "center",
+      color: "#0B56C9",
+      fontWeight: 900,
+      letterSpacing: ".06em",
+      textTransform: "uppercase",
+      fontSize: "clamp(28px, 6vw, 56px)",
+      margin: "0 0 clamp(18px, 3vw, 32px)",
+    },
+    grid: {
+      width: "min(1100px, 92%)",
+      margin: "0 auto",
+      display: "grid",
+      gridTemplateColumns: "1.15fr .85fr",
+      gap: "clamp(16px, 3vw, 28px)",
+      alignItems: "center",
+    },
+    card: {
+      background: "#fff",
+      borderRadius: 16,
+      border: "1px solid rgba(14,30,62,.06)",
+      boxShadow:
+        "0 4px 10px rgba(15,23,42,.04), 0 18px 42px rgba(15,23,42,.14)",
+      padding: "clamp(18px, 3.6vw, 28px)",
+    },
+    cardTitle: {
+      margin: 0,
+      color: "#0B56C9",
+      fontWeight: 900,
+      letterSpacing: ".04em",
+      textTransform: "uppercase",
+      fontSize: "clamp(20px, 4.2vw, 34px)",
+      lineHeight: 1.15,
+    },
+    cardBody: {
+      margin: "12px 0 18px",
+      color: "#334155",
+      fontSize: "clamp(13px, 2vw, 15.5px)",
+      lineHeight: 1.7,
+      maxWidth: 520,
+      textTransform: "none",
+    },
+    ctaBtn: {
+      height: 56,
+      borderRadius: 999,
+      paddingInline: "clamp(22px, 4vw, 36px)",
+      fontWeight: 900,
+      letterSpacing: ".04em",
+      textTransform: "uppercase",
+      background: "linear-gradient(180deg, #2C6BD9 0%, #114A9C 100%)",
+      border: "none",
+      boxShadow: "0 12px 26px rgba(11,86,201,.28)",
+    },
+    rightImgWrap: {
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    rightImg: {
+      width: "min(420px, 70%)",
+      height: "auto",
+      objectFit: "contain",
+      filter: "drop-shadow(0 10px 18px rgba(0,0,0,.18))",
+    },
   },
 };
 
@@ -201,10 +276,14 @@ export default function AboutUsContent({ hero, standFor, activities, career }) {
   const isNarrow = useIsNarrow(900);
   const router = useRouter();
 
-  const goCareer = () => {
-    // force header aktif ke "career" via query menu
-    router.push("/user/career?menu=career");
-  };
+  const goCareer = () =>
+    router.push(career?.ctaHref || "/user/career?menu=career");
+  const goHero = () => router.push(hero?.ctaHref || "/profile");
+
+  const cardTitle = career.cardTitle;
+  const cardBody = career.cardBody;
+  const ctaLabel = career.ctaLabel;
+  const mascotSrc = career.mascot || hero?.image || "/mascot-graduation.svg";
 
   return (
     <div style={styles.page}>
@@ -220,19 +299,15 @@ export default function AboutUsContent({ hero, standFor, activities, career }) {
             <div>
               <h1 style={styles.heroTitle}>{hero.title}</h1>
               <Paragraph style={styles.heroDesc}>{hero.description}</Paragraph>
-
-              {/* CTA: gunakan push agar ?menu=career ikut terkirim */}
               <Button
                 type="primary"
-                onClick={goCareer}
+                onClick={goHero}
                 style={styles.heroCta}
                 size="large"
               >
                 {hero.ctaLabel}
               </Button>
             </div>
-
-            {/* Image + background circle */}
             <div
               style={{
                 ...styles.heroImgWrap,
@@ -248,7 +323,6 @@ export default function AboutUsContent({ hero, standFor, activities, career }) {
                   }}
                 />
               ) : null}
-
               <img
                 src={hero.image}
                 alt="About OSS Bali"
@@ -269,7 +343,6 @@ export default function AboutUsContent({ hero, standFor, activities, career }) {
             {standFor.items.map((it) => {
               const IconComp = it.icon;
               const isImageUrl = typeof IconComp === "string";
-
               return (
                 <Col key={it.id} xs={24} sm={12} md={8} style={styles.standCol}>
                   <Card style={styles.standCard} bodyStyle={styles.standInner}>
@@ -292,7 +365,6 @@ export default function AboutUsContent({ hero, standFor, activities, career }) {
                         )}
                       </div>
                     ) : null}
-
                     <Title level={4} style={styles.standTitle}>
                       {it.title}
                     </Title>
@@ -314,47 +386,112 @@ export default function AboutUsContent({ hero, standFor, activities, career }) {
               {activities.subtitle}
             </Paragraph>
 
-            <Row gutter={[16, 16]}>
-              {activities.items.map((a) => (
-                <Col key={a.id} xs={24} md={12}>
-                  <Card style={styles.actCard} bodyStyle={{ padding: 0 }}>
-                    <img src={a.image} alt={a.title} style={styles.actImg} />
-                    <div style={styles.actBody}>
-                      <div style={styles.actTitle}>{a.title}</div>
-                      <p style={styles.actDesc}>{a.desc}</p>
-                    </div>
-                  </Card>
-                </Col>
-              ))}
-            </Row>
+            <div
+              style={{
+                width: "100%",
+                paddingInline: "clamp(8px, 3vw, 16px)",
+                "--act-card-w": `${CARD.W}px`,
+                "--act-card-h": `${CARD.H}px`,
+                "--act-img-h": `${CARD.IMG_H}px`,
+              }}
+            >
+              <div style={styles.actTrackMask}>
+                <Swiper
+                  className={ACT_SWIPER_CLASS}
+                  modules={[Autoplay, FreeMode]}
+                  slidesPerView="auto"
+                  spaceBetween={CARD.GAP}
+                  loop
+                  speed={6500}
+                  allowTouchMove
+                  autoplay={{
+                    delay: 0,
+                    disableOnInteraction: false,
+                    reverseDirection: true,
+                  }}
+                  freeMode={{ enabled: true, momentum: false, sticky: false }}
+                >
+                  {activities.items.map((a) => (
+                    <SwiperSlide
+                      key={a.id}
+                      style={{
+                        width: "var(--act-card-w)",
+                        display: "flex",
+                        alignItems: "stretch",
+                      }}
+                    >
+                      <Card style={styles.actCard} bodyStyle={{ padding: 0 }}>
+                        <img
+                          src={a.image}
+                          alt={a.title}
+                          style={styles.actImg}
+                        />
+                        <div style={styles.actBody}>
+                          <div style={styles.actTitle}>{a.title}</div>
+                          <p style={styles.actDesc}>{a.desc}</p>
+                        </div>
+                      </Card>
+                    </SwiperSlide>
+                  ))}
+                </Swiper>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
       {/* CAREER WITH US */}
-      <section style={styles.careerWrap}>
-        {career.watermark ? (
-          <div
-            style={{
-              ...styles.careerWatermark,
-              backgroundImage: `url(${career.watermark})`,
-            }}
-          />
-        ) : null}
-        <div style={styles.container}>
-          <h2 style={styles.careerTitle}>{career.title}</h2>
-          <div style={styles.careerBtnWrap}>
+      <section style={styles.career2.section}>
+        <h2 style={styles.career2.title}>{career.title}</h2>
+        <div
+          style={{
+            ...styles.career2.grid,
+            ...(isNarrow
+              ? { gridTemplateColumns: "1fr", textAlign: "left" }
+              : null),
+          }}
+        >
+          <div style={styles.career2.card}>
+            <h3 style={styles.career2.cardTitle}>{cardTitle}</h3>
+            <p style={styles.career2.cardBody}>{cardBody}</p>
             <Button
               type="primary"
               size="large"
-              style={styles.careerBtn}
+              style={styles.career2.ctaBtn}
               onClick={goCareer}
             >
-              {career.ctaLabel}
+              {ctaLabel}
             </Button>
+          </div>
+          <div style={styles.career2.rightImgWrap}>
+            <img
+              src={mascotSrc}
+              alt="Career Mascot"
+              style={styles.career2.rightImg}
+            />
           </div>
         </div>
       </section>
+
+      <style jsx global>{`
+        .${ACT_SWIPER_CLASS} {
+          overflow: hidden;
+        }
+        .${ACT_SWIPER_CLASS} .swiper-wrapper {
+          align-items: stretch;
+        }
+        .${ACT_SWIPER_CLASS} .swiper-slide {
+          height: auto;
+        }
+        .${ACT_SWIPER_CLASS} .swiper-slide > .ant-card {
+          transition: transform 0.22s ease, box-shadow 0.22s ease;
+          will-change: transform;
+        }
+        .${ACT_SWIPER_CLASS} .swiper-slide > .ant-card:hover {
+          transform: translateY(-4px);
+          box-shadow: 0 10px 22px rgba(0, 0, 0, 0.2);
+        }
+      `}</style>
     </div>
   );
 }

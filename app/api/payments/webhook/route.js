@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { verifySignature, mapStatus } from "@/lib/midtrans";
+import { sendBoothInvoiceEmail } from "@/lib/mailer";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -10,7 +11,7 @@ function json(d, i) {
   return NextResponse.json(d, i);
 }
 
-// ⬇ NEW
+// Body reader fleksibel (form-data / urlencoded / json)
 async function readBodyFlexible(req) {
   const ct = (req.headers.get("content-type") || "").toLowerCase();
   const isMultipart = ct.startsWith("multipart/form-data");
@@ -26,15 +27,23 @@ async function readBodyFlexible(req) {
 
 export async function POST(req) {
   try {
-    const body = await readBodyFlexible(req); // ⬅ support form-data
+    const body = await readBodyFlexible(req);
 
     const order_id = String(body?.order_id || "").trim();
-    const status_code = String(body?.status_code || "").trim();
-    const gross_amount_raw = String(body?.gross_amount ?? "").trim();
+    const status_code = String(body?.status_code || "").trim(); // biasanya "200"
     const signature_key = String(body?.signature_key || "").trim();
     const transaction_status = String(
       body?.transaction_status || ""
     ).toLowerCase();
+    const gross_amount_raw = String(body?.gross_amount ?? "").trim(); // gunakan RAW string dari Midtrans
+
+    // logging ringkas (matikan jika tidak perlu)
+    console.log("[MIDTRANS:WEBHOOK] HIT", {
+      order_id,
+      transaction_status,
+      status_code,
+      has_signature: Boolean(signature_key),
+    });
 
     if (!order_id) {
       return json(
@@ -43,6 +52,7 @@ export async function POST(req) {
       );
     }
 
+    // Verifikasi signature Midtrans (order_id + status_code + gross_amount + serverKey)
     const signatureOk = verifySignature({
       order_id,
       status_code,
@@ -50,12 +60,18 @@ export async function POST(req) {
       signature_key,
     });
     if (!signatureOk) {
+      console.error("[MIDTRANS:WEBHOOK] INVALID_SIGNATURE", {
+        order_id,
+        status_code,
+        gross_amount_raw,
+      });
       return json(
         { error: { code: "UNAUTHORIZED", message: "Invalid signature" } },
         { status: 401 }
       );
     }
 
+    // Ambil booking + email (untuk email invoice)
     const booking = await prisma.event_booth_bookings.findFirst({
       where: { order_id },
       select: {
@@ -64,8 +80,10 @@ export async function POST(req) {
         event_id: true,
         voucher_code: true,
         amount: true,
+        email: true,
       },
     });
+
     if (!booking) {
       return json(
         { error: { code: "NOT_FOUND", message: "Booking tidak ditemukan." } },
@@ -79,6 +97,7 @@ export async function POST(req) {
       : 0;
     const amountMatch = bookingAmount === grossAmount;
 
+    // Simpan/Update payments log (idempoten by unique order_id)
     await prisma.payments.upsert({
       where: { order_id },
       update: {
@@ -99,76 +118,93 @@ export async function POST(req) {
     });
 
     const mapped = mapStatus(body); // "paid" | "pending" | "expired" | "failed" | "review" | "cancelled"
+    let becamePaid = false;
 
     if (mapped === "paid") {
-      await prisma.$transaction(
-        async (tx) => {
-          if (!amountMatch) {
-            await tx.event_booth_bookings.updateMany({
-              where: { id: booking.id, NOT: { status: "PAID" } },
-              data: { status: "REVIEW", updated_at: new Date() },
-            });
-            return;
-          }
-
-          const ev = await tx.events.findUnique({
-            where: { id: booking.event_id },
-            select: { booth_quota: true, booth_sold_count: true },
-          });
-          const quota = ev?.booth_quota ?? null;
-          const sold = Number(ev?.booth_sold_count || 0);
-
-          if (quota != null && sold >= quota) {
-            await tx.event_booth_bookings.updateMany({
-              where: { id: booking.id, NOT: { status: "PAID" } },
-              data: { status: "REVIEW", updated_at: new Date() },
-            });
-            return;
-          }
-
-          const updated = await tx.event_booth_bookings.updateMany({
+      await prisma.$transaction(async (tx) => {
+        // Jumlah tidak cocok → REVIEW
+        if (!amountMatch) {
+          await tx.event_booth_bookings.updateMany({
             where: { id: booking.id, NOT: { status: "PAID" } },
-            data: {
-              status: "PAID",
-              paid_at: new Date(),
-              updated_at: new Date(),
-            },
+            data: { status: "REVIEW", updated_at: new Date() },
           });
+          return;
+        }
 
-          if (updated.count > 0) {
-            if (quota == null || sold < quota) {
-              await tx.events.update({
-                where: { id: booking.event_id },
-                data: {
-                  booth_sold_count: { increment: 1 },
-                  updated_at: new Date(),
-                },
-              });
-            } else {
-              await tx.event_booth_bookings.update({
-                where: { id: booking.id },
-                data: { status: "REVIEW", updated_at: new Date() },
-              });
-            }
+        // Cek kuota booth
+        const ev = await tx.events.findUnique({
+          where: { id: booking.event_id },
+          select: { booth_quota: true, booth_sold_count: true },
+        });
+        const quota = ev?.booth_quota ?? null;
+        const sold = Number(ev?.booth_sold_count || 0);
 
-            if (booking.voucher_code) {
-              await tx.$executeRaw`
-                UPDATE vouchers
-                SET used_count = used_count + 1, updated_at = NOW(6)
-                WHERE code = ${booking.voucher_code}
-                  AND is_active = TRUE
-                  AND (max_uses IS NULL OR used_count < max_uses)
-              `;
-            }
+        if (quota != null && sold >= quota) {
+          await tx.event_booth_bookings.updateMany({
+            where: { id: booking.id, NOT: { status: "PAID" } },
+            data: { status: "REVIEW", updated_at: new Date() },
+          });
+          return;
+        }
+
+        // Update booking → PAID (idempoten)
+        const updated = await tx.event_booth_bookings.updateMany({
+          where: { id: booking.id, NOT: { status: "PAID" } },
+          data: { status: "PAID", paid_at: new Date(), updated_at: new Date() },
+        });
+
+        if (updated.count > 0) {
+          becamePaid = true;
+
+          // Increment sold_count jika masih dalam kuota
+          if (quota == null || sold < quota) {
+            await tx.events.update({
+              where: { id: booking.event_id },
+              data: {
+                booth_sold_count: { increment: 1 },
+                updated_at: new Date(),
+              },
+            });
+          } else {
+            // Safety fallback
+            await tx.event_booth_bookings.update({
+              where: { id: booking.id },
+              data: { status: "REVIEW", updated_at: new Date() },
+            });
+            becamePaid = false;
           }
-        },
-        { isolationLevel: "Serializable" }
-      );
-    } else if (
-      mapped === "failed" ||
-      mapped === "cancelled" ||
-      mapped === "expired"
-    ) {
+
+          // Increment voucher usage (jika ada & valid)
+          if (booking.voucher_code) {
+            await tx.$executeRaw`
+              UPDATE vouchers
+              SET used_count = used_count + 1, updated_at = NOW(6)
+              WHERE code = ${booking.voucher_code}
+                AND is_active = TRUE
+                AND (max_uses IS NULL OR used_count < max_uses)
+            `;
+          }
+        }
+      });
+
+      // Kirim invoice hanya saat transisi baru ke PAID & punya email
+      if (becamePaid && booking.email) {
+        try {
+          await sendBoothInvoiceEmail({
+            to: booking.email,
+            order_id,
+            amount: bookingAmount,
+            status: "PAID",
+            paid_at: new Date(),
+            channel: body?.payment_type || body?.channel || null,
+            event: booking.event || {},
+            support_email: process.env.SUPPORT_EMAIL || process.env.MAIL_FROM,
+          });
+        } catch (e) {
+          console.error("[MAILER] send invoice error:", e?.message || e);
+        }
+      }
+    } else if (["failed", "cancelled", "expired"].includes(mapped)) {
       await prisma.event_booth_bookings.updateMany({
         where: {
           id: booking.id,

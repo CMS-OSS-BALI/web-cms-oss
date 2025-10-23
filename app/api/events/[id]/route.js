@@ -19,6 +19,7 @@ const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
 /* -------------------- utils -------------------- */
 function sanitize(v) {
   if (v === null || v === undefined) return v;
+  if (v instanceof Date) return v.toISOString(); // ✅ fix Date -> ISO
   if (typeof v === "bigint") return v.toString();
   if (Array.isArray(v)) return v.map(sanitize);
   if (typeof v === "object") {
@@ -203,26 +204,6 @@ export async function GET(req, { params }) {
 
     const item = await prisma.events.findFirst({
       where: { id, deleted_at: null },
-      include: {
-        events_translate: {
-          where: { locale: { in: [locale, fallback] } },
-          select: { locale: true, title: true, description: true },
-        },
-        ...(includeCategory
-          ? {
-              category: {
-                select: {
-                  id: true,
-                  slug: true,
-                  translate: {
-                    where: { locale: { in: [locale, fallback] } },
-                    select: { locale: true, name: true, description: true },
-                  },
-                },
-              },
-            }
-          : { category: { select: { id: true, slug: true } } }),
-      },
       select: {
         id: true,
         admin_user_id: true,
@@ -237,12 +218,27 @@ export async function GET(req, { params }) {
         created_at: true,
         updated_at: true,
         category_id: true,
-        events_translate: true,
-        category: true,
-        // ⬇️ booth fields
+        // booth fields
         booth_price: true,
         booth_quota: true,
         booth_sold_count: true,
+
+        events_translate: {
+          where: { locale: { in: [locale, fallback] } },
+          select: { locale: true, title: true, description: true },
+        },
+        category: includeCategory
+          ? {
+              select: {
+                id: true,
+                slug: true,
+                translate: {
+                  where: { locale: { in: [locale, fallback] } },
+                  select: { locale: true, name: true, description: true },
+                },
+              },
+            }
+          : { select: { id: true, slug: true } },
       },
     });
     if (!item) return notFound();
@@ -285,10 +281,10 @@ export async function GET(req, { params }) {
       message: "OK",
       data: {
         id: item.id,
-        banner_url: toPublicUrl(item.banner_url), // ⬅️ public URL
+        banner_url: toPublicUrl(item.banner_url),
         is_published: item.is_published,
-        start_at: item.start_at,
-        end_at: item.end_at,
+        start_at: item.start_at, // Date → ISO by sanitize()
+        end_at: item.end_at, // Date → ISO by sanitize()
         start_ts,
         end_ts,
         location: item.location,
@@ -297,8 +293,8 @@ export async function GET(req, { params }) {
         ticket_price: item.ticket_price,
         category_id: item.category?.id ?? null,
         category_slug: item.category?.slug ?? null,
-        created_at: item.created_at,
-        updated_at: item.updated_at,
+        created_at: item.created_at, // Date → ISO by sanitize()
+        updated_at: item.updated_at, // Date → ISO by sanitize()
         created_ts,
         updated_ts,
         title: t?.title ?? null,
@@ -307,13 +303,9 @@ export async function GET(req, { params }) {
         sold,
         remaining,
         ...(includeCategory
-          ? {
-              category_name,
-              category_description,
-              category_locale_used,
-            }
+          ? { category_name, category_description, category_locale_used }
           : {}),
-        // ⬇️ booth fields
+        // booth fields
         booth_price: item.booth_price,
         booth_quota: item.booth_quota,
         booth_sold_count: item.booth_sold_count,
@@ -355,7 +347,7 @@ export async function PATCH(req, { params }) {
         start_at: true,
         end_at: true,
         pricing_type: true,
-        // ⬇️ booth fields
+        // booth fields
         booth_sold_count: true,
       },
     });
@@ -364,7 +356,6 @@ export async function PATCH(req, { params }) {
     const data = {};
     const ops = [];
     let title_id_new, desc_id_new;
-    let autoTranslate = false;
 
     // upload file menang, else pakai banner_url
     if (file) {
@@ -469,7 +460,7 @@ export async function PATCH(req, { params }) {
       data.ticket_price = 0;
     }
 
-    // ⬇️ Booth fields
+    // Booth fields
     if ("booth_price" in body) {
       const v = toInt(body.booth_price, 0);
       if (!Number.isFinite(v) || v < 0)
@@ -477,7 +468,6 @@ export async function PATCH(req, { params }) {
       data.booth_price = v;
     }
     if ("booth_quota" in body) {
-      // "" → null
       const raw = body.booth_quota;
       let v =
         raw === "" || raw === null || raw === undefined
@@ -485,7 +475,6 @@ export async function PATCH(req, { params }) {
           : toInt(raw, null);
       if (v !== null && v < 0)
         return badRequest("booth_quota harus >= 0 atau null", "booth_quota");
-      // tidak boleh lebih kecil dari sold yang sudah ada
       const soldNow = Number(current.booth_sold_count || 0);
       if (v !== null && v < soldNow)
         return badRequest(
@@ -495,7 +484,7 @@ export async function PATCH(req, { params }) {
       data.booth_quota = v;
     }
 
-    // Translations (ID/EN) + autoTranslate opsional
+    // Translations (ID/EN) + optional auto-translate
     if ("title_id" in body || "description_id" in body) {
       title_id_new =
         "title_id" in body ? String(body.title_id || "") : undefined;
@@ -555,7 +544,7 @@ export async function PATCH(req, { params }) {
       );
     }
 
-    // Kategori (opsional) — bisa id atau slug; kosongkan → disconnect
+    // Kategori (opsional) — bisa id/slug; kosongkan → disconnect
     if ("category_id" in body || "category_slug" in body) {
       const catId =
         "category_id" in body ? String(body.category_id || "").trim() : null;
@@ -590,7 +579,7 @@ export async function PATCH(req, { params }) {
       }
     }
 
-    autoTranslate = String(body?.autoTranslate ?? "false") === "true";
+    const autoTranslate = String(body?.autoTranslate ?? "false") === "true";
 
     if (Object.keys(data).length) data.updated_at = new Date();
     if (Object.keys(data).length) {
@@ -600,21 +589,18 @@ export async function PATCH(req, { params }) {
       if (!exists) return notFound();
     }
 
-    // autoTranslate dari ID → EN jika diminta
-    if (
-      autoTranslate &&
-      (title_id_new !== undefined || desc_id_new !== undefined)
-    ) {
-      const title_en_auto = title_id_new
-        ? await translate(String(title_id_new), "id", "en")
-        : undefined;
+    if (autoTranslate && ("title_id" in body || "description_id" in body)) {
+      const title_en_auto =
+        "title_id" in body && body.title_id
+          ? await translate(String(body.title_id), "id", "en")
+          : undefined;
       const desc_en_auto =
-        desc_id_new !== undefined
-          ? await translate(String(desc_id_new || ""), "id", "en")
+        "description_id" in body
+          ? await translate(String(body.description_id || ""), "id", "en")
           : undefined;
 
-      ops.push(
-        prisma.events_translate.upsert({
+      if (title_en_auto !== undefined || desc_en_auto !== undefined) {
+        await prisma.events_translate.upsert({
           where: { id_events_locale: { id_events: id, locale: "en" } },
           update: {
             ...(title_en_auto ? { title: title_en_auto.slice(0, 191) } : {}),
@@ -628,11 +614,9 @@ export async function PATCH(req, { params }) {
             title: (title_en_auto || "(no title)").slice(0, 191),
             description: desc_en_auto ?? null,
           },
-        })
-      );
+        });
+      }
     }
-
-    if (ops.length) await prisma.$transaction(ops);
 
     const updated = await prisma.events.findUnique({
       where: { id },
@@ -658,9 +642,8 @@ export async function PATCH(req, { params }) {
       message: "Event berhasil diperbarui.",
       data: {
         id: updated?.id || id,
-        banner_url: toPublicUrl(updated?.banner_url ?? null), // ⬅️ public URL
+        banner_url: toPublicUrl(updated?.banner_url ?? null),
         category_id: updated?.category_id ?? null,
-        // ⬇️ booth fields echo
         booth_price: updated?.booth_price ?? null,
         booth_quota: updated?.booth_quota ?? null,
         booth_sold_count: updated?.booth_sold_count ?? 0,

@@ -64,7 +64,12 @@ const NAV_ID = [
     id: "event",
     label: "Event",
     href: "/user/events?menu=events",
-    matchers: ["/user/events", "/user/leads"],
+    matchers: [
+      "/user/events",
+      "/user/leads",
+      "/user/form-ticket",
+      "/user/form-rep",
+    ],
   },
   {
     id: "partners",
@@ -130,7 +135,12 @@ const NAV_EN = [
     id: "event",
     label: "Events",
     href: "/user/events?menu=events",
-    matchers: ["/user/events", "/user/leads"],
+    matchers: [
+      "/user/events",
+      "/user/leads",
+      "/user/form-ticket",
+      "/user/form-rep",
+    ],
   },
   {
     id: "partners",
