@@ -14,6 +14,13 @@ const DEFAULT_LOCALE = "id";
 const EN_LOCALE = "en";
 const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
 
+// --- NEW: safe date → timestamp (ms)
+function toTs(v) {
+  if (!v) return null;
+  const t = new Date(String(v)).getTime();
+  return Number.isFinite(t) ? t : null;
+}
+
 function normalizeLocale(v, fallback = DEFAULT_LOCALE) {
   return (v || fallback).toLowerCase().slice(0, 5);
 }
@@ -86,8 +93,11 @@ async function readBody(req) {
   return (await req.json().catch(() => ({}))) ?? {};
 }
 
+/** map DB row → API shape (with created_ts/updated_ts) */
 function mapProdi(row, locale, fallback) {
   const t = pickTrans(row.prodi_translate || [], locale, fallback);
+  const created_ts = toTs(row.created_at) ?? toTs(row.updated_at) ?? null;
+  const updated_ts = toTs(row.updated_at) ?? null;
   return {
     id: row.id,
     jurusan_id: row.jurusan_id,
@@ -95,6 +105,8 @@ function mapProdi(row, locale, fallback) {
     created_at: row.created_at,
     updated_at: row.updated_at,
     deleted_at: row.deleted_at,
+    created_ts,
+    updated_ts,
     locale_used: t?.locale || null,
     name: t?.name || null,
     description: t?.description || null,
@@ -150,6 +162,7 @@ export async function GET(req) {
         : {}),
     };
 
+    // Sort by name → ambil semua lalu sort in-memory (agar pakai terjemahan yg dipilih)
     if (sortField === "name") {
       const rowsAll = await prisma.prodi.findMany({
         where,
@@ -189,6 +202,7 @@ export async function GET(req) {
       });
     }
 
+    // Sort by created_at / updated_at (DB-side)
     const [total, rows] = await Promise.all([
       prisma.prodi.count({ where }),
       prisma.prodi.findMany({
@@ -266,7 +280,7 @@ export async function POST(req) {
         data: {
           id,
           jurusan_id,
-          college_id: jur.college_id ?? null, // schema allows NULL; if DB requires NOT NULL, jur.college_id must exist
+          college_id: jur.college_id ?? null,
           created_at: new Date(),
           updated_at: new Date(),
         },

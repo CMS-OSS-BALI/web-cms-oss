@@ -38,6 +38,23 @@ const parseId = (v) => {
   return s.length ? s : null;
 };
 
+const toMs = (d) => {
+  if (!d) return null;
+  try {
+    const t = d instanceof Date ? d.getTime() : new Date(d).getTime();
+    return Number.isFinite(t) ? t : null;
+  } catch {
+    return null;
+  }
+};
+const withTs = (row) => ({
+  ...row,
+  created_ts: toMs(row.created_at),
+  updated_ts: toMs(row.updated_at),
+  assigned_at_ts: toMs(row.assigned_at),
+  deleted_at_ts: toMs(row.deleted_at),
+});
+
 // accept form-data / urlencoded / json
 async function readBody(req) {
   const ct = (req.headers.get("content-type") || "").toLowerCase();
@@ -159,7 +176,7 @@ export async function GET(req, { params }) {
       { status: 404 }
     );
   }
-  return json({ message: "OK", data: item });
+  return json({ message: "OK", data: withTs(item) });
 }
 
 /* ========== PATCH update ========== */
@@ -381,7 +398,10 @@ export async function PATCH(req, { params }) {
       if (consultant) await sendAssignmentWA(updated, consultant);
     }
 
-    return json({ message: "Lead berhasil diperbarui.", data: updated });
+    return json({
+      message: "Lead berhasil diperbarui.",
+      data: withTs(updated),
+    });
   } catch (e) {
     console.error("[PATCH /api/leads/:id] error:", e?.message || e);
     return json(

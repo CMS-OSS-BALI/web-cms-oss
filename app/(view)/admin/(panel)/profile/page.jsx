@@ -1,16 +1,19 @@
 "use client";
 
-import { Suspense, lazy } from "react";
+import dynamic from "next/dynamic";
 import Loading from "@/app/components/loading/LoadingImage";
 import useProfileViewModel from "./useProfileViewModel";
 
-const ProfileContentLazy = lazy(() => import("./ProfileContent"));
+const ProfileContent = dynamic(() => import("./ProfileContent"), {
+  ssr: false,
+  loading: () => (
+    <div>
+      <Loading />
+    </div>
+  ),
+});
 
 export default function Page() {
-  const vm = useProfileViewModel();
-  return (
-    <Suspense fallback={<div className="page-wrap"><Loading /></div>}>
-      <ProfileContentLazy {...vm} />
-    </Suspense>
-  );
+  const vm = useProfileViewModel({ locale: "id" });
+  return <ProfileContent vm={vm} />;
 }

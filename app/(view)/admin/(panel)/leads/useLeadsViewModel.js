@@ -1,235 +1,299 @@
+// useLeadsViewModel.js
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import useSWR from "swr";
-import { fetcher } from "@/lib/swr/fetcher";
-
-export const ASSIGNED_FILTER = {
-  UNASSIGNED: "UNASSIGNED",
-  ALL: "ALL",
-  ASSIGNED: "ASSIGNED",
-};
-
-const DEFAULT_SORT = "created_at:desc";
-
-// useLeadsViewModel.js
-function buildQuery({
-  page,
-  perPage,
-  q,
-  sort,
-  assignedFilter,
-  includeDeleted,
-}) {
-  const params = new URLSearchParams();
-  params.set("page", String(page));
-  params.set("perPage", String(perPage));
-  if (q.trim()) params.set("q", q.trim());
-  if (sort) params.set("sort", sort);
-  if (includeDeleted) params.set("with_deleted", "1");
-
-  // NEW: support consultant-specific filter
-  if (
-    assignedFilter &&
-    assignedFilter !== ASSIGNED_FILTER.ALL &&
-    assignedFilter !== ASSIGNED_FILTER.UNASSIGNED &&
-    assignedFilter !== ASSIGNED_FILTER.ASSIGNED
-  ) {
-    // assignedFilter holds the consultant id as string
-    params.set("assigned_to", assignedFilter);
-  } else {
-    // legacy 3-state filter
-    switch (assignedFilter) {
-      case ASSIGNED_FILTER.ALL:
-        params.set("include_assigned", "1");
-        break;
-      case ASSIGNED_FILTER.ASSIGNED:
-        params.set("only_assigned", "1");
-        break;
-      default:
-        // UNASSIGNED = default (assigned_to IS NULL)
-        break;
-    }
-  }
-
-  return `/api/leads?${params.toString()}`;
-}
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export default function useLeadsViewModel() {
-  const [q, setQ] = useState("");
-  const [assignedFilter, setAssignedFilter] = useState(
-    ASSIGNED_FILTER.UNASSIGNED
-  );
-  const [includeDeleted, setIncludeDeleted] = useState(false);
+  /* ========== state list & filters ========== */
+  const [leads, setLeads] = useState([]);
+  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
-  const [sort, setSort] = useState(DEFAULT_SORT);
+  const [loading, setLoading] = useState(false);
   const [opLoading, setOpLoading] = useState(false);
 
-  // SWR key
-  const listKey = useMemo(
-    () =>
-      buildQuery({ page, perPage, q, sort, assignedFilter, includeDeleted }),
-    [page, perPage, q, sort, assignedFilter, includeDeleted]
-  );
+  const [q, setQ] = useState("");
+  const [status, setStatus] = useState("all"); // all | assigned | unassigned
+  const [education, setEducation] = useState("");
+  const [locale, setLocale] = useState("id");
 
-  const {
-    data: listJson,
-    error: listErrorObj,
-    isLoading: listLoading,
-    mutate: mutateLeads,
-  } = useSWR(listKey, fetcher);
-
-  const leads = listJson?.data ?? [];
-  const total = listJson?.meta?.total ?? 0;
   const totalPages = useMemo(
-    () => Math.max(1, Math.ceil(total / (perPage || 1))),
+    () => Math.max(1, Math.ceil((total || 0) / (perPage || 10))),
     [total, perPage]
   );
 
-  // sinkronkan page/perPage dari API meta (jika backend mengubah)
-  useEffect(() => {
-    if (listJson?.meta?.page) setPage(listJson.meta.page);
-    if (listJson?.meta?.perPage) setPerPage(listJson.meta.perPage);
-  }, [listJson]);
+  /* ========== GLOBAL COUNTERS (untuk ringkasan) ========== */
+  const [totalLeads, setTotalLeads] = useState(0);
+  const [assignedCount, setAssignedCount] = useState(0);
+  const [unassignedCount, setUnassignedCount] = useState(0);
 
-  // consultants (untuk dropdown assign)
-  const consultantsKey = "/api/consultants?perPage=200&sort=name:asc";
-  const { data: consultantsJson, isLoading: consultantsLoading } = useSWR(
-    consultantsKey,
-    fetcher
-  );
-  const consultants = consultantsJson?.data ?? [];
-  const consultantOptions = useMemo(
-    () =>
-      consultants.map((c) => ({
-        label: c.name,
-        value: String(c.id), // simpan sebagai string supaya aman di Select
-        raw: c,
-      })),
-    [consultants]
-  );
+  /* ========== fetch list ========== */
+  const abortRef = useRef(null);
 
-  const refresh = useCallback(() => mutateLeads(), [mutateLeads]);
-
-  async function createLead(payload) {
-    setOpLoading(true);
-    try {
-      const res = await fetch("/api/leads", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload || {}),
-      });
-      if (!res.ok) {
-        const info = await res.json().catch(() => null);
-        throw new Error(
-          info?.error?.message || info?.message || "Gagal menambah lead"
-        );
-      }
-      await refresh();
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, error: err?.message || "Gagal menambah lead" };
-    } finally {
-      setOpLoading(false);
+  // helper normalisasi timestamp -> ms
+  const toMs = (v) => {
+    if (v === null || v === undefined || v === "") return null;
+    if (v instanceof Date) return v.getTime();
+    const n = Number(v);
+    if (Number.isFinite(n)) {
+      return n < 1e12 ? n * 1000 : n; // detik -> ms jika perlu
     }
+    const t = Date.parse(String(v));
+    return Number.isNaN(t) ? null : t;
+  };
+
+  const fetchList = useCallback(async () => {
+    try {
+      abortRef.current?.abort?.();
+      const ctrl = new AbortController();
+      abortRef.current = ctrl;
+      setLoading(true);
+
+      const params = new URLSearchParams();
+      params.set("page", String(page));
+      params.set("perPage", String(perPage));
+      if (q) params.set("q", q);
+      if (education) params.set("education", education);
+
+      // status mapping → API params
+      if (status === "all") {
+        params.set("include_assigned", "1"); // semua (assigned & unassigned)
+      } else if (status === "assigned") {
+        params.set("only_assigned", "1"); // hanya yang assigned
+      } // "unassigned" → default: assigned_to null
+
+      const res = await fetch(`/api/leads?${params.toString()}`, {
+        signal: ctrl.signal,
+        cache: "no-store",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      const raw = json?.data || [];
+      const meta = json?.meta || {};
+
+      // normalisasi created_ts di client (ms)
+      const data = raw.map((r) => ({
+        ...r,
+        created_ts:
+          toMs(r.created_ts) ?? (r.created_at ? toMs(r.created_at) : null),
+      }));
+
+      setLeads(data);
+      setTotal(meta?.total || data.length || 0);
+
+      // refresh consultant names map untuk halaman ini
+      refreshConsultantNamesForPage(data);
+    } catch (e) {
+      if (e?.name !== "AbortError") {
+        setLeads([]);
+        setTotal(0);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [page, perPage, q, status, education]);
+
+  useEffect(() => {
+    fetchList();
+    return () => abortRef.current?.abort?.();
+  }, [fetchList]);
+
+  /* ========== REFRESH COUNTERS (total, assigned, unassigned) ========== */
+  const refreshCounters = useCallback(async () => {
+    try {
+      // pakai filter education (kalau ada). Query minimal (perPage=1) agar cepat.
+      const base = new URLSearchParams();
+      base.set("perPage", "1");
+      if (education) base.set("education", education);
+
+      const pTotal = new URLSearchParams(base);
+      pTotal.set("include_assigned", "1"); // semua
+
+      const pAssigned = new URLSearchParams(base);
+      pAssigned.set("only_assigned", "1"); // hanya assigned
+
+      const [allRes, assignedRes, unassignedRes] = await Promise.all([
+        fetch(`/api/leads?${pTotal.toString()}`, {
+          cache: "no-store",
+          credentials: "include",
+        }),
+        fetch(`/api/leads?${pAssigned.toString()}`, {
+          cache: "no-store",
+          credentials: "include",
+        }),
+        fetch(`/api/leads?${base.toString()}`, {
+          cache: "no-store",
+          credentials: "include",
+        }),
+      ]);
+
+      const [all, asg, unasg] = await Promise.all([
+        allRes.json(),
+        assignedRes.json(),
+        unassignedRes.json(),
+      ]);
+
+      setTotalLeads(all?.meta?.total ?? 0);
+      setAssignedCount(asg?.meta?.total ?? 0);
+      setUnassignedCount(unasg?.meta?.total ?? 0);
+    } catch {
+      // diamkan; UI tetap jalan
+    }
+  }, [education]);
+
+  useEffect(() => {
+    refreshCounters();
+  }, [refreshCounters]);
+
+  /* ========== CREATE (disabled for admin) ========== */
+  async function createLead() {
+    // Admin tidak boleh membuat lead dari panel → balikan error terkontrol
+    return {
+      ok: false,
+      error: "Admin tidak diizinkan membuat lead dari panel.",
+    };
   }
 
-  async function updateLead(id, payload) {
-    setOpLoading(true);
+  /* ========== READ DETAIL ========== */
+  async function getLead(id) {
     try {
       const res = await fetch(`/api/leads/${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload || {}),
+        cache: "no-store",
+        credentials: "include",
       });
-      if (!res.ok) {
-        const info = await res.json().catch(() => null);
-        throw new Error(
-          info?.error?.message || info?.message || "Gagal memperbarui lead"
-        );
-      }
-      await refresh();
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, error: err?.message || "Gagal memperbarui lead" };
+      const json = await res.json();
+      if (!res.ok) return { ok: false, error: json?.error?.message || "Gagal" };
+      return { ok: true, data: json };
+    } catch (e) {
+      return { ok: false, error: e?.message || "Gagal" };
+    }
+  }
+
+  /* ========== UPDATE (only assigned_to) ========== */
+  async function updateLead(id, payload) {
+    try {
+      setOpLoading(true);
+      const body = { assigned_to: payload?.assigned_to ?? null }; // hanya kirim assigned_to
+      const res = await fetch(`/api/leads/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      const json = await res.json();
+      if (!res.ok) return { ok: false, error: json?.error?.message || "Gagal" };
+      fetchList();
+      refreshCounters(); // update ringkasan (assignment bisa berubah)
+      return { ok: true, data: json?.data };
+    } catch (e) {
+      return { ok: false, error: e?.message || "Gagal" };
     } finally {
       setOpLoading(false);
     }
   }
 
+  /* ========== DELETE ========== */
   async function deleteLead(id) {
-    setOpLoading(true);
     try {
       const res = await fetch(`/api/leads/${encodeURIComponent(id)}`, {
         method: "DELETE",
+        credentials: "include",
       });
-      if (!res.ok) {
-        const info = await res.json().catch(() => null);
-        throw new Error(
-          info?.error?.message || info?.message || "Gagal menghapus lead"
-        );
-      }
-      await refresh();
+      const json = await res.json();
+      if (!res.ok) return { ok: false, error: json?.error?.message || "Gagal" };
+      fetchList();
+      refreshCounters(); // total berkurang
       return { ok: true };
-    } catch (err) {
-      return { ok: false, error: err?.message || "Gagal menghapus lead" };
-    } finally {
-      setOpLoading(false);
+    } catch (e) {
+      return { ok: false, error: e?.message || "Gagal" };
     }
   }
 
-  /** Assign konsultan ke lead (trigger WA dikirim oleh backend) */
-  async function assignConsultant(leadId, consultantId) {
-    // consultantId bisa string (dari Select), backend akan parse BigInt
-    return updateLead(leadId, { assigned_to: consultantId });
+  /* ========== consultant helpers (best-effort) ========== */
+  const [consultantMap, setConsultantMap] = useState({});
+  const consultantName = useCallback(
+    (id) => (id ? consultantMap[id] || null : null),
+    [consultantMap]
+  );
+
+  async function searchConsultantOptions(q = "") {
+    try {
+      const url = `/api/consultants?perPage=10&q=${encodeURIComponent(q)}`;
+      const res = await fetch(url, {
+        cache: "no-store",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const json = await res.json();
+      const rows = json?.data || json?.rows || [];
+      const opts = rows.map((r) => ({
+        value: r.id,
+        label: r.name || r.full_name || r.email || r.id,
+      }));
+      // cache ke map juga
+      setConsultantMap((m) => {
+        const next = { ...m };
+        for (const o of opts) next[o.value] = o.label;
+        return next;
+      });
+      return opts;
+    } catch {
+      return [];
+    }
   }
 
-  /** Lepas konsultan (set null) */
-  async function unassignConsultant(leadId) {
-    return updateLead(leadId, { assigned_to: null });
-  }
+  async function refreshConsultantNamesForPage(data) {
+    const ids = Array.from(
+      new Set((data || []).map((r) => r.assigned_to).filter(Boolean))
+    ).filter((id) => !consultantMap[id]);
+    if (!ids.length) return;
 
-  const listError = listErrorObj?.message || "";
+    // best effort: search by joined ids
+    const joined = ids.slice(0, 10).join(" ");
+    await searchConsultantOptions(joined);
+  }
 
   return {
-    // data
+    // list state
     leads,
     total,
-    totalPages,
-
-    // paging & filters
     page,
     perPage,
-    sort,
-    q,
-    assignedFilter,
-    includeDeleted,
+    totalPages,
+    loading,
+    opLoading,
 
-    // setters
+    // filters
+    q,
+    status,
+    education,
     setQ,
+    setStatus,
+    setEducation,
+
+    // paging
     setPage,
     setPerPage,
-    setSort,
-    setAssignedFilter,
-    setIncludeDeleted,
 
-    // states
-    loading: listLoading,
-    opLoading,
-    listError,
+    // locale
+    setLocale,
 
-    // consultants
-    consultants,
-    consultantOptions,
-    consultantsLoading,
+    // GLOBAL counters
+    totalLeads,
+    assignedCount,
+    unassignedCount,
+    refreshCounters,
 
-    // actions
+    // CRUD (create disabled)
     createLead,
+    getLead,
     updateLead,
     deleteLead,
-    assignConsultant,
-    unassignConsultant,
-    refresh,
+
+    // consultant helpers
+    searchConsultantOptions,
+    consultantName,
+    refreshConsultantNamesForPage,
   };
 }

@@ -16,7 +16,7 @@ const EN_LOCALE = "en";
 const BUCKET = process.env.SUPABASE_BUCKET;
 const SUPA_URL =
   process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
-const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || ""; // optional: bypass next-auth via header for Postman
+const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || ""; // optional: bypass next-auth via header untuk Postman
 
 /* -------------------- utils -------------------- */
 function sanitize(v) {
@@ -61,7 +61,6 @@ function getOrderBy(param) {
   const [field = "sort", dir = "asc"] = String(param || "").split(":");
   const key = allowed.has(field) ? field : "sort";
   const order = String(dir).toLowerCase() === "desc" ? "desc" : "asc";
-  // default: sort ASC, lalu created_at DESC
   return [{ [key]: order }, { created_at: "desc" }];
 }
 /** convert storage path → public URL */
@@ -71,6 +70,16 @@ function toPublicUrl(path) {
   if (!SUPA_URL || !BUCKET) return path;
   return `${SUPA_URL}/storage/v1/object/public/${BUCKET}/${path}`;
 }
+/** ms helper */
+const toMs = (d) => {
+  if (!d) return null;
+  try {
+    const t = d instanceof Date ? d.getTime() : new Date(d).getTime();
+    return Number.isFinite(t) ? t : null;
+  } catch {
+    return null;
+  }
+};
 
 /** Accept NextAuth session OR x-admin-key header (for Postman) */
 async function assertAdmin(req) {
@@ -93,7 +102,7 @@ async function assertAdmin(req) {
   return { adminId: admin.id, via: "session" };
 }
 
-/** Read JSON or multipart form-data (returns { body, file }) */
+/** Read JSON atau multipart form-data (returns { body, file }) */
 async function readBodyAndFile(req) {
   const contentType = (req.headers.get("content-type") || "").toLowerCase();
   const isMultipart = contentType.startsWith("multipart/form-data");
@@ -126,7 +135,7 @@ async function readBodyAndFile(req) {
   return { body, file: null };
 }
 
-/** Upload image to Supabase Storage (optional) */
+/** Upload image ke Supabase Storage (opsional) */
 async function uploadAktivitasImage(file) {
   if (!file) return null;
   if (!BUCKET) throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
@@ -224,9 +233,12 @@ export async function GET(req) {
       const updated_ts = r?.updated_at
         ? new Date(r.updated_at).getTime()
         : null;
+      const deleted_at_ts = r?.deleted_at
+        ? new Date(r.deleted_at).getTime()
+        : null;
       return {
         id: r.id,
-        image_url: toPublicUrl(r.image_url), // <-- jadikan URL publik
+        image_url: toPublicUrl(r.image_url),
         sort: r.sort,
         is_published: r.is_published,
         created_at: r.created_at,
@@ -234,6 +246,7 @@ export async function GET(req) {
         deleted_at: r.deleted_at,
         created_ts,
         updated_ts,
+        deleted_at_ts,
         name: t?.name ?? null,
         description: t?.description ?? null,
         locale_used: t?.locale ?? null,
@@ -336,7 +349,7 @@ export async function POST(req) {
         data: {
           id,
           admin_user_id: adminId,
-          image_url, // simpan PATH
+          image_url,
           sort,
           is_published,
           created_at: new Date(),
@@ -372,9 +385,15 @@ export async function POST(req) {
         message: "Aktivitas berhasil dibuat.",
         data: {
           id: created.id,
-          image_url: toPublicUrl(image_url), // <-- kembalikan URL publik
+          image_url: toPublicUrl(created.image_url || image_url),
           sort,
           is_published,
+          created_at: created.created_at,
+          updated_at: created.updated_at,
+          deleted_at: created.deleted_at ?? null,
+          created_ts: toMs(created.created_at),
+          updated_ts: toMs(created.updated_at),
+          deleted_at_ts: toMs(created.deleted_at),
           name_id,
           description_id,
           name_en: name_en || null,

@@ -62,6 +62,16 @@ function toPublicUrl(path) {
   if (!SUPA_URL || !BUCKET) return path;
   return `${SUPA_URL}/storage/v1/object/public/${BUCKET}/${path}`;
 }
+/** ms helper */
+const toMs = (d) => {
+  if (!d) return null;
+  try {
+    const t = d instanceof Date ? d.getTime() : new Date(d).getTime();
+    return Number.isFinite(t) ? t : null;
+  } catch {
+    return null;
+  }
+};
 
 /** Accept NextAuth session OR x-admin-key header (for Postman) */
 async function assertAdmin(req) {
@@ -84,7 +94,7 @@ async function assertAdmin(req) {
   return { adminId: admin.id, via: "session" };
 }
 
-/** Read JSON or multipart form-data (returns { body, file }) */
+/** Read JSON atau multipart form-data (returns { body, file }) */
 async function readBodyAndFile(req) {
   const contentType = (req.headers.get("content-type") || "").toLowerCase();
   const isMultipart = contentType.startsWith("multipart/form-data");
@@ -117,7 +127,7 @@ async function readBodyAndFile(req) {
   return { body, file: null };
 }
 
-/** Upload image to Supabase Storage (optional) */
+/** Upload image ke Supabase Storage (opsional) */
 async function uploadAktivitasImage(file) {
   if (!file) return null;
   if (!BUCKET) throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
@@ -182,12 +192,15 @@ export async function GET(req, { params }) {
     const updated_ts = row?.updated_at
       ? new Date(row.updated_at).getTime()
       : null;
+    const deleted_at_ts = row?.deleted_at
+      ? new Date(row.deleted_at).getTime()
+      : null;
 
     return json({
       message: "OK",
       data: {
         id: row.id,
-        image_url: toPublicUrl(row.image_url), // <-- URL publik
+        image_url: toPublicUrl(row.image_url),
         sort: row.sort,
         is_published: row.is_published,
         created_at: row.created_at,
@@ -195,6 +208,7 @@ export async function GET(req, { params }) {
         deleted_at: row.deleted_at,
         created_ts,
         updated_ts,
+        deleted_at_ts,
         name: t?.name ?? null,
         description: t?.description ?? null,
         locale_used: t?.locale ?? null,
@@ -384,10 +398,12 @@ export async function PATCH(req, { params }) {
       },
     });
 
-    // map image to public URL in response
     const mapped = {
       ...updated,
       image_url: toPublicUrl(updated.image_url),
+      created_ts: toMs(updated.created_at),
+      updated_ts: toMs(updated.updated_at),
+      deleted_at_ts: toMs(updated.deleted_at),
     };
 
     return json({ message: "Aktivitas diperbarui.", data: mapped });
@@ -412,7 +428,15 @@ export async function DELETE(req, { params }) {
       data: { deleted_at: new Date(), updated_at: new Date() },
     });
 
-    return json({ message: "Aktivitas dihapus.", data: deleted });
+    const mapped = {
+      ...deleted,
+      image_url: toPublicUrl(deleted.image_url),
+      created_ts: toMs(deleted.created_at),
+      updated_ts: toMs(deleted.updated_at),
+      deleted_at_ts: toMs(deleted.deleted_at),
+    };
+
+    return json({ message: "Aktivitas dihapus.", data: mapped });
   } catch (err) {
     if (err instanceof Response) return err;
     console.error("DELETE /api/aktivitas/[id] error:", err);

@@ -1,1286 +1,1043 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import {
-  Button,
-  Card,
   ConfigProvider,
-  Descriptions,
-  Empty,
-  Form,
-  Image,
-  Input,
+  Button,
   Modal,
+  Form,
+  Input,
+  Upload,
   notification,
-  Pagination,
+  Empty,
+  Skeleton,
   Popconfirm,
-  Row,
-  Col,
-  Select,
-  Space,
+  Tooltip,
+  Spin,
   Tag,
-  Typography,
-  theme as antdTheme,
-  Checkbox,
 } from "antd";
 import {
-  EyeOutlined,
-  MailOutlined,
-  PhoneOutlined,
   PlusOutlined,
+  PlusCircleOutlined,
+  EyeOutlined,
   DeleteOutlined,
-  UploadOutlined,
+  EditOutlined,
+  LeftOutlined,
+  RightOutlined,
 } from "@ant-design/icons";
-import HtmlEditor from "@/app/components/editor/HtmlEditor";
-import { sanitizeHtml } from "@/app/utils/dompurify";
 
-const { Title, Text, Paragraph } = Typography;
+export default function ConsultantsContent({ vm }) {
+  const { t, tokens } = vm;
+  const { shellW, blue, text } = tokens; // headerH tidak dipakai lagi
+  const maxW = tokens.maxW ?? 1140; // fallback cap
 
-const CARD_BG = "rgba(11, 18, 35, 0.94)";
-const IMAGE_PLACEHOLDER =
-  "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=1200&auto=format&fit=crop";
+  // notifications
+  const [notify, contextHolder] = notification.useNotification();
+  const ok = (msg, desc) =>
+    notify.success({ message: msg, description: desc, placement: "topRight" });
+  const err = (msg, desc) =>
+    notify.error({ message: msg, description: desc, placement: "topRight" });
 
-const darkCardStyle = {
-  background: CARD_BG,
-  border: "1px solid #2f3f60",
-  borderRadius: 16,
-  boxShadow: "0 10px 24px rgba(2,6,23,.35)",
-};
+  // modals
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [viewOpen, setViewOpen] = useState(false);
+  const [activeRow, setActiveRow] = useState(null);
 
-const pageWrapStyle = {
-  maxWidth: 1320,
-  margin: "0 auto",
-  padding: "24px 32px 12px",
-};
+  // forms
+  const [formCreate] = Form.useForm();
+  const [formEdit] = Form.useForm();
 
-/* ===== util ===== */
-function fileOk(file) {
-  const allowed = ["image/jpeg", "image/png", "image/webp"];
-  if (!allowed.includes(file.type)) {
-    return { ok: false, msg: "Format tidak didukung (JPG/PNG/WebP)" };
-  }
-  if (file.size > 10 * 1024 * 1024) {
-    return { ok: false, msg: "Maksimal 10MB" };
-  }
-  return { ok: true };
-}
+  // avatar preview
+  const [avatarPreviewCreate, setAvatarPreviewCreate] = useState("");
+  const [avatarPreviewEdit, setAvatarPreviewEdit] = useState("");
 
-/* ===== Form Modal (dengan upload file) ===== */
-function ConsultantFormModal({
-  open,
-  mode,
-  initialValues,
-  saving,
-  onCancel,
-  onSubmit,
-}) {
-  const [form] = Form.useForm();
-  const isCreate = mode !== "edit";
-  const req = (msg) => (isCreate ? [{ required: true, message: msg }] : []);
+  // program images (untuk modal edit)
+  const [editProgramImages, setEditProgramImages] = useState([]);
 
-  // refs input file
-  const refProfile = useRef(null);
-  const refCover = useRef(null);
-  const refGallery = useRef(null);
+  // loading detail saat buka edit
+  const [editLoading, setEditLoading] = useState(false);
 
-  // state file + preview
-  const [profileFile, setProfileFile] = useState(null);
-  const [profilePreview, setProfilePreview] = useState("");
+  // ----- DETAIL (view) states -----
+  const [viewLoading, setViewLoading] = useState(false);
+  const [viewData, setViewData] = useState(null);
+  const [viewAvatar, setViewAvatar] = useState("");
+  const [viewProgramImages, setViewProgramImages] = useState([]);
 
-  const [coverFile, setCoverFile] = useState(null); // program consultant
-  const [coverPreview, setCoverPreview] = useState("");
-
-  const [galleryFiles, setGalleryFiles] = useState([]); // File[]
-  const [galleryPreviews, setGalleryPreviews] = useState([]); // string[]
-
-  // mode replace/append galeri (PATCH)
-  const [replaceGallery, setReplaceGallery] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    form.resetFields();
-    form.setFieldsValue({ ...initialValues });
-
-    // reset file states
-    setProfileFile(null);
-    setCoverFile(null);
-    setGalleryFiles([]);
-    setGalleryPreviews([]);
-    setReplaceGallery(false);
-
-    // preview default dari existing data
-    setProfilePreview(
-      initialValues?.profile_image_public_url ||
-        initialValues?.profile_image_url ||
-        ""
-    );
-    setCoverPreview(
-      initialValues?.program_consultant_image_public_url ||
-        initialValues?.program_consultant_image_url ||
-        ""
-    );
-
-    // existing gallery (hanya untuk pratinjau)
-    const existingGallery = Array.isArray(initialValues?.program_images)
-      ? initialValues.program_images
-      : [];
-    setGalleryPreviews(
-      existingGallery.map((g) => g.image_public_url || g.image_url || "")
-    );
-  }, [open, initialValues, form]);
-
-  const onPickProfile = () => {
-    if (refProfile.current) refProfile.current.value = "";
-    refProfile.current?.click();
-  };
-  const onPickCover = () => {
-    if (refCover.current) refCover.current.value = "";
-    refCover.current?.click();
-  };
-  const onPickGallery = () => {
-    if (refGallery.current) refGallery.current.value = "";
-    refGallery.current?.click();
-  };
-
-  const onProfileChange = (e) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    const val = fileOk(f);
-    if (!val.ok) {
-      Modal.error({ title: "Upload gagal", content: val.msg });
-      e.target.value = "";
-      return;
-    }
-    setProfileFile(f);
-    setProfilePreview(URL.createObjectURL(f));
-  };
-  const onCoverChange = (e) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    const val = fileOk(f);
-    if (!val.ok) {
-      Modal.error({ title: "Upload gagal", content: val.msg });
-      e.target.value = "";
-      return;
-    }
-    setCoverFile(f);
-    setCoverPreview(URL.createObjectURL(f));
-  };
-  const onGalleryChange = (e) => {
-    const files = [...(e.target.files || [])];
-    if (!files.length) return;
-    const oks = [];
-    const previews = [];
-    for (const f of files) {
-      const val = fileOk(f);
-      if (!val.ok) {
-        Modal.error({ title: "Upload gagal", content: val.msg });
-        continue;
-      }
-      oks.push(f);
-      previews.push(URL.createObjectURL(f));
-    }
-    setGalleryFiles((prev) => prev.concat(oks));
-    setGalleryPreviews((prev) => prev.concat(previews));
-  };
-
-  const removeGalleryItem = (idx) => {
-    setGalleryFiles((prev) => prev.filter((_, i) => i !== idx));
-    setGalleryPreviews((prev) => prev.filter((_, i) => i !== idx));
-  };
-
-  const removeProfile = () => {
-    setProfileFile(null);
-    setProfilePreview("");
-    if (refProfile.current) refProfile.current.value = "";
-  };
-  const removeCover = () => {
-    setCoverFile(null);
-    setCoverPreview("");
-    if (refCover.current) refCover.current.value = "";
-  };
-  const clearNewGallery = () => {
-    setGalleryFiles([]);
-    setGalleryPreviews([]);
-    if (refGallery.current) refGallery.current.value = "";
-  };
-
-  const handleFinish = (values) => {
-    // payload multipart untuk VM
-    const payload = {
-      name_id: values.name_id?.trim() || undefined,
-      description_id:
-        values.description_id == null
-          ? ""
-          : typeof values.description_id === "string"
-          ? values.description_id
-          : String(values.description_id),
-      email: values.email?.trim() || undefined,
-      whatsapp: values.whatsapp?.trim() || undefined,
-      autoTranslate: true,
-    };
-
-    // NB: API MENERIMA "files[]" untuk galeri program
-    if (galleryFiles.length) payload.files = galleryFiles;
-
-    // (Opsional ke depan) bila kamu punya endpoint upload profile/cover terpisah,
-    // set "profile_image_url" / "program_consultant_image_url" di payload dengan path publik.
-    // Di sini, kita hanya simpan file untuk preview lokal.
-    if (profileFile) payload.profile_file = profileFile;
-    if (coverFile) payload.program_consultant_file = coverFile;
-
-    if (mode === "edit" && (galleryFiles.length || replaceGallery)) {
-      payload.program_images_mode = replaceGallery ? "replace" : "append";
-    }
-
-    if (isCreate && !values.name_id?.trim()) {
-      Modal.warning({ title: "Nama belum diisi", content: "Nama (ID) wajib." });
-      return;
-    }
-
-    onSubmit(payload);
-  };
-
-  const UploadBox = ({
-    label,
-    preview,
-    onPick,
-    onRemove,
-    inputRef,
-    onChange,
-    multiple = false,
-  }) => (
-    <div style={{ display: "grid", gap: 8 }}>
-      {!preview ? (
-        <div
-          style={{
-            border: "2px dashed #3a5794",
-            borderRadius: 12,
-            padding: 18,
-            display: "grid",
-            placeItems: "center",
-            cursor: "pointer",
-            background:
-              "repeating-linear-gradient(-45deg,rgba(17,24,39,.3),rgba(17,24,39,.3) 10px,rgba(17,24,39,.24) 10px,rgba(17,24,39,.24) 20px)",
-          }}
-          onClick={onPick}
-        >
-          <Space direction="vertical" align="center" size={4}>
-            <UploadOutlined style={{ fontSize: 26, color: "#8fb3ff" }} />
-            <Text strong>Ketuk untuk unggah {label}</Text>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              JPG/PNG/WebP • Maks 10MB
-            </Text>
-          </Space>
-        </div>
-      ) : typeof preview === "string" ? (
-        <div style={{ position: "relative" }}>
-          <img
-            src={preview}
-            alt={label}
-            style={{
-              width: "100%",
-              maxHeight: 260,
-              objectFit: "cover",
-              borderRadius: 12,
-              border: "1px solid #2f3f60",
-            }}
-          />
-          <div style={{ marginTop: 8 }}>
-            <Button danger shape="round" onClick={onRemove}>
-              <DeleteOutlined /> Hapus
-            </Button>
-            <Button shape="round" style={{ marginLeft: 8 }} onClick={onPick}>
-              Ganti
-            </Button>
-          </div>
-        </div>
-      ) : null}
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/png,image/jpeg,image/webp"
-        style={{ display: "none" }}
-        onChange={onChange}
-        multiple={multiple}
-      />
-    </div>
+  // rows
+  const rows = useMemo(
+    () =>
+      (vm.consultants || []).map((c) => ({
+        id: c.id,
+        name: c.name || "-",
+        email: c.email || "-",
+        phone: c.whatsapp || c.phone || c.no_whatsapp || "-",
+        description: c.description || "",
+        avatarUrl: c.profile_image_public_url || "",
+      })),
+    [vm.consultants]
   );
 
-  return (
-    <Modal
-      title={mode === "edit" ? "Edit Consultant" : "Add Consultant"}
-      open={open}
-      centered
-      width={980}
-      onCancel={onCancel}
-      destroyOnClose
-      footer={
-        <Space style={{ width: "100%", justifyContent: "flex-end" }}>
-          <Button shape="round" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button
-            shape="round"
-            type="primary"
-            loading={saving}
-            onClick={() => form.submit()}
-          >
-            {mode === "edit" ? "Update" : "Save"}
-          </Button>
-        </Space>
-      }
-      styles={{
-        content: { ...darkCardStyle, borderRadius: 16 },
-        header: {
-          background: "transparent",
-          borderBottom: "1px solid #2f3f60",
-        },
-        body: { padding: 0 },
-        mask: { backgroundColor: "rgba(0,0,0,.6)" },
-      }}
-    >
-      <div className="consultant-form-scroll">
-        <div style={{ padding: 16 }}>
-          <Form form={form} layout="vertical" onFinish={handleFinish}>
-            <Row gutter={[12, 8]}>
-              <Col span={24}>
-                <Form.Item
-                  name="name_id"
-                  label="Nama (Bahasa Indonesia)"
-                  required={isCreate}
-                  rules={req("Nama (ID) wajib diisi")}
-                >
-                  <Input
-                    style={{
-                      background: "#0e182c",
-                      borderColor: "#2f3f60",
-                      color: "#e6eaf2",
-                      borderRadius: 12,
-                    }}
-                    maxLength={150}
-                  />
-                </Form.Item>
-              </Col>
+  /* ---------- Upload helpers ---------- */
+  const normList = (e) => (Array.isArray(e) ? e : e?.fileList || []);
+  const isImg = (f) =>
+    ["image/jpeg", "image/png", "image/webp"].includes(f?.type || "");
+  const tooBig = (f, mb = 2) => f.size / 1024 / 1024 >= mb;
 
-              <Col xs={24} md={12}>
-                <Form.Item name="email" label="Email">
-                  <Input
-                    style={{
-                      background: "#0e182c",
-                      borderColor: "#2f3f60",
-                      color: "#e6eaf2",
-                      borderRadius: 12,
-                    }}
-                    maxLength={150}
-                  />
-                </Form.Item>
-              </Col>
-              <Col xs={24} md={12}>
-                <Form.Item name="whatsapp" label="WhatsApp">
-                  <Input
-                    style={{
-                      background: "#0e182c",
-                      borderColor: "#2f3f60",
-                      color: "#e6eaf2",
-                      borderRadius: 12,
-                    }}
-                    maxLength={30}
-                  />
-                </Form.Item>
-              </Col>
-
-              {/* Profile image (preview-only) */}
-              <Col xs={24} md={12}>
-                <Form.Item label="Profile Image">
-                  <UploadBox
-                    label="profile image"
-                    preview={profilePreview}
-                    onPick={onPickProfile}
-                    onRemove={removeProfile}
-                    inputRef={refProfile}
-                    onChange={onProfileChange}
-                  />
-                </Form.Item>
-              </Col>
-
-              {/* Program consultant cover (preview-only) */}
-              <Col xs={24} md={12}>
-                <Form.Item label="Program Cover">
-                  <UploadBox
-                    label="program cover"
-                    preview={coverPreview}
-                    onPick={onPickCover}
-                    onRemove={removeCover}
-                    inputRef={refCover}
-                    onChange={onCoverChange}
-                  />
-                </Form.Item>
-              </Col>
-
-              {/* Description */}
-              <Col span={24}>
-                <Form.Item
-                  name="description_id"
-                  label="Deskripsi (Bahasa Indonesia)"
-                >
-                  <HtmlEditor className="editor-dark" minHeight={200} />
-                </Form.Item>
-              </Col>
-
-              {/* Gallery program */}
-              <Col span={24}>
-                <Form.Item label="Program Gallery">
-                  <div style={{ display: "grid", gap: 12 }}>
-                    <div>
-                      <Button
-                        shape="round"
-                        icon={<UploadOutlined />}
-                        onClick={onPickGallery}
-                      >
-                        Tambah Gambar
-                      </Button>
-                      {mode === "edit" && (
-                        <Checkbox
-                          style={{ marginLeft: 12 }}
-                          checked={replaceGallery}
-                          onChange={(e) => setReplaceGallery(e.target.checked)}
-                        >
-                          Replace semua galeri (bukan append)
-                        </Checkbox>
-                      )}
-                    </div>
-
-                    {/* existing + new previews */}
-                    <Row gutter={[8, 8]}>
-                      {/* existing previews (tampil jika tidak replace) */}
-                      {Array.isArray(initialValues?.program_images) &&
-                        initialValues.program_images.length > 0 &&
-                        !replaceGallery &&
-                        initialValues.program_images.map((g) => {
-                          const src =
-                            g.image_public_url ||
-                            g.image_url ||
-                            IMAGE_PLACEHOLDER;
-                          return (
-                            <Col
-                              key={`ex-${g.id}`}
-                              xs={12}
-                              sm={8}
-                              md={6}
-                              lg={6}
-                            >
-                              <Image
-                                src={src}
-                                alt="existing"
-                                style={{
-                                  width: "100%",
-                                  height: 110,
-                                  objectFit: "cover",
-                                  borderRadius: 8,
-                                  border: "1px solid rgba(148,163,184,.25)",
-                                }}
-                                fallback={IMAGE_PLACEHOLDER}
-                                preview={false}
-                              />
-                            </Col>
-                          );
-                        })}
-
-                      {/* new previews */}
-                      {galleryPreviews.map((src, idx) => (
-                        <Col key={`new-${idx}`} xs={12} sm={8} md={6} lg={6}>
-                          <div style={{ position: "relative" }}>
-                            <Image
-                              src={src}
-                              alt="preview"
-                              style={{
-                                width: "100%",
-                                height: 110,
-                                objectFit: "cover",
-                                borderRadius: 8,
-                                border: "1px solid rgba(148,163,184,.25)",
-                              }}
-                              fallback={IMAGE_PLACEHOLDER}
-                              preview={false}
-                            />
-                            <Button
-                              danger
-                              size="small"
-                              shape="round"
-                              style={{ position: "absolute", right: 6, top: 6 }}
-                              onClick={() => removeGalleryItem(idx)}
-                            >
-                              Hapus
-                            </Button>
-                          </div>
-                        </Col>
-                      ))}
-                    </Row>
-
-                    {galleryPreviews.length > 0 && (
-                      <div>
-                        <Button danger shape="round" onClick={clearNewGallery}>
-                          <DeleteOutlined /> Hapus semua gambar baru
-                        </Button>
-                      </div>
-                    )}
-
-                    <input
-                      ref={refGallery}
-                      type="file"
-                      accept="image/png,image/jpeg,image/webp"
-                      multiple
-                      style={{ display: "none" }}
-                      onChange={onGalleryChange}
-                    />
-                  </div>
-                </Form.Item>
-              </Col>
-            </Row>
-          </Form>
-        </div>
-      </div>
-
-      <style jsx global>{`
-        .consultant-form-scroll {
-          max-height: 62vh;
-          overflow: auto;
-        }
-        .consultant-form-scroll::-webkit-scrollbar {
-          width: 8px;
-        }
-        .consultant-form-scroll::-webkit-scrollbar-thumb {
-          background: rgba(148, 163, 184, 0.25);
-          border-radius: 9999px;
-        }
-      `}</style>
-    </Modal>
-  );
-}
-
-/* ===== View Modal ===== */
-function ConsultantViewModal({ open, data, onClose }) {
-  if (!data) return null;
-
-  const firstProgramImage =
-    data.program_images?.[0]?.image_public_url ||
-    data.program_images?.[0]?.image_url ||
-    null;
-
-  const coverUrl =
-    firstProgramImage ||
-    data.program_consultant_image_public_url ||
-    data.program_consultant_image_url ||
-    data.profile_image_public_url ||
-    data.profile_image_url ||
-    IMAGE_PLACEHOLDER;
-
-  const profileUrl =
-    data.profile_image_public_url ||
-    data.profile_image_url ||
-    IMAGE_PLACEHOLDER;
-
-  const tags = [
-    data.email
-      ? {
-          key: "email",
-          color: "blue",
-          label: (
-            <span
-              style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
-            >
-              <MailOutlined /> {data.email}
-            </span>
-          ),
-        }
-      : null,
-    data.whatsapp
-      ? {
-          key: "wa",
-          color: "green",
-          label: (
-            <span
-              style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
-            >
-              <PhoneOutlined /> {data.whatsapp}
-            </span>
-          ),
-        }
-      : null,
-    data.locale_used
-      ? {
-          key: "locale",
-          color: "purple",
-          label: `Locale: ${String(data.locale_used).toUpperCase()}`,
-        }
-      : null,
-  ].filter(Boolean);
-
-  const rows = [
-    data.email ? { label: "Email", content: data.email } : null,
-    data.whatsapp ? { label: "WhatsApp", content: data.whatsapp } : null,
-    data.locale_used
-      ? { label: "Locale", content: String(data.locale_used).toUpperCase() }
-      : null,
-    data.created_at
-      ? {
-          label: "Created",
-          content: new Date(data.created_at).toLocaleString(),
-        }
-      : null,
-    data.updated_at
-      ? {
-          label: "Updated",
-          content: new Date(data.updated_at).toLocaleString(),
-        }
-      : null,
-    {
-      label: "Description",
-      content: data.description ? (
-        <div
-          dangerouslySetInnerHTML={{
-            __html: sanitizeHtml(data.description || ""),
-          }}
-        />
-      ) : (
-        "-"
-      ),
-    },
-  ].filter(Boolean);
-
-  const gallery = Array.isArray(data.program_images) ? data.program_images : [];
-
-  return (
-    <Modal
-      open={open}
-      onCancel={onClose}
-      centered
-      width={900}
-      title={data.name || "Detail Konsultan"}
-      destroyOnClose
-      footer={
-        <Button shape="round" type="primary" onClick={onClose}>
-          Close
-        </Button>
-      }
-      styles={{
-        content: { ...darkCardStyle },
-        header: {
-          background: "transparent",
-          borderBottom: "1px solid #2f3f60",
-        },
-        body: { padding: 0 },
-        mask: { backgroundColor: "rgba(0,0,0,.6)" },
-      }}
-    >
-      <div className="consultant-view-scroll">
-        <div style={{ padding: 16 }}>
-          <div
-            style={{
-              borderRadius: 12,
-              marginBottom: 16,
-              maxHeight: 300,
-              overflow: "hidden",
-              border: "1px solid rgba(148, 163, 184, 0.25)",
-            }}
-          >
-            <Image
-              src={coverUrl}
-              alt={data.name || "Consultant cover"}
-              style={{
-                display: "block",
-                width: "100%",
-                height: 300,
-                objectFit: "cover",
-              }}
-              fallback={IMAGE_PLACEHOLDER}
-              preview={false}
-            />
-          </div>
-
-          <Space align="center" size={12} style={{ marginBottom: 16 }}>
-            <Image
-              src={profileUrl}
-              alt={data.name || "Profile"}
-              width={72}
-              height={72}
-              style={{
-                borderRadius: "50%",
-                objectFit: "cover",
-                border: "1px solid rgba(148, 163, 184, 0.25)",
-              }}
-              fallback={IMAGE_PLACEHOLDER}
-              preview={false}
-            />
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <Text strong style={{ fontSize: 18 }}>
-                {data.name || "-"}
-              </Text>
-              <Text type="secondary">ID: {data.id}</Text>
-            </div>
-          </Space>
-
-          {gallery.length > 0 && (
-            <div style={{ marginBottom: 16 }}>
-              <Text strong style={{ display: "block", marginBottom: 8 }}>
-                Program Images
-              </Text>
-              <Image.PreviewGroup>
-                <Row gutter={[8, 8]}>
-                  {gallery.map((g) => {
-                    const src =
-                      g.image_public_url || g.image_url || IMAGE_PLACEHOLDER;
-                    return (
-                      <Col key={g.id} xs={12} sm={8} md={6}>
-                        <Image
-                          src={src}
-                          alt="program"
-                          style={{
-                            width: "100%",
-                            height: 110,
-                            objectFit: "cover",
-                            borderRadius: 8,
-                            border: "1px solid rgba(148,163,184,.25)",
-                          }}
-                          fallback={IMAGE_PLACEHOLDER}
-                        />
-                      </Col>
-                    );
-                  })}
-                </Row>
-              </Image.PreviewGroup>
-            </div>
-          )}
-
-          <Space size={[8, 8]} wrap style={{ marginBottom: 16 }}>
-            {tags.map((tag) => (
-              <Tag
-                key={tag.key}
-                color={tag.color}
-                style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
-              >
-                {tag.label}
-              </Tag>
-            ))}
-          </Space>
-
-          <Descriptions size="small" bordered column={1}>
-            {rows.map((row) => (
-              <Descriptions.Item key={row.label} label={row.label}>
-                {row.content}
-              </Descriptions.Item>
-            ))}
-          </Descriptions>
-        </div>
-      </div>
-
-      <style jsx global>{`
-        .consultant-view-scroll {
-          max-height: 72vh;
-          overflow: auto;
-        }
-        .consultant-view-scroll::-webkit-scrollbar {
-          width: 8px;
-        }
-        .consultant-view-scroll::-webkit-scrollbar-thumb {
-          background: rgba(148, 163, 184, 0.25);
-          border-radius: 9999px;
-        }
-      `}</style>
-    </Modal>
-  );
-}
-
-/* ===== Card item ===== */
-function ConsultantCard({ item, onView, onEdit, onDelete }) {
-  const firstProgramImage =
-    item.program_images?.[0]?.image_public_url ||
-    item.program_images?.[0]?.image_url ||
-    null;
-
-  const coverUrl =
-    firstProgramImage ||
-    item.program_consultant_image_public_url ||
-    item.program_consultant_image_url ||
-    item.profile_image_public_url ||
-    item.profile_image_url ||
-    IMAGE_PLACEHOLDER;
-
-  const rawHtml = String(item.description || "");
-  const safeHtml = sanitizeHtml(rawHtml);
-  const textFromSafe = safeHtml
-    .replace(/<[^>]*>/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  const fallbackText = rawHtml
-    .replace(/<[^>]*>/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  const hasRenderableHtml = textFromSafe.length > 0;
-
-  const tags = [
-    item.email
-      ? {
-          key: `email-${item.id}`,
-          color: "blue",
-          label: (
-            <span
-              style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
-            >
-              <MailOutlined /> {item.email}
-            </span>
-          ),
-        }
-      : null,
-    item.whatsapp
-      ? {
-          key: `wa-${item.id}`,
-          color: "green",
-          label: (
-            <span
-              style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
-            >
-              <PhoneOutlined /> {item.whatsapp}
-            </span>
-          ),
-        }
-      : null,
-    item.locale_used
-      ? {
-          key: `locale-${item.id}`,
-          color: "purple",
-          label: String(item.locale_used).toUpperCase(),
-        }
-      : null,
-  ].filter(Boolean);
-
-  return (
-    <Card
-      hoverable
-      style={{ ...darkCardStyle, overflow: "hidden" }}
-      styles={{ body: { padding: 14 } }}
-      cover={
-        <div
-          style={{
-            position: "relative",
-            aspectRatio: "16 / 9",
-            borderBottom: "1px solid #2f3f60",
-            overflow: "hidden",
-            cursor: "pointer",
-          }}
-          onClick={onView}
-        >
-          <Image
-            src={coverUrl}
-            alt={item.name || "Consultant image"}
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-              display: "block",
-            }}
-            fallback={IMAGE_PLACEHOLDER}
-            preview={false}
-          />
-        </div>
-      }
-    >
-      <div style={{ display: "grid", gap: 8 }}>
-        <Text
-          strong
-          ellipsis={{ tooltip: item.name || "(no name)" }}
-          style={{ fontSize: 14, lineHeight: 1.35 }}
-        >
-          {item.name || "(no name)"}
-        </Text>
-
-        {hasRenderableHtml ? (
-          <div
-            style={{
-              margin: 0,
-              lineHeight: 1.45,
-              color: "#94a3b8",
-              display: "-webkit-box",
-              WebkitLineClamp: 3,
-              WebkitBoxOrient: "vertical",
-              overflow: "hidden",
-            }}
-            dangerouslySetInnerHTML={{ __html: safeHtml }}
-          />
-        ) : fallbackText ? (
-          <Paragraph style={{ margin: 0, color: "#94a3b8" }}>
-            {fallbackText.length > 220
-              ? `${fallbackText.slice(0, 220)}…`
-              : fallbackText}
-          </Paragraph>
-        ) : (
-          <Paragraph style={{ margin: 0 }} type="secondary">
-            -
-          </Paragraph>
-        )}
-
-        <Space size={[8, 8]} wrap>
-          {tags.map((tag) => (
-            <Tag
-              key={tag.key}
-              color={tag.color}
-              style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
-            >
-              {tag.label}
-            </Tag>
-          ))}
-        </Space>
-      </div>
-
-      <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
-        <Button
-          type="primary"
-          size="small"
-          shape="round"
-          icon={<EyeOutlined />}
-          onClick={onView}
-        >
-          View
-        </Button>
-        <Button size="small" shape="round" onClick={onEdit}>
-          Edit
-        </Button>
-        <Popconfirm
-          title="Hapus konsultan?"
-          description="Tindakan ini tidak dapat dibatalkan."
-          okText="Hapus"
-          okButtonProps={{ danger: true }}
-          placement="topRight"
-          onConfirm={onDelete}
-        >
-          <Button danger size="small" shape="round">
-            Delete
-          </Button>
-        </Popconfirm>
-      </div>
-    </Card>
-  );
-}
-
-/* ===== Main Content ===== */
-export default function ConsultantsContent(props) {
-  const {
-    consultants = [],
-    q,
-    setQ,
-    page,
-    setPage,
-    perPage,
-    setPerPage,
-    total = 0,
-    setSort,
-    setLocale,
-    setFallback,
-    loading,
-    opLoading,
-    listError,
-    createConsultant,
-    updateConsultant,
-    deleteConsultant,
-  } = props;
-
-  const [api, contextHolder] = notification.useNotification();
-  const [modalOpen, setModalOpen] = useState(false);
-  const [mode, setMode] = useState("create");
-  const [saving, setSaving] = useState(false);
-  const [editing, setEditing] = useState(null);
-  const [view, setView] = useState(null);
-
-  useEffect(() => {
-    if (listError) {
-      api.error({
-        key: "consultants-error",
-        message: "Terjadi kesalahan",
-        description: listError,
-        placement: "topRight",
-      });
+  const beforeImg = (file, maxMB = 2) => {
+    if (!isImg(file)) {
+      err("File tidak didukung", "Harus JPG/PNG/WebP");
+      return Upload.LIST_IGNORE;
     }
-  }, [listError, api]);
-
-  const openCreate = () => {
-    setMode("create");
-    setEditing(null);
-    setModalOpen(true);
+    if (tooBig(file, maxMB)) {
+      err("Ukuran gambar terlalu besar", `Maksimal ${maxMB}MB`);
+      return Upload.LIST_IGNORE;
+    }
+    return false; // block auto-upload
   };
 
-  const openEdit = (item) => {
-    setMode("edit");
-    setEditing(item);
-    setModalOpen(true);
+  const beforeAvatarCreate = (file) => {
+    const blocked = beforeImg(file, 2);
+    if (blocked === Upload.LIST_IGNORE) return blocked;
+    try {
+      setAvatarPreviewCreate(URL.createObjectURL(file));
+    } catch {}
+    return false;
+  };
+  const beforeAvatarEdit = (file) => {
+    const blocked = beforeImg(file, 2);
+    if (blocked === Upload.LIST_IGNORE) return blocked;
+    try {
+      setAvatarPreviewEdit(URL.createObjectURL(file));
+    } catch {}
+    return false;
   };
 
-  const handleSubmit = async (payload) => {
-    setSaving(true);
-    const res =
-      mode === "edit"
-        ? await updateConsultant(editing.id, payload)
-        : await createConsultant(payload);
-    setSaving(false);
+  /* ---------- Submit handlers ---------- */
+  const onCreate = async () => {
+    const v = await formCreate.validateFields().catch(() => null);
+    if (!v) return;
 
-    if (res?.ok) {
-      api.success({
-        key: "consultants-save",
-        message:
-          mode === "edit" ? "Konsultan diperbarui" : "Konsultan ditambahkan",
-        description: "Data telah tersimpan.",
-        placement: "topRight",
-      });
-      setModalOpen(false);
-      setEditing(null);
+    const avatar = v.avatar?.[0]?.originFileObj || null;
+    const programFiles = (v.program_files || [])
+      .map((it) => it.originFileObj)
+      .filter(Boolean);
+
+    const res = await vm.createConsultant({
+      name: v.name,
+      email: v.email || null,
+      no_whatsapp: v.no_whatsapp,
+      description: v.description || "",
+      profile_file: avatar,
+      program_files: programFiles,
+    });
+
+    if (res.ok) {
+      ok("Berhasil", "Konsultan berhasil dibuat.");
+      setCreateOpen(false);
+      setAvatarPreviewCreate("");
+      formCreate.resetFields();
     } else {
-      api.error({
-        key: "consultants-save",
-        message: "Gagal menyimpan",
-        description: res?.error || "Silakan coba lagi.",
-        placement: "topRight",
-      });
+      err("Gagal membuat data", res.error || "Terjadi kesalahan.");
     }
   };
 
-  const initialValues = useMemo(() => {
-    if (!editing) {
-      return {
-        name_id: "",
-        email: "",
-        whatsapp: "",
-        description_id: "",
-        profile_image_url: "",
-        program_consultant_image_url: "",
-        program_images: [],
-      };
+  const onEditSubmit = async () => {
+    if (!activeRow) return;
+    const v = await formEdit.validateFields().catch(() => null);
+    if (!v) return;
+
+    const avatar = v.avatar?.[0]?.originFileObj || null;
+    const programFiles = (v.program_files || [])
+      .map((it) => it.originFileObj)
+      .filter(Boolean);
+
+    // kirim list yang dipertahankan
+    const keptProgramImages = editProgramImages
+      .map((pi) => pi.image_url || pi.image_public_url || pi.url || "")
+      .filter(Boolean);
+
+    const res = await vm.updateConsultant(activeRow.id, {
+      name: v.name,
+      email: v.email || null,
+      no_whatsapp: v.no_whatsapp,
+      description: v.description || "",
+      imagesMode: "replace",
+      program_images: keptProgramImages,
+      ...(avatar ? { profile_file: avatar } : {}),
+      ...(programFiles.length ? { program_files: programFiles } : {}),
+    });
+
+    if (res.ok) {
+      ok("Berhasil", "Konsultan diperbarui.");
+      setEditOpen(false);
+      setAvatarPreviewEdit("");
+      setEditProgramImages([]);
+    } else {
+      err("Gagal memperbarui", res.error || "Terjadi kesalahan.");
     }
-    return {
-      name_id: editing.name_id || editing.name || "",
-      email: editing.email || "",
-      whatsapp: editing.whatsapp || "",
-      description_id: editing.description_id ?? editing.description ?? "",
-      profile_image_url:
-        editing.profile_image_public_url || editing.profile_image_url || "",
-      program_consultant_image_url:
-        editing.program_consultant_image_public_url ||
-        editing.program_consultant_image_url ||
-        "",
-      program_images: editing.program_images || [],
-    };
-  }, [editing]);
+  };
+
+  const onDelete = async (id) => {
+    const res = await vm.deleteConsultant(id);
+    if (res.ok) ok("Berhasil", "Konsultan dihapus.");
+    else err("Gagal menghapus", res.error || "Terjadi kesalahan.");
+  };
+
+  const goPrev = () => vm.setPage(Math.max(1, vm.page - 1));
+  const goNext = () => vm.setPage(vm.page + 1); // hindari Math.min(undefined, ...)
+
+  /* ---------- Open Edit w/ fresh detail ---------- */
+  const openEdit = async (row) => {
+    setActiveRow(row);
+    formEdit.setFieldsValue({
+      name: row.name || "",
+      email: row.email && row.email !== "-" ? row.email : "",
+      no_whatsapp: row.phone && row.phone !== "-" ? row.phone : "",
+      description: row.description || "",
+    });
+    setAvatarPreviewEdit(row.avatarUrl || "");
+    setEditProgramImages([]);
+    setEditOpen(true);
+
+    setEditLoading(true);
+    const { ok: okFetch, data, error } = await vm.getConsultant(row.id);
+    setEditLoading(false);
+
+    if (!okFetch) {
+      err("Gagal memuat detail", error);
+      return;
+    }
+    const d = data || {};
+    formEdit.setFieldsValue({
+      name: d.name ?? row.name ?? "",
+      email: d.email ?? row.email ?? "",
+      no_whatsapp: d.whatsapp ?? row.phone ?? "",
+      description: d.description ?? row.description ?? "",
+    });
+    setAvatarPreviewEdit(d.profile_image_public_url || row.avatarUrl || "");
+    setEditProgramImages(d.program_images || []);
+  };
+
+  // Hapus 1 foto program (optimistic + call API)
+  const handleDeleteProgramImage = async (imgObj) => {
+    if (!activeRow || !imgObj?.id) return;
+    const backup = [...editProgramImages];
+    setEditProgramImages((prev) => prev.filter((x) => x.id !== imgObj.id));
+    const out = await vm.deleteProgramImage(activeRow.id, imgObj.id);
+    if (!out.ok) {
+      err("Gagal menghapus foto", out.error);
+      setEditProgramImages(backup); // rollback
+    } else {
+      ok("Terhapus", "Foto program dihapus.");
+    }
+  };
+
+  /* ---------- Open View w/ fresh detail (styled like forms) ---------- */
+  const openView = async (row) => {
+    setActiveRow(row);
+    setViewOpen(true);
+    setViewLoading(true);
+    setViewData(null);
+    setViewAvatar(row.avatarUrl || "");
+    setViewProgramImages([]);
+
+    const { ok: okFetch, data, error } = await vm.getConsultant(row.id);
+    setViewLoading(false);
+
+    if (!okFetch) {
+      err("Gagal memuat detail", error);
+      setViewOpen(false);
+      return;
+    }
+    setViewData(data);
+    setViewAvatar(data.profile_image_public_url || row.avatarUrl || "");
+    setViewProgramImages(data.program_images || []);
+  };
+
+  const renderAvatar = (url, name) => {
+    if (url) return <img src={url} alt={name} style={styles.avatarSmImg} />;
+    const first = (name || "?").trim().charAt(0).toUpperCase();
+    return <div style={styles.avatarSmFallback}>{first}</div>;
+  };
 
   return (
     <ConfigProvider
       theme={{
-        algorithm: antdTheme.darkAlgorithm,
         token: {
-          colorPrimary: "#3b82f6",
-          colorBorder: "#2f3f60",
-          colorText: "#e6eaf2",
-          colorBgContainer: CARD_BG,
-          borderRadius: 12,
-          controlHeight: 36,
+          colorPrimary: blue,
+          colorText: text,
+          fontFamily:
+            '"Poppins", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
+          borderRadius: 16,
         },
-        components: {
-          Card: {
-            headerBg: "transparent",
-            colorBorderSecondary: "#2f3f60",
-            borderRadiusLG: 16,
-          },
-          Button: { borderRadius: 999 },
-          Input: { colorBgContainer: "#0e182c" },
-          Select: { colorBgContainer: "#0e182c" },
-          Pagination: { borderRadius: 999 },
-          Modal: { borderRadiusLG: 16 },
-        },
+        components: { Button: { borderRadius: 12 } },
       }}
     >
-      <div style={pageWrapStyle}>
-        {contextHolder}
+      {contextHolder}
 
-        {/* Header */}
-        <Card
-          style={{ ...darkCardStyle, marginBottom: 12 }}
-          styles={{ body: { padding: 16 } }}
+      {/* ===== Layout: hapus negative margin agar header tidak ketiban ===== */}
+      <section
+        style={{
+          width: "100%",
+          position: "relative",
+          minHeight: "100dvh",
+          display: "flex",
+          alignItems: "flex-start",
+          padding: "56px 0", // ruang wajar di bawah header global
+          overflowX: "hidden",
+        }}
+      >
+        {/* full-bleed background layer */}
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: 0,
+            background:
+              "linear-gradient(180deg, #f8fbff 0%, #eef5ff 40%, #ffffff 100%)",
+            zIndex: 0,
+          }}
+        />
+        <div
+          style={{
+            width: shellW,
+            maxWidth: maxW,
+            margin: "0 auto",
+            paddingTop: 18,
+            position: "relative",
+            zIndex: 1,
+          }}
         >
-          <Space
-            align="center"
-            style={{ width: "100%", justifyContent: "space-between" }}
-          >
-            <div>
-              <Title level={3} style={{ margin: 0 }}>
-                Konsultan
-              </Title>
-              <Text type="secondary">
-                Kelola daftar konsultan dengan kontak, deskripsi, dan gambar.
-              </Text>
+          {/* Manajemen Konsultan */}
+          <div style={styles.cardOuter}>
+            <div style={styles.cardHeaderBar} />
+            <div style={styles.cardInner}>
+              <div style={styles.cardTitle}>{t.title}</div>
+              <div style={styles.totalBadgeWrap}>
+                <div style={styles.totalBadgeLabel}>{t.totalLabel}</div>
+                <div style={styles.totalBadgeValue}>
+                  {vm.total ?? rows.length ?? "—"}
+                </div>
+              </div>
             </div>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              shape="round"
-              onClick={openCreate}
-            >
-              Add Consultant
-            </Button>
-          </Space>
-        </Card>
+          </div>
 
-        {/* Filters */}
-        <Card
-          style={{ ...darkCardStyle, marginBottom: 12 }}
-          styles={{ body: { padding: 12 } }}
-        >
-          <Form
-            layout="inline"
-            onFinish={() => setPage(1)}
-            style={{ display: "block" }}
-          >
-            <Row gutter={[8, 8]} align="middle" wrap>
-              <Col flex="1 1 420px" style={{ minWidth: 260 }}>
-                <Input.Search
-                  allowClear
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  placeholder="Cari nama, email, atau nomor WhatsApp"
-                  enterButton
-                  style={{ width: "100%" }}
-                />
-              </Col>
+          {/* Data Konsultan */}
+          <div style={{ ...styles.cardOuter, marginTop: 16 }}>
+            <div style={{ ...styles.cardInner, paddingTop: 18 }}>
+              <div style={styles.sectionHeader}>
+                <div style={styles.sectionTitle}>{t.listTitle}</div>
+                <Button
+                  type="primary"
+                  icon={<PlusCircleOutlined />}
+                  onClick={() => setCreateOpen(true)}
+                >
+                  {t.addNew}
+                </Button>
+              </div>
 
-              <Col
-                xs={12}
-                sm={8}
-                md={6}
-                lg={4}
-                xl={3}
-                xxl={2}
-                style={{ minWidth: 140 }}
-              >
-                <Select
-                  value={perPage}
-                  onChange={(v) => {
-                    setPerPage(v);
-                    setPage(1);
-                  }}
-                  options={[8, 10, 12, 16, 24, 32, 64].map((n) => ({
-                    value: n,
-                    label: `${n} / page`,
-                  }))}
-                  style={{ width: "100%" }}
-                />
-              </Col>
+              {/* Header */}
+              <div style={styles.tableHeader}>
+                <div style={styles.thCenter}>{t.name}</div>
+                <div style={styles.thCenter}>{t.email}</div>
+                <div style={styles.thCenter}>{t.phone}</div>
+                <div style={styles.thCenter}>{t.action}</div>
+              </div>
 
-              <Col
-                flex="0 0 220px"
-                style={{ display: "flex", justifyContent: "flex-end" }}
-              >
-                <Space wrap>
-                  <Button
-                    shape="round"
-                    onClick={() => {
-                      setQ("");
-                      setPage(1);
-                      setPerPage(10);
-                      setSort?.("created_at:desc");
-                      setLocale?.("id");
-                      setFallback?.("en");
+              <div style={{ display: "grid", gap: 10, marginTop: 6 }}>
+                {vm.loading ? (
+                  <div style={{ padding: "10px 4px" }}>
+                    <Skeleton active paragraph={{ rows: 2 }} />
+                  </div>
+                ) : rows.length === 0 ? (
+                  <div
+                    style={{
+                      display: "grid",
+                      placeItems: "center",
+                      padding: "24px 0",
                     }}
                   >
-                    Reset
-                  </Button>
-                  <Button
-                    shape="round"
-                    type="primary"
-                    htmlType="submit"
-                    loading={loading}
-                  >
-                    Search
-                  </Button>
-                </Space>
-              </Col>
-            </Row>
-          </Form>
-        </Card>
+                    <Empty description="Belum ada data" />
+                  </div>
+                ) : (
+                  rows.map((r) => (
+                    <div key={r.id} style={styles.row}>
+                      {/* Nama + avatar */}
+                      <div style={styles.colName}>
+                        <div style={styles.nameCell}>
+                          {renderAvatar(r.avatarUrl, r.name)}
+                          <div style={styles.nameText} title={r.name}>
+                            {r.name}
+                          </div>
+                        </div>
+                      </div>
 
-        {/* List */}
-        <Card style={{ ...darkCardStyle }} styles={{ body: { padding: 16 } }}>
-          {loading ? (
-            <div style={{ textAlign: "center", padding: "48px 0" }}>
-              Loading...
+                      {/* Email */}
+                      <div style={styles.colCenter}>{r.email || "-"}</div>
+
+                      {/* Phone */}
+                      <div style={styles.colCenter}>{r.phone || "-"}</div>
+
+                      {/* Actions */}
+                      <div style={styles.colActionsCenter}>
+                        <Tooltip title={t.view}>
+                          <Button
+                            size="small"
+                            icon={<EyeOutlined />}
+                            onClick={() => openView(r)}
+                            style={styles.iconBtn}
+                          />
+                        </Tooltip>
+                        <Tooltip title={t.del}>
+                          <Popconfirm
+                            title="Hapus konsultan ini?"
+                            okText="Ya"
+                            cancelText="Batal"
+                            onConfirm={() => onDelete(r.id)}
+                          >
+                            <Button
+                              size="small"
+                              danger
+                              icon={<DeleteOutlined />}
+                              style={styles.iconBtn}
+                            />
+                          </Popconfirm>
+                        </Tooltip>
+                        <Tooltip title={t.edit}>
+                          <Button
+                            size="small"
+                            icon={<EditOutlined />}
+                            onClick={() => openEdit(r)}
+                            style={styles.iconBtn}
+                          />
+                        </Tooltip>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div style={styles.pagination}>
+                <Button
+                  icon={<LeftOutlined />}
+                  onClick={goPrev}
+                  disabled={vm.page <= 1 || vm.loading}
+                />
+                <div style={styles.pageText}>
+                  Page {vm.page}
+                  {vm.totalPages ? ` of ${vm.totalPages}` : ""}
+                </div>
+                <Button
+                  icon={<RightOutlined />}
+                  onClick={goNext}
+                  disabled={vm.loading}
+                />
+              </div>
             </div>
-          ) : consultants.length === 0 ? (
-            <Empty description="Belum ada konsultan" />
-          ) : (
-            <Row gutter={[16, 16]}>
-              {consultants.map((item) => (
-                <Col key={item.id} xs={24} sm={12} md={12} lg={8} xl={6}>
-                  <ConsultantCard
-                    item={item}
-                    onView={() => setView(item)}
-                    onEdit={() => openEdit(item)}
-                    onDelete={async () => {
-                      const { ok, error } = await deleteConsultant(item.id);
-                      if (ok) {
-                        api.success({
-                          key: `consultant-delete-${item.id}`,
-                          message: "Konsultan dihapus",
-                          description: "Data berhasil dihapus.",
-                          placement: "topRight",
-                        });
-                      } else {
-                        api.error({
-                          key: `consultant-delete-${item.id}`,
-                          message: "Gagal menghapus",
-                          description: error || "Silakan coba lagi.",
-                          placement: "topRight",
-                        });
-                      }
+          </div>
+        </div>
+      </section>
+
+      {/* ===== Modal: Create ===== */}
+      <Modal
+        open={createOpen}
+        onCancel={() => {
+          setCreateOpen(false);
+          setAvatarPreviewCreate("");
+          formCreate.resetFields();
+        }}
+        footer={null}
+        width={840}
+        destroyOnClose
+        title={null}
+      >
+        <div style={styles.modalShell}>
+          <Form layout="vertical" form={formCreate}>
+            {/* Avatar + preview */}
+            <div style={styles.avatarWrap}>
+              <Form.Item
+                name="avatar"
+                valuePropName="fileList"
+                getValueFromEvent={normList}
+                noStyle
+              >
+                <Upload
+                  accept="image/*"
+                  showUploadList={false}
+                  beforeUpload={beforeAvatarCreate}
+                >
+                  <div style={styles.avatarCircle}>
+                    {avatarPreviewCreate ? (
+                      <img
+                        src={avatarPreviewCreate}
+                        alt="avatar"
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                          borderRadius: "50%",
+                        }}
+                      />
+                    ) : (
+                      <span style={styles.avatarPlus}>+</span>
+                    )}
+                  </div>
+                </Upload>
+              </Form.Item>
+              <div style={styles.avatarHint}>Add Foto</div>
+            </div>
+
+            <Form.Item
+              label={t.name}
+              name="name"
+              rules={[{ required: true, message: "Nama wajib diisi" }]}
+            >
+              <Input placeholder="Nama konsultan" />
+            </Form.Item>
+
+            <Form.Item
+              label={t.email}
+              name="email"
+              rules={[{ type: "email", message: "Format email tidak valid" }]}
+            >
+              <Input placeholder="email@domain.com" />
+            </Form.Item>
+
+            <Form.Item
+              label={t.phone}
+              name="no_whatsapp"
+              rules={[
+                { required: true, message: "Nomor WA wajib diisi" },
+                {
+                  pattern: /^[0-9+()\s-]{6,32}$/,
+                  message: "Format nomor tidak valid",
+                },
+              ]}
+            >
+              <Input placeholder="+62xxxx / 08xxxx" maxLength={32} />
+            </Form.Item>
+
+            <Form.Item label={t.desc} name="description">
+              <Input.TextArea
+                rows={3}
+                placeholder="Tuliskan deskripsi singkat..."
+              />
+            </Form.Item>
+
+            <div style={styles.blockLabel}>{t.programBlock}</div>
+            <Form.Item
+              name="program_files"
+              valuePropName="fileList"
+              getValueFromEvent={normList}
+              rules={[{ required: true, message: "Minimal 1 foto program" }]}
+            >
+              <Upload
+                accept="image/*"
+                listType="picture-card"
+                multiple
+                beforeUpload={(f) => beforeImg(f, 2)}
+              >
+                <div style={styles.addBoxInner}>
+                  <PlusOutlined />
+                </div>
+              </Upload>
+            </Form.Item>
+
+            <div style={styles.modalFooter}>
+              <Button
+                type="primary"
+                size="large"
+                onClick={onCreate}
+                loading={vm.opLoading}
+                style={styles.saveBtn}
+              >
+                {t.save}
+              </Button>
+            </div>
+          </Form>
+        </div>
+      </Modal>
+
+      {/* ===== Modal: Edit ===== */}
+      <Modal
+        open={editOpen}
+        onCancel={() => {
+          setEditOpen(false);
+          setAvatarPreviewEdit("");
+          setEditProgramImages([]);
+          formEdit.resetFields();
+        }}
+        footer={null}
+        width={900}
+        destroyOnClose
+        title={null}
+      >
+        <div style={styles.modalShell}>
+          <Spin spinning={editLoading}>
+            <Form layout="vertical" form={formEdit}>
+              {/* Avatar + preview */}
+              <div style={styles.avatarWrap}>
+                <Form.Item
+                  name="avatar"
+                  valuePropName="fileList"
+                  getValueFromEvent={normList}
+                  noStyle
+                >
+                  <Upload
+                    accept="image/*"
+                    showUploadList={false}
+                    beforeUpload={beforeAvatarEdit}
+                  >
+                    <div style={styles.avatarCircle}>
+                      {avatarPreviewEdit ? (
+                        <img
+                          src={avatarPreviewEdit}
+                          alt="avatar"
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
+                            borderRadius: "50%",
+                          }}
+                        />
+                      ) : (
+                        <span style={styles.avatarPlus}>+</span>
+                      )}
+                    </div>
+                  </Upload>
+                </Form.Item>
+                <div style={styles.avatarHint}>Ganti Foto</div>
+              </div>
+
+              <Form.Item
+                label={t.name}
+                name="name"
+                rules={[{ required: true, message: "Nama wajib diisi" }]}
+              >
+                <Input placeholder="Nama konsultan" />
+              </Form.Item>
+
+              <Form.Item
+                label={t.email}
+                name="email"
+                rules={[{ type: "email", message: "Format email tidak valid" }]}
+              >
+                <Input placeholder="email@domain.com" />
+              </Form.Item>
+
+              <Form.Item
+                label={t.phone}
+                name="no_whatsapp"
+                rules={[
+                  { required: true, message: "Nomor WA wajib diisi" },
+                  {
+                    pattern: /^[0-9+()\s-]{6,32}$/,
+                    message: "Format nomor tidak valid",
+                  },
+                ]}
+              >
+                <Input placeholder="+62xxxx / 08xxxx" maxLength={32} />
+              </Form.Item>
+
+              <Form.Item label={t.desc} name="description">
+                <Input.TextArea rows={3} placeholder="Deskripsi (opsional)" />
+              </Form.Item>
+
+              {/* ===== Program Images ===== */}
+              <div style={styles.blockHeaderRow}>
+                <div style={styles.blockLabel}>{t.programBlock}</div>
+                <Tag color="blue" style={styles.countTag}>
+                  {editProgramImages.length} foto
+                </Tag>
+              </div>
+
+              {editProgramImages.length ? (
+                <div style={styles.galleryGrid}>
+                  {editProgramImages.map((pi) => {
+                    const src = pi.image_public_url || pi.image_url || "";
+                    return (
+                      <div key={pi.id} style={styles.thumb}>
+                        <img src={src} alt="program" style={styles.thumbImg} />
+                        <Popconfirm
+                          title="Hapus foto ini?"
+                          okText="Hapus"
+                          cancelText="Batal"
+                          onConfirm={() => handleDeleteProgramImage(pi)}
+                        >
+                          <button type="button" style={styles.delThumbBtn}>
+                            <DeleteOutlined />
+                          </button>
+                        </Popconfirm>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div style={styles.noImagesHint}>Belum ada foto program.</div>
+              )}
+
+              {/* Upload tambahan */}
+              <Form.Item
+                name="program_files"
+                valuePropName="fileList"
+                getValueFromEvent={normList}
+              >
+                <Upload
+                  accept="image/*"
+                  listType="picture-card"
+                  multiple
+                  beforeUpload={(f) => beforeImg(f, 2)}
+                >
+                  <div style={styles.addBoxInner}>
+                    <PlusOutlined />
+                  </div>
+                </Upload>
+              </Form.Item>
+
+              <div style={styles.modalFooter}>
+                <Button
+                  type="primary"
+                  size="large"
+                  onClick={onEditSubmit}
+                  loading={vm.opLoading}
+                  style={styles.saveBtn}
+                >
+                  Simpan Perubahan
+                </Button>
+              </div>
+            </Form>
+          </Spin>
+        </div>
+      </Modal>
+
+      {/* ===== Modal: View (styled like forms) ===== */}
+      <Modal
+        open={viewOpen}
+        onCancel={() => {
+          setViewOpen(false);
+          setViewData(null);
+          setViewAvatar("");
+          setViewProgramImages([]);
+        }}
+        footer={null}
+        width={900}
+        destroyOnClose
+        title={null}
+      >
+        <div style={styles.modalShell}>
+          <Spin spinning={viewLoading}>
+            {/* Avatar + preview (read-only) */}
+            <div style={styles.avatarWrap}>
+              <div style={styles.avatarCircle}>
+                {viewAvatar ? (
+                  <img
+                    src={viewAvatar}
+                    alt="avatar"
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      borderRadius: "50%",
                     }}
                   />
-                </Col>
-              ))}
-            </Row>
-          )}
-        </Card>
+                ) : (
+                  <span style={styles.avatarPlus}>?</span>
+                )}
+              </div>
+              <div style={styles.avatarHint}>Foto Profil</div>
+            </div>
 
-        {/* Pagination */}
-        <Card
-          style={{ ...darkCardStyle, marginTop: 12 }}
-          styles={{ body: { padding: 12 } }}
-        >
-          <div
-            style={{ width: "100%", display: "flex", justifyContent: "center" }}
-          >
-            <Pagination
-              current={page}
-              total={total}
-              pageSize={perPage}
-              showSizeChanger={false}
-              onChange={(p) => setPage(p)}
-            />
-          </div>
-        </Card>
+            {/* Info fields */}
+            <div style={{ display: "grid", gap: 10, marginTop: 6 }}>
+              <div>
+                <div style={styles.label}>{t.name}</div>
+                <div style={styles.value}>
+                  {viewData?.name || activeRow?.name || "-"}
+                </div>
+              </div>
+              <div>
+                <div style={styles.label}>{t.email}</div>
+                <div style={styles.value}>
+                  {viewData?.email || activeRow?.email || "-"}
+                </div>
+              </div>
+              <div>
+                <div style={styles.label}>{t.phone}</div>
+                <div style={styles.value}>
+                  {viewData?.whatsapp ||
+                    activeRow?.phone ||
+                    activeRow?.no_whatsapp ||
+                    "-"}
+                </div>
+              </div>
+              <div>
+                <div style={styles.label}>{t.desc}</div>
+                <div style={styles.value}>
+                  {viewData?.description || activeRow?.description || "-"}
+                </div>
+              </div>
+            </div>
 
-        {/* Modals */}
-        <ConsultantViewModal
-          open={!!view}
-          data={view}
-          onClose={() => setView(null)}
-        />
-        <ConsultantFormModal
-          open={modalOpen}
-          mode={mode}
-          initialValues={initialValues}
-          saving={saving || opLoading}
-          onCancel={() => {
-            setModalOpen(false);
-            setEditing(null);
-          }}
-          onSubmit={handleSubmit}
-        />
-      </div>
+            {/* Program Images (read-only) */}
+            <div style={styles.blockHeaderRow}>
+              <div style={styles.blockLabel}>{t.programBlock}</div>
+              <Tag color="blue" style={styles.countTag}>
+                {viewProgramImages.length} foto
+              </Tag>
+            </div>
+
+            {viewProgramImages.length ? (
+              <div style={styles.galleryGrid}>
+                {viewProgramImages.map((pi) => {
+                  const src = pi.image_public_url || pi.image_url || "";
+                  return (
+                    <div key={pi.id} style={styles.thumb}>
+                      <img src={src} alt="program" style={styles.thumbImg} />
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div style={styles.noImagesHint}>Belum ada foto program.</div>
+            )}
+          </Spin>
+        </div>
+      </Modal>
     </ConfigProvider>
   );
 }
+
+/* ===== Styles ===== */
+const styles = {
+  cardOuter: {
+    background: "#ffffff",
+    borderRadius: 20,
+    border: "1px solid #e6eeff",
+    boxShadow:
+      "0 14px 68px rgba(11, 86, 201, 0.08), 0 4px 16px rgba(11,86,201,0.06)",
+    overflow: "hidden",
+  },
+  cardHeaderBar: {
+    height: 24,
+    background:
+      "linear-gradient(90deg, #0b56c9 0%, #0b56c9 65%, rgba(11,86,201,0.35) 100%)",
+  },
+  cardInner: { padding: "16px 18px 18px", position: "relative" },
+  cardTitle: {
+    fontSize: 20,
+    fontWeight: 800,
+    color: "#0b3e91",
+    marginTop: 10,
+    marginBottom: 10,
+  },
+  totalBadgeWrap: {
+    position: "absolute",
+    right: 18,
+    top: 12,
+    display: "grid",
+    gap: 4,
+    justifyItems: "end",
+    background: "#fff",
+    border: "1px solid #e6eeff",
+    borderRadius: 14,
+    padding: "8px 14px",
+    boxShadow: "0 8px 24px rgba(11,86,201,0.08)",
+  },
+  totalBadgeLabel: { fontSize: 13, color: "#0b3e91", fontWeight: 600 },
+  totalBadgeValue: {
+    fontSize: 18,
+    color: "#0b56c9",
+    fontWeight: 800,
+    lineHeight: 1,
+  },
+
+  sectionHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  sectionTitle: { fontSize: 20, fontWeight: 800, color: "#0b3e91" },
+
+  tableHeader: {
+    display: "grid",
+    gridTemplateColumns: "1.4fr 1fr 1fr 0.8fr",
+    gap: 10,
+    marginBottom: 6,
+    color: "#0b3e91",
+    fontWeight: 700,
+    alignItems: "center",
+  },
+  thCenter: { display: "flex", justifyContent: "center", width: "100%" },
+
+  row: {
+    display: "grid",
+    gridTemplateColumns: "1.4fr 1fr 1fr 0.8fr",
+    gap: 10,
+    alignItems: "center",
+    background: "#f5f8ff",
+    borderRadius: 12,
+    border: "1px solid #e8eeff",
+    padding: "10px 12px",
+    boxShadow: "0 8px 16px rgba(11, 86, 201, 0.05)",
+  },
+
+  colName: {
+    background: "#ffffff",
+    borderRadius: 12,
+    border: "1px solid #eef3ff",
+    padding: "8px 12px",
+    boxShadow: "0 4px 10px rgba(0,0,0,0.04) inset",
+  },
+  nameCell: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    justifyContent: "flex-start",
+  },
+  nameText: {
+    fontWeight: 600,
+    color: "#111827",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    maxWidth: 320,
+  },
+
+  avatarSmImg: {
+    width: 40,
+    height: 40,
+    borderRadius: "50%",
+    objectFit: "cover",
+    border: "2px solid #e6eeff",
+    boxShadow: "0 2px 6px rgba(11,86,201,0.12)",
+  },
+  avatarSmFallback: {
+    width: 40,
+    height: 40,
+    borderRadius: "50%",
+    display: "grid",
+    placeItems: "center",
+    fontWeight: 700,
+    color: "#0b56c9",
+    background: "#eef5ff",
+    border: "2px solid #e6eeff",
+    boxShadow: "0 2px 6px rgba(11,86,201,0.12)",
+  },
+
+  colCenter: { textAlign: "center", color: "#0f172a", fontWeight: 600 },
+  colActionsCenter: { display: "flex", justifyContent: "center", gap: 8 },
+  iconBtn: { borderRadius: 10 },
+
+  pagination: {
+    marginTop: 16,
+    display: "grid",
+    gridTemplateColumns: "40px 1fr 40px",
+    alignItems: "center",
+    justifyItems: "center",
+    gap: 12,
+  },
+  pageText: { fontSize: 12, color: "#475569" },
+
+  label: { fontSize: 12, color: "#64748b" },
+  value: {
+    fontWeight: 600,
+    color: "#0f172a",
+    background: "#f8fafc",
+    border: "1px solid #e8eeff",
+    borderRadius: 10,
+    padding: "10px 12px",
+    boxShadow: "inset 0 2px 6px rgba(11,86,201,0.05)",
+  },
+
+  /* Modal shared */
+  modalShell: {
+    position: "relative",
+    background: "#fff",
+    borderRadius: 18,
+    padding: "18px 18px 10px",
+    boxShadow: "0 10px 40px rgba(11,86,201,0.08)",
+  },
+  avatarWrap: {
+    display: "grid",
+    justifyContent: "center",
+    justifyItems: "center",
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  avatarCircle: {
+    width: 220,
+    height: 220,
+    borderRadius: "50%",
+    border: "2px dashed #c0c8d8",
+    background: "transparent",
+    display: "grid",
+    placeItems: "center",
+    cursor: "default",
+    overflow: "hidden",
+    boxShadow: "0 10px 24px rgba(11,86,201,0.08)",
+  },
+  avatarPlus: {
+    fontSize: 96,
+    lineHeight: 1,
+    color: "#0b56c9",
+    userSelect: "none",
+  },
+  avatarHint: { marginTop: 6, fontSize: 13, color: "#0b56c9", fontWeight: 600 },
+
+  blockLabel: { fontWeight: 700, color: "#0b3e91", margin: "2px 0 8px" },
+  blockHeaderRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 12,
+    marginBottom: 6,
+  },
+  countTag: { borderRadius: 10 },
+
+  // thumbnails
+  galleryGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))",
+    gap: 10,
+    marginBottom: 8,
+  },
+  thumb: {
+    width: "100%",
+    aspectRatio: "4 / 3",
+    background: "#fff",
+    border: "1px solid #e8eeff",
+    borderRadius: 12,
+    overflow: "hidden",
+    position: "relative",
+    boxShadow: "0 4px 10px rgba(0,0,0,0.04)",
+  },
+  thumbImg: { width: "100%", height: "100%", objectFit: "cover" },
+  delThumbBtn: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    border: "1px solid #ef4444",
+    color: "#ef4444",
+    background: "#fff",
+    display: "grid",
+    placeItems: "center",
+    cursor: "pointer",
+    boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
+  },
+  noImagesHint: { fontSize: 13, color: "#64748b", marginBottom: 8 },
+
+  addBoxInner: {
+    width: 110,
+    height: 110,
+    display: "grid",
+    placeItems: "center",
+  },
+
+  modalFooter: { marginTop: 10, display: "grid", placeItems: "center" },
+  saveBtn: { minWidth: 220, height: 44, borderRadius: 14 },
+};

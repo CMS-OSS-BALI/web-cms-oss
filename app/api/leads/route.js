@@ -46,6 +46,23 @@ const parseId = (v) => {
   return s.length ? s : null;
 };
 
+const toMs = (d) => {
+  if (!d) return null;
+  try {
+    const t = d instanceof Date ? d.getTime() : new Date(d).getTime();
+    return Number.isFinite(t) ? t : null;
+  } catch {
+    return null;
+  }
+};
+const withTs = (row) => ({
+  ...row,
+  created_ts: toMs(row.created_at),
+  updated_ts: toMs(row.updated_at),
+  assigned_at_ts: toMs(row.assigned_at),
+  deleted_at_ts: toMs(row.deleted_at),
+});
+
 // accept form-data / urlencoded / json
 async function readBody(req) {
   const ct = (req.headers.get("content-type") || "").toLowerCase();
@@ -134,7 +151,7 @@ export async function GET(req) {
     ...(from || to
       ? {
           created_at: {
-            ...(from ? { gte: new Date(from) } : {}),
+            ...(from ? { gte: parseDate(from) } : {}),
             ...(to ? { lte: new Date(`${to}T23:59:59.999Z`) } : {}),
           },
         }
@@ -192,9 +209,12 @@ export async function GET(req) {
     }),
   ]);
 
+  // tambahkan *_ts agar konsisten di client
+  const data = rows.map(withTs);
+
   return json({
     message: "OK",
-    data: rows,
+    data,
     meta: { page, perPage, total },
   });
 }
@@ -334,7 +354,7 @@ export async function POST(req) {
     });
 
     return json(
-      { message: "Lead berhasil dibuat.", data: created },
+      { message: "Lead berhasil dibuat.", data: withTs(created) },
       { status: 201 }
     );
   } catch (e) {

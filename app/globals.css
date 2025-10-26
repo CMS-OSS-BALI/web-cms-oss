@@ -21,7 +21,7 @@
   --shell-gap: clamp(8px, 2.2vw, 24px);
 }
 
-@media (prefers-color-scheme: dark) {
+/* @media (prefers-color-scheme: dark) {
   :root {
     --bg: #0b1220;
     --fg: #e2e8f0;
@@ -29,7 +29,7 @@
     --muted: #94a3b8;
     --border: #1f2937;
   }
-}
+} */
 
 /* ================================
    Base
@@ -144,7 +144,7 @@ body {
 /* ================================
    Wallpaper (container yang scroll)
 ================================ */
-.bg-app {
+/* .bg-app {
   background-attachment: local;
   background-size: cover;
   background-position: center;
@@ -156,7 +156,7 @@ body {
       rgba(2, 6, 23, 0.7)
     ),
     url("/images/test.bg.png");
-}
+} */
 
 /* Mobile: hindari fixed-like effect (hemat GPU) */
 @media (max-width: 640px) {

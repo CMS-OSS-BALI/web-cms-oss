@@ -18,26 +18,27 @@ function consultantsKey({
   fallback = DEFAULT_FALLBACK,
 } = {}) {
   const params = new URLSearchParams();
-  params.set("page", String(page));
-  params.set("perPage", String(perPage));
-  params.set("sort", String(sort || DEFAULT_SORT));
-  params.set("locale", String(locale || DEFAULT_LOCALE));
-  params.set("fallback", String(fallback || DEFAULT_FALLBACK));
-  params.set("public", "1"); // public listing
-  if (q && String(q).trim()) params.set("q", String(q).trim());
+  params.set("page", String(Math.max(1, page)));
+  params.set("perPage", String(Math.max(1, perPage)));
+  params.set("sort", sort || DEFAULT_SORT);
+  params.set("locale", locale || DEFAULT_LOCALE);
+  params.set("fallback", fallback || DEFAULT_FALLBACK);
+  params.set("public", "1"); // public listing (tanpa PII)
+  if (q && String(q).trim().length > 0) params.set("q", String(q).trim());
   return `/api/consultants?${params.toString()}`;
 }
 
-// tolerant number cast (for ratings etc.)
+// tolerant number cast
 const toNumber = (value, fallback = 0) => {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
 };
 
-// prefer public URL fields; fall back to path/legacy keys -> default avatar
+// prefer public URL fields; fallback ke path lama; terakhir default avatar
 const pickPublicImage = (obj, fallback = DEFAULT_AVATAR) =>
   obj?.image_public_url ||
   obj?.photo_public_url ||
+  obj?.program_consultant_image_public_url ||
   obj?.profile_image_public_url ||
   obj?.profile_image_url ||
   obj?.program_consultant_image_url ||
@@ -45,11 +46,28 @@ const pickPublicImage = (obj, fallback = DEFAULT_AVATAR) =>
   obj?.photoUrl ||
   fallback;
 
-// safer fetcher for public endpoints (don’t throw on non-OK)
+/* ---------- fetchers ---------- */
+/**
+ * Public fetcher aman untuk ngrok:
+ * - Skip interstitial warning (ERR_NGROK_6024)
+ * - Force JSON (kalau bukan JSON -> fallback data kosong)
+ * - credentials: "omit" biar gak kirim cookie tak perlu
+ */
 const publicFetcher = async (url) => {
   try {
-    const res = await fetch(url, { credentials: "omit" });
+    const res = await fetch(url, {
+      method: "GET",
+      credentials: "omit",
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        // penting untuk ngrok free domain:
+        "ngrok-skip-browser-warning": "true",
+      },
+    });
     if (!res.ok) return { data: [] };
+    const ct = res.headers.get("content-type") || "";
+    if (!ct.includes("application/json")) return { data: [] };
     return await res.json();
   } catch {
     return { data: [] };
@@ -168,18 +186,20 @@ export function useLandingViewModel(arg) {
     ),
   };
 
-  /* ===== Testimonials (GET) with locale & fallback) ===== */
+  /* ===== Testimonials (GET) ===== */
   const testiKey = useMemo(
     () => `/api/testimonials?locale=${locale}&fallback=id&limit=12`,
     [locale]
   );
-
   const {
     data: testiJson,
     error: testiErr,
     isLoading: testiLoading,
     isValidating: testiValidating,
-  } = useSWR(testiKey, fetcher, { revalidateOnFocus: false });
+  } = useSWR(testiKey, fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 30_000,
+  });
 
   const testimonialsList = useMemo(() => {
     const source = Array.isArray(testiJson?.data)
@@ -187,12 +207,10 @@ export function useLandingViewModel(arg) {
       : Array.isArray(testiJson)
       ? testiJson
       : [];
-
     return source.map((t, index) => ({
       id: t?.id ?? t?._id ?? `testimonial-${index}`,
       name: t?.name ?? "",
       message: t?.message ?? t?.quote ?? "",
-      // prefer public image url from new API, fallback to old, then to path, then default avatar
       photoUrl: pickPublicImage(t),
       star: toNumber(t?.star),
       youtubeUrl: t?.youtube_url ?? t?.youtubeUrl ?? null,
@@ -200,7 +218,7 @@ export function useLandingViewModel(arg) {
     }));
   }, [testiJson]);
 
-  /* ===== Consultants (GET) publik, ikut locale ===== */
+  /* ===== Consultants (GET) public ===== */
   const consultantsReqKey = useMemo(
     () =>
       consultantsKey({
@@ -217,7 +235,13 @@ export function useLandingViewModel(arg) {
     data: consultantsJson,
     error: consultantsErr,
     isLoading: consultantsLoading,
-  } = useSWR(consultantsReqKey, publicFetcher, { revalidateOnFocus: false });
+  } = useSWR(consultantsReqKey, publicFetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 30_000,
+    // fallback agar komponen tidak error saat awal
+    fallbackData: { data: [] },
+    shouldRetryOnError: false,
+  });
 
   const consultantsItems = useMemo(() => {
     const list = Array.isArray(consultantsJson?.data)
@@ -225,16 +249,17 @@ export function useLandingViewModel(arg) {
       : [];
     return list.map((c, i) => ({
       id: c?.id ?? c?._id ?? `consultant-${i}`,
+      // API terbaru sudah sediakan "name" & "description" sesuai locale
       name:
-        (locale === "en" ? c?.name_en : c?.name_id) ??
         c?.name ??
+        (locale === "en" ? c?.name_en : c?.name_id) ??
         c?.name_id ??
         c?.name_en ??
         "",
       photo: pickPublicImage(c, DEFAULT_AVATAR),
       bio:
-        (locale === "en" ? c?.description_en : c?.description_id) ??
         c?.description ??
+        (locale === "en" ? c?.description_en : c?.description_id) ??
         c?.description_id ??
         c?.description_en ??
         "",

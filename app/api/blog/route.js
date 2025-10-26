@@ -22,6 +22,7 @@ const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
 function sanitize(v) {
   if (v === null || v === undefined) return v;
   if (typeof v === "bigint") return v.toString();
+  if (v instanceof Date) return v.toISOString(); // <<< FIX: serialize Date
   if (Array.isArray(v)) return v.map(sanitize);
   if (typeof v === "object") {
     const o = {};
@@ -230,13 +231,15 @@ export async function GET(req) {
               },
               {
                 category: {
-                  blog_categories_translate: {
-                    some: {
-                      locale: { in: [locale, fallback] },
-                      OR: [
-                        { name: { contains: q } },
-                        { description: { contains: q } },
-                      ],
+                  is: {
+                    translate: {
+                      some: {
+                        locale: { in: [locale, fallback] },
+                        OR: [
+                          { name: { contains: q } },
+                          { description: { contains: q } },
+                        ],
+                      },
                     },
                   },
                 },
@@ -267,7 +270,7 @@ export async function GET(req) {
                     id: true,
                     slug: true,
                     sort: true,
-                    blog_categories_translate: {
+                    translate: {
                       where: { locale: { in: [locale, fallback] } },
                       select: { locale: true, name: true, description: true },
                     },
@@ -293,8 +296,8 @@ export async function GET(req) {
       let category_description = null;
       let category_locale_used = null;
 
-      if (includeCategory && cat?.blog_categories_translate) {
-        const ct = pickTrans(cat.blog_categories_translate, locale, fallback);
+      if (includeCategory && cat?.translate) {
+        const ct = pickTrans(cat.translate, locale, fallback);
         category_name = ct?.name ?? null;
         category_description = ct?.description ?? null;
         category_locale_used = ct?.locale ?? null;

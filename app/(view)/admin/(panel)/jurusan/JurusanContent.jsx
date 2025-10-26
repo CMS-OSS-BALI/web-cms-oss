@@ -1,1107 +1,778 @@
-// app/(admin)/admin/jurusan/JurusanContent.jsx
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  Button,
-  Card,
   ConfigProvider,
-  Descriptions,
-  Empty,
-  Form,
-  Image,
-  Input,
-  InputNumber,
+  Button,
   Modal,
-  notification,
+  Form,
+  Input,
+  Empty,
+  Skeleton,
   Popconfirm,
-  Row,
-  Col,
+  Tooltip,
+  Spin,
   Select,
-  Space,
-  Tag,
-  Typography,
-  Pagination,
-  theme as antdTheme,
+  notification,
 } from "antd";
-import { EyeOutlined, PlusOutlined, UploadOutlined } from "@ant-design/icons";
-import { sanitizeHtml } from "@/app/utils/dompurify";
-import HtmlEditor from "@/app/components/editor/HtmlEditor";
+import {
+  PlusCircleOutlined,
+  EyeOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  LeftOutlined,
+  RightOutlined,
+  SearchOutlined,
+} from "@ant-design/icons";
 
-const { Title, Text, Paragraph } = Typography;
+/* ===== compact tokens ===== */
+const TOKENS = {
+  shellW: "94%",
+  maxW: 1140,
+  blue: "#0b56c9",
+  text: "#0f172a",
+};
 
-const CARD_BG = "rgba(11, 18, 35, 0.94)";
-const IMAGE_PLACEHOLDER =
-  "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=1200&auto=format&fit=crop";
+const T = {
+  title: "Manajemen Jurusan",
+  totalLabel: "Total Jurusan",
+  listTitle: "Data Jurusan",
+  addNew: "Buat Data Baru",
+  searchPh: "Cari nama jurusan",
+  majorCol: "Nama Jurusan",
+  collegeCol: "Nama Kampus",
+  action: "Aksi",
+  view: "Lihat",
+  edit: "Edit",
+  del: "Hapus",
+  save: "Simpan",
 
-const STORAGE_PUBLIC_BASE = (() => {
-  const explicit = (process.env.NEXT_PUBLIC_STORAGE_BASE_URL || "").trim().replace(/\/$/, "");
-  if (explicit) return explicit;
-  const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").trim().replace(/\/$/, "");
-  const bucket = (process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "").trim().replace(/^\/+|\/+$/g, "");
-  if (supabaseUrl && bucket) {
-    return `${supabaseUrl}/storage/v1/object/public/${bucket}`;
+  // form
+  name: "Nama Jurusan",
+  desc: "Deskripsi",
+  college: "Kampus",
+};
+
+const monthsId = [
+  "Januari",
+  "Februari",
+  "Maret",
+  "April",
+  "Mei",
+  "Juni",
+  "Juli",
+  "Agustus",
+  "September",
+  "Oktober",
+  "November",
+  "Desember",
+];
+const fmtDateId = (dLike) => {
+  if (dLike === null || dLike === undefined || dLike === "") return "-";
+  try {
+    const dt =
+      typeof dLike === "number" ? new Date(dLike) : new Date(String(dLike));
+    if (isNaN(dt.getTime())) return "-";
+    return `${dt.getDate()} ${monthsId[dt.getMonth()]}`;
+  } catch {
+    return "-";
   }
-  return "";
-})();
-
-const isHttpUrl = (value) => typeof value === "string" && /^https?:\/\//i.test(value);
-const sanitizeImageInput = (value) => {
-  const raw = (value ?? "").toString().trim();
-  if (!raw) return "";
-  if (isHttpUrl(raw)) {
-    if (STORAGE_PUBLIC_BASE && raw.startsWith(`${STORAGE_PUBLIC_BASE}/`)) {
-      return raw.slice(STORAGE_PUBLIC_BASE.length + 1).replace(/^\/+/, "").slice(0, 255);
-    }
-    return raw.slice(0, 255);
-  }
-  return raw.replace(/^\/+/, "").slice(0, 255);
-};
-const toPublicImageUrl = (value) => {
-  const raw = (value ?? "").toString().trim();
-  if (!raw) return "";
-  if (isHttpUrl(raw)) return raw;
-  const cleaned = raw.replace(/^\/+/, "");
-  if (!cleaned) return "";
-  if (STORAGE_PUBLIC_BASE) {
-    return `${STORAGE_PUBLIC_BASE}/${cleaned}`;
-  }
-  return cleaned.startsWith("/") ? cleaned : `/${cleaned}`;
-};
-const resolveImageSrc = (record) => {
-  if (!record) return "";
-  const source =
-    record.image_public_url || record.image_src || record.image_url || "";
-  return toPublicImageUrl(source);
 };
 
-const darkCardStyle = {
-  background: CARD_BG,
-  border: "1px solid #2f3f60",
-  borderRadius: 16,
-  boxShadow: "0 10px 24px rgba(2,6,23,.35)",
-};
+const stripTags = (s) => (s ? String(s).replace(/<[^>]*>/g, "") : "");
 
-const pageWrapStyle = {
-  maxWidth: 1320,
-  margin: "0 auto",
-  padding: "24px 32px 12px",
-};
+export default function JurusanContent({ vm }) {
+  const viewModel = vm ?? require("./useJurusanViewModel").default();
 
-/* ===== Number helpers ===== */
-const fmtThousands = (value) => {
-  if (value === undefined || value === null || value === "") return "";
-  const [int, dec] = String(value).split(".");
-  const withDots = int.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-  return dec ? `${withDots},${dec}` : withDots;
-};
-
-const normalizeNumericInput = (raw = "") => {
-  const cleaned = String(raw)
-    .trim()
-    .replace(/[^0-9.,-]/g, "");
-  if (!cleaned) return "";
-  if (cleaned.includes(".") && cleaned.includes(",")) {
-    return cleaned.replace(/\./g, "").replace(/,/g, ".");
-  }
-  if (cleaned.includes(",")) return cleaned.replace(/,/g, ".");
-  if (cleaned.includes(".")) {
-    const parts = cleaned.split(".");
-    if (parts.length === 2 && parts[1].length <= 2) return cleaned;
-    return cleaned.replace(/\./g, "");
-  }
-  return cleaned;
-};
-
-const parseThousands = (value = "") => normalizeNumericInput(value);
-
-const toNumber = (value) => {
-  if (value === undefined || value === null) return null;
-  const normalized = normalizeNumericInput(value || "");
-  if (!normalized) return null;
-  const num = Number(normalized);
-  return Number.isFinite(num) ? num : null;
-};
-
-const formatRegisterPriceDisplay = (value, currency = "IDR") => {
-  const num = toNumber(value);
-  if (num === null) return "-";
-  return `${currency.toUpperCase()} ${new Intl.NumberFormat("id-ID").format(
-    num
-  )}`;
-};
-
-// Keep URL <= 255 chars to match @db.VarChar(255)
-/* ===== Form Modal ===== */
-function JurusanFormModal({
-  open,
-  mode,
-  initialValues,
-  saving,
-  partnerOptions,
-  partnersLoading,
-  onCancel,
-  onSubmit,
-}) {
-  const [form] = Form.useForm();
-  const isCreate = mode !== "edit";
-  const req = (msg) => (isCreate ? [{ required: true, message: msg }] : []);
-
-  const initialPreview = useMemo(() => {
-    const stored =
-      initialValues?.image_public_url || initialValues?.image_url || "";
-    return toPublicImageUrl(stored);
-  }, [initialValues]);
-
-  const [uploadFile, setUploadFile] = useState(null);
-  const [previewSrc, setPreviewSrc] = useState(initialPreview);
-  const fileInputRef = useRef(null);
-  const objectUrlRef = useRef(null);
-
-  const resetUpload = useCallback(() => {
-    if (objectUrlRef.current) {
-      URL.revokeObjectURL(objectUrlRef.current);
-      objectUrlRef.current = null;
-    }
-    setUploadFile(null);
-    setPreviewSrc(initialPreview);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  }, [initialPreview]);
-
-  useEffect(() => {
-    if (!open) return;
-    form.resetFields();
-    form.setFieldsValue({ ...initialValues });
-    resetUpload();
-  }, [open, initialValues, form, resetUpload]);
-
-  useEffect(() => {
-    return () => {
-      if (objectUrlRef.current) {
-        URL.revokeObjectURL(objectUrlRef.current);
-      }
-    };
-  }, []);
-
-  const imageValue = Form.useWatch("image_url", form);
-  const previewUrl = useMemo(() => {
-    if (uploadFile && previewSrc) return previewSrc;
-    if (imageValue) return toPublicImageUrl(imageValue);
-    return initialPreview;
-  }, [uploadFile, previewSrc, imageValue, initialPreview]);
-
-  const handleFileChange = (event) => {
-    const file = event.target.files?.[0];
-    if (!file) {
-      resetUpload();
-      setTimeout(() => form.validateFields(["image_url"]).catch(() => null), 0);
-      return;
-    }
-
-    if (objectUrlRef.current) {
-      URL.revokeObjectURL(objectUrlRef.current);
-      objectUrlRef.current = null;
-    }
-
-    const objectUrl = URL.createObjectURL(file);
-    objectUrlRef.current = objectUrl;
-    setUploadFile(file);
-    setPreviewSrc(objectUrl);
-    setTimeout(() => form.validateFields(["image_url"]).catch(() => null), 0);
-  };
-
-  const handleClearUpload = () => {
-    resetUpload();
-    setTimeout(() => form.validateFields(["image_url"]).catch(() => null), 0);
-  };
-
-  const handleFinish = (values) => {
-    const sanitizedImageUrl = sanitizeImageInput(values.image_url);
-    form.setFieldsValue({ image_url: sanitizedImageUrl });
-    const hasFile = Boolean(uploadFile);
-    if (!hasFile && !sanitizedImageUrl) {
-      form.setFields([
-        {
-          name: "image_url",
-          errors: ["Logo wajib diisi (URL atau upload file)."],
-        },
-      ]);
-      return;
-    }
-    const payload = {
-      partner_id: values.partner_id,
-      register_price:
-        values.register_price === null ||
-        values.register_price === undefined ||
-        values.register_price === ""
-          ? undefined
-          : String(parseThousands(String(values.register_price))),
-      image_url: hasFile ? undefined : sanitizedImageUrl,
-      name_id: values.name_id?.trim(),
-      description_id: values.description_id || "",
-      autoTranslate: true,
-      file: hasFile ? uploadFile : undefined,
-    };
-    onSubmit(payload);
-  };
-
-  const ctrlStyle = {
-    background: "#0e182c",
-    borderColor: "#2f3f60",
-    color: "#e6eaf2",
-    borderRadius: 12,
-  };
-
-  return (
-    <Modal
-      title={mode === "edit" ? "Edit Jurusan" : "Add Jurusan"}
-      open={open}
-      centered
-      width={880}
-      onCancel={onCancel}
-      footer={
-        <Space style={{ width: "100%", justifyContent: "flex-end" }}>
-          <Button shape="round" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button
-            shape="round"
-            type="primary"
-            loading={saving}
-            onClick={() => form.submit()}
-          >
-            {mode === "edit" ? "Update" : "Save"}
-          </Button>
-        </Space>
-      }
-      styles={{
-        content: { ...darkCardStyle, borderRadius: 16 },
-        header: {
-          background: "transparent",
-          borderBottom: "1px solid #2f3f60",
-        },
-        body: { padding: 0 },
-        mask: { backgroundColor: "rgba(0,0,0,.6)" },
-      }}
-      destroyOnHidden
-    >
-      <div className="form-scroll">
-        <div style={{ padding: 16 }}>
-          <Form form={form} layout="vertical" onFinish={handleFinish}>
-            <Row gutter={[12, 8]}>
-              <Col xs={24} md={12}>
-                <Form.Item
-                  name="partner_id"
-                  label="Partner"
-                  required={isCreate}
-                  rules={req("Partner wajib dipilih")}
-                >
-                  <Select
-                    options={partnerOptions}
-                    loading={partnersLoading}
-                    placeholder="Pilih partner"
-                    style={{ width: "100%" }}
-                  />
-                </Form.Item>
-              </Col>
-              <Col xs={24} md={12}>
-                <Form.Item
-                  name="register_price"
-                  label="Harga Pendaftaran"
-                  required={isCreate}
-                  rules={req("Harga pendaftaran wajib diisi")}
-                >
-                  <InputNumber
-                    min={0}
-                    step={1}
-                    style={{ width: "100%", ...ctrlStyle }}
-                    formatter={fmtThousands}
-                    parser={parseThousands}
-                  />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={12}>
-                <Form.Item
-                  name="image_url"
-                  label="Logo URL"
-                  extra="Isi URL logo jika tidak mengunggah file."
-                  rules={[
-                    () => ({
-                      validator(_, value) {
-                        if (uploadFile) return Promise.resolve();
-                        const sanitized = sanitizeImageInput(value);
-                        if (!sanitized) {
-                          return Promise.reject(
-                            new Error("Logo wajib diisi (URL atau upload file).")
-                          );
-                        }
-                        const trimmed = (value ?? "").toString().trim();
-                        if (trimmed && isHttpUrl(trimmed) && trimmed.length > 255) {
-                          return Promise.reject(new Error("Maksimal 255 karakter"));
-                        }
-                        if (!isHttpUrl(trimmed) && sanitized.length > 255) {
-                          return Promise.reject(new Error("Maksimal 255 karakter"));
-                        }
-                        return Promise.resolve();
-                      },
-                    }),
-                  ]}
-                >
-                  <Input
-                    placeholder="https://..."
-                    style={ctrlStyle}
-                    maxLength={255}
-                  />
-                </Form.Item>
-
-                <Form.Item
-                  label="Upload Logo (opsional)"
-                  extra="Unggah JPEG/PNG/WebP (maks. 10MB). Jika diisi, logo akan diunggah ke Supabase."
-                >
-                  <Space align="start" size={12} wrap>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      style={{ display: "none" }}
-                      onChange={handleFileChange}
-                    />
-
-                    <Button
-                      shape="round"
-                      icon={<UploadOutlined />}
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      Pilih File
-                    </Button>
-
-                    {uploadFile ? (
-                      <Text type="secondary">
-                        {uploadFile.name} ({
-                          Math.round((uploadFile.size || 0) / 1024)
-                        } KB)
-                      </Text>
-                    ) : (
-                      <Text type="secondary">
-                        {previewUrl
-                          ? "Menggunakan logo tersimpan."
-                          : "Belum ada file dipilih."}
-                      </Text>
-                    )}
-
-                    {uploadFile ? (
-                      <Button type="link" danger onClick={handleClearUpload}>
-                        Hapus
-                      </Button>
-                    ) : null}
-                  </Space>
-
-                  {previewUrl ? (
-                    <div style={{ marginTop: 12 }}>
-                      <Image
-                        src={previewUrl}
-                        alt={form.getFieldValue("name_id") || "Preview logo"}
-                        style={{
-                          width: "100%",
-                          maxHeight: 200,
-                          objectFit: "cover",
-                          borderRadius: 12,
-                          border: "1px solid rgba(148, 163, 184, 0.25)",
-                        }}
-                        fallback={IMAGE_PLACEHOLDER}
-                        preview={false}
-                      />
-                    </div>
-                  ) : null}
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={12}>
-                <Form.Item
-                  name="name_id"
-                  label="Nama (Bahasa Indonesia)"
-                  required={isCreate}
-                  rules={req("Nama (ID) wajib diisi")}
-                >
-                  <Input style={ctrlStyle} maxLength={191} />
-                </Form.Item>
-              </Col>
-
-              <Col span={24}>
-                <Form.Item
-                  name="description_id"
-                  label="Deskripsi (Bahasa Indonesia)"
-                >
-                  <HtmlEditor className="editor-dark" minHeight={200} />
-                </Form.Item>
-              </Col>
-            </Row>
-          </Form>
-        </div>
-      </div>
-
-      <style jsx global>{`
-        .form-scroll {
-          max-height: 62vh;
-          overflow: auto;
-        }
-        .form-scroll::-webkit-scrollbar {
-          width: 8px;
-        }
-        .form-scroll::-webkit-scrollbar-thumb {
-          background: rgba(148, 163, 184, 0.25);
-          border-radius: 9999px;
-        }
-      `}</style>
-    </Modal>
-  );
-}
-
-/* ===== View Modal ===== */
-function JurusanViewModal({ open, data, onClose, resolvePartnerMeta }) {
-  const partnerMeta =
-    data?.partner_id != null ? resolvePartnerMeta?.(data.partner_id) : null;
-  const partnerLabel = partnerMeta?.label ?? data?.partner_id ?? null;
-  const currency = partnerMeta?.currency || "IDR";
-  const imageSrc = resolveImageSrc(data);
-  const tags = [
-    partnerLabel
-      ? { key: "partner", color: "gold", label: `Partner: ${partnerLabel}` }
-      : null,
-    {
-      key: "price",
-      color: "green",
-      label: formatRegisterPriceDisplay(data?.register_price, currency),
-    },
-    data?.locale_used
-      ? {
-          key: "locale",
-          color: "purple",
-          label: String(data.locale_used).toUpperCase(),
-        }
-      : null,
-  ].filter(Boolean);
-
-  const rows = [
-    {
-      label: "Partner",
-      content: partnerLabel || "-",
-    },
-    {
-      label: "Image Source",
-      content: imageSrc ? (
-        <a href={imageSrc} target="_blank" rel="noreferrer noopener">
-          {imageSrc}
-        </a>
-      ) : (data?.image_url || "-"),
-    },
-    {
-      label: "Register Price",
-      content: formatRegisterPriceDisplay(data?.register_price, currency),
-    },
-    {
-      label: "Locale",
-      content: data?.locale_used ? data.locale_used.toUpperCase() : "-",
-    },
-    data?.created_at
-      ? {
-          label: "Created",
-          content: new Date(data.created_at).toLocaleString(),
-        }
-      : null,
-    data?.updated_at
-      ? {
-          label: "Updated",
-          content: new Date(data.updated_at).toLocaleString(),
-        }
-      : null,
-    {
-      label: "Description",
-      content: data?.description ? (
-        <div
-          dangerouslySetInnerHTML={{
-            __html: sanitizeHtml(data.description || ""),
-          }}
-        />
-      ) : (
-        "-"
-      ),
-    },
-  ].filter(Boolean);
-
-  return (
-    <Modal
-      open={open}
-      onCancel={onClose}
-      centered
-      width={840}
-      title={data?.name || "Detail Jurusan"}
-      footer={
-        <Button shape="round" type="primary" onClick={onClose}>
-          Close
-        </Button>
-      }
-      styles={{
-        content: { ...darkCardStyle },
-        header: {
-          background: "transparent",
-          borderBottom: "1px solid #2f3f60",
-        },
-        body: { padding: 0 },
-        mask: { backgroundColor: "rgba(0,0,0,.6)" },
-      }}
-      destroyOnHidden
-    >
-      <div className="view-scroll">
-        <div style={{ padding: 16 }}>
-          <Image
-            src={imageSrc || IMAGE_PLACEHOLDER}
-            alt={data?.name || "Jurusan image"}
-            width="100%"
-            style={{
-              borderRadius: 12,
-              marginBottom: 16,
-              maxHeight: 300,
-              objectFit: "cover",
-              border: "1px solid rgba(148, 163, 184, 0.25)",
-            }}
-            fallback={IMAGE_PLACEHOLDER}
-            preview={!!imageSrc}
-          />
-
-          <Space size={[8, 8]} wrap style={{ marginBottom: 16 }}>
-            {tags.map((tag) => (
-              <Tag key={tag.key} color={tag.color}>
-                {tag.label}
-              </Tag>
-            ))}
-          </Space>
-          <Descriptions size="small" bordered column={1}>
-            {rows.map((row) => (
-              <Descriptions.Item key={row.label} label={row.label}>
-                {row.content}
-              </Descriptions.Item>
-            ))}
-          </Descriptions>
-        </div>
-      </div>
-
-      <style jsx global>{`
-        .view-scroll {
-          max-height: 72vh;
-          overflow: auto;
-        }
-        .view-scroll::-webkit-scrollbar {
-          width: 8px;
-        }
-        .view-scroll::-webkit-scrollbar-thumb {
-          background: rgba(148, 163, 184, 0.25);
-          border-radius: 9999px;
-        }
-      `}</style>
-    </Modal>
-  );
-}
-
-/* ===== Card item ===== */
-function JurusanCard({ item, onView, onEdit, onDelete, resolvePartnerMeta }) {
-  const partnerMeta =
-    item.partner_id != null ? resolvePartnerMeta?.(item.partner_id) : null;
-  const partnerLabel = partnerMeta?.label ?? item.partner_id ?? null;
-  const currency = partnerMeta?.currency || "IDR";
-  const imageSrc = resolveImageSrc(item);
-
-  const badgeStyle = {
-    position: "absolute",
-    top: 12,
-    left: 12,
-    padding: "2px 12px",
-    borderRadius: 999,
-    fontSize: 11,
-    fontWeight: 600,
-    color: "#fff",
-    background: "rgba(15,23,42,.65)",
-    border: "1px solid rgba(148,163,184,.35)",
-    backdropFilter: "blur(2px)",
-    maxWidth: "85%",
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-  };
-
-  const safeDesc = sanitizeHtml(item.description || "");
-  const plainDesc = safeDesc.replace(/<[^>]*>/g, "").trim();
-  const hasDesc = plainDesc.length > 0;
-
-  return (
-    <Card
-      hoverable
-      style={{ ...darkCardStyle, overflow: "hidden" }}
-      styles={{ body: { padding: 14 } }}
-      cover={
-        <div
-          style={{
-            position: "relative",
-            aspectRatio: "16 / 9",
-            borderBottom: "1px solid #2f3f60",
-            overflow: "hidden",
-            cursor: "pointer",
-          }}
-          onClick={onView}
-        >
-          <Image
-            src={imageSrc || IMAGE_PLACEHOLDER}
-            alt={item.name || "Jurusan image"}
-            width="100%"
-            height={180}
-            style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            fallback={IMAGE_PLACEHOLDER}
-            preview={!!imageSrc}
-          />
-          {partnerLabel ? (
-            <span style={badgeStyle} title={partnerLabel}>
-              {partnerLabel}
-            </span>
-          ) : null}
-        </div>
-      }
-    >
-      <div style={{ display: "grid", gap: 8 }}>
-        <Text
-          strong
-          ellipsis={{ tooltip: item.name || "(no name)" }}
-          style={{ fontSize: 14, lineHeight: 1.35 }}
-        >
-          {item.name || "(no name)"}
-        </Text>
-
-        {hasDesc ? (
-          <div
-            style={{
-              margin: 0,
-              lineHeight: 1.45,
-              color: "#94a3b8",
-              display: "-webkit-box",
-              WebkitLineClamp: 3,
-              WebkitBoxOrient: "vertical",
-              overflow: "hidden",
-            }}
-            dangerouslySetInnerHTML={{ __html: safeDesc }}
-          />
-        ) : (
-          <Paragraph style={{ margin: 0 }} type="secondary">
-            -
-          </Paragraph>
-        )}
-
-        <Space size={[8, 8]} wrap>
-          <Tag color="green">
-            {formatRegisterPriceDisplay(item.register_price, currency)}
-          </Tag>
-          {partnerLabel ? <Tag color="gold">{partnerLabel}</Tag> : null}
-          {item.locale_used ? (
-            <Tag color="purple">{String(item.locale_used).toUpperCase()}</Tag>
-          ) : null}
-        </Space>
-      </div>
-
-      <div
-        style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}
-      >
-        <Button
-          type="primary"
-          size="small"
-          shape="round"
-          icon={<EyeOutlined />}
-          onClick={onView}
-        >
-          View
-        </Button>
-        <Button size="small" shape="round" onClick={onEdit}>
-          Edit
-        </Button>
-        <Popconfirm
-          title="Hapus jurusan?"
-          description="Tindakan ini tidak dapat dibatalkan."
-          okText="Hapus"
-          okButtonProps={{ danger: true }}
-          placement="topRight"
-          onConfirm={onDelete}
-        >
-          <Button danger size="small" shape="round">
-            Delete
-          </Button>
-        </Popconfirm>
-      </div>
-    </Card>
-  );
-}
-
-/* ===== Main Content ===== */
-export default function JurusanContent(props) {
-  const {
-    jurusan = [],
-    q,
-    setQ,
-    partnerId,
-    setPartnerId,
-    page,
-    setPage,
-    perPage,
-    setPerPage,
-    total = 0,
-    sort,
-    setSort,
-    locale,
-    setLocale,
-    fallback,
-    setFallback,
-    withDeleted,
-    setWithDeleted,
-    onlyDeleted,
-    setOnlyDeleted,
-    loading,
-    opLoading,
-    listError,
-    partnerOptions,
-    partnerMetaById,
-    partnersLoading,
-    createJurusan,
-    updateJurusan,
-    deleteJurusan,
-  } = props;
-
+  // ----- notifications -----
   const [api, contextHolder] = notification.useNotification();
-  const [modalOpen, setModalOpen] = useState(false);
-  const [mode, setMode] = useState("create");
-  const [saving, setSaving] = useState(false);
-  const [editing, setEditing] = useState(null);
-  const [view, setView] = useState(null);
+  const toast = {
+    ok: (msg, desc) =>
+      api.success({ message: msg, description: desc, placement: "topRight" }),
+    err: (msg, desc) =>
+      api.error({ message: msg, description: desc, placement: "topRight" }),
+    info: (msg, desc) =>
+      api.info({ message: msg, description: desc, placement: "topRight" }),
+  };
 
-  const resolvePartnerMeta = useMemo(() => {
-    if (!partnerMetaById) return () => null;
-    return (id) => {
-      if (id === undefined || id === null || id === "") return null;
-      return partnerMetaById.get(String(id)) || null;
-    };
-  }, [partnerMetaById]);
+  // ----- UI state
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [viewOpen, setViewOpen] = useState(false);
+  const [activeRow, setActiveRow] = useState(null);
+  const [formCreate] = Form.useForm();
+  const [formEdit] = Form.useForm();
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailData, setDetailData] = useState(null);
+
+  const rows = useMemo(() => viewModel.jurusan || [], [viewModel.jurusan]);
 
   useEffect(() => {
-    if (listError) {
-      api.error({
-        key: "jurusan-error",
-        message: "Terjadi kesalahan",
-        description: listError,
-        placement: "topRight",
+    viewModel.refreshCollegeNamesForPage?.(rows);
+  }, [rows]); // eslint-disable-line
+
+  // ===== Search & Filter =====
+  const [searchValue, setSearchValue] = useState(viewModel.q || "");
+  useEffect(() => setSearchValue(viewModel.q || ""), [viewModel.q]);
+
+  useEffect(() => {
+    const v = (searchValue || "").trim();
+    const t = setTimeout(() => {
+      viewModel.setQ?.(v);
+      viewModel.setPage?.(1);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [searchValue]); // eslint-disable-line
+
+  // college options
+  const [collegeOptions, setCollegeOptions] = useState([]);
+  const [fetchingCollege, setFetchingCollege] = useState(false);
+  const fetchCollegeOpts = async (kw = "") => {
+    setFetchingCollege(true);
+    const opts = await viewModel.searchCollegeOptions?.(kw).catch(() => []);
+    setCollegeOptions(opts || []);
+    setFetchingCollege(false);
+  };
+  useEffect(() => {
+    fetchCollegeOpts("");
+  }, []); // eslint-disable-line
+
+  const { shellW, maxW, blue, text } = TOKENS;
+  const req = (msg) => [{ required: true, message: msg }];
+
+  /* ========================== CRUD Handlers ========================== */
+  const onCreate = async () => {
+    const v = await formCreate.validateFields().catch(() => null);
+    if (!v) return;
+
+    const out = await viewModel.createJurusan({
+      college_id: v.college_id,
+      name: v.name,
+      description: v.description || "",
+      autoTranslate: true,
+    });
+    if (!out.ok) {
+      toast.err("Gagal membuat jurusan", out.error || "Gagal menyimpan data.");
+      return;
+    }
+    toast.ok("Berhasil", `Jurusan “${v.name}” berhasil dibuat.`);
+    setCreateOpen(false);
+    formCreate.resetFields();
+  };
+
+  const openEdit = async (row) => {
+    setActiveRow(row);
+    setEditOpen(true);
+    setDetailLoading(true);
+    setDetailData(null);
+    const { ok, data, error } = await viewModel.getJurusan(row.id);
+    setDetailLoading(false);
+    if (!ok) {
+      setEditOpen(false);
+      toast.err("Gagal memuat detail", error || "Tidak dapat memuat data.");
+      return;
+    }
+    const d = data?.data || data || row;
+    setDetailData(d);
+    const label = viewModel.collegeName?.(d.college_id) || "";
+    if (d.college_id && label) {
+      setCollegeOptions((prev) => {
+        const has = prev.some((x) => x.value === d.college_id);
+        return has ? prev : [{ value: d.college_id, label }, ...prev];
       });
     }
-  }, [listError, api]);
-
-  const openCreate = () => {
-    setMode("create");
-    setEditing(null);
-    setModalOpen(true);
-  };
-  const openEdit = (item) => {
-    setMode("edit");
-    setEditing(item);
-    setModalOpen(true);
+    formEdit.setFieldsValue({
+      college_id: d.college_id || undefined,
+      name: d.name || "",
+      description: d.description || "",
+    });
   };
 
-  const handleSubmit = async (payload) => {
-    setSaving(true);
-    const res =
-      mode === "edit"
-        ? await updateJurusan(editing.id, payload)
-        : await createJurusan(payload);
-    setSaving(false);
+  const onEditSubmit = async () => {
+    if (!activeRow) return;
+    const v = await formEdit.validateFields().catch(() => null);
+    if (!v) return;
 
-    if (res?.ok) {
-      api.success({
-        key: "jurusan-save",
-        message: mode === "edit" ? "Jurusan diperbarui" : "Jurusan ditambahkan",
-        description: "Data telah tersimpan.",
-        placement: "topRight",
-      });
-      setModalOpen(false);
-      setEditing(null);
-    } else {
-      api.error({
-        key: "jurusan-save",
-        message: "Gagal menyimpan",
-        description: res?.error || "Silakan coba lagi.",
-        placement: "topRight",
-      });
+    const res = await viewModel.updateJurusan(activeRow.id, {
+      college_id: v.college_id,
+      name: v.name,
+      description: v.description ?? null,
+      autoTranslate: false,
+    });
+
+    if (!res.ok) {
+      toast.err(
+        "Gagal menyimpan perubahan",
+        res.error || "Perubahan tidak tersimpan."
+      );
+      return;
     }
+    toast.ok(
+      "Perubahan disimpan",
+      `Jurusan “${v.name || activeRow.name}” telah diperbarui.`
+    );
+    setEditOpen(false);
+    formEdit.resetFields();
   };
 
-  const initialValues = useMemo(() => {
-    if (!editing) {
-      return {
-        partner_id: "",
-        register_price: null,
-        image_url: "",
-        image_public_url: "",
-        name_id: "",
-        description_id: "",
-      };
+  const onDelete = async (id) => {
+    const res = await viewModel.deleteJurusan(id);
+    if (!res.ok) {
+      toast.err("Gagal menghapus", res.error || "Tidak bisa menghapus data.");
+      return;
     }
-    return {
-      partner_id: editing.partner_id || "",
-      register_price:
-        editing.register_price === null || editing.register_price === undefined
-          ? null
-          : Number(editing.register_price),
-      image_url: sanitizeImageInput(
-        editing.image_url || editing.image_public_url || ""
-      ),
-      image_public_url: resolveImageSrc(editing),
-      name_id: editing.name || "",
-      description_id: editing.description || "",
-    };
-  }, [editing]);
+    toast.ok("Terhapus", "Jurusan berhasil dihapus.");
+  };
 
+  /* ============================== UI =============================== */
   return (
     <ConfigProvider
+      componentSize="middle"
       theme={{
-        algorithm: antdTheme.darkAlgorithm,
         token: {
-          colorPrimary: "#3b82f6",
-          colorBorder: "#2f3f60",
-          colorText: "#e6eaf2",
-          colorBgContainer: CARD_BG,
+          colorPrimary: blue,
+          colorText: text,
+          fontFamily:
+            '"Poppins", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
           borderRadius: 12,
+          fontSize: 13,
           controlHeight: 36,
         },
-        components: {
-          Card: {
-            headerBg: "transparent",
-            colorBorderSecondary: "#2f3f60",
-            borderRadiusLG: 16,
-          },
-          Button: { borderRadius: 999 },
-          Input: { colorBgContainer: "#0e182c" },
-          Select: { colorBgContainer: "#0e182c" },
-          Pagination: { borderRadius: 999 },
-          Modal: { borderRadiusLG: 16 },
-        },
+        components: { Button: { borderRadius: 10 } },
       }}
     >
-      <div style={pageWrapStyle}>
-        {contextHolder}
-
-        {/* Header */}
-        <Card
-          style={{ ...darkCardStyle, marginBottom: 12 }}
-          styles={{ body: { padding: 16 } }}
-        >
-          <Space
-            align="center"
-            style={{ width: "100%", justifyContent: "space-between" }}
-          >
-            <div>
-              <Title level={3} style={{ margin: 0 }}>
-                Jurusan
-              </Title>
-              <Text type="secondary">
-                Kelola daftar jurusan. Total {total} records.
-              </Text>
-            </div>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              shape="round"
-              onClick={openCreate}
-            >
-              Add Jurusan
-            </Button>
-          </Space>
-        </Card>
-
-        {/* Filters */}
-        <Card
-          style={{ ...darkCardStyle, marginBottom: 12 }}
-          styles={{ body: { padding: 12 } }}
-        >
-          <Form
-            layout="inline"
-            onFinish={() => setPage(1)}
-            style={{ display: "block" }}
-          >
-            <Row gutter={[8, 8]} align="middle" wrap>
-              {/* Search */}
-              <Col flex="1 1 420px" style={{ minWidth: 260 }}>
-                <Input.Search
-                  allowClear
-                  value={q}
-                  onChange={(e) => props.setQ(e.target.value)}
-                  placeholder="Cari nama/desk…"
-                  enterButton
-                  style={{ width: "100%" }}
-                />
-              </Col>
-
-              {/* Partner filter */}
-              <Col
-                xs={12}
-                sm={8}
-                md={6}
-                lg={5}
-                xl={4}
-                xxl={3}
-                style={{ minWidth: 200 }}
-              >
-                <Select
-                  value={partnerId || undefined}
-                  onChange={(v) => {
-                    setPartnerId(v || "");
-                    setPage(1);
-                  }}
-                  allowClear
-                  placeholder="Filter partner"
-                  options={partnerOptions}
-                  loading={partnersLoading}
-                  style={{ width: "100%" }}
-                />
-              </Col>
-
-              {/* Per Page */}
-              <Col
-                xs={12}
-                sm={8}
-                md={6}
-                lg={4}
-                xl={3}
-                xxl={2}
-                style={{ minWidth: 140 }}
-              >
-                <Select
-                  value={perPage}
-                  onChange={(v) => {
-                    setPerPage(v);
-                    setPage(1);
-                  }}
-                  options={[8, 12, 16, 24, 32, 64].map((n) => ({
-                    value: n,
-                    label: `${n} / page`,
-                  }))}
-                  style={{ width: "100%" }}
-                />
-              </Col>
-
-              {/* Buttons */}
-              <Col
-                flex="0 0 220px"
-                style={{ display: "flex", justifyContent: "flex-end" }}
-              >
-                <Space wrap>
-                  <Button
-                    shape="round"
-                    onClick={() => {
-                      setQ("");
-                      setPartnerId("");
-                      setSort("created_at:desc");
-                      setPage(1);
-                    }}
-                  >
-                    Reset
-                  </Button>
-                  <Button
-                    shape="round"
-                    type="primary"
-                    htmlType="submit"
-                    loading={loading}
-                  >
-                    Search
-                  </Button>
-                </Space>
-              </Col>
-            </Row>
-          </Form>
-        </Card>
-
-        {/* List */}
-        <Card style={{ ...darkCardStyle }} styles={{ body: { padding: 16 } }}>
-          {loading ? (
-            <div style={{ textAlign: "center", padding: "48px 0" }}>
-              Loading…
-            </div>
-          ) : jurusan.length === 0 ? (
-            <Empty description="Belum ada data jurusan" />
-          ) : (
-            <Row gutter={[16, 16]}>
-              {jurusan.map((it) => (
-                <Col key={it.id} xs={24} sm={12} md={12} lg={8} xl={6}>
-                  <JurusanCard
-                    item={it}
-                    onView={() => setView(it)}
-                    onEdit={() => openEdit(it)}
-                    onDelete={async () => {
-                      const { ok, error } = await deleteJurusan(it.id);
-                      if (ok) {
-                        notification.success({
-                          message: "Jurusan dihapus",
-                          description: "Data berhasil dihapus.",
-                          placement: "topRight",
-                        });
-                      } else {
-                        notification.error({
-                          message: "Gagal menghapus",
-                          description: error || "Silakan coba lagi.",
-                          placement: "topRight",
-                        });
-                      }
-                    }}
-                    resolvePartnerMeta={resolvePartnerMeta}
-                  />
-                </Col>
-              ))}
-            </Row>
-          )}
-        </Card>
-
-        {/* Pagination */}
-        <Card
-          style={{ ...darkCardStyle, marginTop: 12 }}
-          styles={{ body: { padding: 12 } }}
-        >
-          <div
-            style={{ width: "100%", display: "flex", justifyContent: "center" }}
-          >
-            <Pagination
-              current={page}
-              total={total}
-              pageSize={perPage}
-              showSizeChanger={false}
-              onChange={(p) => setPage(p)}
-            />
-          </div>
-        </Card>
-
-        {/* Modals */}
-        <JurusanViewModal
-          open={!!view}
-          data={view}
-          resolvePartnerMeta={resolvePartnerMeta}
-          onClose={() => setView(null)}
-        />
-        <JurusanFormModal
-          open={modalOpen}
-          mode={mode}
-          initialValues={initialValues}
-          saving={saving || opLoading}
-          partnerOptions={partnerOptions}
-          partnersLoading={partnersLoading}
-          onCancel={() => {
-            setModalOpen(false);
-            setEditing(null);
+      {contextHolder}
+      {/* notification portal */}
+      <section
+        style={{
+          width: "100%",
+          position: "relative",
+          minHeight: "100dvh",
+          display: "flex",
+          alignItems: "flex-start",
+          padding: "56px 0",
+          overflowX: "hidden",
+        }}
+      >
+        {/* background */}
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: 0,
+            background:
+              "linear-gradient(180deg, #f8fbff 0%, #eef5ff 40%, #ffffff 100%)",
+            zIndex: 0,
           }}
-          onSubmit={handleSubmit}
         />
-      </div>
+        <div
+          style={{
+            width: shellW,
+            maxWidth: maxW,
+            margin: "0 auto",
+            position: "relative",
+            zIndex: 1,
+          }}
+        >
+          {/* ===== Header Card ===== */}
+          <div style={styles.cardOuter}>
+            <div style={styles.cardHeaderBar} />
+            <div style={styles.cardInner}>
+              <div style={styles.cardTitle}>{T.title}</div>
+              <div style={styles.totalBadgeWrap}>
+                <div style={styles.totalBadgeLabel}>{T.totalLabel}</div>
+                <div style={styles.totalBadgeValue}>
+                  {viewModel.total ?? rows.length ?? "—"}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ===== Data Card ===== */}
+          <div style={{ ...styles.cardOuter, marginTop: 12 }}>
+            <div style={{ ...styles.cardInner, paddingTop: 14 }}>
+              <div style={styles.sectionHeader}>
+                <div style={styles.sectionTitle}>{T.listTitle}</div>
+                <Button
+                  type="primary"
+                  icon={<PlusCircleOutlined />}
+                  onClick={() => setCreateOpen(true)}
+                >
+                  {T.addNew}
+                </Button>
+              </div>
+
+              {/* Filters */}
+              <div style={styles.filtersRow}>
+                <Input
+                  allowClear
+                  value={searchValue}
+                  onChange={(e) => setSearchValue(e.target.value)}
+                  onPressEnter={() => {
+                    viewModel.setQ?.((searchValue || "").trim());
+                    viewModel.setPage?.(1);
+                  }}
+                  placeholder={T.searchPh}
+                  prefix={<SearchOutlined />}
+                  style={styles.searchInput}
+                />
+
+                <Select
+                  allowClear
+                  showSearch
+                  placeholder="Filter kampus"
+                  value={viewModel.collegeId || undefined}
+                  onChange={(v) => {
+                    viewModel.setCollegeId?.(v || "");
+                    viewModel.setPage?.(1);
+                  }}
+                  filterOption={false}
+                  notFoundContent={fetchingCollege ? "Loading..." : null}
+                  onSearch={fetchCollegeOpts}
+                  options={collegeOptions}
+                  style={styles.filterSelect}
+                />
+              </div>
+
+              {/* Table header */}
+              <div style={{ overflowX: "auto" }}>
+                <div style={styles.tableHeader}>
+                  <div style={{ ...styles.thLeft, paddingLeft: 8 }}>
+                    {T.majorCol}
+                  </div>
+                  <div style={styles.thCenter}>{T.collegeCol}</div>
+                  <div style={styles.thCenter}>{T.action}</div>
+                </div>
+
+                {/* Rows */}
+                <div style={{ display: "grid", gap: 8, marginTop: 4 }}>
+                  {viewModel.loading ? (
+                    <div style={{ padding: "8px 4px" }}>
+                      <Skeleton active paragraph={{ rows: 2 }} />
+                    </div>
+                  ) : rows.length === 0 ? (
+                    <div
+                      style={{
+                        display: "grid",
+                        placeItems: "center",
+                        padding: "20px 0",
+                      }}
+                    >
+                      <Empty description="Belum ada data" />
+                    </div>
+                  ) : (
+                    rows.map((r) => {
+                      const name = r.name || "(untitled)";
+                      const collegeName =
+                        viewModel.collegeName?.(r.college_id) || "—";
+
+                      // >>> show created date with fallback
+                      const createdDisplay = fmtDateId(
+                        r.created_ts || r.created_at || r.updated_at
+                      );
+
+                      return (
+                        <div key={r.id} style={styles.row}>
+                          <div style={styles.colName}>
+                            <div style={styles.nameWrap}>
+                              <div style={styles.nameText} title={name}>
+                                {name}
+                              </div>
+                              <div style={styles.subDate}>{createdDisplay}</div>
+                            </div>
+                          </div>
+
+                          <div style={styles.colCenter}>{collegeName}</div>
+
+                          <div style={styles.colActionsCenter}>
+                            <Tooltip title={T.view}>
+                              <Button
+                                size="small"
+                                icon={<EyeOutlined />}
+                                onClick={() => {
+                                  setActiveRow(r);
+                                  setViewOpen(true);
+                                  setDetailLoading(true);
+                                  setDetailData(null);
+                                  viewModel
+                                    .getJurusan(r.id)
+                                    .then(({ ok, data, error }) => {
+                                      setDetailLoading(false);
+                                      if (!ok) {
+                                        setViewOpen(false);
+                                        toast.err(
+                                          "Gagal memuat detail",
+                                          error || "Tidak dapat memuat data."
+                                        );
+                                        return;
+                                      }
+                                      setDetailData(data?.data || data);
+                                    });
+                                }}
+                                style={styles.iconBtn}
+                              />
+                            </Tooltip>
+                            <Tooltip title={T.del}>
+                              <Popconfirm
+                                title="Hapus jurusan ini?"
+                                okText="Ya"
+                                cancelText="Batal"
+                                onConfirm={() => onDelete(r.id)}
+                              >
+                                <Button
+                                  size="small"
+                                  danger
+                                  icon={<DeleteOutlined />}
+                                  style={styles.iconBtn}
+                                />
+                              </Popconfirm>
+                            </Tooltip>
+                            <Tooltip title={T.edit}>
+                              <Button
+                                size="small"
+                                icon={<EditOutlined />}
+                                onClick={() => openEdit(r)}
+                                style={styles.iconBtn}
+                              />
+                            </Tooltip>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* Pagination */}
+              <div style={styles.pagination}>
+                <Button
+                  icon={<LeftOutlined />}
+                  onClick={() =>
+                    viewModel.setPage(Math.max(1, viewModel.page - 1))
+                  }
+                  disabled={viewModel.page <= 1 || viewModel.loading}
+                />
+                <div style={styles.pageText}>
+                  Page {viewModel.page}
+                  {viewModel.totalPages ? ` of ${viewModel.totalPages}` : ""}
+                </div>
+                <Button
+                  icon={<RightOutlined />}
+                  onClick={() => viewModel.setPage(viewModel.page + 1)}
+                  disabled={
+                    viewModel.loading ||
+                    (viewModel.totalPages
+                      ? viewModel.page >= viewModel.totalPages
+                      : rows.length < (viewModel.perPage || 10))
+                  }
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ===== Create Modal ===== */}
+      <Modal
+        open={createOpen}
+        onCancel={() => {
+          setCreateOpen(false);
+          formCreate.resetFields();
+        }}
+        footer={null}
+        width={720}
+        destroyOnClose
+        title={null}
+      >
+        <div style={styles.modalShell}>
+          <Form layout="vertical" form={formCreate}>
+            <Form.Item
+              label={T.college}
+              name="college_id"
+              rules={req("Kampus wajib dipilih")}
+            >
+              <Select
+                showSearch
+                placeholder="Cari kampus…"
+                filterOption={false}
+                onSearch={fetchCollegeOpts}
+                notFoundContent={fetchingCollege ? "Loading..." : null}
+                options={collegeOptions}
+              />
+            </Form.Item>
+
+            <Form.Item
+              label={T.name}
+              name="name"
+              rules={req("Nama jurusan wajib diisi")}
+            >
+              <Input placeholder="Contoh: Computer Science" />
+            </Form.Item>
+
+            <Form.Item label={T.desc} name="description">
+              <Input.TextArea rows={3} placeholder="Deskripsi (opsional)" />
+            </Form.Item>
+
+            <div style={styles.modalFooter}>
+              <Button
+                type="primary"
+                size="large"
+                onClick={onCreate}
+                style={styles.saveBtn}
+              >
+                {T.save}
+              </Button>
+            </div>
+          </Form>
+        </div>
+      </Modal>
+
+      {/* ===== Edit Modal ===== */}
+      <Modal
+        open={editOpen}
+        onCancel={() => {
+          setEditOpen(false);
+          formEdit.resetFields();
+        }}
+        footer={null}
+        width={740}
+        destroyOnClose
+        title={null}
+      >
+        <div style={styles.modalShell}>
+          <Spin spinning={detailLoading}>
+            <Form layout="vertical" form={formEdit}>
+              <Form.Item label={T.college} name="college_id">
+                <Select
+                  showSearch
+                  placeholder="Pilih kampus"
+                  filterOption={false}
+                  onSearch={fetchCollegeOpts}
+                  notFoundContent={fetchingCollege ? "Loading..." : null}
+                  options={collegeOptions}
+                />
+              </Form.Item>
+
+              <Form.Item label={T.name} name="name">
+                <Input placeholder="Nama jurusan" />
+              </Form.Item>
+
+              <Form.Item label={T.desc} name="description">
+                <Input.TextArea rows={3} placeholder="Deskripsi (opsional)" />
+              </Form.Item>
+
+              <div style={styles.modalFooter}>
+                <Button
+                  type="primary"
+                  size="large"
+                  onClick={onEditSubmit}
+                  style={styles.saveBtn}
+                >
+                  Simpan Perubahan
+                </Button>
+              </div>
+            </Form>
+          </Spin>
+        </div>
+      </Modal>
+
+      {/* ===== View Modal ===== */}
+      <Modal
+        open={viewOpen}
+        onCancel={() => {
+          setViewOpen(false);
+          setDetailData(null);
+        }}
+        footer={null}
+        width={660}
+        destroyOnClose
+        title={null}
+      >
+        <div style={styles.modalShell}>
+          <Spin spinning={detailLoading}>
+            <div style={{ display: "grid", gap: 8 }}>
+              <div>
+                <div style={styles.label}>{T.name}</div>
+                <div style={styles.value}>
+                  {detailData?.name || activeRow?.name || "—"}
+                </div>
+              </div>
+              <div>
+                <div style={styles.label}>{T.college}</div>
+                <div style={styles.value}>
+                  {viewModel.collegeName?.(
+                    detailData?.college_id || activeRow?.college_id
+                  ) || "—"}
+                </div>
+              </div>
+              <div>
+                <div style={styles.label}>{T.desc}</div>
+                <div style={{ ...styles.value, whiteSpace: "pre-wrap" }}>
+                  {stripTags(detailData?.description) || "—"}
+                </div>
+              </div>
+              <div>
+                <div style={styles.label}>Tanggal dibuat</div>
+                <div style={styles.value}>
+                  {fmtDateId(
+                    detailData?.created_ts ||
+                      detailData?.created_at ||
+                      detailData?.updated_at ||
+                      activeRow?.created_ts ||
+                      activeRow?.created_at ||
+                      activeRow?.updated_at
+                  )}
+                </div>
+              </div>
+            </div>
+          </Spin>
+        </div>
+      </Modal>
     </ConfigProvider>
   );
 }
+
+/* ===== styles ===== */
+const styles = {
+  cardOuter: {
+    background: "#ffffff",
+    borderRadius: 16,
+    border: "1px solid #e6eeff",
+    boxShadow:
+      "0 10px 40px rgba(11, 86, 201, 0.07), 0 3px 12px rgba(11,86,201,0.05)",
+    overflow: "hidden",
+  },
+  cardHeaderBar: {
+    height: 20,
+    background:
+      "linear-gradient(90deg, #0b56c9 0%, #0b56c9 65%, rgba(11,86,201,0.35) 100%)",
+  },
+  cardInner: { padding: "12px 14px 14px", position: "relative" },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: 800,
+    color: "#0b3e91",
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  totalBadgeWrap: {
+    position: "absolute",
+    right: 14,
+    top: 8,
+    display: "grid",
+    gap: 4,
+    justifyItems: "end",
+    background: "#fff",
+    border: "1px solid #e6eeff",
+    borderRadius: 12,
+    padding: "6px 12px",
+    boxShadow: "0 6px 18px rgba(11,86,201,0.08)",
+  },
+  totalBadgeLabel: { fontSize: 12, color: "#0b3e91", fontWeight: 600 },
+  totalBadgeValue: {
+    fontSize: 16,
+    color: "#0b56c9",
+    fontWeight: 800,
+    lineHeight: 1,
+  },
+
+  sectionHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  sectionTitle: { fontSize: 18, fontWeight: 800, color: "#0b3e91" },
+
+  filtersRow: {
+    display: "grid",
+    gridTemplateColumns: "1fr 220px",
+    gap: 8,
+    marginBottom: 10,
+    alignItems: "center",
+  },
+  searchInput: { height: 36, borderRadius: 10 },
+  filterSelect: { width: "100%" },
+
+  tableHeader: {
+    display: "grid",
+    gridTemplateColumns: "2.4fr 1.3fr .8fr",
+    gap: 8,
+    marginBottom: 4,
+    color: "#0b3e91",
+    fontWeight: 700,
+    alignItems: "center",
+    minWidth: 720,
+  },
+  thLeft: { display: "flex", justifyContent: "flex-start", width: "100%" },
+  thCenter: { display: "flex", justifyContent: "center", width: "100%" },
+
+  row: {
+    display: "grid",
+    gridTemplateColumns: "2.4fr 1.3fr .8fr",
+    gap: 8,
+    alignItems: "center",
+    background: "#f5f8ff",
+    borderRadius: 10,
+    border: "1px solid #e8eeff",
+    padding: "8px 10px",
+    boxShadow: "0 6px 12px rgba(11, 86, 201, 0.05)",
+    minWidth: 720,
+  },
+
+  colName: {
+    background: "#ffffff",
+    borderRadius: 10,
+    border: "1px solid #eef3ff",
+    padding: "6px 10px",
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+  },
+  nameWrap: { display: "grid", gap: 2, minWidth: 0 },
+  nameText: {
+    fontWeight: 600,
+    color: "#111827",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  subDate: { fontSize: 11.5, color: "#6b7280" },
+
+  colCenter: { textAlign: "center", color: "#0f172a", fontWeight: 600 },
+  colActionsCenter: { display: "flex", justifyContent: "center", gap: 6 },
+  iconBtn: { borderRadius: 8 },
+
+  pagination: {
+    marginTop: 12,
+    display: "grid",
+    gridTemplateColumns: "36px 1fr 36px",
+    alignItems: "center",
+    justifyItems: "center",
+    gap: 8,
+  },
+  pageText: { fontSize: 12, color: "#475569" },
+
+  label: { fontSize: 11.5, color: "#64748b" },
+  value: {
+    fontWeight: 600,
+    color: "#0f172a",
+    background: "#f8fafc",
+    border: "1px solid #e8eeff",
+    borderRadius: 10,
+    padding: "8px 10px",
+    boxShadow: "inset 0 2px 6px rgba(11,86,201,0.05)",
+    wordBreak: "break-word",
+  },
+
+  modalShell: {
+    position: "relative",
+    background: "#fff",
+    borderRadius: 16,
+    padding: "14px 14px 8px",
+    boxShadow: "0 10px 36px rgba(11,86,201,0.08)",
+  },
+
+  modalFooter: { marginTop: 8, display: "grid", placeItems: "center" },
+  saveBtn: { minWidth: 200, height: 40, borderRadius: 12 },
+};

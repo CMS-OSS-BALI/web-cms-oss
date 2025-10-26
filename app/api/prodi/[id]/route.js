@@ -13,6 +13,13 @@ const DEFAULT_LOCALE = "id";
 const EN_LOCALE = "en";
 const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
 
+// --- NEW: safe date → timestamp (ms)
+function toTs(v) {
+  if (!v) return null;
+  const t = new Date(String(v)).getTime();
+  return Number.isFinite(t) ? t : null;
+}
+
 function normalizeLocale(v, fallback = DEFAULT_LOCALE) {
   return (v || fallback).toLowerCase().slice(0, 5);
 }
@@ -79,8 +86,12 @@ async function readBody(req) {
   }
   return (await req.json().catch(() => ({}))) ?? {};
 }
+
+/** map DB row → API shape (with created_ts/updated_ts) */
 function mapProdi(row, locale, fallback) {
   const t = pickTrans(row.prodi_translate || [], locale, fallback);
+  const created_ts = toTs(row.created_at) ?? toTs(row.updated_at) ?? null;
+  const updated_ts = toTs(row.updated_at) ?? null;
   return {
     id: row.id,
     jurusan_id: row.jurusan_id,
@@ -88,6 +99,8 @@ function mapProdi(row, locale, fallback) {
     created_at: row.created_at,
     updated_at: row.updated_at,
     deleted_at: row.deleted_at,
+    created_ts,
+    updated_ts,
     locale_used: t?.locale || null,
     name: t?.name || null,
     description: t?.description || null,
@@ -228,7 +241,25 @@ export async function PATCH(req, { params }) {
       }
     });
 
-    return json({ data: { id } });
+    // --- NEW: return latest detail (with created_ts/updated_ts)
+    const locales = [locale, DEFAULT_LOCALE];
+    const updated = await prisma.prodi.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        jurusan_id: true,
+        college_id: true,
+        created_at: true,
+        updated_at: true,
+        deleted_at: true,
+        prodi_translate: {
+          where: { locale: { in: locales } },
+          select: { locale: true, name: true, description: true },
+        },
+      },
+    });
+    if (!updated) return notFound();
+    return json({ data: mapProdi(updated, locale, DEFAULT_LOCALE) });
   } catch (err) {
     if (err instanceof Response) return err;
     if (err?.code === "P2003") {

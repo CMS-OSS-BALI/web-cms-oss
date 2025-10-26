@@ -1,14 +1,14 @@
-﻿"use client";
+﻿// useConsultantsViewModel.js
+"use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
-import { fetcher } from "@/lib/swr/fetcher";
 
 const DEFAULT_SORT = "created_at:desc";
 const DEFAULT_LOCALE = "id";
 const fallbackFor = (loc) => (String(loc).toLowerCase() === "id" ? "en" : "id");
 
-/* ========== Helpers ========== */
+// ---- helpers ----
 function buildKey({ page, perPage, q, sort, locale, fallback }) {
   const params = new URLSearchParams();
   params.set("page", String(page));
@@ -20,63 +20,76 @@ function buildKey({ page, perPage, q, sort, locale, fallback }) {
   return `/api/consultants?${params.toString()}`;
 }
 
-/**
- * toFormData (mendukung multi file)
- * - Untuk galeri program, **SELALU** kirim sebagai "files[]"
- * - Jika caller mengirim "program_images" (array string path), kirim sebagai "program_images[]"
- */
+/** payload -> FormData (support replace/append program_images) */
 function toFormData(payload = {}) {
   const fd = new FormData();
 
-  Object.entries(payload).forEach(([k, v]) => {
-    if (v === undefined || v === null) return;
-
-    // Back-compat: terima "program_files" atau "files" → kirim sebagai files[]
-    if (k === "program_files" || k === "files") {
-      const arr = Array.isArray(v) ? v : v instanceof FileList ? [...v] : [];
-      arr.forEach((f) => f instanceof File && fd.append("files[]", f));
-      return;
-    }
-
-    // Array string untuk path gambar (jika pakai skema upload terpisah)
-    if (k === "program_images" && Array.isArray(v)) {
-      v.forEach(
-        (s) => typeof s === "string" && fd.append("program_images[]", s)
-      );
-      return;
-    }
-
-    // Catatan: API saat ini TIDAK membaca field file tunggal ini (disiapkan untuk masa depan)
-    if (k === "profile_file" || k === "program_consultant_file") {
-      if (v instanceof File) fd.append(k, v);
-      return;
-    }
-
-    if (typeof v === "boolean") {
-      fd.append(k, v ? "true" : "false");
-      return;
-    }
-
-    fd.append(k, String(v));
+  const map = {
+    name_id: payload.name_id ?? payload.name,
+    description_id: payload.description_id ?? payload.description,
+    whatsapp: payload.whatsapp ?? payload.no_whatsapp,
+    email: payload.email,
+    profile_image_url: payload.profile_image_url,
+    autoTranslate:
+      payload.autoTranslate === undefined ? true : !!payload.autoTranslate,
+    program_images_mode:
+      (payload.imagesMode || payload.program_images_mode || "replace") ===
+      "append"
+        ? "append"
+        : "replace",
+  };
+  Object.entries(map).forEach(([k, v]) => {
+    if (v === undefined) return;
+    if (typeof v === "boolean") fd.append(k, v ? "true" : "false");
+    else if (v === null) fd.append(k, "");
+    else fd.append(k, String(v));
   });
+
+  const pf =
+    payload.profile_file ||
+    (payload.avatar && payload.avatar instanceof File ? payload.avatar : null);
+  if (pf instanceof File) fd.append("profile_file", pf);
+
+  const programImages =
+    payload.images ||
+    payload.program_images ||
+    (Array.isArray(payload.images) ? payload.images : []);
+  if (Array.isArray(programImages)) {
+    programImages
+      .map((s) => (s == null ? "" : String(s).trim()))
+      .filter(Boolean)
+      .forEach((s) => fd.append("program_images[]", s));
+  }
+
+  const fileList =
+    payload.program_files ||
+    payload.files ||
+    (payload.program_files instanceof FileList
+      ? [...payload.program_files]
+      : Array.isArray(payload.program_files)
+      ? payload.program_files
+      : []);
+  (fileList || [])
+    .filter((f) => f instanceof File)
+    .forEach((f) => fd.append("files[]", f));
 
   return fd;
 }
 
+const SSR_INIT = { headers: { "x-ssr": "1" }, credentials: "include" };
+const fetcherWithInit = ([url, init]) => fetch(url, init).then((r) => r.json());
+
 export default function useConsultantsViewModel() {
-  // filters/paging
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
   const [q, setQ] = useState("");
   const [sort, setSort] = useState(DEFAULT_SORT);
   const [locale, setLocale] = useState(DEFAULT_LOCALE);
   const [fallback, setFallback] = useState(fallbackFor(DEFAULT_LOCALE));
-
-  // op loading (POST/PATCH/DELETE)
   const [opLoading, setOpLoading] = useState(false);
 
   const listKey = useMemo(
-    () => buildKey({ page, perPage, q, sort, locale, fallback }),
+    () => [buildKey({ page, perPage, q, sort, locale, fallback }), SSR_INIT],
     [page, perPage, q, sort, locale, fallback]
   );
 
@@ -85,9 +98,16 @@ export default function useConsultantsViewModel() {
     error: listErrorObj,
     isLoading,
     mutate,
-  } = useSWR(listKey, fetcher, { revalidateOnFocus: false });
+  } = useSWR(listKey, fetcherWithInit, {
+    revalidateOnFocus: false,
+    keepPreviousData: true,
+  });
 
-  const consultants = listJson?.data ?? [];
+  const consultants = useMemo(() => {
+    const arr = listJson?.data ?? [];
+    return arr.map((x) => ({ ...x, phone: x.whatsapp ?? null }));
+  }, [listJson?.data]);
+
   const total = listJson?.meta?.total ?? 0;
   const metaPage = listJson?.meta?.page;
   const metaPerPage = listJson?.meta?.perPage;
@@ -104,15 +124,38 @@ export default function useConsultantsViewModel() {
 
   const refresh = useCallback(() => mutate(), [mutate]);
 
+  /* ===== DETAIL ===== */
+  async function getConsultant(id) {
+    try {
+      const url = new URL(
+        `/api/consultants/${encodeURIComponent(id)}`,
+        window.location.origin
+      );
+      url.searchParams.set("locale", locale);
+      url.searchParams.set("fallback", fallback);
+      const res = await fetch(url.toString(), { method: "GET", ...SSR_INIT });
+      const info = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(
+          info?.error?.message || info?.message || "Gagal memuat detail"
+        );
+      }
+      const d = info?.data ?? {};
+      return { ok: true, data: { ...d, phone: d.whatsapp ?? null } };
+    } catch (e) {
+      return { ok: false, error: e?.message || "Gagal memuat detail" };
+    }
+  }
+
   /* ===== CREATE ===== */
   async function createConsultant(payload) {
-    // payload bisa campur: { files?: File[], program_images?: string[] } + fields text
     setOpLoading(true);
     try {
       const fd = toFormData(payload);
       const res = await fetch("/api/consultants", {
         method: "POST",
-        body: fd, // biar browser set boundary otomatis
+        body: fd,
+        credentials: "include",
       });
       const info = await res.json().catch(() => null);
       if (!res.ok) {
@@ -131,13 +174,13 @@ export default function useConsultantsViewModel() {
 
   /* ===== UPDATE ===== */
   async function updateConsultant(id, payload) {
-    // payload bisa: files?: File[], program_images_mode?: 'append' | 'replace'
     setOpLoading(true);
     try {
       const fd = toFormData(payload);
       const res = await fetch(`/api/consultants/${encodeURIComponent(id)}`, {
         method: "PATCH",
         body: fd,
+        credentials: "include",
       });
       const info = await res.json().catch(() => null);
       if (!res.ok) {
@@ -163,8 +206,9 @@ export default function useConsultantsViewModel() {
     try {
       const res = await fetch(`/api/consultants/${encodeURIComponent(id)}`, {
         method: "DELETE",
+        credentials: "include",
       });
-      if (!res.ok) {
+      if (!res.ok && res.status !== 204) {
         const info = await res.json().catch(() => null);
         throw new Error(
           info?.error?.message || info?.message || "Gagal menghapus konsultan"
@@ -179,15 +223,51 @@ export default function useConsultantsViewModel() {
     }
   }
 
+  /* ===== DELETE 1 FOTO PROGRAM ===== */
+  async function deleteProgramImage(consultantId, imageId) {
+    try {
+      const res = await fetch(
+        `/api/consultants/${encodeURIComponent(
+          consultantId
+        )}/program-images/${encodeURIComponent(imageId)}`,
+        { method: "DELETE", credentials: "include" }
+      );
+      if (!res.ok && res.status !== 204) {
+        const info = await res.json().catch(() => null);
+        throw new Error(info?.error?.message || "Gagal menghapus foto");
+      }
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e?.message || "Gagal menghapus foto" };
+    }
+  }
+
   const listError = listErrorObj?.message || "";
 
   return {
-    // data
+    t: {
+      title: "Manajemen Konsultan",
+      listTitle: "Data Konsultan",
+      name: "Nama Konsultan",
+      email: "Email",
+      phone: "No Whatsapp",
+      action: "Action",
+      addNew: "Buat Data Baru",
+      totalLabel: "Konsultan",
+      view: "Lihat",
+      edit: "Edit",
+      del: "Hapus",
+      modalCreateTitle: "Buat Data Konsultan",
+      desc: "Deskripsi Konsultan",
+      programBlock: "Foto Program Konsultan",
+      save: "SIMPAN",
+    },
+    tokens: { shellW: 1180, headerH: 84, blue: "#0b56c9", text: "#0f172a" },
+
     consultants,
     total,
     totalPages,
 
-    // filters & paging
     page,
     perPage,
     q,
@@ -195,7 +275,6 @@ export default function useConsultantsViewModel() {
     locale,
     fallback,
 
-    // setters
     setPage,
     setPerPage,
     setQ,
@@ -203,15 +282,15 @@ export default function useConsultantsViewModel() {
     setLocale,
     setFallback,
 
-    // states
     loading: isLoading,
     opLoading,
     listError,
 
-    // actions
+    getConsultant,
     createConsultant,
     updateConsultant,
     deleteConsultant,
+    deleteProgramImage, // <— expose
     refresh,
   };
 }

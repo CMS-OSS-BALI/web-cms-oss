@@ -79,14 +79,27 @@ async function readBody(req) {
   }
   return (await req.json().catch(() => ({}))) ?? {};
 }
+
+/** -- NEW: date → timestamp (ms), with guard */
+function toTs(v) {
+  if (!v) return null;
+  const t = new Date(String(v)).getTime();
+  return Number.isFinite(t) ? t : null;
+}
+
+/** map DB row → API shape (with created_ts/updated_ts) */
 function mapJurusan(row, locale, fallback) {
   const t = pickTrans(row.jurusan_translate || [], locale, fallback);
+  const created_ts = toTs(row.created_at) ?? toTs(row.updated_at) ?? null;
+  const updated_ts = toTs(row.updated_at) ?? null;
   return {
     id: row.id,
     college_id: row.college_id,
     created_at: row.created_at,
     updated_at: row.updated_at,
     deleted_at: row.deleted_at,
+    created_ts,
+    updated_ts,
     locale_used: t?.locale || null,
     name: t?.name || null,
     description: t?.description || null,
@@ -221,7 +234,25 @@ export async function PATCH(req, { params }) {
     }
 
     if (ops.length) await prisma.$transaction(ops);
-    return json({ data: { id } });
+
+    // -- NEW: return latest shape with created_ts
+    const locales = [locale, DEFAULT_LOCALE];
+    const updated = await prisma.jurusan.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        college_id: true,
+        created_at: true,
+        updated_at: true,
+        deleted_at: true,
+        jurusan_translate: {
+          where: { locale: { in: locales } },
+          select: { locale: true, name: true, description: true },
+        },
+      },
+    });
+    if (!updated) return notFound();
+    return json({ data: mapJurusan(updated, locale, DEFAULT_LOCALE) });
   } catch (err) {
     if (err?.code === "P2003") {
       return NextResponse.json(

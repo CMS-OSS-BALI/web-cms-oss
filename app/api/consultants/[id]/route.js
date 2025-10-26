@@ -10,7 +10,6 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-/* ===== Supabase helpers ===== */
 const BUCKET =
   process.env.SUPABASE_BUCKET || process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "";
 const SUPA_URL = (
@@ -19,11 +18,59 @@ const SUPA_URL = (
   ""
 ).replace(/\/+$/, "");
 
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MAX_UPLOAD_SIZE = 10 * 1024 * 1024;
+
+const ok = (b, i) => NextResponse.json(sanitize(b), i);
+function sanitize(v) {
+  if (v == null) return v;
+  if (typeof v === "bigint") return v.toString();
+  if (Array.isArray(v)) return v.map(sanitize);
+  if (typeof v === "object") {
+    const o = {};
+    for (const [k, val] of Object.entries(v)) o[k] = sanitize(val);
+    return o;
+  }
+  return v;
+}
+async function requireAdmin() {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) {
+    const err = new Error("UNAUTHORIZED");
+    err.status = 401;
+    throw err;
+  }
+  return session.user;
+}
+function authError(err) {
+  const status = err?.status === 401 ? 401 : 403;
+  return ok(
+    { error: { code: status === 401 ? "UNAUTHORIZED" : "FORBIDDEN" } },
+    { status }
+  );
+}
+function parseIdString(raw) {
+  const s = String(raw ?? "").trim();
+  return s || null;
+}
+function pickLocale(req, key = "locale", dflt = "id") {
+  try {
+    const { searchParams } = new URL(req.url);
+    return (searchParams.get(key) || dflt).slice(0, 5).toLowerCase();
+  } catch {
+    return dflt;
+  }
+}
+function pickTrans(list, primary, fallback) {
+  if (!Array.isArray(list) || !list.length) return null;
+  const by = (loc) => list.find((t) => t.locale === loc);
+  return by(primary) || by(fallback) || list[0] || null;
+}
 function getPublicUrl(path) {
   if (!path) return null;
   if (/^https?:\/\//i.test(path)) return path;
-
   const clean = String(path).replace(/^\/+/, "");
+
   if (supabaseAdmin && BUCKET) {
     const { data, error } = supabaseAdmin.storage
       .from(BUCKET)
@@ -37,84 +84,107 @@ function getPublicUrl(path) {
   }
   return null;
 }
+function extFromType(t) {
+  if (t === "image/jpeg") return "jpg";
+  if (t === "image/png") return "png";
+  if (t === "image/webp") return "webp";
+  return "bin";
+}
+async function uploadConsultantProgramImage(file, id) {
+  if (!supabaseAdmin || !BUCKET)
+    throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
+  const type = file.type || "";
+  if (!ALLOWED_IMAGE_TYPES.has(type)) throw new Error("UNSUPPORTED_TYPE");
+  const buf = Buffer.from(await file.arrayBuffer());
+  if (buf.length > MAX_UPLOAD_SIZE) throw new Error("PAYLOAD_TOO_LARGE");
 
-/* ===== Helpers ===== */
-function sanitize(v) {
-  if (v === null || v === undefined) return v;
-  if (typeof v === "bigint") return v.toString();
-  if (Array.isArray(v)) return v.map(sanitize);
-  if (typeof v === "object") {
-    const o = {};
-    for (const [k, val] of Object.entries(v)) o[k] = sanitize(val);
-    return o;
+  const key = `consultants/${id}/${randomUUID()}.${extFromType(type)}`;
+  const { error } = await supabaseAdmin.storage.from(BUCKET).upload(key, buf, {
+    contentType: type,
+    cacheControl: "31536000",
+    upsert: false,
+  });
+  if (error) throw error;
+  return key;
+}
+async function uploadConsultantProfileImage(file, id) {
+  if (!supabaseAdmin || !BUCKET)
+    throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
+  const type = file.type || "";
+  if (!ALLOWED_IMAGE_TYPES.has(type)) throw new Error("UNSUPPORTED_TYPE");
+  const buf = Buffer.from(await file.arrayBuffer());
+  if (buf.length > MAX_UPLOAD_SIZE) throw new Error("PAYLOAD_TOO_LARGE");
+
+  const key = `consultants/${id}/profile-${randomUUID()}.${extFromType(type)}`;
+  const { error } = await supabaseAdmin.storage.from(BUCKET).upload(key, buf, {
+    contentType: type,
+    cacheControl: "31536000",
+    upsert: false,
+  });
+  if (error) throw error;
+  return key;
+}
+
+// ---- helpers utk hapus file dari public URL / path ----
+function toBucketRelPath(u) {
+  if (!u) return null;
+  const s = String(u).trim();
+  if (/^https?:\/\//i.test(s)) {
+    const m = s.match(/\/object\/public\/([^/]+)\/(.+)$/);
+    if (m) {
+      const b = m[1];
+      const p = m[2];
+      if (BUCKET && b === BUCKET) return p;
+      return null; // beda bucket, abaikan
+    }
+    return null;
   }
-  return v;
+  return s.replace(new RegExp(`^${BUCKET}/`), "").replace(/^\/+/, "");
 }
-function json(body, init) {
-  return NextResponse.json(sanitize(body), init);
+async function removeStorageObjects(paths = []) {
+  const rel = paths.map(toBucketRelPath).filter(Boolean);
+  if (!rel.length || !supabaseAdmin || !BUCKET) return;
+  await supabaseAdmin.storage.from(BUCKET).remove(rel);
 }
-async function requireAdmin() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id && !session?.user?.email) {
-    const err = new Error("UNAUTHORIZED");
-    err.status = 401;
-    throw err;
-  }
-  return session.user;
-}
-function handleAuthError(err) {
-  const status = err?.status === 401 ? 401 : 403;
-  return json(
-    { error: { code: status === 401 ? "UNAUTHORIZED" : "FORBIDDEN" } },
-    { status }
-  );
-}
-/** Prisma expects String id → keep as string */
-function parseIdString(raw) {
-  if (raw === null || raw === undefined) return null;
-  const s = String(raw).trim();
-  return s.length ? s : null;
-}
-function pickLocale(req, key = "locale", dflt = "id") {
+
+/* PII policy */
+async function canIncludePII(req, isPublic) {
+  if (isPublic) return false;
+  if (req.headers.get("x-ssr") !== "1") return false;
   try {
-    const { searchParams } = new URL(req.url);
-    return (searchParams.get(key) || dflt).slice(0, 5).toLowerCase();
+    await requireAdmin();
+    return true;
   } catch {
-    return dflt;
+    return false;
   }
 }
-function pickTrans(list, primary, fallback) {
-  if (!Array.isArray(list) || list.length === 0) return null;
-  const by = (loc) => list.find((t) => t.locale === loc);
-  return by(primary) || by(fallback) || list[0] || null;
-}
 
-/* ===== GET /api/consultants/:id (DETAIL) ===== */
+/* ----------------- GET detail ----------------- */
 export async function GET(req, { params }) {
-  const { searchParams } = new URL(req.url);
-  const isPublic = searchParams.get("public") === "1";
+  const url = new URL(req.url);
+  const isPublic = url.searchParams.get("public") === "1";
+  const includePII = await canIncludePII(req, isPublic);
 
-  if (!isPublic) {
+  if (!includePII && !isPublic) {
     try {
       await requireAdmin();
     } catch (err) {
-      return handleAuthError(err);
+      return authError(err);
     }
   }
 
-  const rawParam = params?.id;
-  const id = parseIdString(rawParam);
+  const raw = params?.id;
+  const id = parseIdString(raw);
   const locale = pickLocale(req, "locale", "id");
   const fallback = pickLocale(req, "fallback", "id");
 
   const baseSelect = {
     id: true,
     profile_image_url: true,
-    program_consultant_image_url: true,
     created_at: true,
     updated_at: true,
     consultants_translate: {
-      where: { locale: { in: [locale, fallback] } }, // reduce payload
+      where: { locale: { in: [locale, fallback] } },
       select: { locale: true, name: true, description: true },
     },
     program_images: {
@@ -122,53 +192,25 @@ export async function GET(req, { params }) {
       select: { id: true, image_url: true, sort: true },
     },
   };
-  const selectPublic = { ...baseSelect };
-  const selectAdmin = { ...baseSelect, email: true, whatsapp: true };
+  const select = includePII
+    ? { ...baseSelect, email: true, whatsapp: true }
+    : baseSelect;
 
-  let row = null;
-
-  if (id) {
-    row = await prisma.consultants.findUnique({
-      where: { id },
-      select: isPublic ? selectPublic : selectAdmin,
-    });
-  } else if (isPublic && rawParam) {
-    // slug/name fallback for public
-    const guessedName = String(rawParam).replace(/-/g, " ").trim();
-    if (guessedName.length) {
-      row = await prisma.consultants.findFirst({
-        where: {
-          consultants_translate: {
-            some: {
-              name: { contains: guessedName, mode: "insensitive" },
-            },
-          },
-        },
-        select: selectPublic,
-        orderBy: { created_at: "desc" },
-      });
-    }
-  }
-
-  if (!row) return json({ error: { code: "NOT_FOUND" } }, { status: 404 });
+  let row = await prisma.consultants.findUnique({ where: { id }, select });
+  if (!row) return ok({ error: { code: "NOT_FOUND" } }, { status: 404 });
 
   const t = pickTrans(row.consultants_translate, locale, fallback);
   const data = {
     id: row.id,
-    email: isPublic ? null : row.email ?? null,
-    whatsapp: isPublic ? null : row.whatsapp ?? null,
+    email: includePII ? row.email ?? null : null,
+    whatsapp: includePII ? row.whatsapp ?? null : null,
     profile_image_url: row.profile_image_url,
     profile_image_public_url: getPublicUrl(row.profile_image_url),
-    program_consultant_image_url: row.program_consultant_image_url,
-    program_consultant_image_public_url: getPublicUrl(
-      row.program_consultant_image_url
-    ),
     created_at: row.created_at,
     updated_at: row.updated_at,
     name: t?.name ?? null,
     description: t?.description ?? null,
     locale_used: t?.locale ?? null,
-    public: isPublic,
     program_images: (row.program_images || []).map((pi) => ({
       id: pi.id,
       image_url: pi.image_url,
@@ -177,13 +219,13 @@ export async function GET(req, { params }) {
     })),
   };
 
-  const resp = json({ data });
-  if (isPublic)
-    resp.headers.set("Cache-Control", "public, max-age=60, s-maxage=300");
+  const resp = ok({ data });
+  resp.headers.set("Cache-Control", "no-store");
+  resp.headers.set("Vary", "Cookie, x-ssr, Accept-Language");
   return resp;
 }
 
-/* ===== PUT/PATCH /api/consultants/:id ===== */
+/* ----------------- PUT/PATCH ----------------- */
 export async function PUT(req, ctx) {
   return PATCH(req, ctx);
 }
@@ -192,18 +234,19 @@ export async function PATCH(req, { params }) {
   try {
     await requireAdmin();
   } catch (err) {
-    return handleAuthError(err);
+    return authError(err);
   }
 
   const id = parseIdString(params?.id);
-  if (!id) return json({ error: { code: "BAD_ID" } }, { status: 400 });
+  if (!id) return ok({ error: { code: "BAD_ID" } }, { status: 400 });
 
-  const contentType = req.headers.get("content-type") || "";
+  const ct = req.headers.get("content-type") || "";
   let payload = {};
   let uploadFiles = [];
+  let profileFile = null;
   let imagesMode = "replace";
 
-  if (contentType.includes("multipart/form-data")) {
+  if (ct.includes("multipart/form-data")) {
     const form = await req.formData();
     const toStr = (k) => (form.has(k) ? String(form.get(k)) : undefined);
 
@@ -214,11 +257,9 @@ export async function PATCH(req, { params }) {
     payload.profile_image_url = form.has("profile_image_url")
       ? toStr("profile_image_url") || null
       : undefined;
-    payload.program_consultant_image_url = form.has(
-      "program_consultant_image_url"
-    )
-      ? toStr("program_consultant_image_url") || null
-      : undefined;
+
+    const pf = form.get("profile_file");
+    if (pf && typeof pf !== "string") profileFile = pf;
 
     if (form.has("name_id")) payload.name_id = toStr("name_id");
     if (form.has("description_id"))
@@ -226,10 +267,9 @@ export async function PATCH(req, { params }) {
     if (form.has("name_en")) payload.name_en = toStr("name_en");
     if (form.has("description_en"))
       payload.description_en = form.get("description_en") ?? null;
-    if (form.has("autoTranslate")) {
+    if (form.has("autoTranslate"))
       payload.autoTranslate =
         (toStr("autoTranslate") || "true").toLowerCase() !== "false";
-    }
 
     imagesMode =
       (toStr("program_images_mode") || "replace").toLowerCase() === "append"
@@ -253,15 +293,11 @@ export async function PATCH(req, { params }) {
     payload = await req.json().catch(() => ({}));
   }
 
-  // Parent update
   const parentData = {};
   if (payload.email !== undefined) parentData.email = payload.email;
   if (payload.whatsapp !== undefined) parentData.whatsapp = payload.whatsapp;
   if (payload.profile_image_url !== undefined)
     parentData.profile_image_url = payload.profile_image_url;
-  if (payload.program_consultant_image_url !== undefined)
-    parentData.program_consultant_image_url =
-      payload.program_consultant_image_url;
   if (Object.keys(parentData).length) parentData.updated_at = new Date();
 
   if (Object.keys(parentData).length) {
@@ -270,23 +306,22 @@ export async function PATCH(req, { params }) {
     } catch (e) {
       if (e?.code === "P2002") {
         const field = e?.meta?.target?.join?.(", ") || "unique";
-        return json(
+        return ok(
           { error: { code: "CONFLICT", message: `${field} already in use` } },
           { status: 409 }
         );
       }
       if (e?.code === "P2025")
-        return json({ error: { code: "NOT_FOUND" } }, { status: 404 });
+        return ok({ error: { code: "NOT_FOUND" } }, { status: 404 });
       throw e;
     }
   } else {
     const exists = await prisma.consultants.findUnique({ where: { id } });
-    if (!exists) return json({ error: { code: "NOT_FOUND" } }, { status: 404 });
+    if (!exists) return ok({ error: { code: "NOT_FOUND" } }, { status: 404 });
   }
 
-  // Translations upsert
+  // Upsert translations (sama seperti sebelumnya) …
   const ops = [];
-
   if (payload.name_id !== undefined || payload.description_id !== undefined) {
     ops.push(
       prisma.consultants_translate.upsert({
@@ -310,7 +345,6 @@ export async function PATCH(req, { params }) {
       })
     );
   }
-
   if (payload.name_en !== undefined || payload.description_en !== undefined) {
     ops.push(
       prisma.consultants_translate.upsert({
@@ -334,7 +368,6 @@ export async function PATCH(req, { params }) {
       })
     );
   }
-
   if (
     payload?.autoTranslate &&
     (payload.name_id !== undefined || payload.description_id !== undefined)
@@ -342,11 +375,11 @@ export async function PATCH(req, { params }) {
     let name_en;
     let description_en;
     try {
-      if (payload.name_id !== undefined && payload.name_id)
+      if (payload.name_id)
         name_en = await translate(String(payload.name_id), "id", "en");
     } catch {}
     try {
-      if (payload.description_id !== undefined && payload.description_id)
+      if (payload.description_id)
         description_en = await translate(
           String(payload.description_id),
           "id",
@@ -376,7 +409,17 @@ export async function PATCH(req, { params }) {
     }
   }
 
-  // Program images (strings + uploads)
+  if (profileFile) {
+    const path = await uploadConsultantProfileImage(profileFile, id);
+    ops.push(
+      prisma.consultants.update({
+        where: { id },
+        data: { profile_image_url: path, updated_at: new Date() },
+      })
+    );
+  }
+
+  // -------- Program images (CRUD) --------
   const stringImages = Array.isArray(payload?.program_images)
     ? payload.program_images
         .map((v) => (v == null ? "" : String(v).trim()))
@@ -398,6 +441,18 @@ export async function PATCH(req, { params }) {
       payload?.program_images !== undefined ||
       uploadFiles.length)
   ) {
+    // Ambil existing utk tau mana yg perlu dihapus dari storage
+    const existing = await prisma.consultant_program_images.findMany({
+      where: { id_consultant: id },
+      select: { image_url: true },
+    });
+
+    // set path yang dipertahankan
+    const keepSet = new Set(toInsert.map(toBucketRelPath).filter(Boolean));
+    const removePaths = existing
+      .map((e) => toBucketRelPath(e.image_url))
+      .filter((p) => p && !keepSet.has(p));
+
     ops.push(
       prisma.consultant_program_images.deleteMany({
         where: { id_consultant: id },
@@ -416,49 +471,79 @@ export async function PATCH(req, { params }) {
         })
       );
     }
-  } else if (imagesMode === "append" && toInsert.length) {
-    const last = await prisma.consultant_program_images.findFirst({
-      where: { id_consultant: id },
-      orderBy: [{ sort: "desc" }, { id: "desc" }],
-      select: { sort: true },
-    });
-    let start = last?.sort ? Number(last.sort) + 1 : 0;
-    ops.push(
-      prisma.consultant_program_images.createMany({
-        data: toInsert.map((path, i) => ({
-          id_consultant: id,
-          image_url: path,
-          sort: start + i,
-          created_at: new Date(),
-          updated_at: new Date(),
-        })),
-      })
-    );
+
+    await prisma.$transaction(ops);
+    // Hapus file-file yang sudah tidak dipakai
+    try {
+      await removeStorageObjects(removePaths);
+    } catch {}
+  } else {
+    // append saja
+    if (toInsert.length) {
+      const last = await prisma.consultant_program_images.findFirst({
+        where: { id_consultant: id },
+        orderBy: [{ sort: "desc" }, { id: "desc" }],
+        select: { sort: true },
+      });
+      let start = Number(last?.sort ?? -1) + 1;
+      ops.push(
+        prisma.consultant_program_images.createMany({
+          data: toInsert.map((path, i) => ({
+            id_consultant: id,
+            image_url: path,
+            sort: start + i,
+            created_at: new Date(),
+            updated_at: new Date(),
+          })),
+        })
+      );
+    }
+    if (ops.length) await prisma.$transaction(ops);
   }
 
-  if (ops.length) await prisma.$transaction(ops);
-
-  return json({ data: { id } });
+  const resp = ok({ data: { id } });
+  resp.headers.set("Cache-Control", "no-store");
+  resp.headers.set("Vary", "Cookie, x-ssr, Accept-Language");
+  return resp;
 }
 
-/* ===== DELETE (admin only) ===== */
+/* ----------------- DELETE Konsultan ----------------- */
 export async function DELETE(_req, { params }) {
   try {
     await requireAdmin();
   } catch (err) {
-    return handleAuthError(err);
+    return authError(err);
   }
 
   const id = parseIdString(params?.id);
-  if (!id) return json({ error: { code: "BAD_ID" } }, { status: 400 });
+  if (!id) return ok({ error: { code: "BAD_ID" } }, { status: 400 });
+
+  // ambil semua path sebelum delete
+  const rows = await prisma.consultant_program_images.findMany({
+    where: { id_consultant: id },
+    select: { image_url: true },
+  });
+  const parent = await prisma.consultants.findUnique({
+    where: { id },
+    select: { profile_image_url: true },
+  });
 
   try {
     await prisma.consultants.delete({ where: { id } });
-    return new NextResponse(null, { status: 204 });
   } catch (e) {
     if (e?.code === "P2025")
-      return json({ error: { code: "NOT_FOUND" } }, { status: 404 });
-    console.error(`DELETE /api/consultants/${id} error:`, e);
-    return json({ error: { code: "SERVER_ERROR" } }, { status: 500 });
+      return ok({ error: { code: "NOT_FOUND" } }, { status: 404 });
+    return ok({ error: { code: "SERVER_ERROR" } }, { status: 500 });
   }
+
+  // bersihkan storage (best-effort)
+  try {
+    const paths = [
+      ...rows.map((r) => r.image_url),
+      parent?.profile_image_url || null,
+    ].filter(Boolean);
+    await removeStorageObjects(paths);
+  } catch {}
+
+  return new NextResponse(null, { status: 204 });
 }

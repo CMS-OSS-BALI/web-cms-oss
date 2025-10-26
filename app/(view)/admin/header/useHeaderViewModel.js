@@ -1,28 +1,102 @@
 "use client";
 
+import { useMemo, useEffect } from "react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useSession, signOut } from "next-auth/react";
+import useSWR from "swr";
+import { HomeOutlined } from "@ant-design/icons";
 
-const TITLE_MAP = {
-  "/admin/dashboard": "Dashboard",
-  "/admin/programs": "Programs",
-  "/admin/events": "Events",
-  "/admin/scanner": "Scanner",
-  "/admin/partners": "Partners",
-  "/admin/testimonials": "Testimonials",
-  "/admin/merchants": "Mitra Dalam Negeri",
-  "/admin/profile": "Profile",
-};
+// ⬇️ Import MENU dari Sidebar via relative path (tanpa alias @)
+import { MENU, findPathByHref } from "../sidebar/useSidebarViewModel";
+
+const fetcher = (url) =>
+  fetch(url, { cache: "no-store", credentials: "include" }).then((r) =>
+    r.json()
+  );
 
 export default function useHeaderViewModel() {
   const pathname = usePathname() || "/admin/dashboard";
+  const { data: session } = useSession();
 
-  // ambil segmen pertama setelah /admin untuk judul
-  // contoh: /admin/events/123 -> /admin/events
-  let base = "/admin/dashboard";
-  const parts = pathname.split("?")[0].split("/").filter(Boolean);
-  if (parts[0] === "admin" && parts[1]) base = `/admin/${parts[1]}`;
+  // chain aktif untuk breadcrumbs (Kampus → Jurusan → Prodi)
+  const activeChain = useMemo(() => findPathByHref(pathname, MENU), [pathname]);
 
-  const title = TITLE_MAP[base] ?? "Dashboard";
-  return { title };
+  const breadcrumbs = useMemo(() => {
+    const items = [
+      {
+        title: (
+          <Link href="/admin/dashboard" className="ah-crumb">
+            <HomeOutlined />
+            <span>Beranda</span>
+          </Link>
+        ),
+      },
+    ];
+    if (activeChain.length) {
+      activeChain.forEach((node, idx) => {
+        const last = idx === activeChain.length - 1;
+        items.push({
+          title: last ? (
+            <div className="ah-crumb-disabled">
+              <span>{node.label}</span>
+            </div>
+          ) : (
+            <Link href={node.href} className="ah-crumb">
+              <span>{node.label}</span>
+            </Link>
+          ),
+        });
+      });
+    } else {
+      // fallback
+      const seg = pathname.split("?")[0].split("/").filter(Boolean);
+      const label = seg[2] ? seg[2][0].toUpperCase() + seg[2].slice(1) : "";
+      if (label)
+        items.push({ title: <div className="ah-crumb-disabled">{label}</div> });
+    }
+    return items;
+  }, [activeChain, pathname]);
+
+  const name = session?.user?.name || "Admin User";
+  const email = session?.user?.email || "";
+  const initials = name
+    .split(" ")
+    .map((s) => s[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+
+  const { data: me, mutate } = useSWR(
+    email ? "/api/auth/profile" : null,
+    fetcher,
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      refreshInterval: 0,
+      dedupingInterval: 5 * 60 * 1000,
+      keepPreviousData: true,
+    }
+  );
+
+  useEffect(() => {
+    let ch;
+    try {
+      ch = new BroadcastChannel("profile");
+      ch.onmessage = (ev) => ev?.data === "updated" && mutate();
+    } catch {}
+    return () => ch?.close?.();
+  }, [mutate]);
+
+  const image =
+    me?.image_public_url || me?.profile_photo || session?.user?.image || "";
+  function onLogout() {
+    try {
+      new BroadcastChannel("auth").postMessage("logout");
+    } catch {}
+    return signOut({ redirect: true, callbackUrl: "/admin/login-page" });
+  }
+
+  const user = { name, email, image, initials };
+  return { breadcrumbs, user, onLogout };
 }
-

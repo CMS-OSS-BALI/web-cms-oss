@@ -1,56 +1,49 @@
 /* Footer wrapper – sejajarkan dengan page-wrap & kasih ruang bawah */
 .wrap {
-  /* jaga jarak dari konten */
-  margin-top: 20px;
-
-  /* biar tidak ikut menyusut saat parent flex */
-  flex-shrink: 0; /* <-- penting di layout flex column */
-
-  /* padding: vertical 0, horizontal responsif, bottom + safe-area */
+  margin-top: 16px;
+  flex-shrink: 0; /* penting di layout flex column */
   padding: 0 clamp(16px, 4vw, 32px) calc(env(safe-area-inset-bottom) + 16px);
 }
 
-/* panel glass gelap yang lebih pekat + radius & shadow konsisten */
+/* === LIGHT variant (default) — selaras dengan card konten === */
 .row {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
 
-  /* sejajarkan lebar dengan .page-wrap (1320px) */
-  max-width: 1320px; /* <-- baru */
-  margin: 0 auto; /* <-- baru */
+  /* samakan lebar dengan konten (1140px) */
+  max-width: 1140px;
+  margin: 0 auto;
 
   padding: 12px 16px;
-  background: linear-gradient(
-    180deg,
-    rgba(11, 18, 35, 0.96),
-    rgba(11, 18, 35, 0.94)
-  );
-  color: #e7edf6;
+  background: #ffffff;
+  color: #0f172a;
   font-size: 12.5px;
-  border: 1px solid #2f3f60;
+  border: 1px solid #e6eeff;
   border-radius: 16px;
   line-height: 1.2;
-  box-shadow: 0 8px 18px rgba(2, 6, 23, 0.25);
+  box-shadow: 0 10px 40px rgba(11, 86, 201, 0.07),
+    0 3px 12px rgba(11, 86, 201, 0.05);
 }
 
 .left {
-  color: #cbd5e1;
+  color: #0b3e91;
+  font-weight: 600;
 }
 
 .right {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
-  list-style: none; /* reset bullet */
-  padding: 0; /* reset ul */
-  margin: 0; /* reset ul */
+  list-style: none;
+  padding: 0;
+  margin: 0;
 }
 
-/* link dengan target sentuh lebih besar + focus ring jelas */
+/* link style – warna biru konten */
 .link {
-  color: #5a96cf; /* lighter tint of 3674B5 */
+  color: #0b56c9;
   text-decoration: none;
   padding: 2px 4px;
   border-radius: 8px;
@@ -63,12 +56,31 @@
   transform: translateY(1px);
 }
 .link:focus-visible {
-  outline: 2px solid #5a96cf;
+  outline: 2px solid #cfe0ff;
   outline-offset: 2px;
 }
 
+/* --- Opsional: DARK variant kalau suatu halaman memang butuh --- */
+.rowDark {
+  background: linear-gradient(
+    180deg,
+    rgba(11, 18, 35, 0.96),
+    rgba(11, 18, 35, 0.94)
+  );
+  color: #e7edf6;
+  border: 1px solid #2f3f60;
+  box-shadow: 0 8px 18px rgba(2, 6, 23, 0.25);
+}
+.leftDark {
+  color: #cbd5e1;
+}
+.linkDark {
+  color: #5a96cf;
+}
+
 @media (max-width: 900px) {
-  .row {
+  .row,
+  .rowDark {
     flex-direction: column;
     align-items: flex-start;
     gap: 8px;

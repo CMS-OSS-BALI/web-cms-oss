@@ -1,0 +1,38 @@
+"use client";
+
+import { Suspense, lazy, useEffect } from "react";
+import Loading from "@/app/components/loading/LoadingImage";
+import useCollegeAViewModel from "./useCollegeAViewModel";
+
+const CollegeAContentLazy = lazy(() => import("./CollegeAContent"));
+
+const pickLocale = (v) => {
+  const s = String(v || "id")
+    .trim()
+    .toLowerCase();
+  return s.startsWith("en") ? "en" : "id";
+};
+
+export default function CollegePage({ searchParams }) {
+  const vm = useCollegeAViewModel();
+
+  // Set once from URL to avoid hydration mismatch
+  const initialLocale = pickLocale(searchParams?.lang);
+  useEffect(() => {
+    vm.setLocale?.(initialLocale);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialLocale]); // jangan menambahkan `vm` agar tidak rerun
+
+  return (
+    <Suspense
+      fallback={
+        <div className="page-wrap">
+          <Loading />
+        </div>
+      }
+    >
+      {/* pass as a single object, bukan spread */}
+      <CollegeAContentLazy vm={vm} />
+    </Suspense>
+  );
+}

@@ -1,291 +1,250 @@
-// app/(admin)/admin/jurusan/useJurusanViewModel.js
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
 import useSWR from "swr";
+import { useCallback, useMemo, useRef, useState } from "react";
 
-const fetcher = async (url) => {
-  const r = await fetch(url, { credentials: "include" });
-  let j = {};
-  try {
-    j = await r.json();
-  } catch {}
-  if (!r.ok) {
-    const msg = j?.message || `Request failed (${r.status})`;
-    throw new Error(msg);
-  }
-  return j;
+const DEFAULT_LOCALE = "id";
+const FALLBACK_FOR = (loc) =>
+  String(loc).toLowerCase() === "id" ? "en" : "id";
+const DEFAULT_PER_PAGE = 10;
+
+const jsonFetcher = (url) =>
+  fetch(url).then(async (r) => {
+    if (!r.ok) throw new Error((await r.text().catch(() => "")) || r.status);
+    return r.json();
+  });
+
+const toTs = (v) => {
+  if (v === null || v === undefined || v === "") return null;
+  const d = new Date(String(v));
+  const t = d.getTime();
+  return Number.isFinite(t) ? t : null;
 };
 
-function buildQuery(params = {}) {
-  const sp = new URLSearchParams();
-  for (const [k, v] of Object.entries(params)) {
-    if (v === undefined || v === null || v === "") continue;
-    sp.set(k, String(v));
-  }
-  return sp.toString();
+function buildListKey({ page, perPage, q, locale, fallback, collegeId }) {
+  const p = new URLSearchParams();
+  p.set("page", String(page));
+  p.set("perPage", String(perPage));
+  if (q && q.trim()) p.set("q", q.trim());
+  if (collegeId) p.set("college_id", String(collegeId));
+  p.set("locale", locale);
+  p.set("fallback", fallback);
+  return `/api/jurusan?${p.toString()}`;
 }
 
-const isFileObject = (value) =>
-  typeof File !== "undefined" && value instanceof File;
+export default function useJurusanViewModel(initial = {}) {
+  const [locale, setLocale] = useState(initial.locale || DEFAULT_LOCALE);
+  const fallback = FALLBACK_FOR(locale);
 
-const toJsonPayload = (payload = {}) => {
-  const result = {};
-  Object.entries(payload).forEach(([key, value]) => {
-    if (value === undefined) return;
-    result[key] = value;
-  });
-  return result;
-};
-
-const appendFormDataSafe = (formData, payload = {}) => {
-  Object.entries(payload).forEach(([key, value]) => {
-    if (value === undefined) return;
-    if (value === null) {
-      formData.append(key, "");
-    } else if (value instanceof Blob) {
-      formData.append(key, value);
-    } else {
-      formData.append(key, String(value));
-    }
-  });
-};
-
-export default function useJurusanViewModel() {
-  // filters & pagination
-  const [q, setQ] = useState("");
-  const [partnerId, setPartnerId] = useState("");
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(12);
-  const [sort, setSort] = useState("created_at:desc");
-  const [locale, setLocale] = useState("id");
-  const [fallback, setFallback] = useState("id");
-  const [withDeleted, setWithDeleted] = useState(false);
-  const [onlyDeleted, setOnlyDeleted] = useState(false);
+  const [perPage, setPerPage] = useState(DEFAULT_PER_PAGE);
+  const [q, setQ] = useState("");
+  const [collegeId, setCollegeId] = useState("");
 
-  // list jurusan
-  const key = useMemo(() => {
-    const qs = buildQuery({
-      q,
-      partner_id: partnerId || undefined,
-      locale,
-      fallback,
-      page,
-      perPage,
-      sort,
-      with_deleted: withDeleted ? 1 : undefined,
-      only_deleted: onlyDeleted ? 1 : undefined,
-    });
-    return `/api/jurusan?${qs}`;
-  }, [
-    q,
-    partnerId,
-    locale,
-    fallback,
-    page,
-    perPage,
-    sort,
-    withDeleted,
-    onlyDeleted,
-  ]);
-
-  const {
-    data: listData,
-    error: listError,
-    isLoading: loading,
-    mutate: refreshList,
-  } = useSWR(key, fetcher, { revalidateOnFocus: false });
-
-  const rawJurusan = listData?.data || [];
-  const total = listData?.meta?.total || 0;
-  const totalPages = listData?.meta?.totalPages || 1;
-
-  // partners (for select)
-  const {
-    data: partnersData,
-    error: partnersError,
-    isLoading: partnersLoading,
-    mutate: refreshPartners,
-  } = useSWR("/api/partners?perPage=1000", fetcher, {
+  const key = buildListKey({ page, perPage, q, locale, fallback, collegeId });
+  const { data, error, isLoading, mutate } = useSWR(key, jsonFetcher, {
+    keepPreviousData: true,
     revalidateOnFocus: false,
   });
 
-  const jurusan = useMemo(
-    () =>
-      rawJurusan.map((item) => ({
-        ...item,
-        image_src: item.image_public_url || item.image_url || "",
-      })),
-    [rawJurusan]
+  // normalize rows: ensure created_ts exists (fallback to updated_at if needed)
+  const jurusan = useMemo(() => {
+    const rows = data?.data || [];
+    return rows.map((r) => ({
+      ...r,
+      created_ts:
+        r.created_ts ?? toTs(r.created_at) ?? toTs(r.updated_at) ?? null,
+    }));
+  }, [data]);
+
+  const total = useMemo(() => {
+    const d = data || {};
+    const candidates = [
+      d.total,
+      d?.meta?.total,
+      d.count,
+      d.totalCount,
+      d?.pagination?.total,
+      Array.isArray(d.data) ? d.data.length : undefined,
+    ];
+    const val = candidates.find((v) => v !== undefined && v !== null);
+    if (val === undefined || val === null) return undefined;
+    const n = Number(val);
+    return Number.isFinite(n) ? n : undefined;
+  }, [data]);
+
+  const totalPages =
+    data?.totalPages ??
+    (jurusan.length < perPage && page > 1 ? page : undefined);
+
+  /* ---------- College name cache ---------- */
+  const collegeNameCache = useRef(new Map());
+
+  const collegeName = useCallback((id) => {
+    if (!id) return "";
+    return collegeNameCache.current.get(String(id)) || "";
+  }, []);
+
+  const refreshCollegeNamesForPage = useCallback(
+    async (rows = []) => {
+      const missing = [];
+      for (const r of rows) {
+        const key = String(r.college_id || "");
+        if (key && !collegeNameCache.current.has(key)) missing.push(key);
+      }
+      if (!missing.length) return;
+
+      await Promise.all(
+        Array.from(new Set(missing)).map(async (id) => {
+          const url = `/api/college/${encodeURIComponent(
+            id
+          )}?locale=${locale}&fallback=${fallback}`;
+          const json = await jsonFetcher(url).catch(() => null);
+          const name =
+            json?.data?.name ||
+            json?.name ||
+            json?.data?.title ||
+            "(Tanpa Nama)";
+          collegeNameCache.current.set(String(id), String(name || ""));
+        })
+      );
+    },
+    [locale, fallback]
   );
 
-  const partnerOptions = useMemo(() => {
-    const rows = partnersData?.data || [];
-    return rows.map((p) => ({
-      label: p.name || p.slug || p.id,
-      value: String(p.id),
-    }));
-  }, [partnersData]);
-
-  const partnerMetaById = useMemo(() => {
-    const rows = partnersData?.data || [];
-    const map = new Map();
-    rows.forEach((p) => {
-      map.set(String(p.id), {
-        label: p.name || p.slug || String(p.id),
-        currency: (p.currency || "IDR").toUpperCase(),
-      });
-    });
-    return map;
-  }, [partnersData]);
-
-  // CRUD actions
-  const [opLoading, setOpLoading] = useState(false);
-
-  const createJurusan = useCallback(
-    async (payload) => {
-      setOpLoading(true);
-      try {
-        const { file, ...rest } = payload || {};
-        let r;
-        if (isFileObject(file)) {
-          const fd = new FormData();
-          fd.append("file", file);
-          appendFormDataSafe(fd, rest);
-          r = await fetch("/api/jurusan", {
-            method: "POST",
-            credentials: "include",
-            body: fd,
-          });
-        } else {
-          const body = toJsonPayload(rest);
-          r = await fetch("/api/jurusan", {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-          });
-        }
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok)
-          return { ok: false, error: j?.message || "Gagal membuat jurusan" };
-        await refreshList();
-        return { ok: true, data: j?.data };
-      } catch (e) {
-        return { ok: false, error: e?.message || "Request error" };
-      } finally {
-        setOpLoading(false);
-      }
+  const searchCollegeOptions = useCallback(
+    async (keyword = "") => {
+      const p = new URLSearchParams();
+      p.set("perPage", "10");
+      if (keyword.trim()) p.set("name", keyword.trim());
+      p.set("locale", locale);
+      p.set("fallback", fallback);
+      const url = `/api/college?${p.toString()}`;
+      const json = await jsonFetcher(url).catch(() => ({ data: [] }));
+      const opts = (json?.data || []).map((c) => ({
+        value: c.id,
+        label: c.name || "(Tanpa Nama)",
+      }));
+      for (const o of opts)
+        collegeNameCache.current.set(String(o.value), o.label);
+      return opts;
     },
-    [refreshList]
+    [locale, fallback]
+  );
+
+  /* ----------------------------- CRUD ----------------------------- */
+  const createJurusan = useCallback(
+    async ({ college_id, name, description, autoTranslate = true }) => {
+      const payload = {
+        locale,
+        college_id,
+        name,
+        description: description ?? null,
+        autoTranslate: Boolean(autoTranslate),
+      };
+      const res = await fetch("/api/jurusan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        return {
+          ok: false,
+          error: (await res.json().catch(() => ({})))?.message || res.status,
+        };
+      }
+      await mutate();
+      return { ok: true, data: await res.json() };
+    },
+    [locale, mutate]
+  );
+
+  const getJurusan = useCallback(
+    async (id) => {
+      const url = `/api/jurusan/${encodeURIComponent(
+        id
+      )}?locale=${locale}&fallback=${fallback}`;
+      const res = await fetch(url);
+      if (!res.ok) return { ok: false, error: await res.text() };
+      const json = await res.json();
+      const d = json?.data || json;
+      const created_ts =
+        d.created_ts ?? toTs(d.created_at) ?? toTs(d.updated_at) ?? null;
+      // Return with normalized timestamp so modal can display it
+      return { ok: true, data: { ...json, data: { ...d, created_ts } } };
+    },
+    [locale, fallback]
   );
 
   const updateJurusan = useCallback(
-    async (id, payload) => {
-      setOpLoading(true);
-      try {
-        const { file, ...rest } = payload || {};
-        let r;
-        const endpoint = `/api/jurusan/${encodeURIComponent(id)}`;
-        if (isFileObject(file)) {
-          const fd = new FormData();
-          fd.append("file", file);
-          appendFormDataSafe(fd, rest);
-          r = await fetch(endpoint, {
-            method: "PATCH",
-            credentials: "include",
-            body: fd,
-          });
-        } else {
-          const body = toJsonPayload(rest);
-          r = await fetch(endpoint, {
-            method: "PATCH",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-          });
-        }
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok)
-          return {
-            ok: false,
-            error: j?.message || "Gagal memperbarui jurusan",
-          };
-        await refreshList();
-        return { ok: true, data: j?.data };
-      } catch (e) {
-        return { ok: false, error: e?.message || "Request error" };
-      } finally {
-        setOpLoading(false);
+    async (id, payload = {}) => {
+      const res = await fetch(`/api/jurusan/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          locale,
+          ...payload,
+        }),
+      });
+      if (!res.ok) {
+        return {
+          ok: false,
+          error: (await res.json().catch(() => ({})))?.message || res.status,
+        };
       }
+      await mutate();
+      return { ok: true, data: await res.json() };
     },
-    [refreshList]
+    [locale, mutate]
   );
 
   const deleteJurusan = useCallback(
     async (id) => {
-      setOpLoading(true);
-      try {
-        const r = await fetch(`/api/jurusan/${id}`, {
-          method: "DELETE",
-          credentials: "include",
-        });
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok)
-          return { ok: false, error: j?.message || "Gagal menghapus jurusan" };
-        await refreshList();
-        return { ok: true, data: j?.data };
-      } catch (e) {
-        return { ok: false, error: e?.message || "Request error" };
-      } finally {
-        setOpLoading(false);
+      const res = await fetch(`/api/jurusan/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        return {
+          ok: false,
+          error: (await res.json().catch(() => ({})))?.message || res.status,
+        };
       }
+      await mutate();
+      return { ok: true };
     },
-    [refreshList]
+    [mutate]
   );
 
   return {
+    // state
+    locale,
+    fallback,
+    setLocale,
+    page,
+    perPage,
+    q,
+    collegeId,
+    setPage,
+    setPerPage,
+    setQ,
+    setCollegeId,
+
     // data
     jurusan,
     total,
     totalPages,
+    loading: isLoading,
+    error,
 
-    // filters
-    q,
-    setQ,
-    partnerId,
-    setPartnerId,
-    page,
-    setPage,
-    perPage,
-    setPerPage,
-    sort,
-    setSort,
-    locale,
-    setLocale,
-    fallback,
-    setFallback,
-    withDeleted,
-    setWithDeleted,
-    onlyDeleted,
-    setOnlyDeleted,
+    // college helpers
+    collegeName,
+    refreshCollegeNamesForPage,
+    searchCollegeOptions,
 
-    // states
-    loading,
-    partnersLoading,
-    listError: listError?.message || null,
-    partnersError: partnersError?.message || null,
-    opLoading,
-
-    // options
-    partnerOptions,
-    partnerMetaById,
-
-    // actions
+    // ops
     createJurusan,
     updateJurusan,
     deleteJurusan,
-    refreshList,
-    refreshPartners,
+    getJurusan,
   };
 }

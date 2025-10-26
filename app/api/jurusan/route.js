@@ -82,14 +82,27 @@ async function readBody(req) {
   }
   return (await req.json().catch(() => ({}))) ?? {};
 }
+
+/** -- NEW: date → timestamp (ms), with guard */
+function toTs(v) {
+  if (!v) return null;
+  const t = new Date(String(v)).getTime();
+  return Number.isFinite(t) ? t : null;
+}
+
+/** map DB row → API shape (with created_ts/updated_ts) */
 function mapJurusan(row, locale, fallback) {
   const t = pickTrans(row.jurusan_translate || [], locale, fallback);
+  const created_ts = toTs(row.created_at) ?? toTs(row.updated_at) ?? null;
+  const updated_ts = toTs(row.updated_at) ?? null;
   return {
     id: row.id,
     college_id: row.college_id,
     created_at: row.created_at,
     updated_at: row.updated_at,
     deleted_at: row.deleted_at,
+    created_ts,
+    updated_ts,
     locale_used: t?.locale || null,
     name: t?.name || null,
     description: t?.description || null,
@@ -141,7 +154,6 @@ export async function GET(req) {
     const where = {
       ...baseDeleted,
       ...(college_id ? { college_id } : {}),
-      college_translate: undefined, // no need
       ...(q
         ? {
             jurusan_translate: {
@@ -161,7 +173,7 @@ export async function GET(req) {
       prisma.jurusan.count({ where }),
       prisma.jurusan.findMany({
         where,
-        orderBy: orderBy[0]?.name ? undefined : orderBy, // ignore name sort here (not on parent)
+        orderBy: orderBy[0]?.name ? undefined : orderBy, // name-sort handled in memory
         skip: (page - 1) * perPage,
         take: perPage,
         select: {
@@ -178,8 +190,8 @@ export async function GET(req) {
       }),
     ]);
 
-    // If sort by name, sort in memory using picked translation
     let data = rows.map((r) => mapJurusan(r, locale, fallback));
+
     if (sortField === "name") {
       data.sort((a, b) => {
         const A = (a.name || "").toLowerCase();

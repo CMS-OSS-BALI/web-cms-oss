@@ -9,19 +9,12 @@ import { sendWhatsAppMessage, formatPhoneNumber } from "@/app/utils/watzap";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-/* ============== helpers ============== */
-const STATUSES = [
-  "PENDING",
-  "AUTO_PASS",
-  "NEED_REVIEW",
-  "REJECTED",
-  "VERIFIED",
-];
-const GENDERS = ["MALE", "FEMALE", "UNKNOWN"];
+const STATUSES = ["PENDING", "REJECTED", "VERIFIED"];
+const GENDERS = ["MALE", "FEMALE"];
 
-const json = (b, i) => NextResponse.json(b, i);
+const json = (b, i) => NextResponse.json(sanitize(b), i);
 const sanitize = (v) =>
-  v === null || v === undefined
+  v == null
     ? v
     : typeof v === "bigint"
     ? v.toString()
@@ -49,19 +42,38 @@ const handleAuthError = (err) =>
   );
 
 const trimStr = (v, m = 191) =>
-  typeof v === "string" ? v.trim().slice(0, m) : null;
-const parseDate = (v) => {
-  if (!v) return null;
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? null : d;
-};
+  typeof v === "string" ? v.trim().slice(0, m) : v === null ? null : undefined;
 const pickEnum = (v, allowed) => {
   if (!v || typeof v !== "string") return null;
   const up = v.toUpperCase();
   return allowed.includes(up) ? up : null;
 };
+const parseDate = (v) => {
+  if (!v) return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
 
-// Permanent public URL
+/* ---- timestamps helper ---- */
+const toMs = (d) => {
+  if (!d) return null;
+  try {
+    const t = d instanceof Date ? d.getTime() : new Date(d).getTime();
+    return Number.isFinite(t) ? t : null;
+  } catch {
+    return null;
+  }
+};
+const withTs = (row) =>
+  row
+    ? {
+        ...row,
+        created_ts: toMs(row.created_at),
+        updated_ts: toMs(row.updated_at),
+        deleted_at_ts: toMs(row.deleted_at),
+      }
+    : row;
+
 function getPublicUrl(path) {
   if (!path) return null;
   const { data } = supabaseAdmin.storage
@@ -69,8 +81,6 @@ function getPublicUrl(path) {
     .getPublicUrl(path);
   return data?.publicUrl || null;
 }
-
-// === Code format: OSSBALI/{YYYY}/REFERRAL-66B###
 async function generateUniqueReferralCode() {
   const year = new Date().getFullYear();
   const prefix = `OSSBALI/${year}/REFERRAL-66B`;
@@ -86,7 +96,7 @@ async function generateUniqueReferralCode() {
   )}`;
 }
 
-/* ============== GET ============== */
+/* ===== GET ===== */
 export async function GET(_req, { params }) {
   try {
     await requireAdmin();
@@ -94,25 +104,25 @@ export async function GET(_req, { params }) {
     return handleAuthError(err);
   }
 
-  const id = BigInt(params?.id || 0);
+  const id = String(params?.id || "");
   if (!id) return json({ error: { code: "BAD_REQUEST" } }, { status: 400 });
 
+  // return all columns then add *_ts
   const row = await prisma.referral.findUnique({ where: { id } });
   if (!row) return json({ error: { code: "NOT_FOUND" } }, { status: 404 });
 
   const previews = { front: getPublicUrl(row.front_url) };
-  return json(sanitize({ data: row, previews }));
+  return json({ data: withTs(row), previews });
 }
 
-/* ============== PATCH ============== */
+/* ===== PATCH ===== */
 export async function PATCH(req, { params }) {
   try {
     await requireAdmin();
   } catch (err) {
     return handleAuthError(err);
   }
-
-  const id = BigInt(params?.id || 0);
+  const id = String(params?.id || "");
   if (!id) return json({ error: { code: "BAD_REQUEST" } }, { status: 400 });
 
   const ct = req.headers.get("content-type") || "";
@@ -122,7 +132,6 @@ export async function PATCH(req, { params }) {
   if (ct.includes("multipart/form-data")) {
     const form = await req.formData();
 
-    // replace KTP
     const f = form.get("front");
     if (f instanceof File) {
       const MAX = 5 * 1024 * 1024;
@@ -145,7 +154,6 @@ export async function PATCH(req, { params }) {
       }`;
       const objectPath = `referral/${existing.nik}/${safe}`;
       const bytes = new Uint8Array(await f.arrayBuffer());
-
       const { error } = await supabaseAdmin.storage
         .from(process.env.SUPABASE_BUCKET)
         .upload(objectPath, bytes, {
@@ -153,20 +161,19 @@ export async function PATCH(req, { params }) {
           upsert: false,
         });
       if (error) throw new Error(error.message);
-
       data.front_url = objectPath;
       replacedFront = true;
     }
 
     const status = form.get("status");
-    if (status && STATUSES.includes(String(status).toUpperCase())) {
+    if (status && STATUSES.includes(String(status).toUpperCase()))
       data.status = String(status).toUpperCase();
-    }
-    if (form.has("notes")) data.notes = trimStr(form.get("notes"), 255) || null;
+
+    if (form.has("notes")) data.notes = trimStr(form.get("notes"), 255) ?? null;
 
     if (form.has("pic_consultant_id")) {
-      try {
-        const v = BigInt(String(form.get("pic_consultant_id")));
+      const v = trimStr(form.get("pic_consultant_id"), 36);
+      if (v) {
         const pic = await prisma.consultants.findUnique({
           where: { id: v },
           select: { id: true },
@@ -182,29 +189,21 @@ export async function PATCH(req, { params }) {
             { status: 422 }
           );
         data.pic_consultant_id = v;
-      } catch {
-        return json(
-          {
-            error: {
-              code: "VALIDATION_ERROR",
-              message: "PIC Konsultan tidak valid",
-            },
-          },
-          { status: 422 }
-        );
-      }
+      } else data.pic_consultant_id = null;
     }
   } else {
     const body = await req.json().catch(() => ({}));
 
     if (body.full_name !== undefined)
-      data.full_name = trimStr(body.full_name, 150) || null;
-    if (body.email !== undefined) data.email = trimStr(body.email, 191) || null;
+      data.full_name = trimStr(body.full_name, 150) ?? null;
+    if (body.email !== undefined) data.email = trimStr(body.email, 191) ?? null;
+
     if (body.whatsapp !== undefined) {
-      const w = trimStr(body.whatsapp, 32) || null;
+      const w = trimStr(body.whatsapp, 32) ?? null;
       data.whatsapp = w;
       data.whatsapp_e164 = w ? formatPhoneNumber(w) : null;
     }
+
     if (body.gender !== undefined) {
       const g = pickEnum(body.gender, GENDERS);
       if (!g)
@@ -217,28 +216,25 @@ export async function PATCH(req, { params }) {
     if (body.date_of_birth !== undefined)
       data.date_of_birth = parseDate(body.date_of_birth);
 
-    if (body.address_line !== undefined)
-      data.address_line = trimStr(body.address_line, 191) || null;
-    if (body.rt !== undefined) data.rt = trimStr(body.rt, 3) || null;
-    if (body.rw !== undefined) data.rw = trimStr(body.rw, 3) || null;
-    if (body.kelurahan !== undefined)
-      data.kelurahan = trimStr(body.kelurahan, 64) || null;
-    if (body.kecamatan !== undefined)
-      data.kecamatan = trimStr(body.kecamatan, 64) || null;
-    if (body.city !== undefined) data.city = trimStr(body.city, 64) || null;
-    if (body.province !== undefined)
-      data.province = trimStr(body.province, 64) || null;
-    if (body.postal_code !== undefined)
-      data.postal_code = trimStr(body.postal_code, 10) || null;
-    if (body.domicile !== undefined)
-      data.domicile = trimStr(body.domicile, 100) || null;
-    if (body.consent_agreed !== undefined)
-      data.consent_agreed = Boolean(body.consent_agreed);
-    if (body.notes !== undefined) data.notes = trimStr(body.notes, 255) || null;
+    [
+      "address_line",
+      "rt",
+      "rw",
+      "kelurahan",
+      "kecamatan",
+      "city",
+      "province",
+      "postal_code",
+      "domicile",
+      "notes",
+    ].forEach((k) => {
+      if (body[k] !== undefined)
+        data[k] = trimStr(body[k], k === "notes" ? 255 : 191) ?? null;
+    });
 
     if (body.pic_consultant_id !== undefined) {
-      try {
-        const v = BigInt(String(body.pic_consultant_id));
+      const v = trimStr(body.pic_consultant_id, 36);
+      if (v) {
         const pic = await prisma.consultants.findUnique({
           where: { id: v },
           select: { id: true },
@@ -254,33 +250,21 @@ export async function PATCH(req, { params }) {
             { status: 422 }
           );
         data.pic_consultant_id = v;
-      } catch {
-        return json(
-          {
-            error: {
-              code: "VALIDATION_ERROR",
-              message: "PIC Konsultan tidak valid",
-            },
-          },
-          { status: 422 }
-        );
-      }
+      } else data.pic_consultant_id = null;
     }
 
     if (body.status !== undefined) {
       const s = String(body.status || "").toUpperCase();
-      if (!STATUSES.includes(s)) {
+      if (!STATUSES.includes(s))
         return json(
           { error: { code: "VALIDATION_ERROR", message: "invalid status" } },
           { status: 422 }
         );
-      }
       data.status = s;
     }
   }
 
   try {
-    // BEFORE state
     const before = await prisma.referral.findUnique({
       where: { id },
       select: {
@@ -294,7 +278,6 @@ export async function PATCH(req, { params }) {
     });
     if (!before) return json({ error: { code: "NOT_FOUND" } }, { status: 404 });
 
-    // UPDATE
     const updated = await prisma.referral.update({
       where: { id },
       data,
@@ -308,20 +291,21 @@ export async function PATCH(req, { params }) {
         gender: true,
         status: true,
         front_url: true,
+        created_at: true,
         updated_at: true,
+        deleted_at: true,
         code: true,
         pic_consultant_id: true,
         notes: true,
       },
     });
 
-    const wasApproved = ["VERIFIED", "AUTO_PASS"].includes(before.status);
-    const isApproved = ["VERIFIED", "AUTO_PASS"].includes(updated.status);
-    const becameApproved = !wasApproved && isApproved;
+    const wasVerified = before.status === "VERIFIED";
+    const isVerified = updated.status === "VERIFIED";
+    const becameVerified = !wasVerified && isVerified;
 
-    /* ==== Ensure CODE if approved but missing (handles "already verified" case) ==== */
     let codeCreatedNow = false;
-    if (isApproved && !updated.code) {
+    if (isVerified && !updated.code) {
       for (let i = 0; i < 5; i++) {
         const candidate = await generateUniqueReferralCode();
         try {
@@ -330,66 +314,42 @@ export async function PATCH(req, { params }) {
             data: { code: candidate },
             select: { code: true },
           });
-          updated.code = after.code; // reflect on response
+          updated.code = after.code;
           codeCreatedNow = true;
           break;
         } catch (e) {
-          // Unique race or other—log & retry if meaningful
-          console.error("Assign code failed:", e?.code || e?.message || e);
           if (e?.code !== "P2002") break;
         }
       }
     }
 
-    /* ==== WhatsApp notifications ==== */
     const phone = updated.whatsapp_e164 || updated.whatsapp;
     if (phone) {
-      // a) On first approval
-      if (becameApproved) {
+      if (becameVerified) {
         const msg =
-          `Halo ${updated.full_name}, pengajuan referral Anda telah *${updated.status}*.\n` +
+          `Halo ${updated.full_name}, pengajuan referral Anda telah *VERIFIED*.\n` +
           (updated.code
-            ? `Kode referral Anda: *${updated.code}*.\nBagikan kode ini ke calon leads.`
+            ? `Kode referral Anda: *${updated.code}*.`
             : `Kode referral belum dapat diterbitkan saat ini.`) +
           `\nTerima kasih sudah mendaftar di OSS Bali.`;
-        sendWhatsAppMessage(phone, msg).catch((e) =>
-          console.error("WA send error:", e?.response?.data || e?.message || e)
-        );
+        sendWhatsAppMessage(phone, msg).catch(() => {});
+      } else if (isVerified && codeCreatedNow) {
+        const msg = `Halo ${updated.full_name}, kode referral Anda telah diterbitkan: *${updated.code}*.\nBagikan kode ini ke calon leads.`;
+        sendWhatsAppMessage(phone, msg).catch(() => {});
       }
-      // b) Jika sudah approved lama tapi baru berhasil bikin code sekarang → kirim WA berisi kodenya
-      else if (isApproved && codeCreatedNow) {
-        const msg =
-          `Halo ${updated.full_name}, kode referral Anda telah diterbitkan: *${updated.code}*.\n` +
-          `Bagikan kode ini ke calon leads. Terima kasih!`;
-        sendWhatsAppMessage(phone, msg).catch((e) =>
-          console.error("WA send error:", e?.response?.data || e?.message || e)
-        );
-      }
-    }
-
-    // Rejected → WA singkat
-    if (data.status === "REJECTED" && before.status !== "REJECTED") {
-      const phoneR = updated.whatsapp_e164 || updated.whatsapp;
-      if (phoneR) {
+      if (data.status === "REJECTED" && before.status !== "REJECTED") {
         const reason = updated.notes ? `\nAlasan: ${updated.notes}` : "";
-        const msg =
-          `Halo ${updated.full_name}, mohon maaf pengajuan referral Anda *REJECTED*.` +
-          reason +
-          `\nAnda dapat mengoreksi data lalu mengajukan kembali.`;
-        sendWhatsAppMessage(phoneR, msg).catch((e) =>
-          console.error("WA send error:", e?.response?.data || e?.message || e)
-        );
+        const msg = `Halo ${updated.full_name}, mohon maaf pengajuan referral Anda *REJECTED*.${reason}\nAnda dapat mengoreksi data lalu mengajukan kembali.`;
+        sendWhatsAppMessage(phone, msg).catch(() => {});
       }
     }
 
     const preview = replacedFront ? getPublicUrl(updated.front_url) : null;
-    return json(
-      sanitize({
-        data: updated,
-        replaced_front: replacedFront,
-        preview_front: preview,
-      })
-    );
+    return json({
+      data: withTs(updated),
+      replaced_front: replacedFront,
+      preview_front: preview,
+    });
   } catch (err) {
     if (err?.code === "P2025")
       return json({ error: { code: "NOT_FOUND" } }, { status: 404 });
@@ -398,23 +358,28 @@ export async function PATCH(req, { params }) {
   }
 }
 
-/* ============== DELETE ============== */
+/* ===== DELETE ===== */
 export async function DELETE(_req, { params }) {
   try {
     await requireAdmin();
   } catch (err) {
     return handleAuthError(err);
   }
-  const id = BigInt(params?.id || 0);
+  const id = String(params?.id || "");
   if (!id) return json({ error: { code: "BAD_REQUEST" } }, { status: 400 });
 
   try {
     const deleted = await prisma.referral.update({
       where: { id },
       data: { deleted_at: new Date() },
-      select: { id: true, deleted_at: true },
+      select: {
+        id: true,
+        created_at: true,
+        updated_at: true,
+        deleted_at: true,
+      },
     });
-    return json(sanitize({ data: deleted }));
+    return json({ data: withTs(deleted) });
   } catch (err) {
     if (err?.code === "P2025")
       return json({ error: { code: "NOT_FOUND" } }, { status: 404 });

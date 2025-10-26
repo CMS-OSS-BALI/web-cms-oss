@@ -7,12 +7,16 @@ import { randomUUID } from "crypto";
 import { translate } from "@/app/utils/geminiTranslator";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
-const DEFAULT_ORDER = [{ created_at: "desc" }];
-
+/* =========================
+   Runtime & Defaults
+========================= */
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-/* ===== Supabase helpers ===== */
+const DEFAULT_ORDER = [{ created_at: "desc" }];
+const MAX_PUBLIC_PER_PAGE = 12;
+const MAX_ADMIN_PER_PAGE = 100;
+
 const BUCKET =
   process.env.SUPABASE_BUCKET || process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "";
 const SUPA_URL = (
@@ -21,29 +25,15 @@ const SUPA_URL = (
   ""
 ).replace(/\/+$/, "");
 
-function getPublicUrl(path) {
-  if (!path) return null;
-  if (/^https?:\/\//i.test(path)) return path;
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MAX_UPLOAD_SIZE = 10 * 1024 * 1024; // 10MB
 
-  const clean = String(path).replace(/^\/+/, "");
-  if (supabaseAdmin && BUCKET) {
-    const { data, error } = supabaseAdmin.storage
-      .from(BUCKET)
-      .getPublicUrl(clean);
-    if (!error && data?.publicUrl) return data.publicUrl;
-    // fall through → manual fallback
-  }
-  if (SUPA_URL) {
-    const withBucket =
-      BUCKET && !clean.startsWith(`${BUCKET}/`) ? `${BUCKET}/${clean}` : clean;
-    return `${SUPA_URL}/storage/v1/object/public/${withBucket}`;
-  }
-  return null;
-}
-
-/* ===== Helpers ===== */
+/* =========================
+   Small Utils
+========================= */
+const ok = (body, init) => NextResponse.json(sanitize(body), init);
 function sanitize(v) {
-  if (v === null || v === undefined) return v;
+  if (v == null) return v;
   if (typeof v === "bigint") return v.toString();
   if (Array.isArray(v)) return v.map(sanitize);
   if (typeof v === "object") {
@@ -53,32 +43,28 @@ function sanitize(v) {
   }
   return v;
 }
-function json(body, init) {
-  return NextResponse.json(sanitize(body), init);
-}
+
 async function requireAdmin() {
   const session = await getServerSession(authOptions);
-  if (!session?.user?.id && !session?.user?.email) {
+  if (!session?.user?.email) {
     const err = new Error("UNAUTHORIZED");
     err.status = 401;
     throw err;
   }
   return session.user;
 }
-function handleAuthError(err) {
+function authError(err) {
   const status = err?.status === 401 ? 401 : 403;
-  return json(
+  return ok(
     { error: { code: status === 401 ? "UNAUTHORIZED" : "FORBIDDEN" } },
     { status }
   );
 }
-function normalizeOrder(sort) {
-  if (!sort) return DEFAULT_ORDER;
-  const [field = "", dir = ""] = String(sort).split(":");
-  const allowed = new Set(["created_at", "updated_at", "email"]);
-  const key = allowed.has(field) ? field : "created_at";
-  const order = dir?.toLowerCase() === "asc" ? "asc" : "desc";
-  return [{ [key]: order }];
+
+function parseIdString(raw) {
+  if (raw == null) return null;
+  const s = String(raw).trim();
+  return s.length ? s : null;
 }
 function pickLocale(req, key = "locale", dflt = "id") {
   try {
@@ -89,57 +75,146 @@ function pickLocale(req, key = "locale", dflt = "id") {
   }
 }
 function pickTrans(list, primary, fallback) {
-  const by = (loc) => list?.find((t) => t.locale === loc);
+  const by = (loc) => list?.find?.((t) => t.locale === loc);
   return by(primary) || by(fallback) || null;
 }
-/** Prisma expects String id → keep as string, not BigInt/Number. */
-function parseIdString(raw) {
-  if (raw === null || raw === undefined) return null;
-  const s = String(raw).trim();
-  return s.length ? s : null;
+function normalizeOrder(sort) {
+  if (!sort) return DEFAULT_ORDER;
+  const [field = "", dir = ""] = String(sort).split(":");
+  const allowed = new Set(["created_at", "updated_at", "email"]);
+  const key = allowed.has(field) ? field : "created_at";
+  const order = dir?.toLowerCase() === "asc" ? "asc" : "desc";
+  return [{ [key]: order }];
 }
 
-/* ===== GET /api/consultants (LIST) =====
-Query:
-- q                 search by name/description (public) + email/whatsapp (admin)
-- id                exact id (short-circuits listing)
-- page, perPage     pagination
-- sort              created_at|updated_at|email : asc|desc
-- locale, fallback  i18n selection (default: id)
-- public=1          public access (no auth, hides PII)
-*/
-export async function GET(req) {
-  const { searchParams } = new URL(req.url);
-  const isPublic = searchParams.get("public") === "1";
+/* =========================
+   Public URL Helper
+========================= */
+function getPublicUrl(path) {
+  if (!path) return null;
+  if (/^https?:\/\//i.test(path)) return path;
+  const clean = String(path).replace(/^\/+/, "");
 
-  if (!isPublic) {
+  if (supabaseAdmin && BUCKET) {
+    const { data, error } = supabaseAdmin.storage
+      .from(BUCKET)
+      .getPublicUrl(clean);
+    if (!error && data?.publicUrl) return data.publicUrl;
+  }
+  if (SUPA_URL) {
+    const withBucket =
+      BUCKET && !clean.startsWith(`${BUCKET}/`) ? `${BUCKET}/${clean}` : clean;
+    return `${SUPA_URL}/storage/v1/object/public/${withBucket}`;
+  }
+  return null;
+}
+
+/* =========================
+   Upload Helpers (Supabase)
+========================= */
+function extFromType(t) {
+  if (t === "image/jpeg") return "jpg";
+  if (t === "image/png") return "png";
+  if (t === "image/webp") return "webp";
+  return "bin";
+}
+
+async function uploadConsultantProgramImage(file, consultantId) {
+  if (!supabaseAdmin || !BUCKET)
+    throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
+
+  const type = file.type || "";
+  if (!ALLOWED_IMAGE_TYPES.has(type)) throw new Error("UNSUPPORTED_TYPE");
+  const buf = Buffer.from(await file.arrayBuffer());
+  if (buf.length > MAX_UPLOAD_SIZE) throw new Error("PAYLOAD_TOO_LARGE");
+
+  const ext = extFromType(type);
+  const key = `consultants/${consultantId}/${randomUUID()}.${ext}`;
+
+  const { error } = await supabaseAdmin.storage.from(BUCKET).upload(key, buf, {
+    cacheControl: "31536000",
+    contentType: type,
+    upsert: false,
+  });
+  if (error) throw error;
+  return key; // DB simpan PATH
+}
+
+async function uploadConsultantProfileImage(file, consultantId) {
+  // Single avatar upload -> simpan ke consultants.profile_image_url
+  if (!supabaseAdmin || !BUCKET)
+    throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
+
+  const type = file.type || "";
+  if (!ALLOWED_IMAGE_TYPES.has(type)) throw new Error("UNSUPPORTED_TYPE");
+  const buf = Buffer.from(await file.arrayBuffer());
+  if (buf.length > MAX_UPLOAD_SIZE) throw new Error("PAYLOAD_TOO_LARGE");
+
+  const ext = extFromType(type);
+  const key = `consultants/${consultantId}/profile-${randomUUID()}.${ext}`;
+
+  const { error } = await supabaseAdmin.storage.from(BUCKET).upload(key, buf, {
+    cacheControl: "31536000",
+    contentType: type,
+    upsert: false,
+  });
+  if (error) throw error;
+  return key;
+}
+
+/* =========================
+   PII policy (very important)
+========================= */
+/**
+ * Kirim PII (email, whatsapp) hanya jika:
+ * - bukan public=1
+ * - ada header x-ssr=1
+ * - user admin terautentikasi
+ */
+async function canIncludePII(req, isPublic) {
+  if (isPublic) return false;
+  if (req.headers.get("x-ssr") !== "1") return false;
+  try {
+    await requireAdmin();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/* =========================
+   GET /api/consultants
+========================= */
+export async function GET(req) {
+  const url = new URL(req.url);
+  const isPublic = url.searchParams.get("public") === "1";
+  const includePII = await canIncludePII(req, isPublic);
+
+  if (!includePII && !isPublic) {
     try {
       await requireAdmin();
     } catch (err) {
-      return handleAuthError(err);
+      return authError(err);
     }
   }
 
-  const idFilter = parseIdString(searchParams.get("id"));
-  const q = (searchParams.get("q") || "").trim();
-  const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
+  const idFilter = parseIdString(url.searchParams.get("id"));
+  const q = (url.searchParams.get("q") || "").trim();
+  const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
   const perPage = Math.min(
-    isPublic ? 12 : 100,
+    includePII ? MAX_ADMIN_PER_PAGE : MAX_PUBLIC_PER_PAGE,
     Math.max(
       1,
-      parseInt(searchParams.get("perPage") || (isPublic ? "3" : "10"), 10)
+      parseInt(url.searchParams.get("perPage") || (includePII ? "10" : "3"), 10)
     )
   );
-  const orderBy = normalizeOrder(searchParams.get("sort"));
-
+  const orderBy = normalizeOrder(url.searchParams.get("sort"));
   const locale = pickLocale(req, "locale", "id");
   const fallback = pickLocale(req, "fallback", "id");
 
-  // Common select
-  const selectPublic = {
+  const baseSelect = {
     id: true,
     profile_image_url: true,
-    program_consultant_image_url: true,
     created_at: true,
     updated_at: true,
     consultants_translate: {
@@ -151,50 +226,21 @@ export async function GET(req) {
       select: { id: true, image_url: true, sort: true },
     },
   };
-  const selectAdmin = { ...selectPublic, email: true, whatsapp: true };
+  const select = includePII
+    ? { ...baseSelect, email: true, whatsapp: true }
+    : baseSelect;
 
-  // Short-circuit: if id is provided, avoid full COUNT + list query
+  // Shortcut by ID
   if (idFilter) {
     const row = await prisma.consultants.findUnique({
       where: { id: idFilter },
-      select: isPublic ? selectPublic : selectAdmin,
+      select,
     });
-
     const data = row
-      ? [
-          {
-            id: row.id,
-            email: isPublic ? null : row.email ?? null,
-            whatsapp: isPublic ? null : row.whatsapp ?? null,
-            profile_image_url: row.profile_image_url,
-            profile_image_public_url: getPublicUrl(row.profile_image_url),
-            program_consultant_image_url: row.program_consultant_image_url,
-            program_consultant_image_public_url: getPublicUrl(
-              row.program_consultant_image_url
-            ),
-            created_at: row.created_at,
-            updated_at: row.updated_at,
-            // translations already filtered by locale/fallback above
-            name:
-              pickTrans(row.consultants_translate, locale, fallback)?.name ??
-              null,
-            description:
-              pickTrans(row.consultants_translate, locale, fallback)
-                ?.description ?? null,
-            locale_used:
-              pickTrans(row.consultants_translate, locale, fallback)?.locale ??
-              null,
-            program_images: (row.program_images || []).map((pi) => ({
-              id: pi.id,
-              image_url: pi.image_url,
-              image_public_url: getPublicUrl(pi.image_url),
-              sort: pi.sort ?? 0,
-            })),
-          },
-        ]
+      ? [serializeConsultant(row, { locale, fallback, includePII })]
       : [];
 
-    const resp = json({
+    const resp = ok({
       data,
       meta: {
         page: 1,
@@ -203,17 +249,17 @@ export async function GET(req) {
         totalPages: 1,
         locale,
         fallback,
-        public: isPublic,
+        pii: includePII ? 1 : 0,
       },
     });
-    if (isPublic)
-      resp.headers.set("Cache-Control", "public, max-age=60, s-maxage=300");
+
+    decorateCaching(resp, { isPublic, includePII });
     return resp;
   }
 
-  // Build WHERE for normal listing
+  // Listing
   let where = {};
-  if (q.length > 0) {
+  if (q) {
     where = {
       OR: [
         {
@@ -224,9 +270,9 @@ export async function GET(req) {
             },
           },
         },
-        ...(isPublic
-          ? []
-          : [{ email: { contains: q } }, { whatsapp: { contains: q } }]),
+        ...(includePII
+          ? [{ email: { contains: q } }, { whatsapp: { contains: q } }]
+          : []),
       ],
     };
   }
@@ -238,37 +284,15 @@ export async function GET(req) {
       orderBy,
       skip: (page - 1) * perPage,
       take: perPage,
-      select: isPublic ? selectPublic : selectAdmin,
+      select,
     }),
   ]);
 
-  const data = rows.map((r) => {
-    const t = pickTrans(r.consultants_translate, locale, fallback);
-    return {
-      id: r.id,
-      email: isPublic ? null : r.email ?? null,
-      whatsapp: isPublic ? null : r.whatsapp ?? null,
-      profile_image_url: r.profile_image_url,
-      profile_image_public_url: getPublicUrl(r.profile_image_url),
-      program_consultant_image_url: r.program_consultant_image_url,
-      program_consultant_image_public_url: getPublicUrl(
-        r.program_consultant_image_url
-      ),
-      created_at: r.created_at,
-      updated_at: r.updated_at,
-      name: t?.name ?? null,
-      description: t?.description ?? null,
-      locale_used: t?.locale ?? null,
-      program_images: (r.program_images || []).map((pi) => ({
-        id: pi.id,
-        image_url: pi.image_url,
-        image_public_url: getPublicUrl(pi.image_url),
-        sort: pi.sort ?? 0,
-      })),
-    };
-  });
+  const data = rows.map((r) =>
+    serializeConsultant(r, { locale, fallback, includePII })
+  );
 
-  const resp = json({
+  const resp = ok({
     data,
     meta: {
       page,
@@ -277,34 +301,35 @@ export async function GET(req) {
       totalPages: Math.max(1, Math.ceil(total / perPage)),
       locale,
       fallback,
-      public: isPublic,
+      pii: includePII ? 1 : 0,
     },
   });
-  if (isPublic)
-    resp.headers.set("Cache-Control", "public, max-age=60, s-maxage=300");
+  decorateCaching(resp, { isPublic, includePII });
   return resp;
 }
 
-/* ===== POST /api/consultants (CREATE + optional uploads) ===== */
+/* =========================
+   POST /api/consultants
+========================= */
 export async function POST(req) {
   try {
     await requireAdmin();
   } catch (err) {
-    return handleAuthError(err);
+    return authError(err);
   }
 
-  const contentType = req.headers.get("content-type") || "";
+  const ct = req.headers.get("content-type") || "";
   let body = {};
   let uploadFiles = [];
+  let profileFile = null;
 
-  if (contentType.includes("multipart/form-data")) {
+  if (ct.includes("multipart/form-data")) {
     const form = await req.formData();
 
     body = {
       email: form.get("email"),
       whatsapp: form.get("whatsapp"),
-      profile_image_url: form.get("profile_image_url"),
-      program_consultant_image_url: form.get("program_consultant_image_url"),
+      profile_image_url: form.get("profile_image_url"), // optional string
       name_id: form.get("name_id"),
       description_id: form.has("description_id")
         ? form.get("description_id")
@@ -315,6 +340,11 @@ export async function POST(req) {
         String(form.get("autoTranslate") ?? "true").toLowerCase() !== "false",
     };
 
+    // avatar file
+    const pf = form.get("profile_file");
+    if (pf && typeof pf !== "string") profileFile = pf;
+
+    // kumpulkan program images
     const strImages = [
       ...form.getAll("images"),
       ...form.getAll("images[]"),
@@ -323,7 +353,6 @@ export async function POST(req) {
     ]
       .map((v) => (v == null ? "" : String(v).trim()))
       .filter(Boolean);
-
     if (strImages.length) body.program_images = strImages;
 
     uploadFiles = [...form.getAll("files"), ...form.getAll("files[]")].filter(
@@ -333,9 +362,10 @@ export async function POST(req) {
     body = await req.json().catch(() => ({}));
   }
 
+  // Validate minimal
   const name_id = String(body?.name_id ?? "").trim();
   if (!name_id || name_id.length < 2) {
-    return json(
+    return ok(
       {
         error: {
           code: "VALIDATION_ERROR",
@@ -345,18 +375,17 @@ export async function POST(req) {
       { status: 422 }
     );
   }
+
   const description_id =
     typeof body?.description_id === "string" ? body.description_id : null;
 
   const email = body?.email ? String(body.email).trim() || null : null;
   const whatsapp = body?.whatsapp ? String(body.whatsapp).trim() || null : null;
 
-  const profile_image_url = body?.profile_image_url
-    ? String(body.profile_image_url).trim() || null
-    : null;
-  const program_consultant_image_url = body?.program_consultant_image_url
-    ? String(body.program_consultant_image_url).trim() || null
-    : null;
+  const profile_image_url =
+    body?.profile_image_url && String(body.profile_image_url).trim()
+      ? String(body.profile_image_url).trim()
+      : null;
 
   const autoTranslate = body?.autoTranslate !== false;
 
@@ -372,24 +401,18 @@ export async function POST(req) {
 
   try {
     const created = await prisma.$transaction(async (tx) => {
+      // 1) create parent (tanpa avatar dulu)
       const parent = await tx.consultants.create({
-        data: {
-          email,
-          whatsapp,
-          profile_image_url,
-          program_consultant_image_url,
-        },
+        data: { email, whatsapp, profile_image_url: profile_image_url || null },
         select: {
           id: true,
-          email: true,
-          whatsapp: true,
           profile_image_url: true,
-          program_consultant_image_url: true,
           created_at: true,
           updated_at: true,
         },
       });
 
+      // 2) translations
       await tx.consultants_translate.create({
         data: {
           id: randomUUID(),
@@ -427,7 +450,17 @@ export async function POST(req) {
         });
       }
 
-      // Upload files AFTER we have consultant id
+      // 3) upload avatar jika ada file
+      if (profileFile && !profile_image_url) {
+        const path = await uploadConsultantProfileImage(profileFile, parent.id);
+        await tx.consultants.update({
+          where: { id: parent.id },
+          data: { profile_image_url: path, updated_at: new Date() },
+        });
+        parent.profile_image_url = path;
+      }
+
+      // 4) Upload program images (opsional)
       let uploadedPaths = [];
       if (uploadFiles.length) {
         for (const f of uploadFiles) {
@@ -435,62 +468,90 @@ export async function POST(req) {
           uploadedPaths.push(p);
         }
       }
-
       const allImages = [...strProgramImages, ...uploadedPaths];
       if (allImages.length) {
-        const data = allImages.map((path, idx) => ({
-          id_consultant: parent.id,
-          image_url: path,
-          sort: idx,
-          created_at: new Date(),
-          updated_at: new Date(),
-        }));
-        await tx.consultant_program_images.createMany({ data });
+        await tx.consultant_program_images.createMany({
+          data: allImages.map((path, idx) => ({
+            id_consultant: parent.id,
+            image_url: path,
+            sort: idx,
+            created_at: new Date(),
+            updated_at: new Date(),
+          })),
+        });
       }
 
       return parent;
     });
 
-    return json(
+    // response TANPA PII
+    const resp = ok(
       {
         data: {
           id: created.id,
-          email: created.email,
-          whatsapp: created.whatsapp,
           profile_image_url: created.profile_image_url,
-          program_consultant_image_url: created.program_consultant_image_url,
           created_at: created.created_at,
           updated_at: created.updated_at,
-          name_id,
-          description_id,
-          name_en: name_en || null,
-          description_en: description_en || null,
         },
       },
       { status: 201 }
     );
+    resp.headers.set("Cache-Control", "no-store");
+    resp.headers.set("Vary", "Cookie, x-ssr, Accept-Language");
+    return resp;
   } catch (err) {
     if (err?.message === "PAYLOAD_TOO_LARGE")
-      return NextResponse.json({ message: "Maksimal 10MB" }, { status: 413 });
+      return ok({ message: "Maksimal 10MB" }, { status: 413 });
     if (err?.message === "UNSUPPORTED_TYPE")
-      return NextResponse.json(
-        { message: "Format harus JPEG/PNG/WebP" },
-        { status: 415 }
-      );
-    if (err?.message === "SUPABASE_BUCKET_NOT_CONFIGURED") {
-      return NextResponse.json(
+      return ok({ message: "Format harus JPEG/PNG/WebP" }, { status: 415 });
+    if (err?.message === "SUPABASE_BUCKET_NOT_CONFIGURED")
+      return ok(
         { message: "Supabase bucket belum dikonfigurasi" },
         { status: 500 }
       );
-    }
     if (err?.code === "P2002") {
       const field = err?.meta?.target?.join?.(", ") || "unique";
-      return json(
+      return ok(
         { error: { code: "CONFLICT", message: `${field} already in use` } },
         { status: 409 }
       );
     }
     console.error("POST /api/consultants error:", err);
-    return json({ error: { code: "SERVER_ERROR" } }, { status: 500 });
+    return ok({ error: { code: "SERVER_ERROR" } }, { status: 500 });
+  }
+}
+
+/* =========================
+   Serializer & Caching
+========================= */
+function serializeConsultant(row, { locale, fallback, includePII }) {
+  const t = pickTrans(row.consultants_translate, locale, fallback);
+  return {
+    id: row.id,
+    email: includePII ? row.email ?? null : null,
+    whatsapp: includePII ? row.whatsapp ?? null : null,
+    profile_image_url: row.profile_image_url,
+    profile_image_public_url: getPublicUrl(row.profile_image_url),
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    name: t?.name ?? null,
+    description: t?.description ?? null,
+    locale_used: t?.locale ?? null,
+    program_images: (row.program_images || []).map((pi) => ({
+      id: pi.id,
+      image_url: pi.image_url,
+      image_public_url: getPublicUrl(pi.image_url),
+      sort: pi.sort ?? 0,
+    })),
+  };
+}
+
+function decorateCaching(resp, { isPublic, includePII }) {
+  if (isPublic) {
+    resp.headers.set("Cache-Control", "public, max-age=60, s-maxage=300");
+    resp.headers.set("Vary", "Accept-Language");
+  } else {
+    resp.headers.set("Cache-Control", "no-store");
+    resp.headers.set("Vary", "Cookie, x-ssr, Accept-Language");
   }
 }

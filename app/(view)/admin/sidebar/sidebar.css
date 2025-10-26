@@ -1,298 +1,152 @@
-/* ================================
-   Sidebar (AntD Menu dark — flat & responsive)
-================================ */
-
-/* Variabel */
 :root {
-  --menu-selected-row: rgba(148, 163, 184, 0.2);
-  --menu-hover-row: rgba(148, 163, 184, 0.12);
-  --menu-text: #e2e8f0;
-  --menu-text-strong: #ffffff;
-
-  --logout-bg: #ef4444;
-  --logout-border: rgba(239, 68, 68, 0.75);
-  --logout-bg-hover: #dc2626;
-
-  --sidebar-w: 260px;
-  --sidebar-w-collapsed: 72px;
-  --sidebar-bottom-gap: 24px;
-
-  /* kontrol ikon */
-  --icon-size-expanded: 20px;
-  --icon-size-collapsed: 18px;
-
-  --item-h: 46px;
-  --item-radius: 10px;
+  --sb-w: 240px;
+  --sb-bg: #ffffff;
+  --sb-border: #e6eaf2;
+  --sb-text: #0f172a;
+  --sb-muted: #9aa4b2;
+  --sb-icon: #9aa4b2;
+  --sb-hover: #f3f7ff;
+  --sb-active-bg: #eef5ff;
+  --sb-blue: #0b56c9;
+  --sb-rail: #0b56c9;
 }
 
-/* Shell */
-.admin-shell {
-  display: flex;
-  min-height: 100dvh;
-  overflow-x: hidden;
-}
-.admin-content {
-  flex: 1;
-  min-width: 0;
-  overflow-x: hidden;
-}
-
-/* ====== Sidebar ====== */
-.sidebar {
+.sb-root {
   position: sticky;
   top: 0;
+  left: 0;
   height: 100dvh;
-  overflow-y: auto;
-  overflow-x: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(148, 163, 184, 0.25) transparent;
-  width: var(--sidebar-w);
-  min-width: var(--sidebar-w);
-  transition: width 0.25s ease, min-width 0.25s ease;
-  padding: 8px;
+  width: var(--sb-w);
+  background: var(--sb-bg);
+  border-right: 1px solid var(--sb-border);
+  display: grid;
+  grid-template-rows: auto 1fr; /* ← tidak ada footer lagi */
+  padding: 14px 10px 12px;
   box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-}
-/* Sidebar scroll styling */
-.sidebar::-webkit-scrollbar {
-  width: 8px;
-}
-.sidebar::-webkit-scrollbar-track {
-  background: transparent;
-}
-.sidebar::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.25);
-  border-radius: 9999px;
-}
-.sidebar:hover::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.4);
-}
-.sidebar.is-collapsed {
-  width: var(--sidebar-w-collapsed);
-  min-width: var(--sidebar-w-collapsed);
 }
 
-/* ===== Logo: selalu center ===== */
-.sidebar-logo {
-  padding: 12px 8px;
-  margin-bottom: 8px;
+/* BRAND */
+.sb-brand {
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 10px;
+  padding: 6px 8px 10px 6px;
 }
-.sidebar-logo-link {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  justify-content: center;
+.sb-logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: #f1f5ff;
+  border: 1px solid #e6eeff;
 }
-.sidebar-logo-img {
-  display: block;
-  width: 110px;
-  height: auto;
+.sb-logo-img {
   object-fit: contain;
-  transition: width 0.25s ease;
 }
-.sidebar.is-collapsed .sidebar-logo-img {
-  width: 40px;
+.sb-logo-fallback {
+  font-weight: 800;
+  color: var(--sb-blue);
 }
-
-/* ====== Menu (flat row) ====== */
-.sidebar .ant-menu-dark {
-  background: transparent;
-  padding: 0 6px;
-}
-
-.sidebar .ant-menu-item {
-  height: var(--item-h);
-  line-height: var(--item-h);
-  border-radius: var(--item-radius);
-  margin: 6px 0;
-  padding-inline: 12px !important;
-}
-.sidebar .ant-menu-item::after {
-  display: none !important;
-}
-.sidebar .ant-menu-item a {
-  color: var(--menu-text);
-  font-weight: 500;
-  text-decoration: none;
-}
-
-/* Hover */
-.sidebar .ant-menu-item:hover,
-.sidebar .ant-menu-item-active {
-  background: var(--menu-hover-row) !important;
-}
-
-/* Selected */
-.sidebar .ant-menu-item-selected {
-  background: var(--menu-selected-row) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-.sidebar .ant-menu-item-selected a {
-  color: var(--menu-text-strong) !important;
+.sb-brand-name {
   font-weight: 700;
+  color: var(--sb-text);
+  font-size: 14px;
 }
 
-/* ===== Ikon — rapi & konsisten ===== */
-.menu-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-right: 12px;
+/* MENU */
+.sb-nav {
+  overflow: hidden auto;
+  padding-right: 4px;
 }
-.menu-icon-svg {
-  width: var(--icon-size-expanded);
-  height: var(--icon-size-expanded);
-  color: var(--menu-text);
+.sb-menu {
+  list-style: none;
+  padding: 4px;
+  margin: 0;
 }
-.sidebar .ant-menu-item-selected .menu-icon-svg {
-  color: var(--menu-text-strong);
+.sb-li + .sb-li {
+  margin-top: 2px;
 }
 
-/* ====== Collapsed (ikon CENTER & ukurannya pas) ====== */
-.sidebar.is-collapsed .ant-menu-dark {
-  padding-inline: 0 !important;
-}
-
-.sidebar.is-collapsed .ant-menu-inline-collapsed > .ant-menu-item,
-.sidebar.is-collapsed
-  .ant-menu-inline-collapsed
-  > .ant-menu-submenu
-  > .ant-menu-submenu-title {
-  padding-inline: 0 !important;
-  margin: 6px 4px !important;
-  height: var(--item-h);
-  line-height: var(--item-h);
-  border-radius: var(--item-radius);
-}
-
-/* Center ALL icons when collapsed (selected or not) */
-.sidebar.is-collapsed .ant-menu-item {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.sidebar.is-collapsed .ant-menu-item .ant-menu-item-icon {
-  margin-right: 0 !important;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.sidebar.is-collapsed .ant-menu-item > a,
-.sidebar.is-collapsed .ant-menu-item > span {
-  display: grid !important;
-  place-items: center !important;
-  width: 100%;
-  height: 100%;
-  padding: 0 !important;
-}
-/* Jangan sembunyikan title-content saat collapsed; biarkan anchor tetap clickable */
-.sidebar.is-collapsed .ant-menu-item {
+.sb-item {
   position: relative;
-}
-.sidebar.is-collapsed .ant-menu-item .ant-menu-title-content > a {
-  position: absolute;
-  inset: 0;
-  display: block;
-  width: 100%;
-  height: 100%;
-  padding: 0 !important;
-  font-size: 0; /* sembunyikan teks tanpa menghilangkan anchor */
-}
-.sidebar.is-collapsed .ant-menu .ant-menu-item::after {
-  display: none !important;
-}
-
-.sidebar.is-collapsed .menu-icon {
-  margin: 0 !important;
-}
-.sidebar.is-collapsed .menu-icon-svg {
-  width: var(--icon-size-collapsed);
-  height: var(--icon-size-collapsed);
-}
-
-/* Selected (collapsed): tanpa highlight lingkaran maupun row */
-
-/* Row hover/selected saat collapsed (tetap flat) */
-.sidebar.is-collapsed .ant-menu-item {
-  background: transparent;
-}
-.sidebar.is-collapsed .ant-menu-item:hover {
-  background: var(--menu-hover-row) !important;
-}
-.sidebar.is-collapsed .ant-menu-item-selected {
-  background: transparent !important; /* hilangkan highlight baris */
-}
-.sidebar.is-collapsed .ant-menu-item-selected > a,
-.sidebar.is-collapsed .ant-menu-item-selected > span,
-.sidebar.is-collapsed .ant-menu-item:hover > a,
-.sidebar.is-collapsed .ant-menu-item:hover > span {
-  background: transparent !important; /* pastikan anchor/tile juga transparan */
-}
-
-/* ====== Bottom / Logout ====== */
-.sidebar-bottom {
-  margin-top: auto;
-  padding-top: 12px;
-  border-top: 1px dashed rgba(148, 163, 184, 0.22);
-  margin-bottom: calc(
-    var(--sidebar-bottom-gap) + env(safe-area-inset-bottom, 0px)
-  );
-}
-.sidebar-logout {
-  background: var(--logout-bg) !important;
-  border: 1px solid var(--logout-border) !important;
-  color: #fff !important;
-  box-shadow: 0 8px 24px rgba(239, 68, 68, 0.25);
-}
-.sidebar-logout:hover {
-  background: var(--logout-bg-hover) !important;
-  border-color: var(--logout-bg-hover) !important;
-  color: #fff !important;
-  box-shadow: 0 10px 28px rgba(239, 68, 68, 0.35);
-}
-
-/* Collapsed: center tombol logout */
-.sidebar.is-collapsed .sidebar-bottom {
   display: flex;
-  justify-content: center;
-}
-.sidebar-logout.icon-only {
-  width: 44px !important;
-  height: 44px !important;
-  padding: 0 !important;
-  border-radius: 9999px !important;
-  display: inline-flex;
   align-items: center;
-  justify-content: center;
+  gap: 10px;
+  padding: 10px 10px 10px 12px;
+  border-radius: 10px;
+  color: var(--sb-muted);
+  text-decoration: none;
+  font-size: 14px;
+  line-height: 1;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.sb-item:hover {
+  background: var(--sb-hover);
+  color: var(--sb-text);
+}
+.sb-item.is-active {
+  background: var(--sb-active-bg);
+  color: var(--sb-blue);
+  font-weight: 600;
+}
+.sb-item .sb-ic {
+  color: var(--sb-icon);
+}
+.sb-item.is-active .sb-ic {
+  color: var(--sb-blue);
 }
 
-/* Keep menu bg transparent */
-.sidebar-menu.ant-menu-dark {
+/* left blue rail indicator */
+.sb-item .sb-item-rail {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 8px;
+  bottom: 8px;
+  width: 4px;
+  border-radius: 8px;
   background: transparent;
+  transition: background 0.2s ease;
+}
+.sb-item.is-active .sb-item-rail {
+  background: var(--sb-rail);
 }
 
-/* ===== FINAL HARD OVERRIDE (pastikan ikon center & tanpa pill) ===== */
-.sidebar.is-collapsed .ant-menu-item,
-.sidebar.is-collapsed .ant-menu-item:hover,
-.sidebar.is-collapsed .ant-menu-item-active,
-.sidebar.is-collapsed .ant-menu-item-selected,
-.sidebar.is-collapsed .ant-menu-item > a,
-.sidebar.is-collapsed .ant-menu-item > a:hover {
-  background: transparent !important;
-  box-shadow: none !important;
-  border: 0 !important;
+/* Sub menu */
+.sb-sub {
+  list-style: none;
+  margin: 4px 0 8px 0;
+  padding-left: 38px;
 }
-/* Row hover/selected ditata ulang (flat) */
-.sidebar.is-collapsed .ant-menu-inline-collapsed > .ant-menu-item:hover {
-  background: var(--menu-hover-row) !important;
+.sb-subitem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  color: var(--sb-muted);
+  text-decoration: none;
+  font-size: 13px;
+  border-radius: 8px;
 }
-.sidebar.is-collapsed
-  .ant-menu-inline-collapsed
-  > .ant-menu-item.ant-menu-item-selected {
-  background: var(--menu-selected-row) !important;
+.sb-subitem:hover {
+  color: var(--sb-text);
+}
+.sb-subitem.is-active {
+  color: var(--sb-blue);
+  font-weight: 600;
+}
+.sb-subdot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #d7deea;
+}
+.sb-subitem.is-active .sb-subdot {
+  background: var(--sb-blue);
+}
+.sb-subtxt {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

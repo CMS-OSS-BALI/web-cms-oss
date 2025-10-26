@@ -11,20 +11,28 @@ datasource db {
 ///    Core & Auth
 ///    =========================
 model admin_users {
-  id                    String                  @id @default(uuid()) @db.VarChar(36)
-  email                 String                  @unique(map: "email")
-  password              String                  @db.VarChar(255)
-  created_at            DateTime                @default(now()) @db.DateTime(6)
-  updated_at            DateTime                @updatedAt @db.DateTime(6)
-  deleted_at            DateTime?               @db.DateTime(6)
-  password_changed_at   DateTime                @default(now()) @db.DateTime(6)
-  name                  String?
+  id                    String                   @id @default(uuid()) @db.VarChar(36)
+
+  // ── Profil & Auth
+  profile_photo         String?                  @db.VarChar(512)
+  email                 String                   @unique(map: "email") @db.VarChar(191)
+  no_whatsapp           String?                  @db.VarChar(32) @map("no_whatsapp")
+  password              String                   @db.VarChar(255)
+  name                  String?                  @db.VarChar(191)
+
+  // ── Timestamps
+  created_at            DateTime                 @default(now()) @db.DateTime(6)
+  updated_at            DateTime                 @updatedAt @db.DateTime(6)
+  deleted_at            DateTime?                @db.DateTime(6)
+  password_changed_at   DateTime                 @default(now()) @db.DateTime(6)
+
+  // ── Relations (pastikan model lain punya FK ke admin_users.id)
   aktivitas             aktivitas[]
   blog                  blog[]
   college               college[]
   events                events[]
   mitra_dalam_negeri    mitra_dalam_negeri[]
-  mitra_reviews         mitra_dalam_negeri[]    @relation("mitra_reviewer")
+  mitra_reviews         mitra_dalam_negeri[]     @relation("mitra_reviewer")
   reset_password_tokens reset_password_tokens[]
   services              services[]
   testimonials          testimonials[]
@@ -32,6 +40,7 @@ model admin_users {
 
   @@map("admin_users")
 }
+
 
 model reset_password_tokens {
   id            String      @id @default(uuid()) @db.VarChar(36)
@@ -447,7 +456,6 @@ model consultants {
   whatsapp                     String?                     @unique(map: "uq_consultants_whatsapp") @db.VarChar(30)
   email                        String?                     @unique(map: "uq_consultants_email")
   profile_image_url            String?                     @db.VarChar(512)
-  program_consultant_image_url String?                     @db.VarChar(512)
   created_at                   DateTime                    @default(now()) @db.Timestamp(0)
   updated_at                   DateTime                    @default(now()) @db.Timestamp(0)
   program_images               consultant_program_images[]
@@ -865,8 +873,6 @@ enum gender {
 
 enum verification_status {
   PENDING
-  AUTO_PASS
-  NEED_REVIEW
   REJECTED
   VERIFIED
 }

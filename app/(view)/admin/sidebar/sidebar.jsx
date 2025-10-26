@@ -2,150 +2,63 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useMemo } from "react";
-import { Button, Menu, Tooltip, ConfigProvider, Grid, Popconfirm } from "antd";
-import { LogOut } from "lucide-react";
 import useSidebarViewModel from "./useSidebarViewModel";
-import logo from "@/public/images/loading.png";
 import "./sidebar.css";
 
-export default function Sidebar({ collapsed }) {
-  const { MENU, isActive, onLogout } = useSidebarViewModel();
-  const screens = Grid.useBreakpoint();
+export default function Sidebar() {
+  const { MENU, isActive, isChildActive, brand } = useSidebarViewModel();
 
-  // auto-collapse di layar kecil, tapi tetap hormati prop collapsed
-  const isCollapsed = collapsed ?? !screens.lg;
+  const renderNode = (item, depth = 0) => {
+    const Active = isActive(item.href) || isChildActive(item.children || []);
+    const Icon = item.icon;
 
-  const selectedKey = useMemo(() => {
-    const active = MENU.find((i) => isActive(i.href));
-    return active?.href;
-  }, [MENU, isActive]);
+    return (
+      <li key={item.href} className={`sb-li depth-${depth}`}>
+        <Link
+          href={item.href}
+          className={`sb-item ${Active ? "is-active" : ""}`}
+          aria-current={Active ? "page" : undefined}
+        >
+          <span className="sb-item-rail" />
+          {Icon ? <Icon size={18} className="sb-ic" /> : null}
+          <span className="sb-txt">{item.label}</span>
+        </Link>
 
-  const items = useMemo(
-    () =>
-      MENU.map((item) => {
-        const Icon = item.icon;
-        return {
-          key: item.href,
-          icon: Icon ? (
-            <span className="menu-icon">
-              <Icon className="menu-icon-svg" strokeWidth={2} />
-            </span>
-          ) : null,
-          label: <Link href={item.href}>{item.label}</Link>,
-        };
-      }),
-    [MENU]
-  );
-
-  // Matikan pill background bawaan AntD saat collapsed
-  const collapsedMenuTheme = {
-    hashed: false,
-    components: {
-      Menu: {
-        itemHoverBg: "transparent",
-        itemSelectedBg: "transparent",
-        itemActiveBg: "transparent",
-      },
-    },
+        {item.children?.length ? (
+          <ul
+            className={`sb-sub depth-${depth + 1}`}
+            role="group"
+            aria-label={item.label}
+          >
+            {item.children.map((c) => renderNode(c, depth + 1))}
+          </ul>
+        ) : null}
+      </li>
+    );
   };
 
-  const menuEl = (
-    <Menu
-      mode="inline"
-      theme="dark"
-      items={items}
-      selectedKeys={selectedKey ? [selectedKey] : []}
-      inlineCollapsed={isCollapsed}
-      style={{ background: "transparent", borderRight: "none" }}
-      className={`sidebar-menu ${isCollapsed ? "is-collapsed-menu" : ""}`}
-    />
-  );
-
   return (
-    <aside
-      id="admin-sidebar"
-      className={`sidebar ${isCollapsed ? "is-collapsed" : ""}`}
-    >
-      {/* Logo — SELALU CENTER */}
-      <div className="sidebar-logo">
-        <Link
-          href="/admin/dashboard"
-          aria-label="Go to Dashboard"
-          className="sidebar-logo-link"
-        >
-          <Image
-            src={logo}
-            alt="Logo"
-            priority
-            sizes="110px"
-            className="sidebar-logo-img"
-          />
-        </Link>
+    <aside className="sb-root" aria-label="Sidebar Navigation">
+      <div className="sb-brand">
+        <div className="sb-logo" aria-hidden="true">
+          {brand.logoUrl ? (
+            <Image
+              src={brand.logoUrl}
+              alt="logo"
+              width={28}
+              height={28}
+              className="sb-logo-img"
+            />
+          ) : (
+            <div className="sb-logo-fallback">O</div>
+          )}
+        </div>
+        <div className="sb-brand-name">{brand.name}</div>
       </div>
 
-      {/* Nav */}
-      {isCollapsed ? (
-        <ConfigProvider theme={collapsedMenuTheme}>{menuEl}</ConfigProvider>
-      ) : (
-        menuEl
-      )}
-
-      {/* Bottom logout */}
-      <div className="sidebar-bottom">
-        {isCollapsed ? (
-          <Tooltip title="Logout" placement="right">
-            <span>
-              <MenuConfirmLogout onConfirm={onLogout} placement="right" />
-            </span>
-          </Tooltip>
-        ) : (
-          <MenuConfirmLogout onConfirm={onLogout} placement="top" block />
-        )}
-      </div>
-
-      {/* Safety override terakhir */}
-      <style jsx global>{`
-        .sidebar.is-collapsed .ant-menu-item,
-        .sidebar.is-collapsed .ant-menu-item:hover,
-        .sidebar.is-collapsed .ant-menu-item-active,
-        .sidebar.is-collapsed .ant-menu-item-selected,
-        .sidebar.is-collapsed .ant-menu-item > a,
-        .sidebar.is-collapsed .ant-menu-item > a:hover {
-          background: transparent !important;
-          box-shadow: none !important;
-        }
-      `}</style>
+      <nav className="sb-nav">
+        <ul className="sb-menu">{MENU.map((item) => renderNode(item, 0))}</ul>
+      </nav>
     </aside>
-  );
-}
-
-function MenuConfirmLogout({ onConfirm, placement = "top", block = false }) {
-  return (
-    <ConfigProvider
-      theme={{
-        components: { Popconfirm: { colorBgElevated: "#0b1223" } },
-      }}
-    >
-      <Popconfirm
-        title="Logout?"
-        description="Yakin ingin logout?"
-        okText="Logout"
-        okButtonProps={{ danger: true }}
-        placement={placement}
-        onConfirm={onConfirm}
-      >
-        <Button
-          danger
-          className={`sidebar-logout ${!block ? "icon-only" : ""}`}
-          icon={<LogOut size={18} />}
-          {...(block
-            ? { block: true, style: { height: 40, borderRadius: 9999 } }
-            : {})}
-        >
-          {block ? "Logout" : null}
-        </Button>
-      </Popconfirm>
-    </ConfigProvider>
   );
 }
