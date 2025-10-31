@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import Image from "next/image";
 import dayjs from "dayjs";
 import {
@@ -32,6 +32,7 @@ import {
   PlusOutlined,
   LeftOutlined,
   RightOutlined,
+  QrcodeOutlined,
 } from "@ant-design/icons";
 
 /* ===== helpers ===== */
@@ -128,10 +129,11 @@ export default function EventsContent({ vm }) {
   const T = {
     title: "Manajemen Event",
     listTitle: "Daftar Event",
-    searchPh: "Search Event (judul/lokasi/kategori)",
+    searchPh: "Cari event (judul/kategori/tahun)",
     action: "Aksi",
     addNew: "Buat Event",
     csv: "Download CSV",
+    scanner: "Scanner",
   };
 
   const [api, contextHolder] = notification.useNotification();
@@ -143,13 +145,51 @@ export default function EventsContent({ vm }) {
   };
 
   const rows = useMemo(() => viewModel?.events || [], [viewModel?.events]);
-  const [q, setQ] = useState(viewModel?.q || "");
-  const onSearchNow = () => {
-    viewModel?.setQ?.((q || "").trim());
+  const q = viewModel?.q ?? "";
+
+  // --- Enhanced search: parse year & category dari input ---
+  const onSearchNow = (rawInput) => {
+    const raw = String(rawInput ?? q ?? "").trim();
+    let text = raw;
+
+    // 1) year 19xx/20xx
+    const y = raw.match(/\b(19|20)\d{2}\b/);
+    if (y) {
+      const yearNum = Number(y[0]);
+      if (!Number.isNaN(yearNum)) {
+        viewModel?.setYear?.(yearNum);
+        text = text.replace(y[0], "").trim();
+      }
+    }
+
+    // 2) kategori
+    const categories = viewModel?.categoryOptions || [];
+    const lower = text.toLowerCase();
+    let matched = categories.find(
+      (c) => String(c.label || "").toLowerCase() === lower
+    );
+    if (!matched && lower) {
+      matched = categories.find((c) =>
+        String(c.label || "")
+          .toLowerCase()
+          .includes(lower)
+      );
+    }
+    if (matched) {
+      viewModel?.setCategoryId?.(matched.value);
+      const onlyYear =
+        y && (raw === y[0] || raw === `${y[0]} ` || raw === ` ${y[0]}`);
+      if (onlyYear || lower === String(matched.label || "").toLowerCase()) {
+        viewModel?.setQ?.("");
+      } else viewModel?.setQ?.(text);
+    } else {
+      viewModel?.setQ?.(text);
+    }
+
     viewModel?.setPage?.(1);
   };
 
-  /* ===== view modal (mirror edit fields) ===== */
+  /* ===== view modal ===== */
   const [viewOpen, setViewOpen] = useState(false);
   const [viewLoading, setViewLoading] = useState(false);
   const [viewData, setViewData] = useState(null);
@@ -166,7 +206,10 @@ export default function EventsContent({ vm }) {
         if (!ok) throw new Error(error || "Gagal memuat detail.");
         payload = data || row;
       } else {
-        const r = await fetch(`/api/events/${row.id}?include_category=1`);
+        const r = await fetch(
+          `/api/events/${row.id}?include_category=1&_=${Date.now()}`,
+          { cache: "no-store" }
+        );
         const j = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(j?.error?.message || "Gagal memuat detail.");
         payload = j?.data || row;
@@ -210,7 +253,7 @@ export default function EventsContent({ vm }) {
   };
   const normList = (e) => (Array.isArray(e) ? e : e?.fileList || []);
 
-  /* create submit (tetap autoTranslate true jika endpointmu butuh) */
+  /* CREATE submit */
   const submitCreate = async (values) => {
     if (
       !values.title_id ||
@@ -241,28 +284,26 @@ export default function EventsContent({ vm }) {
     if (values.category_id)
       fd.append("category_id", String(values.category_id));
     fd.append("is_published", String(values.is_published === true));
-    if (values.capacity == null || values.capacity === "") {
-      // kirim kosong untuk null
-    } else {
+    if (!(values.capacity == null || values.capacity === "")) {
       fd.append("capacity", String(values.capacity));
     }
     fd.append("pricing_type", values.pricing_type || "FREE");
     if (values.pricing_type === "PAID")
       fd.append("ticket_price", String(values.ticket_price || 0));
     fd.append("booth_price", String(values.booth_price ?? 0));
-    if (values.booth_quota == null || values.booth_quota === "") {
-      // kosong
-    } else {
+    if (!(values.booth_quota == null || values.booth_quota === "")) {
       fd.append("booth_quota", String(values.booth_quota));
     }
-    // biarkan true jika server membaca ini, atau hapus kalau server auto.
     fd.append("autoTranslate", "true");
 
     let res;
     if (typeof viewModel?.createEvent === "function") {
       res = await viewModel.createEvent(fd);
     } else {
-      const r = await fetch("/api/events", { method: "POST", body: fd });
+      const r = await fetch("/api/events?_=" + Date.now(), {
+        method: "POST",
+        body: fd,
+      });
       const j = await r.json().catch(() => ({}));
       res = r.ok
         ? { ok: true, data: j?.data }
@@ -275,11 +316,71 @@ export default function EventsContent({ vm }) {
     setCreateOpen(false);
     formCreate.resetFields();
     setImgPrevCreate("");
-    viewModel?.refetch?.();
+    await viewModel?.refetch?.();
     viewModel?.setPage?.(1);
   };
 
-  /* edit submit —> HAPUS autoTranslate (tidak dikirim) */
+  /* === NEW: open edit modal + prefill === */
+  const openEdit = async (row) => {
+    setEditOpen(true);
+    setDetailLoading(true);
+    setActiveRow(row);
+    try {
+      let payload = null;
+      if (typeof viewModel?.getEvent === "function") {
+        const { ok, data, error } = await viewModel.getEvent(row.id, {
+          includeCategory: true,
+        });
+        if (!ok) throw new Error(error || "Gagal memuat data edit.");
+        payload = data || row;
+      } else {
+        const r = await fetch(
+          `/api/events/${row.id}?include_category=1&_=${Date.now()}`,
+          { cache: "no-store" }
+        );
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j?.error?.message || "Gagal memuat data.");
+        payload = j?.data || row;
+      }
+
+      const e = normalizeEvent(payload);
+      setImgPrevEdit(e.banner_url || "");
+      formEdit.setFieldsValue({
+        title_id: e.title_id || "",
+        description_id: e.description_id || "",
+        start_at: e.start_at ? dayjs(e.start_at) : null,
+        end_at: e.end_at ? dayjs(e.end_at) : null,
+        location: e.location || "",
+        category_id: e.category_id || undefined,
+        capacity:
+          e.capacity == null || e.capacity === ""
+            ? undefined
+            : Number(e.capacity),
+        pricing_type: e.pricing_type || "FREE",
+        ticket_price:
+          e.pricing_type === "PAID" ? Number(e.ticket_price || 0) : 0,
+        booth_price: Number(e.booth_price || 0),
+        booth_quota:
+          e.booth_quota == null || e.booth_quota === ""
+            ? undefined
+            : Number(e.booth_quota),
+        is_published: !!e.is_published,
+        image: [],
+      });
+    } catch (err) {
+      toast.err("Tidak bisa membuka form edit", err?.message);
+      setEditOpen(false);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  /* EDIT submit — no autoTranslate */
+  const [pricingCreate, pricingEdit] = [
+    Form.useWatch("pricing_type", formCreate),
+    Form.useWatch("pricing_type", formEdit),
+  ];
+
   const submitEdit = async (values) => {
     if (!activeRow?.id) return;
     if (!values.title_id) return toast.err("Judul (ID) wajib diisi");
@@ -319,13 +420,11 @@ export default function EventsContent({ vm }) {
       fd.append("category_id", String(values.category_id));
     else fd.append("category_id", ""); // kosongkan=disconnect
 
-    // ⚠️ Tidak mengirim autoTranslate apapun pada EDIT
-
     let res;
     if (typeof viewModel?.updateEvent === "function") {
       res = await viewModel.updateEvent(activeRow.id, fd);
     } else {
-      const r = await fetch(`/api/events/${activeRow.id}`, {
+      const r = await fetch(`/api/events/${activeRow.id}?_=${Date.now()}`, {
         method: "PATCH",
         body: fd,
       });
@@ -344,7 +443,7 @@ export default function EventsContent({ vm }) {
     setEditOpen(false);
     formEdit.resetFields();
     setImgPrevEdit("");
-    viewModel?.refetch?.();
+    await viewModel?.refetch?.();
   };
 
   const openCreate = () => {
@@ -352,56 +451,6 @@ export default function EventsContent({ vm }) {
     formCreate.resetFields();
     setImgPrevCreate("");
   };
-
-  const openEdit = async (row) => {
-    setActiveRow(row);
-    setEditOpen(true);
-    setImgPrevEdit("");
-    setDetailLoading(true);
-
-    try {
-      let data = null;
-      if (typeof viewModel?.getEvent === "function") {
-        const {
-          ok,
-          data: d,
-          error,
-        } = await viewModel.getEvent(row.id, { includeCategory: true });
-        if (!ok) throw new Error(error || "Terjadi kesalahan");
-        data = d || row;
-      } else {
-        const r = await fetch(`/api/events/${row.id}?include_category=1`);
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(j?.error?.message || "Error");
-        data = j?.data || row;
-      }
-
-      const ev = normalizeEvent(data);
-      formEdit.setFieldsValue({
-        title_id: ev.title_id || "",
-        description_id: ev.description_id || "",
-        start_at: ev.start_at ? dayjs(ev.start_at) : null,
-        end_at: ev.end_at ? dayjs(ev.end_at) : null,
-        location: ev.location || "",
-        category_id: ev.category_id || undefined,
-        is_published: !!ev.is_published,
-        capacity: ev.capacity ?? null,
-        pricing_type: ev.pricing_type || "FREE",
-        ticket_price: ev.ticket_price ?? 0,
-        booth_price: ev.booth_price ?? 0,
-        booth_quota: ev.booth_quota ?? null,
-      });
-      setImgPrevEdit(ev.banner_url || "");
-    } catch (e) {
-      setEditOpen(false);
-      toast.err("Gagal memuat detail event", e?.message || "Terjadi kesalahan");
-    } finally {
-      setDetailLoading(false);
-    }
-  };
-
-  const pricingCreate = Form.useWatch("pricing_type", formCreate);
-  const pricingEdit = Form.useWatch("pricing_type", formEdit);
 
   const goPrev = () =>
     viewModel?.setPage?.(Math.max(1, (viewModel?.page || 1) - 1));
@@ -637,8 +686,11 @@ export default function EventsContent({ vm }) {
                 <Input
                   allowClear
                   value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  onPressEnter={onSearchNow}
+                  onChange={(e) => {
+                    viewModel?.setQ?.(e.target.value);
+                    viewModel?.setPage?.(1);
+                  }}
+                  onPressEnter={(e) => onSearchNow(e.currentTarget.value)}
                   placeholder={T.searchPh}
                   prefix={<SearchOutlined />}
                   style={styles.searchInput}
@@ -686,6 +738,14 @@ export default function EventsContent({ vm }) {
                 >
                   {T.csv}
                 </Button>
+
+                <Button
+                  icon={<QrcodeOutlined />}
+                  onClick={viewModel?.goScanner}
+                >
+                  {T.scanner}
+                </Button>
+
                 <Button
                   type="primary"
                   icon={<PlusOutlined />}
@@ -738,7 +798,7 @@ export default function EventsContent({ vm }) {
                         <div style={styles.colName}>
                           <div style={styles.nameWrap}>
                             <div style={styles.nameText}>
-                              {r.title || "(tanpa judul)"}
+                              {r.title || r.title_id || "(tanpa judul)"}
                             </div>
                             <div style={styles.subDate}>
                               {r.category_name
@@ -748,11 +808,14 @@ export default function EventsContent({ vm }) {
                           </div>
                         </div>
                         <div style={styles.colCenter}>
-                          {statusPill(r.start_ts, r.end_ts)}
+                          {statusPill(
+                            r.start_ts || r.start_at,
+                            r.end_ts || r.end_at
+                          )}
                         </div>
                         <div style={styles.colCenter}>
                           <span style={styles.cellEllipsis}>
-                            {fmtDateId(r.start_ts)}
+                            {fmtDateId(r.start_ts || r.start_at)}
                           </span>
                         </div>
                         <div style={styles.colCenter}>
@@ -783,7 +846,7 @@ export default function EventsContent({ vm }) {
                             <Button
                               size="small"
                               icon={<EditOutlined />}
-                              onClick={() => openEdit(r)}
+                              onClick={() => openEdit(r)} // <<-- modal edit
                               style={styles.iconBtn}
                             />
                           </Tooltip>
@@ -1061,7 +1124,7 @@ export default function EventsContent({ vm }) {
         </div>
       </Modal>
 
-      {/* ===== Edit Modal (tanpa Auto-translate) ===== */}
+      {/* ===== Edit Modal ===== */}
       <Modal
         open={editOpen}
         onCancel={() => {
@@ -1257,7 +1320,7 @@ export default function EventsContent({ vm }) {
         </div>
       </Modal>
 
-      {/* ===== View Modal (mirror edit fields) ===== */}
+      {/* ===== View Modal ===== */}
       <Modal
         open={viewOpen}
         onCancel={() => {
@@ -1273,7 +1336,6 @@ export default function EventsContent({ vm }) {
           <Spin spinning={viewLoading}>
             {!viewData ? null : (
               <div style={{ display: "grid", gap: 10 }}>
-                {/* Banner (readonly) */}
                 <div style={styles.coverWrap}>
                   <div style={styles.coverBox}>
                     {viewData.banner_url ? (
@@ -1290,7 +1352,6 @@ export default function EventsContent({ vm }) {
                   </div>
                 </div>
 
-                {/* Judul & Deskripsi (ID) */}
                 <div>
                   <div style={styles.label}>Judul (Bahasa Indonesia)</div>
                   <div style={styles.value}>{viewData.title_id || "—"}</div>
@@ -1302,7 +1363,6 @@ export default function EventsContent({ vm }) {
                   </div>
                 </div>
 
-                {/* Waktu */}
                 <div
                   style={{
                     display: "grid",
@@ -1322,7 +1382,6 @@ export default function EventsContent({ vm }) {
                   </div>
                 </div>
 
-                {/* Lokasi & Kategori */}
                 <div
                   style={{
                     display: "grid",
@@ -1342,7 +1401,6 @@ export default function EventsContent({ vm }) {
                   </div>
                 </div>
 
-                {/* Capacity & Published */}
                 <div
                   style={{
                     display: "grid",
@@ -1366,7 +1424,6 @@ export default function EventsContent({ vm }) {
                   </div>
                 </div>
 
-                {/* Pricing */}
                 <div
                   style={{
                     display: "grid",
@@ -1388,7 +1445,6 @@ export default function EventsContent({ vm }) {
                   </div>
                 </div>
 
-                {/* Booth */}
                 <div
                   style={{
                     display: "grid",
@@ -1503,9 +1559,10 @@ const styles = {
   },
   sectionTitle: { fontSize: 18, fontWeight: 800, color: "#0b3e91" },
 
+  // + 1 kolom untuk tombol Scanner
   filtersRowBig: {
     display: "grid",
-    gridTemplateColumns: "1fr 140px minmax(220px, 1fr) auto auto",
+    gridTemplateColumns: "1fr 140px minmax(220px, 1fr) auto auto auto",
     gap: 8,
     alignItems: "center",
   },

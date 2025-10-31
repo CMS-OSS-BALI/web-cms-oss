@@ -65,7 +65,6 @@ async function assertAdmin(req) {
   if (!admin) throw new Response("Forbidden", { status: 403 });
   return { adminId: admin.id, via: "session" };
 }
-/** Read JSON or multipart/x-www-form-urlencoded (tanpa file) */
 async function readBody(req) {
   const ct = (req.headers.get("content-type") || "").toLowerCase();
   if (
@@ -116,26 +115,20 @@ export async function GET(req) {
     const page = Math.max(1, asInt(searchParams.get("page"), 1));
     const perPage = Math.min(
       100,
-      Math.max(1, asInt(searchParams.get("perPage"), 12))
+      Math.max(1, asInt(searchParams.get("perPage"), 10))
     );
     const q = (searchParams.get("q") || "").trim();
     const college_id =
       (searchParams.get("college_id") || "").trim() || undefined;
+
     const sort = String(searchParams.get("sort") || "created_at:desc");
     const [sortField = "created_at", sortDir = "desc"] = sort.split(":");
+    const nameSort = sortField === "name";
     const allowed = new Set(["created_at", "updated_at", "name"]);
-    const orderBy = allowed.has(sortField)
-      ? [
-          {
-            [sortField]:
-              sortField === "name"
-                ? undefined
-                : sortDir === "asc"
-                ? "asc"
-                : "desc",
-          },
-        ]
-      : [{ created_at: "desc" }];
+    const orderBy =
+      !allowed.has(sortField) || nameSort
+        ? [{ created_at: "desc" }]
+        : [{ [sortField]: sortDir === "asc" ? "asc" : "desc" }];
 
     const locale = normalizeLocale(searchParams.get("locale"));
     const fallback = normalizeLocale(
@@ -151,6 +144,7 @@ export async function GET(req) {
       ? {}
       : { deleted_at: null };
 
+    // ⬇️ FIX: remove `mode: 'insensitive'` (not supported on MySQL).
     const where = {
       ...baseDeleted,
       ...(college_id ? { college_id } : {}),
@@ -160,8 +154,8 @@ export async function GET(req) {
               some: {
                 locale: { in: locales },
                 OR: [
-                  { name: { contains: q, mode: "insensitive" } },
-                  { description: { contains: q, mode: "insensitive" } },
+                  { name: { contains: q } },
+                  { description: { contains: q } },
                 ],
               },
             },
@@ -173,7 +167,7 @@ export async function GET(req) {
       prisma.jurusan.count({ where }),
       prisma.jurusan.findMany({
         where,
-        orderBy: orderBy[0]?.name ? undefined : orderBy, // name-sort handled in memory
+        orderBy: nameSort ? undefined : orderBy,
         skip: (page - 1) * perPage,
         take: perPage,
         select: {
@@ -192,13 +186,12 @@ export async function GET(req) {
 
     let data = rows.map((r) => mapJurusan(r, locale, fallback));
 
-    if (sortField === "name") {
+    if (nameSort) {
       data.sort((a, b) => {
         const A = (a.name || "").toLowerCase();
         const B = (b.name || "").toLowerCase();
         return (sortDir === "asc" ? 1 : -1) * (A > B ? 1 : A < B ? -1 : 0);
       });
-      data = data.slice((page - 1) * perPage, (page - 1) * perPage + perPage);
     }
 
     return json({

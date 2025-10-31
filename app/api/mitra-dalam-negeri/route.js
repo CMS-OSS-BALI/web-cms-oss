@@ -15,6 +15,15 @@ const FALLBACK_LOCALE = EN_LOCALE;
 const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
 const BUCKET = process.env.SUPABASE_BUCKET;
 
+// ---- DB vendor aware case-insensitive helper ----
+const isPg = (process.env.DATABASE_URL || "").startsWith("postgres");
+const ci = (q) =>
+  q
+    ? isPg
+      ? { contains: q, mode: "insensitive" }
+      : { contains: q }
+    : undefined;
+
 /* ------------ shared helpers (sanitized JSON, parsing, etc.) ------------ */
 function sanitize(v) {
   if (v === null || v === undefined) return v;
@@ -108,17 +117,14 @@ async function readBodyAndFiles(req) {
         body[k] = v;
         continue;
       }
-      // logo / image utama
       if (!imageFile && (k === "image" || k === "logo" || k === "image_file")) {
         imageFile = v;
         continue;
       }
-      // multi-attachments
       if (isAttachKey(k)) {
         attachments.push(v);
         continue;
       }
-      // fallback: file lain dianggap attachment juga
       attachments.push(v);
     }
     return { body, imageFile, attachments };
@@ -134,6 +140,12 @@ function safeExt(filename = "") {
 }
 function randName(ext = "") {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
+}
+function parseDateOnly(s) {
+  const m = String(s || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const [_, y, mo, d] = m;
+  return new Date(`${y}-${mo}-${d}T00:00:00.000Z`);
 }
 async function uploadToSupabase(
   file,
@@ -187,10 +199,11 @@ export async function GET(req) {
       Math.max(1, asInt(searchParams.get("perPage"), 10))
     );
     const orderBy = getOrderBy(searchParams.get("sort"));
-    // kompatibel: includeDeleted (lama) / with_deleted & only_deleted (baru)
+
     const includeDeleted = searchParams.get("includeDeleted") === "1";
     const withDeleted = searchParams.get("with_deleted") === "1";
     const onlyDeleted = searchParams.get("only_deleted") === "1";
+
     const statusFilter = parseStatusFilter(searchParams.get("status"));
     const locale = normalizeLocale(searchParams.get("locale"));
     const fallback = normalizeLocale(
@@ -201,62 +214,76 @@ export async function GET(req) {
     const category_id = searchParams.get("category_id");
     const category_slug = searchParams.get("category_slug");
 
+    // date range
+    const dateFrom = parseDateOnly(searchParams.get("date_from")); // inclusive
+    const dateToRaw = parseDateOnly(searchParams.get("date_to")); // inclusive -> +1d for lt
+    const dateTo = dateToRaw
+      ? new Date(dateToRaw.getTime() + 24 * 60 * 60 * 1000)
+      : null;
+
     const where = {
       ...(onlyDeleted
         ? { NOT: { deleted_at: null } }
         : includeDeleted || withDeleted
         ? {}
         : { deleted_at: null }),
+      mitra_dalam_negeri_translate: { some: { locale: { in: locales } } },
     };
 
-    const and = [];
-    if (statusFilter) and.push({ status: { in: statusFilter } });
+    const AND = [];
 
-    // category filter
+    if (statusFilter) AND.push({ status: { in: statusFilter } });
+
+    // category filter (id atau slug)
     if (category_id) {
-      and.push({ category_id: String(category_id) });
+      AND.push({ category_id: String(category_id) });
     } else if (category_slug) {
       const cat = await prisma.mitra_dalam_negeri_categories.findUnique({
         where: { slug: String(category_slug) },
         select: { id: true },
       });
-      and.push({ category_id: cat?.id ?? "__nope__" });
+      AND.push({ category_id: cat?.id ?? "__nope__" });
     }
 
-    // search
+    // free-text search (ALL without `mode` for MySQL; Postgres uses `mode` via ci())
     if (q) {
-      and.push({
+      AND.push({
         OR: [
           {
             mitra_dalam_negeri_translate: {
               some: {
                 locale: { in: locales },
-                OR: [
-                  { name: { contains: q } },
-                  { description: { contains: q } },
-                ],
+                OR: [{ name: ci(q) }, { description: ci(q) }],
               },
             },
           },
-          { email: { contains: q, mode: "insensitive" } },
-          { phone: { contains: q, mode: "insensitive" } },
-          { address: { contains: q, mode: "insensitive" } },
-          { city: { contains: q, mode: "insensitive" } },
-          { province: { contains: q, mode: "insensitive" } },
-          { postal_code: { contains: q, mode: "insensitive" } },
-          { instagram: { contains: q, mode: "insensitive" } },
-          { twitter: { contains: q, mode: "insensitive" } },
-          { website: { contains: q, mode: "insensitive" } },
-          { contact_name: { contains: q, mode: "insensitive" } },
-          { contact_position: { contains: q, mode: "insensitive" } },
-          { contact_whatsapp: { contains: q, mode: "insensitive" } },
+          { email: ci(q) },
+          { phone: ci(q) },
+          { address: ci(q) },
+          { city: ci(q) },
+          { province: ci(q) },
+          { postal_code: ci(q) },
+          { instagram: ci(q) },
+          { twitter: ci(q) },
+          { website: ci(q) },
+          { contact_name: ci(q) },
+          { contact_position: ci(q) },
+          { contact_whatsapp: ci(q) },
         ],
       });
     }
-    if (and.length) where.AND = and;
 
-    // pastikan ada translasi untuk locale/fallback
-    where.mitra_dalam_negeri_translate = { some: { locale: { in: locales } } };
+    // created_at range
+    if (dateFrom || dateTo) {
+      AND.push({
+        created_at: {
+          ...(dateFrom ? { gte: dateFrom } : {}),
+          ...(dateTo ? { lt: dateTo } : {}),
+        },
+      });
+    }
+
+    if (AND.length) where.AND = AND;
 
     const [total, rows] = await Promise.all([
       prisma.mitra_dalam_negeri.count({ where }),
@@ -321,6 +348,8 @@ export async function GET(req) {
         created_at: row.created_at,
         updated_at: row.updated_at,
         deleted_at: row.deleted_at,
+        created_ts: row.created_at ? new Date(row.created_at).getTime() : null,
+        updated_ts: row.updated_at ? new Date(row.updated_at).getTime() : null,
         locale_used: t?.locale || null,
         merchant_name: t?.name || null,
         about: t?.description || null,
@@ -588,7 +617,6 @@ export async function POST(req) {
           if (up?.path) uploaded.push(up.path);
         } catch (e) {
           console.error("upload attachment error:", e?.message || e);
-          // lanjutkan file lain; jangan batalkan seluruh request
         }
       }
     }

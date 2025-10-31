@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const DEFAULT_SORT = "created_at:desc";
 const DEFAULT_LOCALE = "id";
-const fallbackFor = (loc) => (String(loc).toLowerCase() === "id" ? "en" : "id");
+const fallbackFor = (loc) =>
+  String(loc || "").toLowerCase() === "id" ? "en" : "id";
 
 function buildKey({
   page,
@@ -37,12 +38,12 @@ const csvSafe = (v) => {
 };
 
 export default function useMerchantsViewModel() {
-  // list state
+  /* ========== list state ========== */
   const [merchants, setMerchants] = useState([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
 
-  // filters & paging
+  /* ========== filters & paging ========== */
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
   const [q, setQ] = useState("");
@@ -50,34 +51,36 @@ export default function useMerchantsViewModel() {
   const [categoryId, setCategoryId] = useState("");
   const [locale, setLocale] = useState(DEFAULT_LOCALE);
 
-  // loading
+  /* ========== loading flags ========== */
   const [loading, setLoading] = useState(false);
   const [opLoading, setOpLoading] = useState(false);
 
-  // cancelable fetch
+  /* ========== abort controllers ========== */
   const listAbort = useRef(null);
   const countAbort = useRef(null);
   const catAbort = useRef(null);
 
-  // category options (remote)
+  /* ========== category options (remote) ========== */
   const [categoryOptions, _setCategoryOptions] = useState([]);
   const setCategoryOptions = (fnOrArr) =>
     _setCategoryOptions((prev) =>
       typeof fnOrArr === "function" ? fnOrArr(prev) : fnOrArr
     );
 
-  // status summary
+  /* ========== status summary ========== */
   const [statusCounts, setStatusCounts] = useState({
     pending: null,
     approved: null,
     declined: null,
   });
 
+  /* ========== reload list ========== */
   const reload = useCallback(async () => {
     setLoading(true);
     listAbort.current?.abort?.();
     const ac = new AbortController();
     listAbort.current = ac;
+
     try {
       const url = buildKey({
         page,
@@ -89,15 +92,22 @@ export default function useMerchantsViewModel() {
         status,
         categoryId,
       });
+
       const res = await fetch(url, { cache: "no-store", signal: ac.signal });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error?.message || "Load failed");
 
       const rows = json?.data || [];
       const meta = json?.meta || {};
+      const nextTotal = meta.total ?? rows.length ?? 0;
+
+      // Avoid ?? and || precedence issues by splitting:
+      const defaultPages = Math.ceil(nextTotal / (perPage || 10)) || 1;
+      const nextTotalPages = Math.max(1, meta.totalPages ?? defaultPages);
+
       setMerchants(rows);
-      setTotal(meta.total ?? rows.length ?? 0);
-      setTotalPages(meta.totalPages ?? 1);
+      setTotal(nextTotal);
+      setTotalPages(nextTotalPages);
     } catch (e) {
       if (e?.name !== "AbortError") {
         setMerchants([]);
@@ -116,22 +126,23 @@ export default function useMerchantsViewModel() {
     };
   }, [reload]);
 
-  // fetch total per status (global)
+  /* ========== fetch total per status (global) ========== */
   const fetchCountByStatus = useCallback(
     async (st, signal) => {
       const params = new URLSearchParams();
       params.set("page", "1");
-      params.set("perPage", "1");
+      params.set("perPage", "1"); // just need meta.total
       params.set("sort", DEFAULT_SORT);
       params.set("locale", locale);
       params.set("fallback", fallbackFor(locale));
       params.set("status", st);
+
       const res = await fetch(`/api/mitra-dalam-negeri?${params.toString()}`, {
         cache: "no-store",
         signal,
       });
       const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j?.error?.message || "Failed");
+      if (!res.ok) throw new Error(j?.error?.message || "Failed count");
       return j?.meta?.total ?? 0;
     },
     [locale]
@@ -162,7 +173,7 @@ export default function useMerchantsViewModel() {
     };
   }, [refreshStatusCounts]);
 
-  /* ===== detail ===== */
+  /* ========== detail ========== */
   const getMerchant = useCallback(
     async (id) => {
       try {
@@ -171,11 +182,12 @@ export default function useMerchantsViewModel() {
         )}`;
         const res = await fetch(url, { cache: "no-store" });
         const json = await res.json().catch(() => ({}));
-        if (!res.ok)
+        if (!res.ok) {
           return {
             ok: false,
             error: json?.error?.message || "Load detail failed",
           };
+        }
         return { ok: true, data: json?.data };
       } catch (e) {
         return { ok: false, error: e?.message || "Load detail failed" };
@@ -184,7 +196,7 @@ export default function useMerchantsViewModel() {
     [locale]
   );
 
-  /* ===== update ===== */
+  /* ========== update ========== */
   const updateMerchant = useCallback(
     async (id, payload) => {
       setOpLoading(true);
@@ -194,26 +206,31 @@ export default function useMerchantsViewModel() {
           body = payload;
         } else {
           const fd = new FormData();
+          // single image
           if (payload.file) {
             fd.set("image", payload.file);
             delete payload.file;
           }
+          // new attachments
           if (Array.isArray(payload.attachments_new)) {
             payload.attachments_new.forEach((f) => fd.append("attachments", f));
             delete payload.attachments_new;
           }
+          // attachments to delete (ids)
           if (Array.isArray(payload.attachments_to_delete)) {
-            payload.attachments_to_delete.forEach((id) =>
-              fd.append("attachments_to_delete", id)
+            payload.attachments_to_delete.forEach((x) =>
+              fd.append("attachments_to_delete", String(x))
             );
             delete payload.attachments_to_delete;
           }
+          // other fields
           Object.entries(payload || {}).forEach(([k, v]) => {
             if (v !== undefined && v !== null) fd.set(k, String(v));
           });
           fd.set("locale", locale);
           body = fd;
         }
+
         const res = await fetch(`/api/mitra-dalam-negeri/${id}`, {
           method: "PATCH",
           body,
@@ -233,6 +250,7 @@ export default function useMerchantsViewModel() {
     [locale, reload, refreshStatusCounts]
   );
 
+  /* ========== delete ========== */
   const deleteMerchant = useCallback(
     async (id) => {
       setOpLoading(true);
@@ -255,12 +273,13 @@ export default function useMerchantsViewModel() {
     [reload, refreshStatusCounts]
   );
 
-  /* ===== kategori options ===== */
+  /* ========== kategori options (remote) ========== */
   const fetchCategoryOptions = useCallback(
     async (kw = "") => {
       catAbort.current?.abort?.();
       const ac = new AbortController();
       catAbort.current = ac;
+
       try {
         const params = new URLSearchParams();
         params.set("page", "1");
@@ -268,9 +287,13 @@ export default function useMerchantsViewModel() {
         params.set("locale", locale);
         params.set("fallback", fallbackFor(locale));
         if (kw && kw.trim()) params.set("q", kw.trim());
+
         const res = await fetch(
           `/api/mitra-dalam-negeri-categories?${params.toString()}`,
-          { cache: "no-store", signal: ac.signal }
+          {
+            cache: "no-store",
+            signal: ac.signal,
+          }
         );
         const json = await res.json().catch(() => ({}));
         const rows = json?.data || [];
@@ -287,7 +310,7 @@ export default function useMerchantsViewModel() {
     [locale]
   );
 
-  /* ===== CSV ===== */
+  /* ========== CSV export ========== */
   const exportCSV = useCallback(async () => {
     try {
       // discover total first
@@ -304,26 +327,29 @@ export default function useMerchantsViewModel() {
       const head = await fetch(headUrl, { cache: "no-store" }).then((r) =>
         r.json()
       );
-      const total = head?.meta?.total ?? 0;
+      const allTotal = head?.meta?.total ?? 0;
 
-      if (!total) {
-        const headers = [
-          "id",
-          "merchant_name",
-          "status",
-          "category",
-          "email",
-          "phone",
-          "website",
-          "city",
-          "province",
-          "created_at",
-        ].join(",");
-        return new Blob([headers], { type: "text/csv;charset=utf-8" });
+      const headers = [
+        "id",
+        "merchant_name",
+        "status",
+        "category",
+        "email",
+        "phone",
+        "website",
+        "city",
+        "province",
+        "created_at",
+      ];
+
+      if (!allTotal) {
+        return new Blob([headers.join(",")], {
+          type: "text/csv;charset=utf-8",
+        });
       }
 
       const per = 100;
-      const pages = Math.max(1, Math.ceil(total / per));
+      const pages = Math.max(1, Math.ceil(allTotal / per));
       const all = [];
       for (let p = 1; p <= pages; p += 1) {
         const url = buildKey({
@@ -342,18 +368,6 @@ export default function useMerchantsViewModel() {
         all.push(...(data || []));
       }
 
-      const headers = [
-        "id",
-        "merchant_name",
-        "status",
-        "category",
-        "email",
-        "phone",
-        "website",
-        "city",
-        "province",
-        "created_at",
-      ];
       const rows = all.map((r) => [
         r.id,
         csvSafe(r.merchant_name),
@@ -366,6 +380,7 @@ export default function useMerchantsViewModel() {
         csvSafe(r.province || ""),
         r.created_at ? new Date(r.created_at).toISOString() : "",
       ]);
+
       const lines = [headers.join(","), ...rows.map((a) => a.join(","))].join(
         "\n"
       );
@@ -377,30 +392,44 @@ export default function useMerchantsViewModel() {
   }, [q, locale, status, categoryId]);
 
   return {
+    // data
     merchants,
     total,
     totalPages,
+
+    // paging & filters
     page,
     perPage,
-    loading,
-    opLoading,
     q,
     status,
     categoryId,
     locale,
+
+    // setters
     setQ,
     setStatus,
     setCategoryId,
     setLocale,
     setPage,
     setPerPage,
+
+    // loading
+    loading,
+    opLoading,
+
+    // category
     categoryOptions,
     fetchCategoryOptions,
     setCategoryOptions,
+
+    // ops
     getMerchant,
     updateMerchant,
     deleteMerchant,
     statusCounts,
     exportCSV,
+
+    // util
+    reload,
   };
 }

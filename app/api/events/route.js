@@ -20,7 +20,7 @@ const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
 /* -------------------- utils -------------------- */
 function sanitize(v) {
   if (v === null || v === undefined) return v;
-  if (v instanceof Date) return v.toISOString(); // ✅ keep dates usable
+  if (v instanceof Date) return v.toISOString();
   if (typeof v === "bigint") return v.toString();
   if (Array.isArray(v)) return v.map(sanitize);
   if (typeof v === "object") {
@@ -208,9 +208,13 @@ async function resolveCategoryId({ category_id, category_slug }) {
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
-    const q = (searchParams.get("q") || "").trim();
+    const qRaw = (searchParams.get("q") || "").trim();
+    const q = qRaw.length ? qRaw : undefined; // only build OR when present
+
     const locale = pickLocale(req, "locale", DEFAULT_LOCALE);
     const fallback = pickLocale(req, "fallback", DEFAULT_LOCALE);
+    const locales = Array.from(new Set([locale, fallback].filter(Boolean)));
+
     const page = Math.max(1, asInt(searchParams.get("page"), 1));
     const perPage = Math.min(
       100,
@@ -231,6 +235,8 @@ export async function GET(req) {
 
     const now = new Date();
 
+    const textFilter = q ? { contains: q } : undefined; // MySQL is already case-insensitive on *_ci collations
+
     const where = {
       ...(onlyDeleted
         ? { NOT: { deleted_at: null } }
@@ -247,40 +253,33 @@ export async function GET(req) {
         : status === "ongoing"
         ? { AND: [{ start_at: { lte: now } }, { end_at: { gte: now } }] }
         : {}),
-      ...(q
-        ? {
-            OR: [
-              { location: { contains: q, mode: "insensitive" } },
-              {
-                events_translate: {
-                  some: {
-                    locale: { in: [locale, fallback] },
-                    OR: [
-                      { title: { contains: q, mode: "insensitive" } },
-                      { description: { contains: q, mode: "insensitive" } },
-                    ],
-                  },
+      ...(q && {
+        OR: [
+          { location: textFilter },
+          {
+            events_translate: {
+              some: {
+                locale: { in: locales },
+                OR: [{ title: textFilter }, { description: textFilter }],
+              },
+            },
+          },
+          {
+            category: {
+              translate: {
+                some: {
+                  locale: { in: locales },
+                  OR: [{ name: textFilter }, { description: textFilter }],
                 },
               },
-              {
-                category: {
-                  translate: {
-                    some: {
-                      locale: { in: [locale, fallback] },
-                      OR: [
-                        { name: { contains: q, mode: "insensitive" } },
-                        { description: { contains: q, mode: "insensitive" } },
-                      ],
-                    },
-                  },
-                },
-              },
-            ],
-          }
-        : {}),
+            },
+          },
+        ],
+      }),
       ...(category_id ? { category_id } : {}),
       ...(category_slug ? { category: { slug: category_slug } } : {}),
-      events_translate: { some: { locale: { in: [locale, fallback] } } },
+      // pastikan ada terjemahan di salah satu locale
+      events_translate: { some: { locale: { in: locales } } },
     };
 
     const [total, rows] = await Promise.all([
@@ -311,7 +310,7 @@ export async function GET(req) {
           booth_sold_count: true,
 
           events_translate: {
-            where: { locale: { in: [locale, fallback] } },
+            where: { locale: { in: locales } },
             select: { locale: true, title: true, description: true },
           },
           category: includeCategory
@@ -320,7 +319,7 @@ export async function GET(req) {
                   id: true,
                   slug: true,
                   translate: {
-                    where: { locale: { in: [locale, fallback] } },
+                    where: { locale: { in: locales } },
                     select: { locale: true, name: true, description: true },
                   },
                 },
@@ -381,8 +380,8 @@ export async function GET(req) {
         id: r.id,
         banner_url: toPublicUrl(r.banner_url),
         is_published: r.is_published,
-        start_at: r.start_at, // Date → ISO by sanitize()
-        end_at: r.end_at, // Date → ISO by sanitize()
+        start_at: r.start_at,
+        end_at: r.end_at,
         start_ts,
         end_ts,
         location: r.location,
@@ -391,22 +390,18 @@ export async function GET(req) {
         ticket_price: r.ticket_price,
         category_id: r.category?.id ?? null,
         category_slug: r.category?.slug ?? null,
-        created_at: r.created_at, // Date → ISO by sanitize()
-        updated_at: r.updated_at, // Date → ISO by sanitize()
+        created_at: r.created_at,
+        updated_at: r.updated_at,
         created_ts,
         updated_ts,
-        deleted_at: r.deleted_at, // Date|null → ISO|null by sanitize()
+        deleted_at: r.deleted_at,
         title: t?.title ?? null,
         description: t?.description ?? null,
         locale_used: t?.locale ?? null,
         sold,
         remaining,
         ...(includeCategory
-          ? {
-              category_name,
-              category_description,
-              category_locale_used,
-            }
+          ? { category_name, category_description, category_locale_used }
           : {}),
         // booth fields
         booth_price: r.booth_price,
@@ -446,7 +441,6 @@ export async function GET(req) {
 export async function POST(req) {
   try {
     const { adminId } = await assertAdmin(req);
-
     const { body, file } = await readBodyAndFile(req);
 
     // upload banner jika ada, else pakai banner_url string
@@ -504,7 +498,7 @@ export async function POST(req) {
     if (banner_url.length > 1024)
       return badRequest("banner_url maksimal 1024 karakter", "banner_url");
 
-    // Translations ala blog-style
+    // Translations
     const title_id = String(body?.title_id ?? body?.title ?? "").trim();
     const description_id =
       body?.description_id !== undefined
@@ -512,7 +506,6 @@ export async function POST(req) {
         : body?.description !== undefined
         ? String(body.description)
         : null;
-
     if (!title_id)
       return badRequest(
         "Judul Bahasa Indonesia (title_id) wajib diisi.",
@@ -605,7 +598,6 @@ export async function POST(req) {
       const parent = await tx.events.create({
         data: {
           id,
-          // RELASI WAJIB
           admin_users: { connect: { id: adminId } },
           banner_url: banner_url || null,
           is_published: !!is_published,
@@ -615,11 +607,9 @@ export async function POST(req) {
           capacity,
           pricing_type,
           ticket_price: pricing_type === "PAID" ? ticket_price : 0,
-          // RELASI OPSIONAL: kategori
           ...(resolvedCategoryId
             ? { category: { connect: { id: resolvedCategoryId } } }
             : {}),
-          // Booth fields
           booth_price,
           booth_quota,
         },

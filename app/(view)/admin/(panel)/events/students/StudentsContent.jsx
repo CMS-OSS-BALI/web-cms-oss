@@ -269,20 +269,18 @@ export default function StudentsContent({ vm }) {
                   allowClear
                   showSearch
                   placeholder={T.categoryPh}
-                  value={vm.eventName || undefined}
+                  value={vm.eventId || undefined} // ← nilai = id event
                   onChange={(v) => {
-                    vm.setEventName(v || "");
+                    vm.setEventId(v || "");
                     vm.setPage(1);
                   }}
+                  options={vm.eventOptions} // ← dari VM
+                  optionFilterProp="label" // agar pencarian pakai label (judul)
                   filterOption={(input, opt) =>
                     String(opt?.label ?? "")
                       .toLowerCase()
                       .includes(String(input).toLowerCase())
                   }
-                  options={(vm.eventNames || []).map((n) => ({
-                    value: n,
-                    label: n,
-                  }))}
                 />
 
                 <Button

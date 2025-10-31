@@ -27,6 +27,7 @@ import {
   FilterOutlined,
   DownloadOutlined,
   PaperClipOutlined,
+  ReloadOutlined,
 } from "@ant-design/icons";
 
 /* =======================
@@ -138,7 +139,7 @@ function PieDonut({
   );
 }
 
-/* ===== tokens ===== */
+/* ===== tokens & texts ===== */
 const TOKENS = { shellW: "94%", maxW: 1140, blue: "#0b56c9", text: "#0f172a" };
 
 const T = {
@@ -264,6 +265,16 @@ export default function MerchantsContent({ vm }) {
 
   // upload previews (logo)
   const [imgPrevEdit, setImgPrevEdit] = useState("");
+  // cleanup blob url
+  useEffect(() => {
+    return () => {
+      if (imgPrevEdit && imgPrevEdit.startsWith("blob:")) {
+        try {
+          URL.revokeObjectURL(imgPrevEdit);
+        } catch {}
+      }
+    };
+  }, [imgPrevEdit]);
 
   // attachments delete list
   const [delAttach, setDelAttach] = useState([]);
@@ -278,7 +289,7 @@ export default function MerchantsContent({ vm }) {
   // derived
   const rows = useMemo(() => viewModel.merchants || [], [viewModel.merchants]);
 
-  // status counts
+  // status counts (already respects q + category in VM)
   const pendingCount =
     viewModel.statusCounts?.pending ??
     rows.filter((r) => r.status === "PENDING").length;
@@ -364,7 +375,15 @@ export default function MerchantsContent({ vm }) {
   const beforeImgEdit = (file) => {
     if (!isImg(file) || tooBig(file, 10)) return Upload.LIST_IGNORE;
     try {
-      setImgPrevEdit(URL.createObjectURL(file));
+      const url = URL.createObjectURL(file);
+      setImgPrevEdit((prev) => {
+        if (prev && prev.startsWith("blob:")) {
+          try {
+            URL.revokeObjectURL(prev);
+          } catch {}
+        }
+        return url;
+      });
     } catch {}
     return false;
   };
@@ -518,6 +537,22 @@ export default function MerchantsContent({ vm }) {
           width: 100% !important;
           height: 100% !important;
         }
+
+        /* responsive tweaks */
+        @media (max-width: 960px) {
+          .grid-stats {
+            grid-template-columns: repeat(
+              auto-fit,
+              minmax(220px, 1fr)
+            ) !important;
+          }
+          .grid-filters {
+            grid-template-columns: 1fr !important;
+          }
+          .grid-chart {
+            grid-template-columns: 1fr !important;
+          }
+        }
       `}</style>
 
       <section
@@ -567,8 +602,8 @@ export default function MerchantsContent({ vm }) {
           </div>
 
           {/* Summary cards */}
-          <div style={styles.statsRow}>
-            <div style={styles.statCard}>
+          <div className="grid-stats" style={styles.statsRow}>
+            <div style={styles.statCard} aria-label="Jumlah Pending">
               <div style={styles.statIconBox}>
                 <img
                   src="/image266.svg"
@@ -580,7 +615,7 @@ export default function MerchantsContent({ vm }) {
               <div style={styles.statTitle}>Pending</div>
               <div style={styles.statValue}>{pendingCount ?? "—"}</div>
             </div>
-            <div style={styles.statCard}>
+            <div style={styles.statCard} aria-label="Jumlah Approved">
               <div style={styles.statIconBox}>
                 <img
                   src="/image266.svg"
@@ -592,7 +627,7 @@ export default function MerchantsContent({ vm }) {
               <div style={styles.statTitle}>Approved</div>
               <div style={styles.statValue}>{approvedCount ?? "—"}</div>
             </div>
-            <div style={styles.statCard}>
+            <div style={styles.statCard} aria-label="Jumlah Declined">
               <div style={styles.statIconBox}>
                 <img
                   src="/image266.svg"
@@ -613,15 +648,26 @@ export default function MerchantsContent({ vm }) {
                 <div style={styles.sectionTitle}>
                   Persentase Peningkatan Mitra OSS
                 </div>
-                <Select
-                  value="Tahun"
-                  options={[{ value: "Tahun", label: "Tahun" }]}
-                  style={{ width: 120 }}
-                  disabled
-                />
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Button
+                    icon={<ReloadOutlined />}
+                    onClick={() => {
+                      viewModel.reload?.();
+                      viewModel.refreshStatusCounts?.();
+                    }}
+                  >
+                    Refresh
+                  </Button>
+                  <Select
+                    value="Tahun"
+                    options={[{ value: "Tahun", label: "Tahun" }]}
+                    style={{ width: 120 }}
+                    disabled
+                  />
+                </div>
               </div>
 
-              <div style={styles.chartRow}>
+              <div className="grid-chart" style={styles.chartRow}>
                 <PieDonut
                   data={chartStats.parts.map((p) => ({
                     label: p.label,
@@ -692,7 +738,7 @@ export default function MerchantsContent({ vm }) {
             <div style={{ ...styles.cardInner, paddingTop: 14 }}>
               <div style={styles.sectionHeader}>
                 <div style={styles.sectionTitle}>{T.listTitle}</div>
-                <div>
+                <div style={{ display: "flex", gap: 8 }}>
                   <Button
                     icon={<DownloadOutlined />}
                     onClick={onDownloadCsv}
@@ -703,8 +749,8 @@ export default function MerchantsContent({ vm }) {
                 </div>
               </div>
 
-              {/* Filters */}
-              <div style={styles.filtersRow}>
+              {/* Filters (per page & reset removed) */}
+              <div className="grid-filters" style={styles.filtersRow}>
                 <Input
                   allowClear
                   value={searchValue}
@@ -717,37 +763,45 @@ export default function MerchantsContent({ vm }) {
                   prefix={<SearchOutlined />}
                   style={styles.searchInput}
                 />
-                <Select
-                  allowClear
-                  placeholder={T.category}
-                  value={viewModel.categoryId || undefined}
-                  onChange={(v) => {
-                    viewModel.setCategoryId?.(v || "");
-                    viewModel.setPage?.(1);
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 8,
                   }}
-                  onSearch={onCategorySearch}
-                  showSearch
-                  filterOption={false}
-                  options={viewModel.categoryOptions}
-                  style={styles.filterSelect}
-                  suffixIcon={<FilterOutlined />}
-                />
-                <Select
-                  allowClear
-                  placeholder={T.status}
-                  value={viewModel.status || undefined}
-                  onChange={(v) => {
-                    viewModel.setStatus?.(v || "");
-                    viewModel.setPage?.(1);
-                  }}
-                  options={[
-                    { value: "PENDING", label: "Pending" },
-                    { value: "APPROVED", label: "Approved" },
-                    { value: "DECLINED", label: "Declined" },
-                  ]}
-                  style={styles.filterSelect}
-                  suffixIcon={<FilterOutlined />}
-                />
+                >
+                  <Select
+                    allowClear
+                    placeholder={T.category}
+                    value={viewModel.categoryId || undefined}
+                    onChange={(v) => {
+                      viewModel.setCategoryId?.(v || "");
+                      viewModel.setPage?.(1);
+                    }}
+                    onSearch={onCategorySearch}
+                    showSearch
+                    filterOption={false}
+                    options={viewModel.categoryOptions}
+                    style={styles.filterSelect}
+                    suffixIcon={<FilterOutlined />}
+                  />
+                  <Select
+                    allowClear
+                    placeholder={T.status}
+                    value={viewModel.status || undefined}
+                    onChange={(v) => {
+                      viewModel.setStatus?.(v || "");
+                      viewModel.setPage?.(1);
+                    }}
+                    options={[
+                      { value: "PENDING", label: "Pending" },
+                      { value: "APPROVED", label: "Approved" },
+                      { value: "DECLINED", label: "Declined" },
+                    ]}
+                    style={styles.filterSelect}
+                    suffixIcon={<FilterOutlined />}
+                  />
+                </div>
               </div>
 
               {/* Table */}
@@ -781,7 +835,10 @@ export default function MerchantsContent({ vm }) {
                     rows.map((r) => {
                       const image = toPublicUrl(r.image_url);
                       const title = r.merchant_name || "(tanpa nama)";
-                      const date = fmtDateId(r.created_at);
+                      // ⬇️ Fallback tanggal: reviewed_at -> created_ts -> created_at
+                      const date = fmtDateId(
+                        r.reviewed_at ?? r.created_ts ?? r.created_at
+                      );
                       const cat = r.category?.name || "—";
                       return (
                         <div key={r.id} style={styles.row}>
@@ -1382,7 +1439,7 @@ const styles = {
 
   statsRow: {
     display: "grid",
-    gridTemplateColumns: "1fr 1fr 1fr",
+    gridTemplateColumns: "repeat(3, 1fr)",
     gap: 14,
     marginTop: 12,
   },
@@ -1426,7 +1483,7 @@ const styles = {
 
   filtersRow: {
     display: "grid",
-    gridTemplateColumns: "1fr 220px 180px",
+    gridTemplateColumns: "1fr 1fr", // ← simplified (per page & reset removed)
     gap: 8,
     marginBottom: 10,
     alignItems: "center",

@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 const BOOKINGS_URL = "/api/admin/bookings"; // GET list (admin)
 const BOOKING_ITEM_URL = (id) => `/api/bookings/${id}`; // GET/DELETE
 const EVENT_CATS_URL = "/api/event-categories"; // GET list
+const EVENTS_URL = "/api/events"; // GET list (for dropdown)
 const PAY_CHARGE_URL = "/api/payments/charge"; // POST
 const PAY_CHECK_URL = "/api/payments/check"; // GET
 const PAY_RECONCILE_URL = "/api/payments/reconcile"; // POST
@@ -55,7 +56,7 @@ function formatBookingRow(r = {}) {
     id: r.id,
     order_id: r.order_id || r.ticket_id || r.id,
     event_id: r.event_id || r.event?.id || null,
-    // prefer title → fallback ke location (lihat endpoint /api/events)
+    // ✅ prefer title → fallback ke location
     event_title: r.event_title || r.event?.title || r.event?.location || "",
     event_category:
       r.event_category ||
@@ -89,12 +90,17 @@ export default function useRepresentativesViewModel() {
   const debouncedQ = useDebounced(q, 350);
 
   const [filterVoucher, setFilterVoucher] = useState("all"); // "all" | "voucher" | "non"
-  const [category, setCategory] = useState(""); // slug/id sesuai opsi
+  const [category, setCategory] = useState(""); // slug/id
+  const [eventId, setEventId] = useState(""); // ✅ filter by event
   const [locale, setLocale] = useState(DEFAULT_LOCALE);
 
   // Kategori event (dinamis)
   const [categoryOptions, setCategoryOptions] = useState([]);
   const [catLoading, setCatLoading] = useState(false);
+
+  // Event list (dropdown Nama Event)
+  const [eventOptions, setEventOptions] = useState([]);
+  const [eventLoading, setEventLoading] = useState(false);
 
   // guards
   const mountRef = useRef(true);
@@ -127,17 +133,18 @@ export default function useRepresentativesViewModel() {
     const params = new URLSearchParams();
     params.set("page", String(page));
     params.set("perPage", String(perPage));
+    params.set("locale", locale || DEFAULT_LOCALE);
+    params.set("fallback", locale === "id" ? "en" : "id");
     if (debouncedQ && debouncedQ.trim()) params.set("q", debouncedQ.trim());
-    // interpretasi di server: voucher=voucher|non (selain itu abaikan)
     if (filterVoucher && filterVoucher !== "all")
       params.set("voucher", filterVoucher);
     if (category) {
-      // kirim dua-duanya biar aman (tergantung implementasi server)
       params.set("category", category);
       params.set("category_slug", category);
     }
+    if (eventId) params.set("event_id", eventId);
     return `${BOOKINGS_URL}?${params.toString()}`;
-  }, [page, perPage, debouncedQ, filterVoucher, category]);
+  }, [page, perPage, debouncedQ, filterVoucher, category, eventId, locale]);
 
   /* =======================
      Data loaders
@@ -169,7 +176,7 @@ export default function useRepresentativesViewModel() {
           : nextRows.length
       );
 
-      // beberapa backend mengembalikan list kategori di payload; gunakan jika ada
+      // categories (opsional dari payload)
       if (Array.isArray(res?.categories) && res.categories.length) {
         const opts = res.categories.map((c) => ({
           value: c.slug || c.id,
@@ -178,7 +185,7 @@ export default function useRepresentativesViewModel() {
         setCategoryOptions(opts);
       }
     } catch (e) {
-      if (e?.name === "AbortError") return; // race guard
+      if (e?.name === "AbortError") return;
       if (!mountRef.current) return;
       setRows([]);
       setTotal(0);
@@ -187,7 +194,7 @@ export default function useRepresentativesViewModel() {
     }
   }, [buildListKey, adminHeaders]);
 
-  // Load kategori dari /api/event-categories → dipakai filter dropdown
+  // Load kategori untuk dropdown kategori
   const fetchCategories = useCallback(async () => {
     setCatLoading(true);
     try {
@@ -208,9 +215,37 @@ export default function useRepresentativesViewModel() {
       }));
       if (mountRef.current) setCategoryOptions(opts);
     } catch {
-      // biarkan kosong
+      // ignore
     } finally {
       if (mountRef.current) setCatLoading(false);
+    }
+  }, [locale]);
+
+  // Load daftar event untuk dropdown Nama Event
+  const fetchEvents = useCallback(async () => {
+    setEventLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("page", "1");
+      params.set("perPage", "200");
+      params.set("sort", "start_at:desc");
+      params.set("locale", locale || DEFAULT_LOCALE);
+      params.set("fallback", locale === "id" ? "en" : "id");
+      // tampilkan event publish/non-publish tetap (optional) — biarkan default
+
+      const url = `${EVENTS_URL}?${params.toString()}`;
+      const res = await fetchJson(url, { credentials: "include" });
+      const list = Array.isArray(res?.data) ? res.data : [];
+
+      const opts = list.map((e) => ({
+        value: e.id,
+        label: e.title || e.location || e.id,
+      }));
+      if (mountRef.current) setEventOptions(opts);
+    } catch {
+      // ignore
+    } finally {
+      if (mountRef.current) setEventLoading(false);
     }
   }, [locale]);
 
@@ -221,7 +256,8 @@ export default function useRepresentativesViewModel() {
 
   useEffect(() => {
     fetchCategories();
-  }, [fetchCategories]);
+    fetchEvents();
+  }, [fetchCategories, fetchEvents]);
 
   const reload = useCallback(() => fetchList(), [fetchList]);
 
@@ -247,7 +283,6 @@ export default function useRepresentativesViewModel() {
           headers: { ...adminHeaders },
         });
         if (res?.error) return { ok: false, error: res.error?.message };
-        // beberapa backend menaruh detail di res.data; normalize saja
         const data = res?.data || res;
         return { ok: true, data };
       } catch (e) {
@@ -288,7 +323,6 @@ export default function useRepresentativesViewModel() {
         setOpType("charge");
         setOpLoadingId(booking_id);
 
-        // gunakan form-url-encoded agar cocok dengan route charge (mendukung form/json)
         const body = new URLSearchParams();
         body.set("booking_id", booking_id);
 
@@ -323,7 +357,6 @@ export default function useRepresentativesViewModel() {
     async (order_id) => {
       try {
         setOpType("check");
-        // penting: loading key pakai order_id (disesuaikan di Content)
         setOpLoadingId(order_id);
         const url = `${PAY_CHECK_URL}?order_id=${encodeURIComponent(order_id)}`;
         const res = await fetchJson(url, { headers: { ...adminHeaders } });
@@ -394,12 +427,15 @@ export default function useRepresentativesViewModel() {
     opLoadingId,
     opType,
     catLoading,
+    eventLoading,
 
     // filters
     q,
     filterVoucher,
     category,
+    eventId,
     categoryOptions,
+    eventOptions,
     locale,
 
     // setters
@@ -408,10 +444,11 @@ export default function useRepresentativesViewModel() {
     setPerPage,
     setFilterVoucher,
     setCategory,
+    setEventId,
     setLocale,
 
     // derived metrics
-    statusCounts, // e.g. { total, PAID, PENDING, REVIEW, ... }
+    statusCounts,
 
     // io
     fetch: fetchList,

@@ -19,7 +19,7 @@ const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
 /* -------------------- utils -------------------- */
 function sanitize(v) {
   if (v === null || v === undefined) return v;
-  if (v instanceof Date) return v.toISOString(); // ✅ fix Date -> ISO
+  if (v instanceof Date) return v.toISOString();
   if (typeof v === "bigint") return v.toString();
   if (Array.isArray(v)) return v.map(sanitize);
   if (typeof v === "object") {
@@ -199,6 +199,7 @@ export async function GET(req, { params }) {
     const id = params?.id;
     const locale = pickLocale(req, "locale", DEFAULT_LOCALE);
     const fallback = pickLocale(req, "fallback", DEFAULT_LOCALE);
+    const locales = Array.from(new Set([locale, fallback].filter(Boolean)));
     const includeCategory =
       new URL(req.url).searchParams.get("include_category") === "1";
 
@@ -218,13 +219,12 @@ export async function GET(req, { params }) {
         created_at: true,
         updated_at: true,
         category_id: true,
-        // booth fields
         booth_price: true,
         booth_quota: true,
         booth_sold_count: true,
 
         events_translate: {
-          where: { locale: { in: [locale, fallback] } },
+          where: { locale: { in: locales } },
           select: { locale: true, title: true, description: true },
         },
         category: includeCategory
@@ -233,7 +233,7 @@ export async function GET(req, { params }) {
                 id: true,
                 slug: true,
                 translate: {
-                  where: { locale: { in: [locale, fallback] } },
+                  where: { locale: { in: locales } },
                   select: { locale: true, name: true, description: true },
                 },
               },
@@ -283,8 +283,8 @@ export async function GET(req, { params }) {
         id: item.id,
         banner_url: toPublicUrl(item.banner_url),
         is_published: item.is_published,
-        start_at: item.start_at, // Date → ISO by sanitize()
-        end_at: item.end_at, // Date → ISO by sanitize()
+        start_at: item.start_at,
+        end_at: item.end_at,
         start_ts,
         end_ts,
         location: item.location,
@@ -293,8 +293,8 @@ export async function GET(req, { params }) {
         ticket_price: item.ticket_price,
         category_id: item.category?.id ?? null,
         category_slug: item.category?.slug ?? null,
-        created_at: item.created_at, // Date → ISO by sanitize()
-        updated_at: item.updated_at, // Date → ISO by sanitize()
+        created_at: item.created_at,
+        updated_at: item.updated_at,
         created_ts,
         updated_ts,
         title: t?.title ?? null,
@@ -305,7 +305,6 @@ export async function GET(req, { params }) {
         ...(includeCategory
           ? { category_name, category_description, category_locale_used }
           : {}),
-        // booth fields
         booth_price: item.booth_price,
         booth_quota: item.booth_quota,
         booth_sold_count: item.booth_sold_count,
@@ -347,7 +346,6 @@ export async function PATCH(req, { params }) {
         start_at: true,
         end_at: true,
         pricing_type: true,
-        // booth fields
         booth_sold_count: true,
       },
     });
@@ -357,7 +355,6 @@ export async function PATCH(req, { params }) {
     const ops = [];
     let title_id_new, desc_id_new;
 
-    // upload file menang, else pakai banner_url
     if (file) {
       try {
         data.banner_url = await uploadEventBanner(file);
@@ -544,7 +541,7 @@ export async function PATCH(req, { params }) {
       );
     }
 
-    // Kategori (opsional) — bisa id/slug; kosongkan → disconnect
+    // Kategori (opsional)
     if ("category_id" in body || "category_slug" in body) {
       const catId =
         "category_id" in body ? String(body.category_id || "").trim() : null;
@@ -558,11 +555,8 @@ export async function PATCH(req, { params }) {
           category_id: catId,
           category_slug: catSlug,
         });
-        if (resolved === null) {
-          data.category = { disconnect: true };
-        } else {
-          data.category = { connect: { id: resolved } };
-        }
+        if (resolved === null) data.category = { disconnect: true };
+        else data.category = { connect: { id: resolved } };
       } catch (e) {
         if (e.message === "CATEGORY_NOT_FOUND")
           return json(
@@ -587,6 +581,11 @@ export async function PATCH(req, { params }) {
     } else {
       const exists = await prisma.events.findUnique({ where: { id } });
       if (!exists) return notFound();
+    }
+
+    // 🔧 BUGFIX: jalankan semua upsert terjemahan yang terkumpul
+    if (ops.length) {
+      await prisma.$transaction(ops);
     }
 
     if (autoTranslate && ("title_id" in body || "description_id" in body)) {
@@ -630,6 +629,12 @@ export async function PATCH(req, { params }) {
       },
     });
 
+    // ambil judul (ID) terbaru untuk bantu UI sinkron
+    const trId = await prisma.events_translate.findUnique({
+      where: { id_events_locale: { id_events: id, locale: "id" } },
+      select: { title: true },
+    });
+
     const booth_remaining =
       updated?.booth_quota == null
         ? null
@@ -648,6 +653,7 @@ export async function PATCH(req, { params }) {
         booth_quota: updated?.booth_quota ?? null,
         booth_sold_count: updated?.booth_sold_count ?? 0,
         booth_remaining,
+        title_id: trId?.title ?? null,
       },
     });
   } catch (err) {

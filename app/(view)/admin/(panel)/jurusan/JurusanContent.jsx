@@ -115,16 +115,16 @@ export default function JurusanContent({ vm }) {
   const [searchValue, setSearchValue] = useState(viewModel.q || "");
   useEffect(() => setSearchValue(viewModel.q || ""), [viewModel.q]);
 
+  // debounce search
   useEffect(() => {
     const v = (searchValue || "").trim();
     const t = setTimeout(() => {
-      viewModel.setQ?.(v);
-      viewModel.setPage?.(1);
+      viewModel.setQ?.(v); // setter di VM auto setPage(1)
     }, 400);
     return () => clearTimeout(t);
-  }, [searchValue]); // eslint-disable-line
+  }, [searchValue, viewModel]); // eslint-disable-line
 
-  // college options
+  // college options (remote)
   const [collegeOptions, setCollegeOptions] = useState([]);
   const [fetchingCollege, setFetchingCollege] = useState(false);
   const fetchCollegeOpts = async (kw = "") => {
@@ -136,6 +136,42 @@ export default function JurusanContent({ vm }) {
   useEffect(() => {
     fetchCollegeOpts("");
   }, []); // eslint-disable-line
+
+  // Pastikan label untuk value terpilih selalu ada di options (UX aman)
+  useEffect(() => {
+    const id = viewModel.collegeId;
+    if (!id) return;
+    const sid = String(id);
+    const already = collegeOptions.some((o) => String(o.value) === sid);
+    if (already) return;
+    // coba ambil dari cache VM
+    const label = viewModel.collegeName?.(sid) || "";
+    if (label) {
+      setCollegeOptions((prev) => [{ value: id, label }, ...prev]);
+      return;
+    }
+    // fallback: load sekilas dari server agar label muncul
+    (async () => {
+      try {
+        const url = `/api/college/${encodeURIComponent(sid)}?locale=${
+          viewModel.locale
+        }&fallback=${viewModel.fallback}`;
+        const res = await fetch(url);
+        const json = await res.json().catch(() => ({}));
+        const name =
+          json?.data?.name || json?.name || json?.data?.title || "(Tanpa Nama)";
+        if (name) {
+          setCollegeOptions((prev) => [{ value: id, label: name }, ...prev]);
+        }
+      } catch {}
+    })();
+  }, [
+    viewModel.collegeId,
+    viewModel.locale,
+    viewModel.fallback,
+    viewModel,
+    collegeOptions,
+  ]);
 
   const { shellW, maxW, blue, text } = TOKENS;
   const req = (msg) => [{ required: true, message: msg }];
@@ -308,10 +344,9 @@ export default function JurusanContent({ vm }) {
                   allowClear
                   value={searchValue}
                   onChange={(e) => setSearchValue(e.target.value)}
-                  onPressEnter={() => {
-                    viewModel.setQ?.((searchValue || "").trim());
-                    viewModel.setPage?.(1);
-                  }}
+                  onPressEnter={() =>
+                    viewModel.setQ?.((searchValue || "").trim())
+                  }
                   placeholder={T.searchPh}
                   prefix={<SearchOutlined />}
                   style={styles.searchInput}
@@ -322,10 +357,7 @@ export default function JurusanContent({ vm }) {
                   showSearch
                   placeholder="Filter kampus"
                   value={viewModel.collegeId || undefined}
-                  onChange={(v) => {
-                    viewModel.setCollegeId?.(v || "");
-                    viewModel.setPage?.(1);
-                  }}
+                  onChange={(v) => viewModel.setCollegeId?.(v || "")} // setter di VM auto setPage(1)
                   filterOption={false}
                   notFoundContent={fetchingCollege ? "Loading..." : null}
                   onSearch={fetchCollegeOpts}
@@ -366,7 +398,6 @@ export default function JurusanContent({ vm }) {
                       const collegeName =
                         viewModel.collegeName?.(r.college_id) || "—";
 
-                      // >>> show created date with fallback
                       const createdDisplay = fmtDateId(
                         r.created_ts || r.created_at || r.updated_at
                       );

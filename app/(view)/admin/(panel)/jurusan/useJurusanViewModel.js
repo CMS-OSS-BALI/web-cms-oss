@@ -38,16 +38,41 @@ export default function useJurusanViewModel(initial = {}) {
 
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(DEFAULT_PER_PAGE);
-  const [q, setQ] = useState("");
-  const [collegeId, setCollegeId] = useState("");
 
-  const key = buildListKey({ page, perPage, q, locale, fallback, collegeId });
+  // wrap setters -> selalu reset page ke 1 saat filter berubah
+  const [_q, _setQ] = useState("");
+  const setQ = useCallback(
+    (v) => {
+      _setQ(v);
+      setPage(1);
+    },
+    [setPage]
+  );
+
+  const [_collegeId, _setCollegeId] = useState("");
+  const setCollegeId = useCallback(
+    (v) => {
+      _setCollegeId(v);
+      setPage(1);
+    },
+    [setPage]
+  );
+
+  const key = buildListKey({
+    page,
+    perPage,
+    q: _q,
+    locale,
+    fallback,
+    collegeId: _collegeId,
+  });
+
   const { data, error, isLoading, mutate } = useSWR(key, jsonFetcher, {
     keepPreviousData: true,
     revalidateOnFocus: false,
   });
 
-  // normalize rows: ensure created_ts exists (fallback to updated_at if needed)
+  // normalize rows
   const jurusan = useMemo(() => {
     const rows = data?.data || [];
     return rows.map((r) => ({
@@ -170,7 +195,6 @@ export default function useJurusanViewModel(initial = {}) {
       const d = json?.data || json;
       const created_ts =
         d.created_ts ?? toTs(d.created_at) ?? toTs(d.updated_at) ?? null;
-      // Return with normalized timestamp so modal can display it
       return { ok: true, data: { ...json, data: { ...d, created_ts } } };
     },
     [locale, fallback]
@@ -222,8 +246,8 @@ export default function useJurusanViewModel(initial = {}) {
     setLocale,
     page,
     perPage,
-    q,
-    collegeId,
+    q: _q,
+    collegeId: _collegeId,
     setPage,
     setPerPage,
     setQ,

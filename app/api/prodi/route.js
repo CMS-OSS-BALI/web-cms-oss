@@ -144,6 +144,8 @@ export async function GET(req) {
       ? {}
       : { deleted_at: null };
 
+    // ⬇️ FIX: Hapus `mode: 'insensitive'` (tidak didukung di MySQL Prisma).
+    // Jika kolom Anda memakai collation *_ci (case-insensitive), `contains` sudah tidak peka huruf besar/kecil.
     const where = {
       ...deletedFilter,
       ...(jurusan_id ? { jurusan_id } : {}),
@@ -153,8 +155,8 @@ export async function GET(req) {
               some: {
                 locale: { in: locales },
                 OR: [
-                  { name: { contains: q, mode: "insensitive" } },
-                  { description: { contains: q, mode: "insensitive" } },
+                  { name: { contains: q } },
+                  { description: { contains: q } },
                 ],
               },
             },

@@ -1,173 +1,106 @@
 // app/api/admin/bookings/route.js
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
+// Postgres mendukung mode insensitive, MySQL tidak
+const isPg = /\bpostgres/i.test(process.env.DATABASE_URL || "");
+const ci = (v) =>
+  v && v.trim()
+    ? isPg
+      ? { contains: v.trim(), mode: "insensitive" }
+      : { contains: v.trim() }
+    : undefined;
 
-/* ===== utils ===== */
-function sanitize(v) {
-  if (v == null) return v;
-  if (typeof v === "bigint") return v.toString();
-  if (Array.isArray(v)) return v.map(sanitize);
-  if (typeof v === "object") {
-    const o = {};
-    for (const [k, val] of Object.entries(v)) o[k] = sanitize(val);
-    return o;
-  }
-  return v;
-}
-function json(d, i) {
-  return NextResponse.json(sanitize(d), i);
-}
-function toInt(v, d = null) {
-  if (v === "" || v == null || v === undefined) return d;
-  const n = Number(String(v).replace(/\./g, "").replace(/,/g, ""));
-  return Number.isFinite(n) ? Math.trunc(n) : d;
-}
-
-function pickName(translates = [], locale = "id", fallback = "en") {
-  const byLocale =
-    translates.find((t) => t.locale?.toLowerCase() === locale.toLowerCase()) ||
-    translates.find(
-      (t) => t.locale?.toLowerCase() === fallback.toLowerCase()
-    ) ||
-    translates[0];
-  return byLocale?.name || "";
-}
-
-async function assertAdmin(req) {
-  // dev/test via header
-  const key = req.headers.get("x-admin-key");
-  if (key && ADMIN_TEST_KEY && key === ADMIN_TEST_KEY) {
-    const any = await prisma.admin_users.findFirst({ select: { id: true } });
-    if (!any) throw new Response("Forbidden", { status: 403 });
-    return true;
-  }
-  // real admin via session
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
-  if (!email) throw new Response("Unauthorized", { status: 401 });
-  const admin = await prisma.admin_users.findUnique({
-    where: { email },
-    select: { id: true },
-  });
-  if (!admin) throw new Response("Forbidden", { status: 403 });
-  return true;
-}
-
-/* ===== GET /api/admin/bookings
-   Query:
-   - page, perPage
-   - q                 (rep_name/campus_name/event.location/category name via translate)
-   - voucher           ("voucher" | "non" | "all")
-   - category          (id | slug | translated name)
-   - locale, fallback  (optional; defaults id/en)
-=================================== */
 export async function GET(req) {
   try {
-    await assertAdmin(req);
-
-    const url = new URL(req.url);
-    const page = Math.max(1, toInt(url.searchParams.get("page"), 1) || 1);
+    const { searchParams } = new URL(req.url);
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
     const perPage = Math.min(
       100,
-      Math.max(1, toInt(url.searchParams.get("perPage"), 10) || 10)
+      Math.max(1, parseInt(searchParams.get("perPage") || "10", 10))
     );
-    const q = (url.searchParams.get("q") || "").trim();
-    const voucher = (url.searchParams.get("voucher") || "all").trim(); // voucher | non | all
-    const categoryParam = (url.searchParams.get("category") || "").trim();
-    const locale = (url.searchParams.get("locale") || "id").trim();
-    const fallback = (url.searchParams.get("fallback") || "en").trim();
+    const q = (searchParams.get("q") || "").trim();
+    const locale = (searchParams.get("locale") || "id").toLowerCase();
+    const fallback = (
+      searchParams.get("fallback") || (locale === "id" ? "en" : "id")
+    ).toLowerCase();
 
-    // where builder
+    const voucher = (searchParams.get("voucher") || "all").toLowerCase(); // "all" | "voucher" | "non"
+    const event_id = (searchParams.get("event_id") || "").trim();
+    const categoryParam =
+      (searchParams.get("category") || "").trim() ||
+      (searchParams.get("category_slug") || "").trim();
+
     const AND = [];
+
+    // Filter voucher
     if (voucher === "voucher") {
-      AND.push({ NOT: [{ voucher_code: null }, { voucher_code: "" }] });
+      AND.push({
+        NOT: [{ voucher_code: null }, { voucher_code: "" }],
+      });
     } else if (voucher === "non") {
-      AND.push({ OR: [{ voucher_code: null }, { voucher_code: "" }] });
+      AND.push({
+        OR: [{ voucher_code: null }, { voucher_code: "" }],
+      });
     }
 
-    // category filter: support id, slug, or translated name (all strings)
+    // Filter event_id
+    if (event_id) {
+      const n = Number(event_id);
+      AND.push({ event_id: Number.isFinite(n) ? n : event_id });
+    }
+
+    // Filter kategori: dukung id numerik atau slug
     if (categoryParam) {
+      const n = Number(categoryParam);
+      const byId = Number.isFinite(n) ? { category_id: n } : null;
       AND.push({
         event: {
-          category: {
-            OR: [
-              { id: categoryParam },
-              { slug: { equals: categoryParam, mode: "insensitive" } },
-              {
-                translate: {
-                  some: {
-                    locale: { in: [locale, fallback] },
-                    name: { equals: categoryParam, mode: "insensitive" },
-                  },
-                },
-              },
-            ],
-          },
+          OR: [...(byId ? [byId] : []), { category: { slug: categoryParam } }],
         },
       });
     }
 
-    const OR = [];
-    if (q) {
-      OR.push(
-        { rep_name: { contains: q, mode: "insensitive" } },
-        { campus_name: { contains: q, mode: "insensitive" } },
-        { event: { location: { contains: q, mode: "insensitive" } } },
-        {
-          event: {
-            category: {
-              translate: {
+    // Pencarian bebas
+    const textFilter = ci(q);
+    const OR = q
+      ? [
+          { rep_name: textFilter },
+          { campus_name: textFilter },
+          {
+            event: {
+              events_translate: {
                 some: {
                   locale: { in: [locale, fallback] },
-                  name: { contains: q, mode: "insensitive" },
+                  title: textFilter,
                 },
               },
             },
           },
-        }
-      );
-    }
-
-    const where = {};
-    if (AND.length) where.AND = AND;
-    if (OR.length) where.OR = OR;
-
-    // Build categories list for dropdown:
-    // ambil distinct category_id yang dipakai event, lalu hydrate + lokalize nama
-    const catsPromise = (async () => {
-      const groups = await prisma.events.groupBy({
-        by: ["category_id"],
-        where: { category_id: { not: null } },
-      });
-      const ids = groups.map((g) => g.category_id).filter(Boolean);
-      if (!ids.length) return [];
-      const base = await prisma.event_categories.findMany({
-        where: { id: { in: ids } },
-        select: {
-          id: true,
-          slug: true,
-          translate: {
-            where: { locale: { in: [locale, fallback] } },
-            select: { locale: true, name: true },
+          {
+            event: {
+              category: {
+                translate: {
+                  some: {
+                    locale: { in: [locale, fallback] },
+                    name: textFilter,
+                  },
+                },
+              },
+            },
           },
-        },
-        orderBy: { slug: "asc" }, // tidak bisa orderBy nama terjemahan langsung
-      });
-      return base.map((c) => ({
-        id: c.id,
-        slug: c.slug,
-        name: pickName(c.translate, locale, fallback),
-      }));
-    })();
+        ]
+      : undefined;
 
-    const [total, rows, categories] = await Promise.all([
+    const where = {
+      ...(AND.length ? { AND } : {}),
+      ...(OR ? { OR } : {}),
+    };
+
+    const [total, raw] = await Promise.all([
       prisma.event_booth_bookings.count({ where }),
       prisma.event_booth_bookings.findMany({
         where,
@@ -176,6 +109,7 @@ export async function GET(req) {
         take: perPage,
         select: {
           id: true,
+          event_id: true,
           rep_name: true,
           campus_name: true,
           voucher_code: true,
@@ -184,7 +118,12 @@ export async function GET(req) {
           created_at: true,
           event: {
             select: {
+              id: true,
               location: true,
+              events_translate: {
+                where: { locale: { in: [locale, fallback] } },
+                select: { locale: true, title: true },
+              },
               category: {
                 select: {
                   id: true,
@@ -199,44 +138,36 @@ export async function GET(req) {
           },
         },
       }),
-      catsPromise,
     ]);
 
-    const data = rows.map((r) => ({
-      id: r.id,
-      rep_name: r.rep_name,
-      campus_name: r.campus_name,
-      voucher_code: r.voucher_code,
-      order_id: r.order_id,
-      status: r.status,
-      created_at: r.created_at,
-      event_title: r.event?.location || "",
-      event_category: pickName(
-        r.event?.category?.translate || [],
-        locale,
-        fallback
-      ),
-      event_category_slug: r.event?.category?.slug || "",
-      event_category_id: r.event?.category?.id ?? null,
-    }));
+    // 🔧 Ratakan title & category agar UI tidak perlu nebak-nebak
+    const data = raw.map((r) => {
+      const t = r?.event?.events_translate || [];
+      const titlePref =
+        t.find((x) => x.locale === locale)?.title ??
+        t.find((x) => x.locale === fallback)?.title ??
+        r?.event?.location ??
+        "";
 
-    return json({
-      message: "OK",
-      data,
-      categories, // [{ id, slug, name }]
-      meta: {
-        page,
-        perPage,
-        total,
-        totalPages: Math.max(1, Math.ceil(total / perPage)),
-      },
+      const catT = r?.event?.category?.translate || [];
+      const catNamePref =
+        catT.find((x) => x.locale === locale)?.name ??
+        catT.find((x) => x.locale === fallback)?.name ??
+        r?.event?.category?.slug ??
+        "";
+
+      return {
+        ...r,
+        event_title: titlePref, // ← dipakai kolom "Nama Event"
+        event_category: catNamePref, // ← dipakai kolom "Kategori"
+      };
     });
+
+    return NextResponse.json({ page, perPage, total, data });
   } catch (err) {
-    const status = err?.status || 500;
-    if (status === 401 || status === 403) return err;
     console.error("GET /api/admin/bookings error:", err);
-    return json(
-      { error: { code: "SERVER_ERROR", message: "Gagal memuat bookings." } },
+    return NextResponse.json(
+      { error: { code: "INTERNAL", message: "Failed to fetch bookings" } },
       { status: 500 }
     );
   }

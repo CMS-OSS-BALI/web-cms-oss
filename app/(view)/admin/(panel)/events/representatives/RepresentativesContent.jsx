@@ -42,6 +42,7 @@ const T = {
   searchPh: "Cari representative",
   filterPh: "Filter Voucher",
   categoryPh: "Kategori",
+  eventPh: "Nama Event",
   action: "Aksi",
   view: "Lihat",
   charge: "Buat Pembayaran",
@@ -143,7 +144,6 @@ export default function RepresentativesContent({ vm }) {
         "Gagal membuat pembayaran",
         res?.error || "Tidak bisa membuat Snap token"
       );
-    // Sediakan helper openSnap juga
     if (res?.openSnap) res.openSnap();
     else if (res?.data?.redirect_url)
       window.open(res.data.redirect_url, "_blank", "noopener");
@@ -199,7 +199,7 @@ export default function RepresentativesContent({ vm }) {
   // load awal + refresh saat filter berubah (dari VM)
   useEffect(() => {
     vm.fetch(); /* eslint-disable-next-line */
-  }, [vm.page, vm.perPage, vm.q, vm.filterVoucher, vm.category]);
+  }, [vm.page, vm.perPage, vm.q, vm.filterVoucher, vm.category, vm.eventId]);
 
   return (
     <ConfigProvider
@@ -271,8 +271,8 @@ export default function RepresentativesContent({ vm }) {
                 <div style={styles.sectionTitle}>{T.listTitle}</div>
               </div>
 
-              {/* Filters + Download CSV (sebaris) */}
-              <div style={styles.filtersRow3}>
+              {/* Filters + Download CSV */}
+              <div style={styles.filtersRow}>
                 <Input
                   allowClear
                   value={searchValue}
@@ -300,6 +300,25 @@ export default function RepresentativesContent({ vm }) {
                   placeholder={T.filterPh}
                 />
 
+                {/* ✅ Dropdown Nama Event */}
+                <Select
+                  allowClear
+                  showSearch
+                  placeholder={T.eventPh}
+                  value={vm.eventId || undefined}
+                  onChange={(v) => {
+                    vm.setEventId(v || "");
+                    vm.setPage(1);
+                  }}
+                  filterOption={(input, opt) =>
+                    String(opt?.label ?? "")
+                      .toLowerCase()
+                      .includes(String(input).toLowerCase())
+                  }
+                  options={vm.eventOptions || []}
+                  loading={vm.eventLoading}
+                />
+
                 <Select
                   allowClear
                   showSearch
@@ -314,17 +333,11 @@ export default function RepresentativesContent({ vm }) {
                       .toLowerCase()
                       .includes(String(input).toLowerCase())
                   }
-                  // ✅ gunakan opsi dari VM apa adanya (jangan di-map ulang)
                   options={vm.categoryOptions || []}
                   loading={vm.catLoading}
                 />
 
-                <Button
-                  icon={<DownloadOutlined />}
-                  onClick={downloadCSV}
-                  type="default"
-                  style={{ justifySelf: "end" }}
-                >
+                <Button icon={<DownloadOutlined />} onClick={downloadCSV}>
                   {T.downloadCSV}
                 </Button>
               </div>
@@ -386,6 +399,7 @@ export default function RepresentativesContent({ vm }) {
                             </div>
                           </div>
 
+                          {/* ✅ sekarang pakai judul event */}
                           <div style={styles.colCenter}>
                             {r.event_title || "-"}
                           </div>
@@ -445,7 +459,6 @@ export default function RepresentativesContent({ vm }) {
                                 size="small"
                                 icon={<ReloadOutlined />}
                                 onClick={() => onCheck(r)}
-                                // ✅ sesuaikan key loading dengan VM (check pakai order_id)
                                 loading={
                                   vm.opLoadingId === opLoadingCheckKey &&
                                   vm.opType === "check"
@@ -555,7 +568,7 @@ export default function RepresentativesContent({ vm }) {
                   <div>
                     <div style={styles.label}>Nama Event</div>
                     <div style={styles.value}>
-                      {/* ✅ gunakan title jika ada; fallback location */}
+                      {/* ✅ title (fallback location) */}
                       {detailData?.event?.title ||
                         detailData?.event_title ||
                         detailData?.event?.location ||
@@ -692,9 +705,10 @@ const styles = {
   },
   sectionTitle: { fontSize: 18, fontWeight: 800, color: "#0b3e91" },
 
-  filtersRow3: {
+  /* 5 kolom: search | voucher | event | category | download */
+  filtersRow: {
     display: "grid",
-    gridTemplateColumns: "1fr 160px 220px auto",
+    gridTemplateColumns: "1fr 160px 220px 220px auto",
     gap: 8,
     marginBottom: 10,
     alignItems: "center",

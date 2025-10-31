@@ -83,9 +83,6 @@ async function readBody(req) {
   }
 }
 
-/* ====================================================
-   GET /api/tickets?event_id=&q=&status=&checkin_status=&page=&perPage=
-==================================================== */
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
@@ -95,33 +92,86 @@ export async function GET(req) {
       Math.max(1, Number(searchParams.get("perPage") || 20))
     );
 
-    const event_id = searchParams.get("event_id") || undefined;
+    const locale = (searchParams.get("locale") || "id")
+      .slice(0, 5)
+      .toLowerCase();
+    const fallback = (
+      searchParams.get("fallback") || (locale === "id" ? "en" : "id")
+    )
+      .slice(0, 5)
+      .toLowerCase();
+    const locales = Array.from(new Set([locale, fallback].filter(Boolean)));
+
+    const event_id = (searchParams.get("event_id") || "").trim() || undefined;
     const status = searchParams.get("status") || undefined; // PENDING|CONFIRMED|CANCELLED
     const checkin_status = searchParams.get("checkin_status") || undefined; // NOT_CHECKED_IN|CHECKED_IN
     const q = (searchParams.get("q") || "").trim();
 
+    // WHERE dasar
     const where = { deleted_at: null };
     if (event_id) where.event_id = event_id;
     if (status) where.status = status;
     if (checkin_status) where.checkin_status = checkin_status;
+
     if (q) {
+      // Cari: nama, email, WA, code, DAN judul event
       where.OR = [
-        { full_name: { contains: q, mode: "insensitive" } },
-        { email: { contains: q, mode: "insensitive" } },
-        { whatsapp: { contains: q, mode: "insensitive" } },
-        { ticket_code: { contains: q, mode: "insensitive" } },
+        { full_name: { contains: q } },
+        { email: { contains: q } },
+        { whatsapp: { contains: q } },
+        { ticket_code: { contains: q } },
+        {
+          events: {
+            events_translate: {
+              some: {
+                locale: { in: locales },
+                title: { contains: q },
+              },
+            },
+          },
+        },
       ];
     }
 
-    const [total, data] = await Promise.all([
+    const [total, rows] = await Promise.all([
       prisma.tickets.count({ where }),
       prisma.tickets.findMany({
         where,
         orderBy: { created_at: "desc" },
         skip: (page - 1) * perPage,
         take: perPage,
+        select: {
+          id: true,
+          event_id: true,
+          full_name: true,
+          email: true,
+          whatsapp: true,
+          ticket_code: true,
+          status: true,
+          expires_at: true,
+          checkin_status: true,
+          created_at: true,
+          updated_at: true,
+          events: {
+            select: {
+              events_translate: {
+                where: { locale: { in: locales } },
+                select: { locale: true, title: true },
+              },
+            },
+          },
+        },
       }),
     ]);
+
+    // Ambil judul by locale→fallback
+    const data = rows.map((r) => {
+      const tr = r.events?.events_translate || [];
+      const by = (loc) => tr.find((t) => t.locale === loc)?.title || null;
+      const title = by(locale) || by(fallback) || null;
+      const { events, ...rest } = r;
+      return { ...rest, event_title: title };
+    });
 
     return NextResponse.json({
       page,
