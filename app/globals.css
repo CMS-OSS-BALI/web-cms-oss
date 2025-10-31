@@ -1,5 +1,5 @@
 /* ================================
-   Design tokens (simple)
+  Design tokens (simple)
 ================================ */
 :root {
   --color-brand: #3b82f6;
@@ -19,6 +19,7 @@
   /* admin shell */
   --sidebar-col: 256px; /* default desktop */
   --shell-gap: clamp(8px, 2.2vw, 24px);
+  --sidebar-transition: transform 0.3s ease-out; /* BARU: untuk transisi mobile */
 }
 
 /* @media (prefers-color-scheme: dark) {
@@ -32,11 +33,11 @@
 } */
 
 /* ================================
-   Base
+  Base
 ================================ */
 html,
 body {
-  margin: 0; /* ← buang gutter default 8px */
+  margin: 0;
   padding: 0;
   height: 100%;
   overflow-x: hidden;
@@ -69,29 +70,78 @@ body {
 }
 
 /* ================================
-   Admin shell & content scrolling
+  Admin shell & content scrolling
 ================================ */
 .admin-shell {
   display: grid;
+  /* Default: Sidebar + Content */
   grid-template-columns: var(--sidebar-col) minmax(0, 1fr);
   column-gap: var(--shell-gap);
-  height: 100dvh;
+  min-height: 100dvh;
 }
 
-/* Responsif: kecilkan kolom sidebar & gap saat layar mengecil */
+/* ---------------------------------------------------- */
+/* 1. Responsif: Tablet Horizontal ( < 1280px ) */
+/* ---------------------------------------------------- */
 @media (max-width: 1280px) {
   :root {
     --sidebar-col: 220px;
   }
 }
+
+/* ---------------------------------------------------- */
+/* 2. Responsif: Tablet Vertikal ( < 1024px ) */
+/* ---------------------------------------------------- */
 @media (max-width: 1024px) {
   :root {
-    --sidebar-col: 72px;
-  } /* match collapsed sidebar */
+    --sidebar-col: 72px; /* collapsed sidebar */
+  }
 }
-@media (max-width: 640px) {
+
+/* ---------------------------------------------------- */
+/* 3. Responsif: Mobile ( < 768px ) - Layout 1 Kolom/Overlay */
+/* ---------------------------------------------------- */
+@media (max-width: 768px) {
+  .admin-shell {
+    grid-template-columns: 1fr; /* 1 kolom penuh di mobile */
+    column-gap: 0;
+  }
+
+  /* Sembunyikan gap karena sidebar jadi overlay */
   :root {
-    --shell-gap: 8px;
+    --shell-gap: 0;
+  }
+
+  /* Sidebar diubah menjadi overlay */
+  .admin-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 50;
+    height: 100dvh;
+    width: var(--sidebar-col);
+    background: var(--card);
+    border-right: 1px solid var(--border);
+    /* Sembunyikan, geser ke kiri */
+    transform: translateX(calc(var(--sidebar-col) * -1));
+    transition: var(--sidebar-transition);
+  }
+
+  /* Class yang di-toggle untuk menampilkan sidebar */
+  .admin-shell.sidebar-open .admin-sidebar {
+    transform: translateX(0); /* Tampilkan */
+  }
+
+  /* Overlay untuk klik di luar sidebar */
+  .admin-shell.sidebar-open::after {
+    content: "";
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 49;
+    background: rgba(0, 0, 0, 0.4);
   }
 }
 
@@ -142,7 +192,7 @@ body {
 }
 
 /* ================================
-   Wallpaper (container yang scroll)
+  Wallpaper (container yang scroll)
 ================================ */
 /* .bg-app {
   background-attachment: local;
@@ -171,8 +221,10 @@ body {
   }
 }
 
+/* ... (Kode untuk .card-dark, .vis-card, .user-shell, dll. tidak berubah) ... */
+
 /* ================================
-   Card gelap (AntD Card)
+  Card gelap (AntD Card)
 ================================ */
 .card-dark {
   border: 1px solid #2f3f60;
@@ -212,7 +264,7 @@ body {
 }
 
 /* ================================
-   Visitors toolbar (range 7d/30d/90d)
+  Visitors toolbar (range 7d/30d/90d)
 ================================ */
 .vis-card {
   position: relative;
@@ -272,479 +324,7 @@ body {
 }
 
 /* ================================
-   Auth screens (Login/Forgot/Reset)
-================================ */
-.auth-wrap {
-  min-height: 100dvh;
-  display: grid;
-  place-items: center;
-  padding: clamp(16px, 3vw, 24px);
-  background: radial-gradient(
-      1200px 600px at 20% -10%,
-      rgba(59, 130, 246, 0.18),
-      transparent 60%
-    ),
-    radial-gradient(
-      1000px 500px at 110% 10%,
-      rgba(16, 185, 129, 0.12),
-      transparent 55%
-    ),
-    #0b1220;
-}
-.auth-card {
-  width: clamp(320px, 92vw, 420px);
-  border-radius: 20px !important;
-  border: 1px solid #2a3957 !important;
-  background: rgba(12, 18, 35, 0.6) !important;
-  backdrop-filter: blur(10px) saturate(150%);
-  -webkit-backdrop-filter: blur(10px) saturate(150%);
-  box-shadow: 0 20px 60px rgba(2, 6, 23, 0.48);
-  color: #e6eaf2;
-}
-.auth-card .ant-typography {
-  color: #e6eaf2;
-}
-.auth-card .ant-typography-secondary {
-  color: #9fb1d1 !important;
-}
-.auth-card .ant-form-item-label > label {
-  color: #fff !important;
-}
-.auth-card
-  .ant-form-item-label
-  > label.ant-form-item-required:not(
-    .ant-form-item-required-mark-optional
-  )::before {
-  color: #ff9aa2;
-}
-.auth-card .ant-input,
-.auth-card .ant-input-password,
-.auth-card .ant-input-affix-wrapper {
-  background: #0e182c !important;
-  border-color: #2f3f60 !important;
-  color: #e6eaf2 !important;
-}
-.auth-card .ant-input::placeholder,
-.auth-card .ant-input-password input::placeholder {
-  color: rgba(255, 255, 255, 0.65) !important;
-}
-.auth-card .ant-input-affix-wrapper .anticon,
-.auth-card .ant-input-suffix .anticon,
-.auth-card .ant-input-password-icon,
-.auth-card .anticon-eye,
-.auth-card .anticon-eye-invisible {
-  color: #fff !important;
-  opacity: 0.92;
-}
-.auth-card .ant-input-affix-wrapper:hover .anticon,
-.auth-card .ant-input-affix-wrapper-focused .anticon {
-  opacity: 1;
-}
-.auth-card .ant-input-affix-wrapper:focus,
-.auth-card .ant-input-affix-wrapper-focused,
-.auth-card .ant-input:focus,
-.auth-card .ant-input-password:focus {
-  border-color: #60a5fa !important;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35);
-}
-.auth-card .ant-form-item-explain-error {
-  color: #fca5a5;
-}
-.auth-card .ant-btn-primary {
-  height: 44px;
-  border-radius: 12px;
-  border: 1px solid rgba(96, 165, 250, 0.35);
-  background: linear-gradient(180deg, #60a5fa, #3b82f6);
-  color: #fff;
-  box-shadow: 0 10px 24px rgba(59, 130, 246, 0.25);
-}
-.auth-card .ant-btn-primary.ant-btn-disabled,
-.auth-card .ant-btn-primary[disabled] {
-  background: linear-gradient(
-    180deg,
-    rgba(96, 165, 250, 0.25),
-    rgba(59, 130, 246, 0.25)
-  ) !important;
-  color: rgba(255, 255, 255, 0.65) !important;
-  border-color: rgba(96, 165, 250, 0.4) !important;
-  box-shadow: none !important;
-  opacity: 1 !important;
-  cursor: not-allowed;
-}
-.auth-card .ant-alert-success {
-  background: rgba(16, 185, 129, 0.12);
-  border-color: rgba(16, 185, 129, 0.45);
-  color: #b7f7d9;
-  border-radius: 12px;
-}
-
-/* ================================
-   Utilities
-================================ */
-.modal-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(148, 163, 184, 0.4) transparent;
-}
-.modal-scroll::-webkit-scrollbar {
-  width: 8px;
-}
-.modal-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-.modal-scroll::-webkit-scrollbar-thumb {
-  background-color: rgba(148, 163, 184, 0.4);
-  border-radius: 9999px;
-}
-
-/* Segmented (dark glass / pill) */
-.seg-dark.ant-segmented {
-  background: rgba(6, 12, 24, 0.55);
-  border: 1px solid #2f3f60;
-  border-radius: 9999px;
-  padding: 3px;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-.seg-dark.ant-segmented:hover {
-  border-color: #3c507a;
-}
-.seg-dark.ant-segmented:focus-within {
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.28);
-}
-.seg-dark .ant-segmented-item {
-  color: #cbd5e1;
-}
-.seg-dark .ant-segmented-item-label {
-  padding: 6px 14px;
-  line-height: 1;
-  font-size: 12.5px;
-}
-.seg-dark .ant-segmented-item:hover .ant-segmented-item-label {
-  color: #0f172a;
-}
-.seg-dark .ant-segmented-thumb {
-  background: linear-gradient(180deg, #60a5fa, #3b82f6);
-  border-radius: 9999px;
-  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.35) inset,
-    0 8px 16px rgba(59, 130, 246, 0.28);
-}
-.seg-dark .ant-segmented-item-selected .ant-segmented-item-label {
-  color: #2f3f60;
-  font-weight: 700;
-}
-.seg-compact .ant-segmented-item-label {
-  padding: 6px 10px;
-}
-.chart-toolbar {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-/* ===== Partners: util kecil biar rapi ===== */
-.input-dark {
-  width: 100%;
-  height: 40px;
-  border: 1px solid #2f3f60;
-  background: transparent;
-  color: #e6eaf2;
-  border-radius: 12px;
-  padding: 8px 12px;
-  outline: 0;
-}
-.select-dark {
-  width: 100%;
-  height: 40px;
-  border: 1px solid #2f3f60;
-  background: transparent;
-  color: #e6eaf2;
-  border-radius: 12px;
-  padding: 0 10px;
-  outline: 0;
-}
-.textarea-dark {
-  width: 100%;
-  border: 1px solid #2f3f60;
-  background: transparent;
-  color: #e6eaf2;
-  border-radius: 12px;
-  padding: 8px 12px;
-  outline: 0;
-  resize: none;
-}
-
-.btn-ghost-dark {
-  background: #0b1223;
-  color: #e5e7eb;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-}
-.btn-ghost-dark:hover {
-  border-color: rgba(148, 163, 184, 0.6);
-}
-
-.tag-ghost {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  background: rgba(0, 0, 0, 0.25);
-  color: #e6eaf2;
-  border-radius: 9999px;
-  padding: 2px 8px;
-  font-size: 11px;
-}
-
-/* ---------- Partners header ---------- */
-.hdr {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 16px;
-}
-.hdr__text {
-  min-width: 0;
-}
-.hdr__title {
-  margin: 0;
-  color: #e6eaf2;
-  font-weight: 800;
-  font-size: clamp(18px, 2vw, 24px);
-  line-height: 1.2;
-}
-.hdr__sub {
-  margin: 2px 0 0 0;
-  color: #9fb1d1;
-  font-size: 13px;
-}
-.hdr__action {
-  flex: 0 0 auto;
-}
-.btn-lg {
-  height: 42px;
-  padding: 0 16px;
-  border-radius: 12px;
-  font-size: 14px;
-  line-height: 42px;
-}
-
-@media (max-width: 640px) {
-  .hdr {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 10px;
-  }
-  .hdr__action .btn {
-    width: 100%;
-  }
-}
-
-@media (max-width: 560px) {
-  .textarea-dark.ta-rows-4 {
-    min-height: 140px;
-  }
-}
-
-/* ==== AntD dark polish for Partners page ==== */
-.partner-card-dark.ant-card {
-  border: 1px solid #2f3f60;
-  background: #0b1223;
-  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.35);
-  border-radius: 16px;
-  overflow: hidden;
-}
-.partner-card-dark .ant-card-body {
-  background: transparent;
-  color: #e6eaf2;
-}
-.partner-card-dark .ant-card-actions {
-  background: transparent;
-  border-top: 1px solid #2f3f60;
-}
-.partner-card-dark .ant-card-actions > li {
-  padding: 8px 10px;
-}
-
-/* Quill dark polish biar nyatu sama .card-dark */
-.ql-toolbar.ql-snow {
-  background: #0e182c;
-  border: 1px solid #2f3f60;
-  border-bottom: none;
-  border-top-left-radius: 12px;
-  border-top-right-radius: 12px;
-  color: #e6eaf2;
-}
-.ql-container.ql-snow {
-  background: #0b1223;
-  border: 1px solid #2f3f60;
-  border-top: none;
-  border-bottom-left-radius: 12px;
-  border-bottom-right-radius: 12px;
-  color: #e6eaf2;
-  min-height: 200px;
-}
-.ql-snow .ql-stroke {
-  stroke: #cbd5e1;
-}
-.ql-snow .ql-fill {
-  fill: #cbd5e1;
-}
-.ql-snow .ql-picker {
-  color: #e6eaf2;
-}
-.ql-editor a {
-  color: #60a5fa;
-  text-decoration: underline;
-}
-
-/* ====== BLAST PAGE DARK THEME ====== */
-/* Semuanya discoped ke .blast-page agar aman */
-.blast-page .ant-form-item-label > label {
-  color: #ffffff !important;
-}
-/* Primary buttons di Blast pakai biru */
-.blast-page .ant-btn-primary {
-  background: #3b82f6 !important; /* blue-500 */
-  border-color: #3b82f6 !important;
-  color: #ffffff !important;
-}
-.blast-page .ant-btn-primary:hover,
-.blast-page .ant-btn-primary:focus {
-  background: #2563eb !important; /* blue-600 */
-  border-color: #2563eb !important;
-  color: #ffffff !important;
-}
-/* Pastikan ikon pada button primary juga putih */
-.blast-page .ant-btn-primary .anticon {
-  color: #ffffff !important;
-}
-
-/* Select multi: warna "x" (remove) dan clear menjadi putih */
-.blast-page .ant-select .ant-select-selection-item-remove,
-.blast-page .ant-select .ant-select-clear {
-  color: #ffffff !important;
-}
-.blast-page .ant-select .ant-select-selection-item-remove .anticon,
-.blast-page .ant-select .ant-select-clear .anticon {
-  color: #ffffff !important;
-}
-.blast-page .ant-select .ant-select-selection-item-remove svg,
-.blast-page .ant-select .ant-select-clear svg {
-  fill: #ffffff !important;
-  stroke: #ffffff !important;
-}
-
-/* Inputs / TextArea */
-.blast-page .ant-input,
-.blast-page .ant-input-affix-wrapper,
-.blast-page .ant-input-textarea textarea {
-  background: #0e182c !important;
-  border-color: #2f3f60 !important;
-  color: #ffffff !important;
-}
-.blast-page .ant-input::placeholder,
-.blast-page .ant-input-textarea textarea::placeholder {
-  color: rgba(255, 255, 255, 0.55) !important;
-}
-
-/* Select (field) */
-.blast-page .ant-select-selector,
-.blast-page .ant-select-selection-search-input {
-  background: #0e182c !important;
-  border-color: #2f3f60 !important;
-  color: #ffffff !important;
-}
-.blast-page .ant-select-selection-placeholder {
-  color: rgba(255, 255, 255, 0.55) !important;
-}
-.blast-page .ant-select-multiple .ant-select-selection-item {
-  background: rgba(255, 255, 255, 0.06) !important;
-  border: 1px solid #2f3f60 !important;
-  color: #ffffff !important;
-  border-radius: 10px !important;
-}
-
-/* Hover/Focus */
-.blast-page .ant-input:hover,
-.blast-page .ant-input:focus,
-.blast-page .ant-input-affix-wrapper-focused,
-.blast-page .ant-input-textarea:focus-within,
-.blast-page .ant-select-focused .ant-select-selector,
-.blast-page .ant-select-selector:hover {
-  border-color: #5b75a8 !important;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
-}
-
-/* InputNumber */
-.blast-page .ant-input-number {
-  background: #0e182c !important;
-  border-color: #2f3f60 !important;
-  color: #ffffff !important;
-}
-.blast-page .ant-input-number-input::placeholder {
-  color: rgba(255, 255, 255, 0.55) !important;
-}
-
-/* Select dropdown — karena kita render popup di parent (lihat getPopupContainer),
-   dropdown akan berada di dalam .blast-page dan ikut kena style ini */
-.blast-page .ant-select-dropdown {
-  background: #0b1223 !important;
-  border: 1px solid #2f3f60 !important;
-  color: #ffffff !important;
-}
-.blast-page .ant-select-item {
-  color: #ffffff !important;
-}
-.blast-page .ant-select-item-option-active {
-  background: rgba(255, 255, 255, 0.06) !important;
-}
-.blast-page .ant-select-item-option-selected {
-  background: rgba(96, 165, 250, 0.15) !important;
-  color: #ffffff !important;
-}
-
-/* Quill (HtmlEditor) dark polish */
-.blast-page .ql-toolbar.ql-snow {
-  background: #0e182c;
-  border: 1px solid #2f3f60;
-  border-bottom: none;
-  border-top-left-radius: 12px;
-  border-top-right-radius: 12px;
-  color: #0f172a;
-}
-.blast-page .ql-container.ql-snow {
-  background: #0b1223;
-  border: 1px solid #2f3f60;
-  border-top: none;
-  border-bottom-left-radius: 12px;
-  border-bottom-right-radius: 12px;
-  color: #0f172a;
-}
-.blast-page .ql-editor {
-  min-height: 220px;
-  color: #0f172a;
-  caret-color: #0f172a;
-}
-.blast-page .ql-editor.ql-blank::before {
-  color: rgba(255, 255, 255, 0.55); /* placeholder */
-}
-.blast-page .ql-snow .ql-stroke {
-  stroke: #cbd5e1;
-}
-.blast-page .ql-snow .ql-fill {
-  fill: #cbd5e1;
-}
-.blast-page .ql-snow .ql-picker {
-  color: #0f172a;
-}
-.blast-page .ql-editor a {
-  color: #60a5fa;
-  text-decoration: underline;
-}
-
-/* ================================
-   User public shell
+  User public shell
 ================================ */
 .user-shell {
   min-height: 100dvh;
@@ -764,10 +344,17 @@ body {
   flex: 1;
   width: min(1280px, 100%);
   margin: 0 auto;
-  padding: clamp(48px, 8vw, 84px) clamp(20px, 6vw, 48px) clamp(32px, 6vw, 64px);
+  padding-block: clamp(48px, 8vw, 84px) clamp(32px, 6vw, 64px);
+  /* padding-inline: clamp(20px, 6vw, 48px); */
   display: flex;
   flex-direction: column;
   gap: clamp(32px, 5vw, 64px);
+}
+
+@supports selector(:has(*)) {
+  .user-content:has([data-shell="full"]) {
+    padding-inline: 0;
+  }
 }
 
 @media (max-width: 768px) {

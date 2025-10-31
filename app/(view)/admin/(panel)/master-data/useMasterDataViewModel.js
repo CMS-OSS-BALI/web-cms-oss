@@ -1,13 +1,38 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-/** ===== type registry (tiap kategori → endpoint & adapter) ===== */
+/* ---------- helpers ---------- */
+const jsonFetcher = async (url, init = {}) => {
+  const res = await fetch(url, {
+    cache: "no-store",
+    credentials: "include",
+    headers: { Accept: "application/json", ...(init.headers || {}) },
+    ...init,
+  });
+  // try decode even on error to surface message
+  let payload = null;
+  try {
+    payload = await res.json();
+  } catch {}
+  if (!res.ok) {
+    const msg =
+      payload?.error?.message ||
+      payload?.message ||
+      `Request failed (${res.status})`;
+    const err = new Error(msg);
+    err.status = res.status;
+    err.payload = payload;
+    throw err;
+  }
+  return payload ?? {};
+};
+
+/* ---------- type registry ---------- */
 const TYPES = {
   blog: {
     key: "blog",
     label: "Kategori Blog",
-    // server paginated
     buildListUrl: ({ page, perPage, q }) => {
       const u = new URL("/api/blog-categories", window.location.origin);
       u.searchParams.set("page", String(page));
@@ -28,27 +53,30 @@ const TYPES = {
       })),
     }),
     getOne: (id) =>
-      fetch(
+      jsonFetcher(
         `/api/blog-categories/${encodeURIComponent(id)}?locale=id&fallback=id`
-      ).then((r) => r.json()),
+      ),
     create: (name) =>
-      fetch("/api/blog-categories", {
+      jsonFetcher("/api/blog-categories", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name_id: name, autoTranslate: true }),
-        credentials: "include",
+        body: JSON.stringify({
+          name_id: String(name || ""),
+          autoTranslate: true,
+        }),
       }),
     update: (id, name) =>
-      fetch(`/api/blog-categories/${encodeURIComponent(id)}`, {
+      jsonFetcher(`/api/blog-categories/${encodeURIComponent(id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name_id: name, autoTranslate: true }),
-        credentials: "include",
+        body: JSON.stringify({
+          name_id: String(name || ""),
+          autoTranslate: true,
+        }),
       }),
     remove: (id) =>
-      fetch(`/api/blog-categories/${encodeURIComponent(id)}`, {
+      jsonFetcher(`/api/blog-categories/${encodeURIComponent(id)}`, {
         method: "DELETE",
-        credentials: "include",
       }),
   },
 
@@ -75,27 +103,30 @@ const TYPES = {
       })),
     }),
     getOne: (id) =>
-      fetch(
+      jsonFetcher(
         `/api/event-categories/${encodeURIComponent(id)}?locale=id&fallback=id`
-      ).then((r) => r.json()),
+      ),
     create: (name) =>
-      fetch("/api/event-categories", {
+      jsonFetcher("/api/event-categories", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name_id: name, autoTranslate: true }),
-        credentials: "include",
+        body: JSON.stringify({
+          name_id: String(name || ""),
+          autoTranslate: true,
+        }),
       }),
     update: (id, name) =>
-      fetch(`/api/event-categories/${encodeURIComponent(id)}`, {
+      jsonFetcher(`/api/event-categories/${encodeURIComponent(id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name_id: name, autoTranslate: true }),
-        credentials: "include",
+        body: JSON.stringify({
+          name_id: String(name || ""),
+          autoTranslate: true,
+        }),
       }),
     remove: (id) =>
-      fetch(`/api/event-categories/${encodeURIComponent(id)}`, {
+      jsonFetcher(`/api/event-categories/${encodeURIComponent(id)}`, {
         method: "DELETE",
-        credentials: "include",
       }),
   },
 
@@ -125,48 +156,58 @@ const TYPES = {
       })),
     }),
     getOne: (id) =>
-      fetch(
+      jsonFetcher(
         `/api/mitra-dalam-negeri-categories/${encodeURIComponent(
           id
         )}?locale=id&fallback=id`
-      ).then((r) => r.json()),
+      ),
     create: (name) =>
-      fetch("/api/mitra-dalam-negeri-categories", {
+      jsonFetcher("/api/mitra-dalam-negeri-categories", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name_id: name, autoTranslate: true }),
-        credentials: "include",
+        body: JSON.stringify({
+          name_id: String(name || ""),
+          autoTranslate: true,
+        }),
       }),
     update: (id, name) =>
-      fetch(`/api/mitra-dalam-negeri-categories/${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name_id: name, autoTranslate: true }),
-        credentials: "include",
-      }),
+      jsonFetcher(
+        `/api/mitra-dalam-negeri-categories/${encodeURIComponent(id)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name_id: String(name || ""),
+            autoTranslate: true,
+          }),
+        }
+      ),
     remove: (id) =>
-      fetch(`/api/mitra-dalam-negeri-categories/${encodeURIComponent(id)}`, {
-        method: "DELETE",
-        credentials: "include",
-      }),
+      jsonFetcher(
+        `/api/mitra-dalam-negeri-categories/${encodeURIComponent(id)}`,
+        {
+          method: "DELETE",
+        }
+      ),
   },
 
   service: {
     key: "service",
     label: "Kategori Layanan",
-    // server paginated (limit/page)
     buildListUrl: ({ page, perPage, q }) => {
       const u = new URL("/api/service-categories", window.location.origin);
       u.searchParams.set("page", String(page));
       u.searchParams.set("limit", String(perPage));
       if (q?.trim()) u.searchParams.set("q", q.trim());
+      // meta didukung (lihat patch endpoint di bawah)
       return u.toString();
     },
     normalizeList: (json) => {
       const rows = json?.data || [];
+      const meta = json?.meta;
       return {
-        total: rows.length, // API tidak kirim total, tapi aman
-        totalPages: 1,
+        total: meta?.total ?? rows.length,
+        totalPages: meta?.totalPages ?? 1,
         rows: rows.map((r) => ({
           id: r.id,
           name: r.name ?? "-",
@@ -175,37 +216,31 @@ const TYPES = {
       };
     },
     getOne: (id) =>
-      fetch(`/api/service-categories/${encodeURIComponent(id)}`).then((r) =>
-        r.json()
-      ),
+      jsonFetcher(`/api/service-categories/${encodeURIComponent(id)}`),
     create: (name) =>
-      fetch("/api/service-categories", {
+      jsonFetcher("/api/service-categories", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
-        credentials: "include",
+        body: JSON.stringify({ name: String(name || "") }),
       }),
     update: (id, name) =>
-      fetch(`/api/service-categories/${encodeURIComponent(id)}`, {
+      jsonFetcher(`/api/service-categories/${encodeURIComponent(id)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
-        credentials: "include",
+        body: JSON.stringify({ name: String(name || "") }),
       }),
     remove: (id) =>
-      fetch(`/api/service-categories/${encodeURIComponent(id)}`, {
+      jsonFetcher(`/api/service-categories/${encodeURIComponent(id)}`, {
         method: "DELETE",
-        credentials: "include",
       }),
   },
 
   testimonial: {
     key: "testimonial",
     label: "Kategori Testimoni",
-    // API list tidak paginated → kita filter + paginate manual
     buildListUrl: () =>
       new URL(
-        "/api/testimonial-categories?locale=id",
+        "/api/testimonials-category?locale=id",
         window.location.origin
       ).toString(),
     normalizeList: (json) => ({
@@ -218,27 +253,24 @@ const TYPES = {
       })),
     }),
     getOne: (id) =>
-      fetch(
-        `/api/testimonial-categories/${encodeURIComponent(id)}?locale=id`
-      ).then((r) => r.json()),
+      jsonFetcher(
+        `/api/testimonials-category/${encodeURIComponent(id)}?locale=id`
+      ),
     create: (name) =>
-      fetch("/api/testimonial-categories", {
+      jsonFetcher("/api/testimonials-category", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, locale: "id" }),
-        credentials: "include",
+        body: JSON.stringify({ name: String(name || ""), locale: "id" }),
       }),
     update: (id, name) =>
-      fetch(`/api/testimonial-categories/${encodeURIComponent(id)}`, {
+      jsonFetcher(`/api/testimonials-category/${encodeURIComponent(id)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, locale: "id" }),
-        credentials: "include",
+        body: JSON.stringify({ name: String(name || ""), locale: "id" }),
       }),
     remove: (id) =>
-      fetch(`/api/testimonial-categories/${encodeURIComponent(id)}`, {
+      jsonFetcher(`/api/testimonials-category/${encodeURIComponent(id)}`, {
         method: "DELETE",
-        credentials: "include",
       }),
   },
 };
@@ -249,13 +281,14 @@ const TYPE_OPTIONS = Object.values(TYPES).map(({ key, label }) => ({
 }));
 
 export default function useMasterDataViewModel() {
-  // filters/state
-  const [type, setType] = useState("blog"); // default: blog categories
+  /* ========== filters/state ========== */
+  const [type, setType] = useState("blog");
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
+  const [locale, setLocale] = useState("id");
 
-  // data
+  /* ========== list state ========== */
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -263,53 +296,59 @@ export default function useMasterDataViewModel() {
   const [opLoading, setOpLoading] = useState(false);
 
   const current = useMemo(() => TYPES[type], [type]);
+  const seqRef = useRef(0); // prevent stale commits
 
   const fetchList = useCallback(async () => {
+    const seq = ++seqRef.current;
     setLoading(true);
     try {
-      const url = current.buildListUrl({ page, perPage, q });
-      const res = await fetch(url, { credentials: "include" });
-      const json = await res.json().catch(() => ({}));
-      let { rows, total, totalPages } = current.normalizeList(json);
+      const url = current.buildListUrl({ page, perPage, q, locale });
+      const json = await jsonFetcher(url);
+      let {
+        rows: rws,
+        total: ttl,
+        totalPages: tpg,
+      } = current.normalizeList(json);
 
-      // khusus testimonial: filter & paginate manual
+      // testimonial: manual filter + paginate
       if (current.key === "testimonial") {
         if (q?.trim()) {
           const kw = q.trim().toLowerCase();
-          rows = rows.filter((r) => (r.name || "").toLowerCase().includes(kw));
+          rws = rws.filter((r) => (r.name || "").toLowerCase().includes(kw));
         }
         const start = (page - 1) * perPage;
         const end = start + perPage;
-        total = rows.length;
-        totalPages = Math.max(1, Math.ceil(total / perPage));
-        rows = rows.slice(start, end);
+        ttl = rws.length;
+        tpg = Math.max(1, Math.ceil(ttl / perPage));
+        rws = rws.slice(start, end);
       }
 
-      setRows(rows);
-      setTotal(total);
-      setTotalPages(totalPages);
-    } catch {
-      setRows([]);
-      setTotal(0);
-      setTotalPages(1);
+      // commit only if not stale
+      if (seq === seqRef.current) {
+        setRows(rws);
+        setTotal(ttl);
+        setTotalPages(tpg);
+      }
+    } catch (e) {
+      if (seq === seqRef.current) {
+        setRows([]);
+        setTotal(0);
+        setTotalPages(1);
+      }
     } finally {
-      setLoading(false);
+      if (seq === seqRef.current) setLoading(false);
     }
-  }, [current, page, perPage, q]);
+  }, [current, page, perPage, q, locale]);
 
   useEffect(() => {
     fetchList();
   }, [fetchList]);
 
-  // actions
+  /* ========== actions ========== */
   async function createCategory(name) {
     setOpLoading(true);
     try {
-      const res = await current.create(String(name || "").trim());
-      if (!res.ok) {
-        const info = await res.json().catch(() => null);
-        throw new Error(info?.message || "Gagal membuat kategori");
-      }
+      await current.create(String(name || "").trim());
       await fetchList();
       return { ok: true };
     } catch (e) {
@@ -322,11 +361,7 @@ export default function useMasterDataViewModel() {
   async function updateCategory(id, name) {
     setOpLoading(true);
     try {
-      const res = await current.update(id, String(name || "").trim());
-      if (!res.ok) {
-        const info = await res.json().catch(() => null);
-        throw new Error(info?.message || "Gagal menyimpan perubahan");
-      }
+      await current.update(id, String(name || "").trim());
       await fetchList();
       return { ok: true };
     } catch (e) {
@@ -339,11 +374,7 @@ export default function useMasterDataViewModel() {
   async function deleteCategory(id) {
     setOpLoading(true);
     try {
-      const res = await current.remove(id);
-      if (!res.ok) {
-        const info = await res.json().catch(() => null);
-        throw new Error(info?.message || "Gagal menghapus");
-      }
+      await current.remove(id);
       await fetchList();
       return { ok: true };
     } catch (e) {
@@ -357,19 +388,17 @@ export default function useMasterDataViewModel() {
     try {
       const json = await current.getOne(id);
       const d = json?.data ?? json;
-      return {
-        ok: true,
-        data: { id: d.id, name: d.name ?? d?.slug ?? "-" },
-      };
+      return { ok: true, data: { id: d.id, name: d.name ?? d?.slug ?? "-" } };
     } catch (e) {
       return { ok: false, error: e?.message || "Gagal memuat detail" };
     }
   }
 
-  // when changing type, reset page & refetch
   function changeType(next) {
     setType(next);
+    setQ("");
     setPage(1);
+    // perPage tetap, atau sesuaikan bila perlu
   }
 
   return {
@@ -384,6 +413,8 @@ export default function useMasterDataViewModel() {
     setPage,
     perPage,
     setPerPage,
+    locale,
+    setLocale,
 
     rows,
     total,

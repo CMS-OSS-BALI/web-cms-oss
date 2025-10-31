@@ -6,17 +6,30 @@
   --ah-muted: #8a94a6;
   --ah-pill: #f6f8fd;
   --ah-pill-border: #e8eeff;
+
+  /* jarak aman dari atas; support safe area notch */
+  --ah-top-gap: calc(max(12px, env(safe-area-inset-top)));
 }
 
 .ah-root {
   height: var(--ah-h);
   background: var(--ah-bg);
-  border-bottom: 1px solid var(--ah-border);
+  border: 1px solid var(--ah-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 16px;
   box-sizing: border-box;
+
+  /* ⭣ perbaikan utama */
+  position: sticky; /* tetap di atas saat scroll */
+  top: var(--ah-top-gap); /* offset dari tepi viewport */
+  margin-top: var(
+    --ah-top-gap
+  ); /* ruang awal saat halaman di posisi paling atas */
+  border-radius: 14px; /* radius terlihat, tidak kepotong */
+  z-index: 100; /* di atas konten bawahnya */
+  box-shadow: 0 6px 22px rgba(11, 86, 201, 0.06);
 }
 
 /* LEFT */
@@ -65,12 +78,13 @@
   place-items: center;
   cursor: pointer;
   transition: filter 0.15s ease;
+  overflow: visible; /* badge dot tidak ter-clip */
 }
 .ah-icon-btn:hover {
   filter: brightness(0.98);
 }
 
-/* Avatar button (trigger dropdown) */
+/* Avatar button */
 .ah-avatar-btn {
   background: transparent;
   border: none;
@@ -80,4 +94,15 @@
 }
 .ah-avatar {
   box-shadow: 0 0 0 2px #ffffff;
+}
+
+/* Responsif */
+@media (max-width: 768px) {
+  :root {
+    --ah-h: 56px;
+  }
+  .ah-root {
+    padding: 0 12px;
+    border-radius: 12px;
+  }
 }

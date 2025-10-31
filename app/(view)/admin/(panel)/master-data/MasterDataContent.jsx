@@ -12,7 +12,6 @@ import {
   Popconfirm,
   Tooltip,
   Spin,
-  Tag,
   Select,
   notification,
 } from "antd";
@@ -35,11 +34,10 @@ export default function MasterDataContent({ vm }) {
     blue: "#0b56c9",
     text: "#0f172a",
   };
-
   const T = {
     title: "Manajemen Master Data",
     listTitle: "Daftar Kategori",
-    searchPh: "Search (nama)",
+    searchPh: "Cari nama kategori",
     addNew: "Buat Kategori",
     action: "Aksi",
   };
@@ -52,7 +50,7 @@ export default function MasterDataContent({ vm }) {
       api.error({ message: m, description: d, placement: "topRight" }),
   };
 
-  // UI
+  // UI state
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
@@ -64,24 +62,23 @@ export default function MasterDataContent({ vm }) {
 
   const rows = useMemo(() => viewModel.rows || [], [viewModel.rows]);
 
-  // search debounce
+  /* search debounce */
   const [searchValue, setSearchValue] = useState(viewModel.q || "");
   useEffect(() => setSearchValue(viewModel.q || ""), [viewModel.q]);
   useEffect(() => {
     const v = (searchValue || "").trim();
     const t = setTimeout(() => {
-      viewModel.setQ?.(v);
-      viewModel.setPage?.(1);
+      viewModel.setQ(v);
+      viewModel.setPage(1);
     }, 350);
     return () => clearTimeout(t);
-    // eslint-disable-next-line
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchValue]);
 
   const openCreate = () => {
     setCreateOpen(true);
     formCreate.resetFields();
   };
-
   const onCreate = async () => {
     const v = await formCreate.validateFields().catch(() => null);
     if (!v) return;
@@ -104,7 +101,6 @@ export default function MasterDataContent({ vm }) {
     setDetailData(data);
     formEdit.setFieldsValue({ name: data.name || "" });
   };
-
   const onEditSubmit = async () => {
     if (!activeRow) return;
     const v = await formEdit.validateFields().catch(() => null);
@@ -136,7 +132,12 @@ export default function MasterDataContent({ vm }) {
   };
 
   const goPrev = () => viewModel.setPage(Math.max(1, viewModel.page - 1));
-  const goNext = () => viewModel.setPage(viewModel.page + 1);
+  const goNext = () =>
+    viewModel.setPage(
+      viewModel.totalPages
+        ? Math.min(viewModel.totalPages, viewModel.page + 1)
+        : viewModel.page + 1
+    );
 
   const { shellW, maxW, blue, text } = TOKENS;
 
@@ -194,7 +195,13 @@ export default function MasterDataContent({ vm }) {
             <div style={styles.cardInner}>
               <div style={styles.cardTitle}>{T.title}</div>
               <div style={styles.totalBadgeWrap}>
-                <div style={styles.totalBadgeLabel}>Total</div>
+                <div style={styles.totalBadgeLabel}>
+                  {
+                    viewModel.typeOptions.find(
+                      (o) => o.value === viewModel.type
+                    )?.label
+                  }
+                </div>
                 <div style={styles.totalBadgeValue}>
                   {viewModel.total ?? rows.length ?? "—"}
                 </div>
@@ -216,15 +223,15 @@ export default function MasterDataContent({ vm }) {
                 </Button>
               </div>
 
-              {/* Filters — Search kiri, Kategori kanan (locale dropdown DIHAPUS) */}
+              {/* Filters */}
               <div style={styles.filtersRow}>
                 <Input
                   allowClear
                   value={searchValue}
                   onChange={(e) => setSearchValue(e.target.value)}
                   onPressEnter={() => {
-                    viewModel.setQ?.((searchValue || "").trim());
-                    viewModel.setPage?.(1);
+                    viewModel.setQ((searchValue || "").trim());
+                    viewModel.setPage(1);
                   }}
                   placeholder={T.searchPh}
                   prefix={<SearchOutlined />}
@@ -232,7 +239,7 @@ export default function MasterDataContent({ vm }) {
                 />
                 <Select
                   value={viewModel.type}
-                  onChange={(t) => viewModel.setType?.(t)}
+                  onChange={(t) => viewModel.setType(t)}
                   options={viewModel.typeOptions}
                   style={styles.filterSelect}
                 />
@@ -283,6 +290,7 @@ export default function MasterDataContent({ vm }) {
                             icon={<EditOutlined />}
                             onClick={() => openEdit(r)}
                             style={styles.iconBtn}
+                            disabled={viewModel.opLoading}
                           />
                         </Tooltip>
                         <Tooltip title="Hapus">
@@ -297,6 +305,7 @@ export default function MasterDataContent({ vm }) {
                               danger
                               icon={<DeleteOutlined />}
                               style={styles.iconBtn}
+                              disabled={viewModel.opLoading}
                             />
                           </Popconfirm>
                         </Tooltip>
@@ -333,7 +342,7 @@ export default function MasterDataContent({ vm }) {
         </div>
       </section>
 
-      {/* View Modal (nama saja) */}
+      {/* View Modal */}
       <Modal
         open={viewOpen}
         onCancel={() => {
@@ -359,7 +368,7 @@ export default function MasterDataContent({ vm }) {
         </div>
       </Modal>
 
-      {/* Create Modal (input nama saja) */}
+      {/* Create Modal */}
       <Modal
         open={createOpen}
         onCancel={() => setCreateOpen(false)}
@@ -394,7 +403,7 @@ export default function MasterDataContent({ vm }) {
         </div>
       </Modal>
 
-      {/* Edit Modal (input nama saja) */}
+      {/* Edit Modal */}
       <Modal
         open={editOpen}
         onCancel={() => setEditOpen(false)}
@@ -454,8 +463,7 @@ const styles = {
     fontSize: 18,
     fontWeight: 800,
     color: "#0b3e91",
-    marginTop: 8,
-    marginBottom: 8,
+    margin: "8px 0",
   },
   totalBadgeWrap: {
     position: "absolute",
@@ -485,8 +493,6 @@ const styles = {
     marginBottom: 8,
   },
   sectionTitle: { fontSize: 18, fontWeight: 800, color: "#0b3e91" },
-
-  // >>> Search kiri, Kategori kanan
   filtersRow: {
     display: "grid",
     gridTemplateColumns: "1fr 240px",
@@ -520,7 +526,6 @@ const styles = {
     padding: "8px 10px",
     boxShadow: "0 6px 12px rgba(11, 86, 201, 0.05)",
   },
-
   colName: {
     background: "#ffffff",
     borderRadius: 10,
@@ -539,7 +544,6 @@ const styles = {
     overflow: "hidden",
     textOverflow: "ellipsis",
   },
-
   colActionsCenter: { display: "flex", justifyContent: "center", gap: 6 },
   iconBtn: { borderRadius: 8 },
 

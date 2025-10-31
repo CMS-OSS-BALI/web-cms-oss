@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import useActivityViewModel from "./useActivityViewModel";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ConfigProvider,
   Button,
@@ -15,6 +14,7 @@ import {
   Tooltip,
   Spin,
   Select,
+  notification,
 } from "antd";
 import {
   PlusCircleOutlined,
@@ -25,8 +25,9 @@ import {
   RightOutlined,
   SearchOutlined,
 } from "@ant-design/icons";
+import useActivityViewModel from "./useActivityViewModel";
 
-/* ===== compact tokens ===== */
+/* ===================== Tokens & Text ===================== */
 const TOKENS = {
   shellW: "94%",
   maxW: 1140,
@@ -47,69 +48,92 @@ const T = {
   edit: "Edit",
   del: "Hapus",
   save: "Simpan",
-
   cover: "Gambar (9:16)",
   name: "Judul (ID)",
   desc: "Deskripsi (opsional)",
   status: "Status",
 };
 
-const monthsId = [
-  "Januari",
-  "Februari",
-  "Maret",
-  "April",
-  "Mei",
-  "Juni",
-  "Juli",
-  "Agustus",
-  "September",
-  "Oktober",
-  "November",
-  "Desember",
-];
-const fmtDateId = (dLike) => {
-  if (dLike === null || dLike === undefined || dLike === "") return "-";
-  try {
-    const dt =
-      typeof dLike === "number" ? new Date(dLike) : new Date(String(dLike));
-    if (isNaN(dt.getTime())) return "-";
-    return `${dt.getDate()} ${monthsId[dt.getMonth()]}`;
-  } catch {
-    return "-";
-  }
-};
-
 const isImg = (f) =>
   ["image/jpeg", "image/png", "image/webp"].includes(f?.type || "");
-const tooBig = (f, mb = 10) => f.size / 1024 / 1024 > mb;
+const tooBig = (f, mb = 10) => (f?.size || 0) / 1024 / 1024 > mb;
 
-export default function ActivityContent(props) {
+const fmtDateId = (dLike) => {
+  if (!dLike && dLike !== 0) return "-";
+  const dt =
+    typeof dLike === "number" || typeof dLike === "bigint"
+      ? new Date(Number(dLike))
+      : new Date(String(dLike));
+  if (Number.isNaN(dt.getTime())) return "-";
+  // Contoh output: 21 Oktober
+  return new Intl.DateTimeFormat("id-ID", {
+    day: "numeric",
+    month: "long",
+  }).format(dt);
+};
+
+/* ===================== Component ===================== */
+export default function ActivityContent({ vm: externalVm, locale = "id" }) {
+  // Beri fallback VM jika dipakai di tempat lain tanpa prop vm
   const vm =
-    props && Object.prototype.hasOwnProperty.call(props, "activities")
-      ? props
-      : useActivityViewModel({
-          locale: props?.locale || "id",
-          isPublished: true,
-        });
+    externalVm ??
+    useActivityViewModel({
+      locale,
+      isPublished: true,
+    });
 
-  // ----- UI state
+  // ---------- Notification (top-right) ----------
+  const [notify, contextHolder] = notification.useNotification();
+  const ok = useCallback(
+    (message, description) =>
+      notify.success({ message, description, placement: "topRight" }),
+    [notify]
+  );
+  const err = useCallback(
+    (message, description) =>
+      notify.error({ message, description, placement: "topRight" }),
+    [notify]
+  );
+
+  // ---------- UI State ----------
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
   const [activeRow, setActiveRow] = useState(null);
   const [formCreate] = Form.useForm();
   const [formEdit] = Form.useForm();
-  const [coverPrevCreate, setCoverPrevCreate] = useState("");
-  const [coverPrevEdit, setCoverPrevEdit] = useState("");
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailData, setDetailData] = useState(null);
 
+  // Preview URLs (auto revoked)
+  const [coverPrevCreate, setCoverPrevCreate] = useState("");
+  const [coverPrevEdit, setCoverPrevEdit] = useState("");
+  const blobUrlsRef = useRef(new Set());
+
+  const addBlobUrl = useCallback((url) => {
+    if (!url) return;
+    blobUrlsRef.current.add(url);
+  }, []);
+
+  const revokeAllBlobUrls = useCallback(() => {
+    blobUrlsRef.current.forEach((u) => {
+      try {
+        URL.revokeObjectURL(u);
+      } catch {}
+    });
+    blobUrlsRef.current.clear();
+  }, []);
+
+  useEffect(() => {
+    return () => revokeAllBlobUrls();
+  }, [revokeAllBlobUrls]);
+
   const rows = useMemo(() => vm.activities || [], [vm.activities]);
 
-  // === Search (auto) ===
+  // ---------- Search (debounced) ----------
   const [searchValue, setSearchValue] = useState(vm.q || "");
   useEffect(() => setSearchValue(vm.q || ""), [vm.q]);
+
   useEffect(() => {
     const v = (searchValue || "").trim();
     const t = setTimeout(() => {
@@ -117,37 +141,49 @@ export default function ActivityContent(props) {
       vm.setPage?.(1);
     }, 400);
     return () => clearTimeout(t);
-  }, [searchValue]); // eslint-disable-line
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchValue]);
 
-  // === Filter publish (Draft/Published only) ===
   const pubFilter = useMemo(
     () => (vm.isPublished === false ? "draft" : "published"),
     [vm.isPublished]
   );
-  const onChangePubFilter = (v) => {
-    vm.setIsPublished?.(v === "published");
-    vm.setPage?.(1);
-  };
+  const onChangePubFilter = useCallback(
+    (v) => {
+      vm.setIsPublished?.(v === "published");
+      vm.setPage?.(1);
+    },
+    [vm]
+  );
 
-  // upload handlers 9:16
-  const normList = (e) => (Array.isArray(e) ? e : e?.fileList || []);
-  const beforeCoverCreate = (file) => {
-    if (!isImg(file) || tooBig(file, 10)) return Upload.LIST_IGNORE;
-    try {
-      setCoverPrevCreate(URL.createObjectURL(file));
-    } catch {}
-    return false;
-  };
-  const beforeCoverEdit = (file) => {
-    if (!isImg(file) || tooBig(file, 10)) return Upload.LIST_IGNORE;
-    try {
-      setCoverPrevEdit(URL.createObjectURL(file));
-    } catch {}
-    return false;
-  };
+  const beforeUploadCreate = useCallback(
+    (file) => {
+      if (!isImg(file) || tooBig(file, 10)) return Upload.LIST_IGNORE;
+      try {
+        const url = URL.createObjectURL(file);
+        addBlobUrl(url);
+        setCoverPrevCreate(url);
+      } catch {}
+      return false; // prevent auto upload
+    },
+    [addBlobUrl]
+  );
 
-  // ===== create
-  const onCreate = async () => {
+  const beforeUploadEdit = useCallback(
+    (file) => {
+      if (!isImg(file) || tooBig(file, 10)) return Upload.LIST_IGNORE;
+      try {
+        const url = URL.createObjectURL(file);
+        addBlobUrl(url);
+        setCoverPrevEdit(url);
+      } catch {}
+      return false; // prevent auto upload
+    },
+    [addBlobUrl]
+  );
+
+  // ---------- CRUD ----------
+  const handleCreate = useCallback(async () => {
     const v = await formCreate.validateFields().catch(() => null);
     if (!v) return;
     const file = v.cover?.[0]?.originFileObj || null;
@@ -161,38 +197,45 @@ export default function ActivityContent(props) {
     });
 
     if (!out.ok) {
-      Modal.error({ title: "Gagal", content: out.error || "Gagal menyimpan" });
+      err("Gagal menyimpan", out.error || "Terjadi kesalahan.");
       return;
     }
+    ok("Berhasil", "Aktivitas berhasil dibuat.");
     setCreateOpen(false);
     formCreate.resetFields();
     setCoverPrevCreate("");
-  };
+    revokeAllBlobUrls();
+  }, [formCreate, vm, ok, err, revokeAllBlobUrls]);
 
-  // ===== edit (load)
-  const openEdit = async (row) => {
-    setActiveRow(row);
-    setEditOpen(true);
-    setDetailLoading(true);
-    setDetailData(null);
-    const { ok, data, error } = await vm.getActivity(row.id);
-    setDetailLoading(false);
-    if (!ok) {
-      setEditOpen(false);
-      return Modal.error({ title: "Gagal memuat", content: error });
-    }
-    const d = data || row;
-    setDetailData(d);
-    formEdit.setFieldsValue({
-      name: d.name || row.title || "",
-      description: d.description || "",
-      status: d.is_published ? "published" : "draft",
-    });
-    setCoverPrevEdit(d.image_url || row.image_src || "");
-  };
+  const openEdit = useCallback(
+    async (row) => {
+      setActiveRow(row);
+      setEditOpen(true);
+      setDetailLoading(true);
+      setDetailData(null);
 
-  // ===== edit (submit)
-  const onEditSubmit = async () => {
+      const { ok: success, data, error } = await vm.getActivity(row.id);
+      setDetailLoading(false);
+
+      if (!success) {
+        setEditOpen(false);
+        err("Gagal memuat", error || "Terjadi kesalahan.");
+        return;
+      }
+
+      const d = data || row;
+      setDetailData(d);
+      formEdit.setFieldsValue({
+        name: d.name || row.title || "",
+        description: d.description || "",
+        status: d.is_published ? "published" : "draft",
+      });
+      setCoverPrevEdit(d.image_url || row.image_src || "");
+    },
+    [vm, formEdit, err]
+  );
+
+  const handleEditSubmit = useCallback(async () => {
     if (!activeRow) return;
     const v = await formEdit.validateFields().catch(() => null);
     if (!v) return;
@@ -207,28 +250,30 @@ export default function ActivityContent(props) {
     });
 
     if (!res.ok) {
-      return Modal.error({
-        title: "Gagal",
-        content: res.error || "Gagal menyimpan",
-      });
+      err("Gagal menyimpan", res.error || "Terjadi kesalahan.");
+      return;
     }
+    ok("Berhasil", "Perubahan telah disimpan.");
     setEditOpen(false);
     formEdit.resetFields();
     setCoverPrevEdit("");
-  };
+    revokeAllBlobUrls();
+  }, [activeRow, formEdit, vm, ok, err, revokeAllBlobUrls]);
 
-  const onDelete = async (id) => {
-    const res = await vm.deleteActivity(id);
-    if (!res.ok) {
-      Modal.error({
-        title: "Gagal",
-        content: res.error || "Tidak bisa menghapus",
-      });
-    }
-  };
+  const handleDelete = useCallback(
+    async (id) => {
+      const res = await vm.deleteActivity(id);
+      if (!res.ok) {
+        err("Gagal menghapus", res.error || "Terjadi kesalahan.");
+        return;
+      }
+      ok("Terhapus", "Aktivitas berhasil dihapus.");
+    },
+    [vm, ok, err]
+  );
 
+  // ---------- Helpers ----------
   const { shellW, maxW, blue, text } = TOKENS;
-  const req = (msg) => [{ required: true, message: msg }];
 
   return (
     <ConfigProvider
@@ -246,6 +291,8 @@ export default function ActivityContent(props) {
         components: { Button: { borderRadius: 10 } },
       }}
     >
+      {contextHolder}
+
       {/* paksa rasio 9:16 untuk Upload */}
       <style jsx global>{`
         .portrait-uploader.ant-upload.ant-upload-select-picture-card {
@@ -382,6 +429,7 @@ export default function ActivityContent(props) {
                                 src={r.image_src}
                                 alt=""
                                 style={styles.logoImg}
+                                loading="lazy"
                               />
                             ) : (
                               <div style={styles.logoFallback}>📌</div>
@@ -398,14 +446,7 @@ export default function ActivityContent(props) {
                         </div>
 
                         <div style={styles.colCenter}>
-                          <span
-                            style={{
-                              ...styles.badge,
-                              ...(isPub ? styles.badgePub : styles.badgeDraft),
-                            }}
-                          >
-                            {isPub ? "Published" : "Draft"}
-                          </span>
+                          {isPub ? "Published" : "Draft"}
                         </div>
 
                         <div style={styles.colActionsCenter}>
@@ -419,14 +460,11 @@ export default function ActivityContent(props) {
                                 setDetailLoading(true);
                                 setDetailData(null);
                                 vm.getActivity(r.id).then(
-                                  ({ ok, data, error }) => {
+                                  ({ ok: success, data, error }) => {
                                     setDetailLoading(false);
-                                    if (!ok) {
+                                    if (!success) {
                                       setViewOpen(false);
-                                      Modal.error({
-                                        title: "Gagal memuat",
-                                        content: error,
-                                      });
+                                      err("Gagal memuat", error);
                                       return;
                                     }
                                     setDetailData(data);
@@ -436,21 +474,24 @@ export default function ActivityContent(props) {
                               style={styles.iconBtn}
                             />
                           </Tooltip>
+
                           <Tooltip title={T.del}>
                             <Popconfirm
                               title="Hapus aktivitas ini?"
                               okText="Ya"
                               cancelText="Batal"
-                              onConfirm={() => onDelete(r.id)}
+                              onConfirm={() => handleDelete(r.id)}
                             >
                               <Button
                                 size="small"
                                 danger
                                 icon={<DeleteOutlined />}
                                 style={styles.iconBtn}
+                                loading={vm.opLoading}
                               />
                             </Popconfirm>
                           </Tooltip>
+
                           <Tooltip title={T.edit}>
                             <Button
                               size="small"
@@ -500,6 +541,7 @@ export default function ActivityContent(props) {
           setCreateOpen(false);
           setCoverPrevCreate("");
           formCreate.resetFields();
+          revokeAllBlobUrls();
         }}
         footer={null}
         width={760}
@@ -522,14 +564,7 @@ export default function ActivityContent(props) {
                   accept="image/*"
                   listType="picture-card"
                   showUploadList={false}
-                  beforeUpload={(file) => {
-                    if (!isImg(file) || tooBig(file, 10))
-                      return Upload.LIST_IGNORE;
-                    try {
-                      setCoverPrevCreate(URL.createObjectURL(file));
-                    } catch {}
-                    return false;
-                  }}
+                  beforeUpload={beforeUploadCreate}
                   className="portrait-uploader"
                 >
                   <div style={styles.coverBox}>
@@ -577,7 +612,7 @@ export default function ActivityContent(props) {
               <Button
                 type="primary"
                 size="large"
-                onClick={onCreate}
+                onClick={handleCreate}
                 loading={vm.opLoading}
                 style={styles.saveBtn}
               >
@@ -595,6 +630,7 @@ export default function ActivityContent(props) {
           setEditOpen(false);
           setCoverPrevEdit("");
           formEdit.resetFields();
+          revokeAllBlobUrls();
         }}
         footer={null}
         width={820}
@@ -617,14 +653,7 @@ export default function ActivityContent(props) {
                     accept="image/*"
                     listType="picture-card"
                     showUploadList={false}
-                    beforeUpload={(file) => {
-                      if (!isImg(file) || tooBig(file, 10))
-                        return Upload.LIST_IGNORE;
-                      try {
-                        setCoverPrevEdit(URL.createObjectURL(file));
-                      } catch {}
-                      return false;
-                    }}
+                    beforeUpload={beforeUploadEdit}
                     className="portrait-uploader"
                   >
                     <div style={styles.coverBox}>
@@ -667,7 +696,7 @@ export default function ActivityContent(props) {
                 <Button
                   type="primary"
                   size="large"
-                  onClick={onEditSubmit}
+                  onClick={handleEditSubmit}
                   loading={vm.opLoading}
                   style={styles.saveBtn}
                 >
@@ -706,6 +735,7 @@ export default function ActivityContent(props) {
                 </div>
               )}
             </div>
+
             <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
               <div>
                 <div style={styles.label}>{T.name}</div>
@@ -749,7 +779,7 @@ export default function ActivityContent(props) {
   );
 }
 
-/* ===== styles ===== */
+/* ===================== Styles ===================== */
 const styles = {
   cardOuter: {
     background: "#ffffff",
@@ -832,7 +862,7 @@ const styles = {
     borderRadius: 10,
     border: "1px solid #e8eeff",
     padding: "8px 10px",
-    boxShadow: "0 6px 12px rgba(11, 86, 201, 0.05)",
+    boxShadow: "0 6px 12px rgba(0, 0, 0, 0.05)",
   },
 
   colName: {
@@ -843,6 +873,7 @@ const styles = {
     display: "flex",
     alignItems: "center",
     gap: 10,
+    minWidth: 0,
   },
   logoBox: {
     width: 40,
@@ -854,6 +885,7 @@ const styles = {
     placeItems: "center",
     overflow: "hidden",
     boxShadow: "0 2px 6px rgba(0,0,0,.04) inset",
+    flex: "0 0 auto",
   },
   logoImg: { width: "100%", height: "100%", objectFit: "cover" },
   logoFallback: { fontSize: 18 },
@@ -931,25 +963,6 @@ const styles = {
     background: "#f8fbff",
   },
   coverImgRead: { width: "100%", height: "auto", display: "block" },
-
-  // badge publikasi
-  badge: {
-    display: "inline-block",
-    padding: "4px 10px",
-    borderRadius: 999,
-    fontSize: 12,
-    fontWeight: 700,
-  },
-  badgePub: {
-    background: "#e8f1ff",
-    color: "#0b56c9",
-    border: "1px solid #cfe0ff",
-  },
-  badgeDraft: {
-    background: "#fff4e5",
-    color: "#b45309",
-    border: "1px solid #fde0b2",
-  },
 
   modalFooter: { marginTop: 8, display: "grid", placeItems: "center" },
   saveBtn: { minWidth: 200, height: 40, borderRadius: 12 },

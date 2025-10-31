@@ -14,10 +14,13 @@ import useLayananViewModel from "./useLayananViewModel";
 
 const { Title, Paragraph } = Typography;
 
+/* ========= class names ========= */
+const ROOT_CLASS = "layanan-page";
 const SERVICE_SWIPER_CLASS = "layanan-services-swiper";
 const TESTI_SWIPER_CLASS = "layanan-testimoni-swiper";
-const MARQUEE_SPEED = 6000;
 
+/* ========= marquee config ========= */
+const MARQUEE_SPEED = 6000;
 const marqueeAutoplay = {
   delay: 0,
   disableOnInteraction: false,
@@ -25,6 +28,7 @@ const marqueeAutoplay = {
 };
 const marqueeFreeMode = { enabled: true, momentum: false, sticky: false };
 
+/* ========= storage helpers (supabase/public) ========= */
 const STORAGE_BASE_URL = (() => {
   const explicit = (process.env.NEXT_PUBLIC_STORAGE_BASE_URL || "")
     .trim()
@@ -36,17 +40,18 @@ const STORAGE_BASE_URL = (() => {
   const bucket = (process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "")
     .trim()
     .replace(/^\/+|\/+$/g, "");
-  if (supabaseUrl && bucket) {
+  if (supabaseUrl && bucket)
     return `${supabaseUrl}/storage/v1/object/public/${bucket}`;
-  }
   return "";
 })();
 
 const DEFAULT_TESTI_PLACEHOLDER =
   "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=1200&auto=format&fit=crop";
-const shouldUseStorage = (path = "") => /testimonials\//i.test(path);
 
-/* ================== Helpers ================== */
+const shouldUseStorage = (path = "") => /testimonials\//i.test(path);
+const A = (v) => (Array.isArray(v) ? v : []);
+
+/* ========= image helpers ========= */
 function normalizeImgSrc(input) {
   const raw = (input ?? "").toString().trim();
   if (!raw) return DEFAULT_TESTI_PLACEHOLDER;
@@ -63,18 +68,32 @@ function isExternal(src) {
   return /^https?:\/\//i.test(src);
 }
 
-/* ================== Styles ================== */
+/* ========= base styles (desktop-first, di-override via CSS media) ========= */
 const styles = {
   /* ---------- HERO ---------- */
-  hero: { marginTop: "calc(-1 * clamp(48px, 8vw, 84px))", background: "#fff" },
-  heroBleed: { width: "100vw", marginLeft: "calc(50% - 50vw)" },
+  hero: {
+    marginTop: "calc(-1 * clamp(48px, 8vw, 84px))",
+    background: "#fff",
+  },
+  heroBleed: {
+    width: "100vw",
+    marginLeft: "calc(50% - 50vw)",
+    marginRight: "calc(50% - 50vw)",
+  },
   heroImgFrame: {
     position: "relative",
     width: "100vw",
-    height: "clamp(720px, 100vh, 1280px)",
+    height: "clamp(680px, 86vh, 1080px)",
     background: "#e8f0ff",
     overflow: "hidden",
     boxShadow: "0 24px 48px rgba(15,23,42,.14)",
+  },
+  heroOverlay: {
+    position: "absolute",
+    inset: 0,
+    background:
+      "linear-gradient(100deg, rgba(11,35,76,.55) 0%, rgba(11,35,76,.35) 35%, rgba(11,35,76,.18) 60%, rgba(11,35,76,0) 85%)",
+    zIndex: 1,
   },
   heroContentFloating: {
     position: "absolute",
@@ -104,13 +123,6 @@ const styles = {
     lineHeight: 1.5,
     textAlign: "left",
   },
-  heroOverlay: {
-    position: "absolute",
-    inset: 0,
-    background:
-      "linear-gradient(100deg, rgba(11,35,76,.55) 0%, rgba(11,35,76,.35) 35%, rgba(11,35,76,.18) 60%, rgba(11,35,76,0) 85%)",
-    zIndex: 1,
-  },
 
   /* ---------- Pills ---------- */
   pillsGrid: {
@@ -127,17 +139,25 @@ const styles = {
     gap: 16,
     padding: "14px 20px",
     borderRadius: 999,
-    border: "1px solid rgba(17,43,76,.18)",
+    border: "1px solid var(--pill-border, rgba(17,43,76,.18))",
     background:
-      "linear-gradient(180deg, rgba(255,255,255,.65) 0%, rgba(231,241,255,.65) 100%)",
-    boxShadow: "0 10px 18px rgba(17,43,76,.12)",
+      "var(--pill-bg, linear-gradient(180deg, rgba(255,255,255,.65) 0%, rgba(231,241,255,.65) 100%))",
+    boxShadow: "var(--pill-shadow, 0 10px 18px rgba(17,43,76,.12))",
     backdropFilter: "blur(4px)",
     textDecoration: "none",
+    color: "var(--pill-fg, #163257)",
+    boxSizing: "border-box", // penting agar lebar 100% rapi di mobile
   },
-  pillIcon: { width: 38, height: 38, flex: "0 0 auto", objectFit: "contain" },
+  pillIcon: {
+    width: 38,
+    height: 38,
+    flex: "0 0 auto",
+    objectFit: "contain",
+    filter: "var(--pill-icon-filter, none)",
+  },
   pillText: {
     fontWeight: 800,
-    color: "#163257",
+    color: "var(--pill-fg, #163257)",
     letterSpacing: ".02em",
     fontSize: 16,
     whiteSpace: "nowrap",
@@ -228,23 +248,23 @@ const styles = {
     fontWeight: 600,
   },
   serviceCarousel: { marginTop: 32, position: "relative" },
-  serviceSlide: { width: "min(340px, 88vw)" },
+  serviceSlide: { width: "var(--svc-card-w, 340px)" },
 
   card: {
     position: "relative",
     borderRadius: 28,
     overflow: "visible",
     width: "100%",
-    maxWidth: "var(--testi-card-w, 360px)",
+    maxWidth: "var(--svc-card-w, 360px)",
     boxShadow: "0 16px 36px rgba(15,23,42,.12)",
-    minWidth: 280,
+    minWidth: 260,
     background: "#fff",
     paddingBottom: 24,
   },
   cardImgBox: {
     position: "relative",
     width: "100%",
-    height: 280,
+    height: "var(--svc-card-h, 280px)",
     borderRadius: 28,
     overflow: "hidden",
   },
@@ -371,23 +391,26 @@ export default function LayananContent({ locale = "id" }) {
     testiLoading,
   } = useLayananViewModel({ locale });
 
-  const hasMultipleServices = services.length > 1;
+  const pills = A(hero?.pills).slice(0, 5);
+  const hasMultipleServices = A(services).length > 1;
+  const hasMultipleTesti = A(testimonials).length > 1;
 
-  // Our Service -> ke kanan
   const serviceAutoplay = hasMultipleServices
     ? { ...marqueeAutoplay, reverseDirection: true }
     : undefined;
 
-  // Testimoni -> ke kiri
-  const testiAutoplay = { ...marqueeAutoplay, reverseDirection: false };
+  const testiAutoplay = hasMultipleTesti
+    ? { ...marqueeAutoplay, reverseDirection: false }
+    : undefined;
 
   return (
-    <div>
+    <div className={ROOT_CLASS}>
       {/* ===== HERO ===== */}
       <section style={styles.hero}>
         <div style={styles.heroBleed}>
-          <div style={styles.heroImgFrame}>
+          <div className="hero-frame" style={styles.heroImgFrame}>
             <Image
+              className="hero-bg"
               src={hero.image}
               alt="OSS Services"
               fill
@@ -399,53 +422,58 @@ export default function LayananContent({ locale = "id" }) {
                 filter: "saturate(0.98) contrast(1)",
               }}
             />
-            <div style={styles.heroOverlay} />
-            <div style={styles.heroContentFloating}>
-              <Title level={1} style={styles.heroTitle}>
+            <div className="hero-overlay" style={styles.heroOverlay} />
+            <div className="hero-copy" style={styles.heroContentFloating}>
+              <Title level={1} className="hero-title" style={styles.heroTitle}>
                 {hero.title}
               </Title>
-              <Paragraph style={styles.heroQuote}>{hero.quoteTop}</Paragraph>
-              <Paragraph style={{ ...styles.heroQuote, marginTop: 0 }}>
+              <Paragraph className="hero-quote" style={styles.heroQuote}>
+                {hero.quoteTop}
+              </Paragraph>
+              <Paragraph
+                className="hero-quote"
+                style={{ ...styles.heroQuote, marginTop: 0 }}
+              >
                 {hero.quoteBottom}
               </Paragraph>
 
-              <div style={styles.pillsGrid}>
-                {hero.pills.slice(0, 4).map((p, i) => (
-                  <Link
-                    key={i}
-                    href={
-                      p.href
-                        ? p.href.includes("?")
-                          ? `${p.href}&menu=layanan`
-                          : `${p.href}?menu=layanan`
-                        : "#"
-                    }
-                    style={styles.pill}
-                  >
-                    <img src={p.icon} alt="" style={styles.pillIcon} />
-                    <span style={styles.pillText}>{p.label}</span>
-                  </Link>
-                ))}
-                {!!hero.pills[4] && (
-                  <Link
-                    href={
-                      hero.pills[4].href
-                        ? hero.pills[4].href.includes("?")
-                          ? `${hero.pills[4].href}&menu=layanan`
-                          : `${hero.pills[4].href}?menu=layanan`
-                        : "#"
-                    }
-                    style={{ ...styles.pill, ...styles.widePill }}
-                  >
-                    <img
-                      src={hero.pills[4].icon}
-                      alt=""
-                      style={styles.pillIcon}
-                    />
-                    <span style={styles.pillText}>{hero.pills[4].label}</span>
-                  </Link>
-                )}
-              </div>
+              {!!pills.length && (
+                <div className="pills-grid" style={styles.pillsGrid}>
+                  {pills.slice(0, 4).map((p, i) => (
+                    <Link
+                      key={i}
+                      href={
+                        p.href
+                          ? p.href.includes("?")
+                            ? `${p.href}&menu=layanan`
+                            : `${p.href}?menu=layanan`
+                          : "#"
+                      }
+                      className="pill"
+                      style={styles.pill}
+                    >
+                      <img src={p.icon} alt="" style={styles.pillIcon} />
+                      <span style={styles.pillText}>{p.label}</span>
+                    </Link>
+                  ))}
+                  {!!pills[4] && (
+                    <Link
+                      href={
+                        pills[4].href
+                          ? pills[4].href.includes("?")
+                            ? `${pills[4].href}&menu=layanan`
+                            : `${pills[4].href}?menu=layanan`
+                          : "#"
+                      }
+                      className="pill pill--wide"
+                      style={{ ...styles.pill, ...styles.widePill }}
+                    >
+                      <img src={pills[4].icon} alt="" style={styles.pillIcon} />
+                      <span style={styles.pillText}>{pills[4].label}</span>
+                    </Link>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -456,8 +484,8 @@ export default function LayananContent({ locale = "id" }) {
         <Title level={2} style={styles.whyTitle}>
           WHY CHOOSE OSS SERVICE?
         </Title>
-        <div style={styles.whyGrid}>
-          <div style={styles.whyLeftImgWrap}>
+        <div className="why-grid" style={styles.whyGrid}>
+          <div className="why-img" style={styles.whyLeftImgWrap}>
             <Image
               src={whyImage}
               alt="Why choose illustration"
@@ -466,8 +494,8 @@ export default function LayananContent({ locale = "id" }) {
               style={{ objectFit: "contain" }}
             />
           </div>
-          <div style={styles.whyList}>
-            {reasons.map((r) => (
+          <div className="why-list" style={styles.whyList}>
+            {A(reasons).map((r) => (
               <div key={r.key} style={styles.whyItem}>
                 <div style={styles.badge}>
                   <img
@@ -502,10 +530,10 @@ export default function LayananContent({ locale = "id" }) {
             loop={hasMultipleServices}
             speed={MARQUEE_SPEED}
             allowTouchMove={false}
-            autoplay={serviceAutoplay} // kanan
+            autoplay={serviceAutoplay}
             freeMode={marqueeFreeMode}
           >
-            {services.map((s) => (
+            {A(services).map((s) => (
               <SwiperSlide key={s.id} style={styles.serviceSlide}>
                 <div style={styles.card}>
                   <div style={styles.cardImgBox}>
@@ -513,7 +541,7 @@ export default function LayananContent({ locale = "id" }) {
                       src={s.image}
                       alt={s.title}
                       fill
-                      sizes="(max-width: 1200px) 33vw, 380px"
+                      sizes="(max-width: 1200px) 50vw, 380px"
                       style={styles.cardImg}
                     />
                     <div style={styles.cardFade} />
@@ -550,6 +578,7 @@ export default function LayananContent({ locale = "id" }) {
               gridTemplateColumns: "repeat(3, 1fr)",
               gap: 20,
             }}
+            className="testi-skeleton"
           >
             {[...Array(3)].map((_, i) => (
               <Skeleton.Input
@@ -563,22 +592,22 @@ export default function LayananContent({ locale = "id" }) {
               />
             ))}
           </div>
-        ) : testimonials.length === 0 ? (
+        ) : A(testimonials).length === 0 ? (
           <Empty description="Belum ada testimoni untuk kategori layanan" />
         ) : (
           <>
             <Swiper
               className={TESTI_SWIPER_CLASS}
               modules={[Autoplay, FreeMode]}
-              loop
+              loop={hasMultipleTesti}
               speed={MARQUEE_SPEED}
-              autoplay={testiAutoplay} // kiri
+              autoplay={testiAutoplay}
               slidesPerView="auto"
               spaceBetween={16}
               allowTouchMove={false}
               freeMode={marqueeFreeMode}
             >
-              {testimonials.map((t) => {
+              {A(testimonials).map((t) => {
                 const src = normalizeImgSrc(t.image);
                 const external = isExternal(src);
                 const description = sanitizeHtml(t.description || "");
@@ -612,11 +641,12 @@ export default function LayananContent({ locale = "id" }) {
               })}
             </Swiper>
 
+            {/* testimonial sizing tweaks */}
             <style
               dangerouslySetInnerHTML={{
                 __html: `
                 .${TESTI_SWIPER_CLASS} { overflow: visible; padding: 6px 4px; }
-                .${TESTI_SWIPER_CLASS} .swiper-wrapper { align-items: stretch; }
+                .${TESTI_SWIPER_CLASS} .swiper-wrapper { align_items: stretch; }
                 .${TESTI_SWIPER_CLASS} .swiper-slide { height: auto; display: flex; align-items: stretch; }
                 .${TESTI_SWIPER_CLASS} .swiper-pagination,
                 .${TESTI_SWIPER_CLASS} .swiper-button-next,
@@ -641,6 +671,9 @@ export default function LayananContent({ locale = "id" }) {
                     --testi-card-h: clamp(200px, 82vw, 230px);
                     --testi-avatar-size: clamp(72px, 38vw, 110px);
                   }
+                  .${ROOT_CLASS} .testi-skeleton {
+                    grid-template-columns: 1fr !important;
+                  }
                 }
               `,
               }}
@@ -649,20 +682,155 @@ export default function LayananContent({ locale = "id" }) {
         )}
       </section>
 
-      {/* Swiper tweaks for services */}
-      <style
-        dangerouslySetInnerHTML={{
-          __html: `
-          .${SERVICE_SWIPER_CLASS} { overflow: visible; padding-block: 12px; }
-          .${SERVICE_SWIPER_CLASS} .swiper-wrapper { align-items: stretch; }
-          .${SERVICE_SWIPER_CLASS} .swiper-slide { height: auto; display: flex; align-items: stretch; }
-          .${SERVICE_SWIPER_CLASS} .swiper-slide > div { width: 100%; }
-          .${SERVICE_SWIPER_CLASS} .swiper-pagination,
-          .${SERVICE_SWIPER_CLASS} .swiper-button-next,
-          .${SERVICE_SWIPER_CLASS} .swiper-button-prev { display: none !important; }
-        `,
-        }}
-      />
+      {/* ===== Global responsive tweaks (hero, why, services, swiper, pills) ===== */}
+      <style jsx global>{`
+        /* Scope variables ke halaman ini */
+        .${ROOT_CLASS} {
+          --pill-bg: linear-gradient(
+            180deg,
+            rgba(255, 255, 255, 0.65) 0%,
+            rgba(231, 241, 255, 0.65) 100%
+          );
+          --pill-fg: #163257;
+          --pill-border: rgba(17, 43, 76, 0.18);
+          --pill-shadow: 0 10px 18px rgba(17, 43, 76, 0.12);
+          --pill-icon-filter: none; /* ikon tetap warna asli */
+        }
+
+        /* Service card tokens */
+        .${ROOT_CLASS} {
+          --svc-card-w: 340px;
+          --svc-card-h: 280px;
+        }
+        @media (max-width: 1199px) {
+          .${ROOT_CLASS} {
+            --svc-card-w: 320px;
+            --svc-card-h: 270px;
+          }
+        }
+        @media (max-width: 991px) {
+          .${ROOT_CLASS} {
+            --svc-card-w: 300px;
+            --svc-card-h: 260px;
+          }
+        }
+        @media (max-width: 767px) {
+          .${ROOT_CLASS} {
+            --svc-card-w: clamp(260px, 86vw, 320px);
+            --svc-card-h: clamp(220px, 54vw, 260px);
+          }
+        }
+
+        /* HERO baseline height */
+        .${ROOT_CLASS} .hero-frame {
+          height: clamp(540px, 72vh, 960px);
+        }
+        @media (max-width: 991px) {
+          .${ROOT_CLASS} .hero-frame {
+            height: clamp(520px, 70vh, 840px);
+          }
+          .${ROOT_CLASS} .hero-copy {
+            right: auto !important;
+            left: 50% !important;
+            top: auto !important;
+            bottom: clamp(16px, 6vw, 28px) !important;
+            transform: translate(-50%, 0) !important;
+            text-align: center !important;
+            max-width: min(92vw, 640px) !important;
+          }
+          .${ROOT_CLASS} .hero-title,
+          .${ROOT_CLASS} .hero-quote {
+            text-align: center !important;
+          }
+          .${ROOT_CLASS} .pills-grid {
+            margin-left: 0 !important;
+            width: min(96vw, 680px) !important;
+            grid-template-columns: 1fr 1fr !important;
+            justify-self: center;
+          }
+          /* Tablet: pastikan pill ke-5 tidak wide */
+          .${ROOT_CLASS} .pill--wide {
+            grid-column: auto !important;
+            justify-self: stretch !important;
+            width: 100% !important;
+          }
+        }
+
+        /* HIDE hero background & overlay di mobile */
+        @media (max-width: 767px) {
+          .${ROOT_CLASS} .hero-bg {
+            display: none !important;
+          }
+          .${ROOT_CLASS} .hero-overlay {
+            display: none !important;
+          }
+          .${ROOT_CLASS} .hero-frame {
+            background: #fff !important;
+            box-shadow: none !important;
+          }
+          .${ROOT_CLASS} .pills-grid {
+            grid-template-columns: 1fr !important;
+            justify-items: stretch; /* isi selebar kolom */
+          }
+        }
+
+        /* === PILL: biru di mobile; ikon tetap warna asli === */
+        @media (max-width: 767px) {
+          .${ROOT_CLASS} {
+            --pill-bg: #0b56b8;
+            --pill-fg: #ffffff;
+            --pill-border: rgba(255, 255, 255, 0.28);
+            --pill-shadow: 0 10px 18px rgba(11, 86, 184, 0.28);
+            --pill-icon-filter: none; /* jangan invert */
+          }
+          /* Mobile: semua pill 100% width (termasuk ke-5) */
+          .${ROOT_CLASS} .pill,
+          .${ROOT_CLASS} .pill--wide {
+            width: 100% !important;
+            box-sizing: border-box;
+          }
+        }
+
+        /* WHY grid -> stack di mobile */
+        @media (max-width: 1023px) {
+          .${ROOT_CLASS} .why-grid {
+            grid-template-columns: 1fr !important;
+            gap: 22px !important;
+          }
+          .${ROOT_CLASS} .why-img,
+          .${ROOT_CLASS} .why-list {
+            margin-left: 0 !important;
+          }
+        }
+
+        /* Swiper housekeeping */
+        .${SERVICE_SWIPER_CLASS} {
+          overflow: visible;
+          padding-block: 12px;
+        }
+        .${SERVICE_SWIPER_CLASS} .swiper-wrapper,
+        .${TESTI_SWIPER_CLASS} .swiper-wrapper {
+          align-items: stretch;
+        }
+        .${SERVICE_SWIPER_CLASS} .swiper-slide,
+        .${TESTI_SWIPER_CLASS} .swiper-slide {
+          height: auto;
+          display: flex;
+          align-items: stretch;
+        }
+        .${SERVICE_SWIPER_CLASS} .swiper-slide > div,
+        .${TESTI_SWIPER_CLASS} .swiper-slide > div {
+          width: 100%;
+        }
+        .${SERVICE_SWIPER_CLASS} .swiper-pagination,
+        .${SERVICE_SWIPER_CLASS} .swiper-button-next,
+        .${SERVICE_SWIPER_CLASS} .swiper-button-prev,
+        .${TESTI_SWIPER_CLASS} .swiper-pagination,
+        .${TESTI_SWIPER_CLASS} .swiper-button-next,
+        .${TESTI_SWIPER_CLASS} .swiper-button-prev {
+          display: none !important;
+        }
+      `}</style>
     </div>
   );
 }

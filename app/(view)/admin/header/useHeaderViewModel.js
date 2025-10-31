@@ -6,8 +6,6 @@ import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import useSWR from "swr";
 import { HomeOutlined } from "@ant-design/icons";
-
-// ⬇️ Import MENU dari Sidebar via relative path (tanpa alias @)
 import { MENU, findPathByHref } from "../sidebar/useSidebarViewModel";
 
 const fetcher = (url) =>
@@ -49,7 +47,6 @@ export default function useHeaderViewModel() {
         });
       });
     } else {
-      // fallback
       const seg = pathname.split("?")[0].split("/").filter(Boolean);
       const label = seg[2] ? seg[2][0].toUpperCase() + seg[2].slice(1) : "";
       if (label)
@@ -58,14 +55,16 @@ export default function useHeaderViewModel() {
     return items;
   }, [activeChain, pathname]);
 
-  const name = session?.user?.name || "Admin User";
+  const name = (session?.user?.name || "Admin User").trim();
   const email = session?.user?.email || "";
-  const initials = name
-    .split(" ")
-    .map((s) => s[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
+  const initials =
+    name
+      .split(" ")
+      .filter(Boolean)
+      .map((s) => s[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase() || "AU";
 
   const { data: me, mutate } = useSWR(
     email ? "/api/auth/profile" : null,
@@ -90,6 +89,7 @@ export default function useHeaderViewModel() {
 
   const image =
     me?.image_public_url || me?.profile_photo || session?.user?.image || "";
+
   function onLogout() {
     try {
       new BroadcastChannel("auth").postMessage("logout");

@@ -5,14 +5,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 /** util kecil */
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function mapPartner(p) {
-  // p.contact bisa JSON string, tidak dipakai di opsi — hanya label nama
-  const name = p?.name || p?.partner_name || p?.slug || "Partner";
-  return { label: name, value: String(p.id) };
+/* ===== Option mappers ===== */
+function mapCollege(c) {
+  const name = c?.name || "(Tanpa Nama)";
+  const country = c?.country ? ` • ${c.country}` : "";
+  return { label: `${name}${country}`, value: String(c.id) };
 }
-function mapMerchant(m) {
-  const name = m?.merchant_name || m?.name || "Mitra Dalam Negeri";
-  return { label: name, value: String(m.id) };
+function mapMitra(m) {
+  // GET /api/mitra-dalam-negeri -> { merchant_name, email, ... }
+  const name = m?.merchant_name || "(Mitra)";
+  const city = m?.city ? ` • ${m.city}` : "";
+  return { label: `${name}${city}`, value: String(m.id) };
 }
 
 export default function useBlastViewModel() {
@@ -23,18 +26,20 @@ export default function useBlastViewModel() {
   const [attachment, setAttachment] = useState(null); // { name, type, size, base64 }
   const [attachmentFileList, setAttachmentFileList] = useState([]);
 
-  const [partnerIds, setPartnerIds] = useState([]);
-  const [merchantIds, setMerchantIds] = useState([]);
+  // selections
+  const [collegeIds, setCollegeIds] = useState([]);
+  const [mitraIds, setMitraIds] = useState([]);
 
+  // ui state
   const [error, setError] = useState("");
   const [preview, setPreview] = useState(null);
   const [previewing, setPreviewing] = useState(false);
 
   // options
-  const [partnerOptions, setPartnerOptions] = useState([]);
-  const [merchantOptions, setMerchantOptions] = useState([]);
-  const [loadingPartners, setLoadingPartners] = useState(false);
-  const [loadingMerchants, setLoadingMerchants] = useState(false);
+  const [collegeOptions, setCollegeOptions] = useState([]);
+  const [mitraOptions, setMitraOptions] = useState([]);
+  const [loadingColleges, setLoadingColleges] = useState(false);
+  const [loadingMitras, setLoadingMitras] = useState(false);
 
   // sending
   const [sending, setSending] = useState(false);
@@ -46,55 +51,54 @@ export default function useBlastViewModel() {
     () =>
       subject.trim().length > 0 &&
       (html.trim().length > 0 || !!attachment) &&
-      (partnerIds.length > 0 || merchantIds.length > 0),
-    [subject, html, attachment, partnerIds, merchantIds]
+      (collegeIds.length > 0 || mitraIds.length > 0),
+    [subject, html, attachment, collegeIds, mitraIds]
   );
 
-  const fetchPartners = useCallback(async (q = "") => {
-    setLoadingPartners(true);
+  /* ===== Fetch lookup ===== */
+  const fetchColleges = useCallback(async (q = "") => {
+    setLoadingColleges(true);
     try {
-      const url = `/api/partners?perPage=50${
+      const url = `/api/college?perPage=50${
         q ? `&q=${encodeURIComponent(q)}` : ""
       }`;
       const r = await fetch(url, { cache: "no-store" });
       const j = await r.json().catch(() => ({}));
       const items = j?.data || j?.items || j?.records || j?.rows || [];
-      setPartnerOptions(items.map(mapPartner));
+      setCollegeOptions(items.map(mapCollege));
     } catch {
-      setPartnerOptions([]);
+      setCollegeOptions([]);
     } finally {
-      setLoadingPartners(false);
+      setLoadingColleges(false);
     }
   }, []);
 
-  const fetchMerchants = useCallback(async (q = "") => {
-    setLoadingMerchants(true);
+  const fetchMitras = useCallback(async (q = "") => {
+    setLoadingMitras(true);
     try {
-      const url = `/api/merchants?perPage=50${
+      const url = `/api/mitra-dalam-negeri?perPage=50${
         q ? `&q=${encodeURIComponent(q)}` : ""
       }`;
       const r = await fetch(url, { cache: "no-store" });
       const j = await r.json().catch(() => ({}));
       const items = j?.data || j?.items || j?.records || j?.rows || [];
-      setMerchantOptions(items.map(mapMerchant));
+      setMitraOptions(items.map(mapMitra));
     } catch {
-      setMerchantOptions([]);
+      setMitraOptions([]);
     } finally {
-      setLoadingMerchants(false);
+      setLoadingMitras(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchPartners();
-    fetchMerchants();
-  }, [fetchPartners, fetchMerchants]);
+    fetchColleges();
+    fetchMitras();
+  }, [fetchColleges, fetchMitras]);
 
-  const searchPartners = useCallback(debounce(fetchPartners, 350), [
-    fetchPartners,
+  const searchColleges = useCallback(debounce(fetchColleges, 350), [
+    fetchColleges,
   ]);
-  const searchMerchants = useCallback(debounce(fetchMerchants, 350), [
-    fetchMerchants,
-  ]);
+  const searchMitras = useCallback(debounce(fetchMitras, 350), [fetchMitras]);
 
   /* ========== Preview (dry run) ========== */
   const onPreview = useCallback(async () => {
@@ -105,7 +109,6 @@ export default function useBlastViewModel() {
       const payload = {
         subject: subject || "(preview)",
         html: html || "",
-        // include attachment metadata to satisfy server NO_CONTENT check
         attachments: attachment
           ? [
               {
@@ -116,8 +119,9 @@ export default function useBlastViewModel() {
               },
             ]
           : undefined,
-        partnerIds,
-        merchantIds,
+        // 🔁 ganti: kirim collegeIds & mitraIds
+        collegeIds,
+        merchantIds: mitraIds, // backend tetap sebut 'merchantIds'
         dryRun: true,
       };
       const r = await fetch("/api/blast", {
@@ -137,7 +141,7 @@ export default function useBlastViewModel() {
     } finally {
       setPreviewing(false);
     }
-  }, [subject, html, attachment, partnerIds, merchantIds]);
+  }, [subject, html, attachment, collegeIds, mitraIds]);
 
   /* ========== Kirim (stream NDJSON) ========== */
   const onSend = useCallback(async () => {
@@ -163,8 +167,8 @@ export default function useBlastViewModel() {
               },
             ]
           : undefined,
-        partnerIds,
-        merchantIds,
+        collegeIds,
+        merchantIds: mitraIds,
       };
 
       const res = await fetch("/api/blast", {
@@ -203,7 +207,7 @@ export default function useBlastViewModel() {
                 failed: evt.failed,
               });
           } catch {
-            // ignore
+            // ignore bad lines
           }
         }
       }
@@ -213,10 +217,9 @@ export default function useBlastViewModel() {
     } finally {
       abortRef.current = null;
       setSending(false);
-      // biar UI sempat render baris terakhir
       await sleep(100);
     }
-  }, [subject, html, attachment, partnerIds, merchantIds]);
+  }, [subject, html, attachment, collegeIds, mitraIds]);
 
   // Attachment helpers
   const onSelectAttachment = useCallback((file) => {
@@ -253,7 +256,7 @@ export default function useBlastViewModel() {
   }, []);
 
   return {
-    // state
+    // fields
     subject,
     setSubject,
     html,
@@ -262,19 +265,22 @@ export default function useBlastViewModel() {
     attachmentFileList,
     onSelectAttachment,
     removeAttachment,
-    partnerIds,
-    setPartnerIds,
-    merchantIds,
-    setMerchantIds,
-    // cc, bcc, concurrency removed
 
-    partnerOptions,
-    merchantOptions,
-    loadingPartners,
-    loadingMerchants,
-    searchPartners,
-    searchMerchants,
+    // selections
+    collegeIds,
+    setCollegeIds,
+    mitraIds,
+    setMitraIds,
 
+    // lookups
+    collegeOptions,
+    mitraOptions,
+    loadingColleges,
+    loadingMitras,
+    searchColleges,
+    searchMitras,
+
+    // state
     preview,
     previewing,
     sending,
@@ -282,6 +288,7 @@ export default function useBlastViewModel() {
     summary,
     error,
 
+    // actions
     canSend,
     onPreview,
     onSend,
@@ -296,4 +303,11 @@ function debounce(fn, wait = 300) {
     clearTimeout(t);
     t = setTimeout(() => fn(...args), wait);
   };
+}
+async function safeJson(res) {
+  try {
+    return await res.json();
+  } catch {
+    return {};
+  }
 }

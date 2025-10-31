@@ -1,10 +1,15 @@
-"use client";
-
-import { Suspense, lazy, useEffect } from "react";
+// app/(view)/admin/blog/page.jsx
+import dynamic from "next/dynamic";
 import Loading from "@/app/components/loading/LoadingImage";
-import useBlogViewModel from "./useBlogViewModel";
 
-const BlogContentLazy = lazy(() => import("./BlogContent"));
+const BlogContent = dynamic(() => import("./BlogContent"), {
+  ssr: false,
+  loading: () => (
+    <div className="page-wrap">
+      <Loading />
+    </div>
+  ),
+});
 
 const pickLocale = (v) => {
   const s = String(v || "id")
@@ -14,24 +19,6 @@ const pickLocale = (v) => {
 };
 
 export default function BlogPage({ searchParams }) {
-  const vm = useBlogViewModel();
-
-  // Set once from URL to avoid hydration mismatch
   const initialLocale = pickLocale(searchParams?.lang);
-  useEffect(() => {
-    vm.setLocale(initialLocale);
-  }, [initialLocale]); // intentionally not adding `vm` to avoid re-run
-
-  return (
-    <Suspense
-      fallback={
-        <div className="page-wrap">
-          <Loading />
-        </div>
-      }
-    >
-      {/* pass as a single object, bukan spread */}
-      <BlogContentLazy vm={vm} />
-    </Suspense>
-  );
+  return <BlogContent initialLocale={initialLocale} />;
 }

@@ -1,10 +1,15 @@
-"use client";
-
-import { Suspense, lazy, useEffect } from "react";
+// app/(view)/admin/college/page.jsx
+import dynamic from "next/dynamic";
 import Loading from "@/app/components/loading/LoadingImage";
-import useCollegeAViewModel from "./useCollegeAViewModel";
 
-const CollegeAContentLazy = lazy(() => import("./CollegeAContent"));
+const CollegeAContent = dynamic(() => import("./CollegeAContent"), {
+  ssr: false,
+  loading: () => (
+    <div className="page-wrap">
+      <Loading />
+    </div>
+  ),
+});
 
 const pickLocale = (v) => {
   const s = String(v || "id")
@@ -14,25 +19,6 @@ const pickLocale = (v) => {
 };
 
 export default function CollegePage({ searchParams }) {
-  const vm = useCollegeAViewModel();
-
-  // Set once from URL to avoid hydration mismatch
   const initialLocale = pickLocale(searchParams?.lang);
-  useEffect(() => {
-    vm.setLocale?.(initialLocale);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialLocale]); // jangan menambahkan `vm` agar tidak rerun
-
-  return (
-    <Suspense
-      fallback={
-        <div className="page-wrap">
-          <Loading />
-        </div>
-      }
-    >
-      {/* pass as a single object, bukan spread */}
-      <CollegeAContentLazy vm={vm} />
-    </Suspense>
-  );
+  return <CollegeAContent initialLocale={initialLocale} />;
 }

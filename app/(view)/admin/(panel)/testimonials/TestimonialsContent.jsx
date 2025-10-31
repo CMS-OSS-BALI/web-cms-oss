@@ -1,1164 +1,1160 @@
+// app/(view)/admin/testimonials/TestimonialsContent.jsx
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
+import { useEffect, useMemo, useState } from "react";
 import {
-  Button,
-  Card,
-  Col,
   ConfigProvider,
-  Empty,
-  Form,
-  Image,
-  Input,
+  Button,
   Modal,
-  notification,
-  Pagination,
+  Form,
+  Input,
+  Upload,
+  Empty,
+  Skeleton,
   Popconfirm,
-  Rate,
-  Row,
-  Select,
-  Space,
+  Tooltip,
   Spin,
-  Typography,
+  Select,
   Tag,
-  theme as antdTheme,
+  Rate,
+  notification,
 } from "antd";
-
 import {
-  PlusOutlined,
+  PlusCircleOutlined,
   EyeOutlined,
-  UploadOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  LeftOutlined,
+  RightOutlined,
+  SearchOutlined,
   YoutubeOutlined,
 } from "@ant-design/icons";
+import useTestimonialsViewModel from "./useTestimonialsViewModel";
 
-import HtmlEditor from "@/../app/components/editor/HtmlEditor";
-
-import { sanitizeHtml } from "@/app/utils/dompurify";
-
-const { Title, Text, Paragraph } = Typography;
-
-const PLACEHOLDER =
-  "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=1200&auto=format&fit=crop";
-
-const CARD_BG = "rgba(11, 18, 35, 0.94)";
-
-const darkCardStyle = {
-  background: CARD_BG,
-
-  border: "1px solid #2f3f60",
-
-  borderRadius: 16,
-
-  boxShadow: "0 10px 24px rgba(2,6,23,.35)",
+/* ================= TOKENS ================= */
+const TOKENS = {
+  shellW: "94%",
+  maxW: 1140,
+  blue: "#0b56c9",
+  text: "#0f172a",
 };
 
-/* ===== Form Modal ===== */
+/* ================= COPY ================= */
+const T = {
+  title: "Data Testimoni",
+  listTitle: "Daftar Testimoni",
+  totalLabel: "Total Testimoni",
+  addNew: "Buat Data Baru",
+  searchPh: "Cari nama/pesan",
+  nameCol: "Nama",
+  msgCol: "Pesan",
+  ratingCol: "Rating",
+  catCol: "Kategori",
+  ytCol: "YouTube",
+  campusCol: "Kampus/Negara",
+  action: "Aksi",
+  view: "Lihat",
+  edit: "Edit",
+  del: "Hapus",
+  save: "Simpan",
 
-function TestimonialFormModal({
-  open,
+  image: "Foto (1:1)",
+  nameId: "Nama",
+  msgId: "Pesan",
+  star: "Rating (1-5)",
+  category: "Kategori",
+  youtube: "YouTube (opsional)",
+  campus: "Kampus/Negara (opsional)",
 
-  mode,
+  filterCat: "Filter kategori",
+  filterRating: "Filter rating",
+};
 
-  initialValues,
+const monthsId = [
+  "Januari",
+  "Februari",
+  "Maret",
+  "April",
+  "Mei",
+  "Juni",
+  "Juli",
+  "Agustus",
+  "September",
+  "Oktober",
+  "November",
+  "Desember",
+];
+const fmtDateId = (dLike) => {
+  if (dLike == null || dLike === "") return "-";
+  try {
+    const dt =
+      typeof dLike === "number" ? new Date(dLike) : new Date(String(dLike));
+    if (isNaN(dt.getTime())) return "-";
+    return `${dt.getDate()} ${monthsId[dt.getMonth()]}`;
+  } catch {
+    return "-";
+  }
+};
 
-  saving,
+const isImg = (f) =>
+  ["image/jpeg", "image/png", "image/webp"].includes(f?.type || "");
+const tooBig = (f, mb = 10) => f.size / 1024 / 1024 > mb;
+const stripTags = (s) => (s ? String(s).replace(/<[^>]*>/g, "") : "");
 
-  onCancel,
+// Grid kolom (header & row HARUS sama persis)
+const GRID_COLS = "1.6fr 2.4fr 0.9fr 1fr 0.8fr 1.1fr 0.9fr";
+//  Nama | Pesan | Rating | Kategori | YouTube | Kampus | Aksi
 
-  onSubmit,
+export default function TestimonialsContent({ locale = "id" }) {
+  const vm = useTestimonialsViewModel({ locale });
 
-  categories = [], // NEW
-}) {
-  const [form] = Form.useForm();
+  // notifications
+  const [notify, contextHolder] = notification.useNotification();
+  const ok = (message, description) =>
+    notify.success({ message, description, placement: "topRight" });
+  const err = (message, description) =>
+    notify.error({ message, description, placement: "topRight" });
 
-  const isCreate = mode !== "edit";
+  // UI state
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [viewOpen, setViewOpen] = useState(false);
+  const [activeRow, setActiveRow] = useState(null);
+  const [formCreate] = Form.useForm();
+  const [formEdit] = Form.useForm();
+  const [imgPrevCreate, setImgPrevCreate] = useState("");
+  const [imgPrevEdit, setImgPrevEdit] = useState("");
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailData, setDetailData] = useState(null);
 
-  const req = (msg) => (isCreate ? [{ required: true, message: msg }] : []);
+  const rows = useMemo(() => vm.testimonials || [], [vm.testimonials]);
 
-  const initialPreview = useMemo(
-    () => initialValues?.photo_public_url || initialValues?.photo_url || "",
-
-    [initialValues]
-  );
-
-  const [previewSrc, setPreviewSrc] = useState(initialPreview);
-
-  const [uploadFile, setUploadFile] = useState(null);
-
-  const fileInputRef = useRef(null);
-
-  const objectUrlRef = useRef(null);
-
-  const resetUpload = useCallback(() => {
-    if (objectUrlRef.current) {
-      URL.revokeObjectURL(objectUrlRef.current);
-
-      objectUrlRef.current = null;
-    }
-
-    setUploadFile(null);
-
-    setPreviewSrc(initialPreview);
-
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  }, [initialPreview]);
-
+  // Search (debounced)
+  const [searchValue, setSearchValue] = useState(vm.q || "");
+  useEffect(() => setSearchValue(vm.q || ""), [vm.q]);
   useEffect(() => {
-    if (!open) return;
+    const v = (searchValue || "").trim();
+    const t = setTimeout(() => {
+      vm.setQ?.(v);
+      vm.setPage?.(1);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [searchValue]); // eslint-disable-line
 
-    form.resetFields();
-
-    form.setFieldsValue({ ...initialValues });
-
-    resetUpload();
-  }, [open, initialValues, form, resetUpload]);
-
+  // category live search (debounced)
+  const [catSearchQ, setCatSearchQ] = useState("");
   useEffect(() => {
-    return () => {
-      if (objectUrlRef.current) {
-        URL.revokeObjectURL(objectUrlRef.current);
-      }
-    };
-  }, []);
+    vm.searchCategories?.("");
+  }, []); // eslint-disable-line
+  useEffect(() => {
+    const t = setTimeout(() => vm.searchCategories?.(catSearchQ || ""), 300);
+    return () => clearTimeout(t);
+  }, [catSearchQ, vm]);
 
-  const ctrlStyle = {
-    background: "#0e182c",
-
-    borderColor: "#2f3f60",
-
-    color: "#e6eaf2",
-
-    borderRadius: 12,
+  // Upload helpers
+  const beforeImgCreate = (file) => {
+    if (!isImg(file) || tooBig(file, 10)) return Upload.LIST_IGNORE;
+    try {
+      setImgPrevCreate(URL.createObjectURL(file));
+    } catch {}
+    return false;
+  };
+  const beforeImgEdit = (file) => {
+    if (!isImg(file) || tooBig(file, 10)) return Upload.LIST_IGNORE;
+    try {
+      setImgPrevEdit(URL.createObjectURL(file));
+    } catch {}
+    return false;
   };
 
-  const handleFileChange = (event) => {
-    const file = event.target.files?.[0];
+  /* ================= CREATE ================= */
+  const onCreate = async () => {
+    const v = await formCreate.validateFields().catch(() => null);
+    if (!v) return;
+    const file = v.image?.[0]?.originFileObj || null;
 
-    if (!file) {
-      resetUpload();
-
-      form.setFieldsValue({
-        photo_url: initialValues?.photo_url || "",
-      });
-
-      setTimeout(() => form.validateFields(["photo_url"]).catch(() => null), 0);
-
-      return;
-    }
-
-    if (objectUrlRef.current) {
-      URL.revokeObjectURL(objectUrlRef.current);
-
-      objectUrlRef.current = null;
-    }
-
-    const objectUrl = URL.createObjectURL(file);
-
-    objectUrlRef.current = objectUrl;
-
-    setUploadFile(file);
-
-    setPreviewSrc(objectUrl);
-
-    form.setFieldsValue({ photo_url: "" });
-
-    setTimeout(() => form.validateFields(["photo_url"]).catch(() => null), 0);
-  };
-
-  const handleClearUpload = () => {
-    resetUpload();
-
-    form.setFieldsValue({
-      photo_url: initialValues?.photo_url || "",
+    const out = await vm.createTestimonial?.({
+      file,
+      name: v.name_id,
+      message: v.message_id || "",
+      star: v.star ?? null,
+      category_id: v.category_id || null,
+      youtube_url: v.youtube_url || null,
+      kampus_negara_tujuan: v.kampus || null,
     });
 
-    setTimeout(() => form.validateFields(["photo_url"]).catch(() => null), 0);
+    if (!out?.ok)
+      return err("Gagal membuat testimoni", out?.error || "Gagal menyimpan");
+    ok("Berhasil", "Testimoni berhasil dibuat");
+    setCreateOpen(false);
+    formCreate.resetFields();
+    setImgPrevCreate("");
   };
 
-  const handleFinish = (values) => {
-    const trimmedPhoto = values.photo_url?.trim();
-
-    const normalizedPhoto = uploadFile
-      ? undefined
-      : trimmedPhoto
-      ? trimmedPhoto
-      : !isCreate && values.photo_url === ""
-      ? null
-      : undefined;
-
-    onSubmit({
-      name: values.name?.trim(),
-
-      photo_url: normalizedPhoto,
-
-      message: values.message?.trim(),
-
-      star: typeof values.star === "number" ? values.star : undefined,
-
-      youtube_url: values.youtube_url?.trim() || undefined,
-
-      kampus_negara_tujuan: values.kampus_negara_tujuan?.trim() ?? undefined,
-
-      category_slug:
-        values.category_slug === null
-          ? null // explicit unset
-          : values.category_slug || undefined, // keep/ignore
-
-      file: uploadFile || undefined,
+  /* ================= EDIT (load) ================= */
+  const openEdit = async (row) => {
+    setActiveRow(row);
+    setEditOpen(true);
+    setDetailLoading(true);
+    setDetailData(null);
+    const {
+      ok: okLoad,
+      data,
+      error,
+    } = (await vm.getTestimonial?.(row.id)) || {};
+    setDetailLoading(false);
+    if (!okLoad) {
+      setEditOpen(false);
+      return err("Gagal memuat data", error || "Terjadi kesalahan saat memuat");
+    }
+    const d = data || row;
+    setDetailData(d);
+    formEdit.setFieldsValue({
+      name_id: d.name || "",
+      message_id: d.message || "",
+      star: d.star ?? null,
+      category_id: d.category?.id || undefined,
+      youtube_url: d.youtube_url || "",
+      kampus: d.kampus_negara_tujuan || "",
     });
+    setImgPrevEdit(
+      d.image_public_url || d.photo_public_url || d.photo_url || ""
+    );
+    vm.searchCategories?.("");
   };
 
-  return (
-    <Modal
-      title={mode === "edit" ? "Edit Testimonial" : "Add Testimonial"}
-      open={open}
-      centered
-      width={720}
-      onCancel={onCancel}
-      footer={
-        <Space style={{ width: "100%", justifyContent: "flex-end" }}>
-          <Button shape="round" onClick={onCancel}>
-            Cancel
-          </Button>
-
-          <Button
-            shape="round"
-            type="primary"
-            loading={saving}
-            onClick={() => form.submit()}
-          >
-            {mode === "edit" ? "Update" : "Save"}
-          </Button>
-        </Space>
-      }
-      styles={{
-        content: { ...darkCardStyle, borderRadius: 16 },
-
-        header: {
-          background: "transparent",
-
-          borderBottom: "1px solid #2f3f60",
-        },
-
-        body: { padding: 0 },
-
-        mask: { backgroundColor: "rgba(0,0,0,.6)" },
-      }}
-      destroyOnHidden
-    >
-      <div className="form-scroll">
-        <div style={{ padding: 16 }}>
-          <Form layout="vertical" form={form} onFinish={handleFinish}>
-            <Row gutter={[12, 8]}>
-              <Col xs={24} md={12}>
-                <Form.Item
-                  name="name"
-                  label="Name"
-                  required={isCreate}
-                  rules={req("Name wajib diisi")}
-                >
-                  <Input maxLength={150} style={ctrlStyle} />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={12}>
-                <Form.Item
-                  name="photo_url"
-                  label="Photo URL"
-                  required={isCreate && !uploadFile}
-                  rules={[
-                    {
-                      validator: (_, value) => {
-                        if (uploadFile) return Promise.resolve();
-
-                        if (!isCreate) return Promise.resolve();
-
-                        if (value && String(value).trim()) {
-                          return Promise.resolve();
-                        }
-
-                        return Promise.reject(
-                          new Error("Photo wajib diisi (URL atau upload file).")
-                        );
-                      },
-                    },
-                  ]}
-                  extra="Isi URL gambar sendiri jika tidak mengunggah file."
-                >
-                  <Input
-                    placeholder="/uploads/xx.jpg atau https://..."
-                    style={ctrlStyle}
-                  />
-                </Form.Item>
-              </Col>
-
-              <Col span={24}>
-                <Form.Item
-                  label="Upload Photo (opsional)"
-                  extra="Unggah JPEG/PNG/WebP (maks. 10MB). Jika diisi, foto akan diunggah ke Supabase."
-                >
-                  <Space align="start" size={12} wrap>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      style={{ display: "none" }}
-                      onChange={handleFileChange}
-                    />
-
-                    <Button
-                      shape="round"
-                      icon={<UploadOutlined />}
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      Pilih File
-                    </Button>
-
-                    {uploadFile ? (
-                      <Text type="secondary">
-                        {uploadFile.name} ({Math.round(uploadFile.size / 1024)}{" "}
-                        KB)
-                      </Text>
-                    ) : (
-                      <Text type="secondary">
-                        {previewSrc
-                          ? "Menggunakan foto tersimpan."
-                          : "Belum ada file dipilih."}
-                      </Text>
-                    )}
-
-                    {uploadFile ? (
-                      <Button type="link" danger onClick={handleClearUpload}>
-                        Hapus
-                      </Button>
-                    ) : null}
-                  </Space>
-
-                  {previewSrc ? (
-                    <div style={{ marginTop: 12 }}>
-                      <Image
-                        src={previewSrc}
-                        alt={form.getFieldValue("name") || "Preview"}
-                        style={{
-                          width: "100%",
-
-                          maxHeight: 220,
-
-                          objectFit: "cover",
-
-                          borderRadius: 12,
-
-                          border: "1px solid #2f3f60",
-                        }}
-                        preview={false}
-                        onError={(e) => {
-                          e.currentTarget.onerror = null;
-
-                          e.currentTarget.src = PLACEHOLDER;
-                        }}
-                      />
-                    </div>
-                  ) : null}
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={12}>
-                <Form.Item name="star" label="Rating (1–5)">
-                  <Rate allowClear count={5} />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={12}>
-                <Form.Item name="youtube_url" label="YouTube URL (opsional)">
-                  <Input placeholder="https://youtu.be/xxxx atau https://www.youtube.com/watch?v=xxxx" />
-                </Form.Item>
-              </Col>
-
-              {/* NEW: pilih kategori by slug (boleh kosong) */}
-
-              <Col xs={24} md={12}>
-                <Form.Item
-                  name="category_slug"
-                  label="Category (opsional)"
-                  tooltip="Pilih kategori untuk mengelompokkan testimonial"
-                >
-                  <Select
-                    allowClear
-                    placeholder="Pilih kategori…"
-                    options={categories.map((c) => ({
-                      value: c.slug,
-
-                      label: c.name || c.slug,
-                    }))}
-                  />
-                </Form.Item>
-              </Col>
-
-              <Col span={24}>
-                <Form.Item
-                  name="kampus_negara_tujuan"
-                  label="Kampus & Negara Tujuan (opsional)"
-                  tooltip="Contoh: Osaka University — Japan"
-                >
-                  <Input placeholder="Nama kampus — Negara" />
-                </Form.Item>
-              </Col>
-
-              <Col span={24}>
-                <Form.Item
-                  name="message"
-                  label="Testimonial"
-                  required={isCreate}
-                  rules={req("Testimonial wajib diisi")}
-                >
-                  <HtmlEditor
-                    className="editor-dark"
-                    variant="mini"
-                    minHeight={200}
-                  />
-                </Form.Item>
-              </Col>
-            </Row>
-          </Form>
-        </div>
-      </div>
-
-      <style jsx global>{`
-        .form-scroll {
-          max-height: 62vh;
-
-          overflow: auto;
-        }
-
-        .form-scroll::-webkit-scrollbar {
-          width: 8px;
-        }
-
-        .form-scroll::-webkit-scrollbar-thumb {
-          background: rgba(148, 163, 184, 0.25);
-
-          border-radius: 9999px;
-        }
-
-        .form-scroll:hover::-webkit-scrollbar-thumb {
-          background: rgba(148, 163, 184, 0.35);
-        }
-
-        .form-scroll {
-          scrollbar-width: thin;
-
-          scrollbar-color: rgba(148, 163, 184, 0.25) transparent;
-        }
-      `}</style>
-    </Modal>
-  );
-}
-
-/* ===== View Modal ===== */
-
-function TestimonialViewModal({ open, data, onClose }) {
-  return (
-    <Modal
-      open={open}
-      onCancel={onClose}
-      centered
-      width={840}
-      title={data?.name || "Detail Testimonial"}
-      footer={
-        <Button shape="round" type="primary" onClick={onClose}>
-          Close
-        </Button>
-      }
-      styles={{
-        content: { ...darkCardStyle },
-
-        header: {
-          background: "transparent",
-
-          borderBottom: "1px solid #2f3f60",
-        },
-
-        body: { padding: 0 },
-
-        mask: { backgroundColor: "rgba(0,0,0,.6)" },
-      }}
-      destroyOnHidden
-    >
-      <div className="view-scroll">
-        <div style={{ padding: 16 }}>
-          <Image
-            src={data?.photo_public_url || data?.photo_url || PLACEHOLDER}
-            alt={data?.name}
-            style={{
-              width: "100%",
-
-              borderRadius: 10,
-
-              marginBottom: 12,
-
-              maxHeight: 420,
-
-              objectFit: "cover",
-            }}
-            preview={false}
-            onError={(e) => {
-              e.currentTarget.onerror = null;
-
-              e.currentTarget.src = PLACEHOLDER;
-            }}
-          />
-
-          <div
-            style={{
-              display: "flex",
-
-              alignItems: "center",
-
-              gap: 10,
-
-              flexWrap: "wrap",
-            }}
-          >
-            <Title level={4} style={{ marginTop: 0 }}>
-              {data?.name || "—"}
-            </Title>
-
-            {typeof data?.star === "number" && data.star > 0 ? (
-              <Rate disabled value={data.star} />
-            ) : null}
-
-            {data?.youtube_url ? (
-              <Button
-                icon={<YoutubeOutlined />}
-                size="small"
-                shape="round"
-                href={data.youtube_url}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Watch
-              </Button>
-            ) : null}
-
-            {data?.kampus_negara_tujuan ? (
-              <Tag color="blue" style={{ borderRadius: 999 }}>
-                {data.kampus_negara_tujuan}
-              </Tag>
-            ) : null}
-
-            {/* ⬇️ NEW: tampilkan kategori */}
-
-            {data?.category ? (
-              <Tag color="geekblue" style={{ borderRadius: 999 }}>
-                {data.category.name || data.category.slug}
-              </Tag>
-            ) : null}
-          </div>
-
-          {data?.message ? (
-            <div
-              style={{ marginBottom: 0 }}
-              dangerouslySetInnerHTML={{
-                __html: sanitizeHtml(data.message ?? ""),
-              }}
-            />
-          ) : (
-            <Paragraph style={{ marginBottom: 0 }}>—</Paragraph>
-          )}
-        </div>
-      </div>
-
-      <style jsx global>{`
-        .view-scroll {
-          max-height: 72vh;
-
-          overflow: auto;
-        }
-
-        .view-scroll::-webkit-scrollbar {
-          width: 8px;
-        }
-
-        .view-scroll::-webkit-scrollbar-thumb {
-          background: rgba(148, 163, 184, 0.25);
-
-          border-radius: 9999px;
-        }
-
-        .view-scroll:hover::-webkit-scrollbar-thumb {
-          background: rgba(148, 163, 184, 0.35);
-        }
-
-        .view-scroll {
-          scrollbar-width: thin;
-
-          scrollbar-color: rgba(148, 163, 184, 0.25) transparent;
-        }
-      `}</style>
-    </Modal>
-  );
-}
-
-/* ===== Card ===== */
-
-function TestimonialCard({ t, onView, onEdit, onDelete }) {
-  return (
-    <Card
-      hoverable
-      style={darkCardStyle}
-      styles={{ body: { padding: 12 } }}
-      cover={
-        <div
-          style={{
-            position: "relative",
-
-            aspectRatio: "16 / 9",
-
-            borderBottom: "1px solid #2f3f60",
-
-            overflow: "hidden",
-
-            cursor: "pointer",
-          }}
-          onClick={onView}
-        >
-          <img
-            alt={t.name}
-            src={t.photo_public_url || t.photo_url || PLACEHOLDER}
-            style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            onError={(e) => {
-              e.currentTarget.onerror = null;
-
-              e.currentTarget.src = PLACEHOLDER;
-            }}
-          />
-        </div>
-      }
-    >
-      <div
-        style={{
-          display: "flex",
-
-          flexDirection: "column",
-
-          rowGap: 4,
-
-          minHeight: 130,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <Text strong style={{ fontSize: 14, lineHeight: 1.2, margin: 0 }}>
-            {t.name}
-          </Text>
-
-          {typeof t.star === "number" && t.star > 0 ? (
-            <Rate disabled value={t.star} style={{ fontSize: 14 }} />
-          ) : null}
-        </div>
-
-        {/* ⬇️ NEW: kategori badge */}
-
-        {t.category ? (
-          <Tag
-            color="geekblue"
-            style={{ borderRadius: 999, width: "fit-content" }}
-          >
-            {t.category.name || t.category.slug}
-          </Tag>
-        ) : null}
-
-        {t.kampus_negara_tujuan ? (
-          <Tag color="blue" style={{ borderRadius: 999, width: "fit-content" }}>
-            {t.kampus_negara_tujuan}
-          </Tag>
-        ) : null}
-
-        {t.message ? (
-          <div
-            style={{
-              margin: 0,
-
-              lineHeight: 1.45,
-
-              color: "#94a3b8",
-
-              display: "-webkit-box",
-
-              WebkitLineClamp: 4,
-
-              WebkitBoxOrient: "vertical",
-
-              overflow: "hidden",
-            }}
-            dangerouslySetInnerHTML={{ __html: sanitizeHtml(t.message || "") }}
-          />
-        ) : (
-          <Paragraph style={{ margin: 0, lineHeight: 1.45 }} type="secondary">
-            -
-          </Paragraph>
-        )}
-
-        {t.youtube_url ? (
-          <div style={{ marginTop: 6 }}>
-            <Button
-              icon={<YoutubeOutlined />}
-              size="small"
-              shape="round"
-              href={t.youtube_url}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Watch
-            </Button>
-          </div>
-        ) : null}
-      </div>
-
-      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-        <Button
-          type="primary"
-          size="small"
-          shape="round"
-          onClick={onView}
-          icon={<EyeOutlined />}
-        >
-          View
-        </Button>
-
-        <Button size="small" shape="round" onClick={onEdit}>
-          Edit
-        </Button>
-
-        <Popconfirm
-          title="Hapus testimonial?"
-          description="Tindakan ini tidak dapat dibatalkan."
-          okText="Hapus"
-          okButtonProps={{ danger: true }}
-          placement="topRight"
-          onConfirm={onDelete}
-        >
-          <Button danger size="small" shape="round">
-            Delete
-          </Button>
-        </Popconfirm>
-      </div>
-    </Card>
-  );
-}
-
-/* ===== Main ===== */
-
-export default function TestimonialsContent(props) {
-  const {
-    loading,
-
-    testimonials = [],
-
-    categories = [], // ⬅️ NEW
-
-    categorySlug, // ⬅️ NEW
-
-    setCategorySlug, // ⬅️ NEW
-
-    q,
-
-    setQ,
-
-    page,
-
-    setPage,
-
-    perPage,
-
-    setPerPage,
-
-    total = 0,
-
-    error,
-
-    fetchTestimonials,
-
-    createTestimonial,
-
-    updateTestimonial,
-
-    deleteTestimonial,
-  } = props;
-
-  const [api, contextHolder] = notification.useNotification();
-
-  const [modalOpen, setModalOpen] = useState(false);
-
-  const [mode, setMode] = useState("create");
-
-  const [saving, setSaving] = useState(false);
-
-  const [editing, setEditing] = useState(null);
-
-  const [view, setView] = useState(null);
-
-  useEffect(() => {
-    if (error) {
-      api.error({
-        key: "testimonial-error",
-
-        message: "Terjadi kesalahan",
-
-        description: error,
-
-        placement: "topRight",
-      });
-    }
-  }, [error, api]);
-
-  const openCreate = () => {
-    setMode("create");
-
-    setEditing(null);
-
-    setModalOpen(true);
+  /* ================= EDIT (submit) ================= */
+  const onEditSubmit = async () => {
+    if (!activeRow) return;
+    const v = await formEdit.validateFields().catch(() => null);
+    if (!v) return;
+    const file = v.image?.[0]?.originFileObj || null;
+
+    const res = await vm.updateTestimonial?.(activeRow.id, {
+      file,
+      name: v.name_id,
+      message: v.message_id || "",
+      star: v.star ?? null,
+      category_id: v.category_id || null,
+      youtube_url: v.youtube_url || null,
+      kampus_negara_tujuan: v.kampus || null,
+    });
+
+    if (!res?.ok)
+      return err("Gagal memperbarui", res?.error || "Gagal menyimpan");
+    ok("Berhasil", "Perubahan berhasil disimpan");
+    setEditOpen(false);
+    formEdit.resetFields();
+    setImgPrevEdit("");
   };
 
-  const openEdit = (t) => {
-    setMode("edit");
-
-    setEditing(t);
-
-    setModalOpen(true);
+  const onDelete = async (id) => {
+    const res = await vm.deleteTestimonial?.(id);
+    if (!res?.ok) err("Gagal menghapus", res?.error || "Tidak bisa menghapus");
+    else ok("Berhasil", "Testimoni telah dihapus");
   };
 
-  const handleSubmit = async (payload) => {
-    setSaving(true);
-
-    const res =
-      mode === "edit"
-        ? await updateTestimonial(editing.id, payload)
-        : await createTestimonial(payload);
-
-    setSaving(false);
-
-    if (res?.ok) {
-      api.success({
-        key: "testimonial-save",
-
-        message:
-          mode === "edit"
-            ? "Testimonial diperbarui"
-            : "Testimonial ditambahkan",
-
-        description: "Data telah tersimpan.",
-
-        placement: "topRight",
-      });
-
-      setModalOpen(false);
-
-      setEditing(null);
-    } else {
-      api.error({
-        key: "testimonial-save",
-
-        message: "Gagal menyimpan",
-
-        description: res?.error || "Silakan coba lagi.",
-
-        placement: "topRight",
-      });
-    }
+  // compatibility utk VM rating/starFilter
+  const ratingValue = vm.rating ?? vm.starFilter ?? "";
+  const setRating = (v) => {
+    if (vm.setRating) vm.setRating(v || "");
+    else vm.setStarFilter?.(v ? String(v) : "");
+    vm.setPage?.(1);
   };
 
-  const onSearch = () =>
-    fetchTestimonials({ page: 1, q, perPage, categorySlug });
-
-  const onReset = () => {
-    setQ("");
-
-    setCategorySlug("");
-
-    fetchTestimonials({ page: 1, q: "", perPage, categorySlug: "" });
-  };
-
-  const onPageChange = (p) => {
-    setPage(p);
-
-    fetchTestimonials({ page: p, perPage, q, categorySlug });
-  };
-
-  const initialValues = useMemo(() => {
-    if (!editing)
-      return {
-        photo_url: "",
-
-        photo_public_url: "",
-
-        star: undefined,
-
-        youtube_url: "",
-
-        kampus_negara_tujuan: "",
-
-        category_slug: undefined,
-      };
-
-    return {
-      name: editing.name || "",
-
-      photo_url: editing.photo_url || "",
-
-      photo_public_url: editing.photo_public_url || editing.photo_url || "",
-
-      message: editing.message || "",
-
-      star: typeof editing.star === "number" ? editing.star : undefined,
-
-      youtube_url: editing.youtube_url || "",
-
-      kampus_negara_tujuan: editing.kampus_negara_tujuan || "",
-
-      category_slug: editing.category?.slug || undefined, // NEW
-    };
-  }, [editing]);
-
-  const pageWrapStyle = {
-    maxWidth: 1320,
-
-    margin: "0 auto",
-
-    padding: "24px 32px 12px",
-  };
+  const { shellW, maxW, blue, text } = TOKENS;
+  const req = (msg) => [{ required: true, message: msg }];
 
   return (
     <ConfigProvider
+      componentSize="middle"
       theme={{
-        algorithm: antdTheme.darkAlgorithm,
-
         token: {
-          colorPrimary: "#3b82f6",
-
-          colorBorder: "#2f3f60",
-
-          colorText: "#e6eaf2",
-
-          colorBgContainer: CARD_BG,
-
+          colorPrimary: blue,
+          colorText: text,
+          fontFamily:
+            '"Poppins", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
           borderRadius: 12,
-
+          fontSize: 13,
           controlHeight: 36,
         },
-
-        components: {
-          Card: {
-            headerBg: "transparent",
-
-            colorBorderSecondary: "#2f3f60",
-
-            borderRadiusLG: 16,
-          },
-
-          Button: { borderRadius: 999 },
-
-          Input: { colorBgContainer: "#0e182c" },
-
-          Select: { colorBgContainer: "#0e182c" },
-
-          Pagination: { borderRadius: 999 },
-
-          Modal: { borderRadiusLG: 16 },
-        },
+        components: { Button: { borderRadius: 10 } },
       }}
     >
-      <div style={pageWrapStyle}>
-        {contextHolder}
+      {contextHolder}
 
-        <Card
-          style={{ ...darkCardStyle, marginBottom: 12 }}
-          styles={{ body: { padding: 16 } }}
+      {/* Global styles */}
+      <style jsx global>{`
+        .square-uploader.ant-upload.ant-upload-select-picture-card {
+          width: 160px !important;
+          height: 160px !important;
+          padding: 0 !important;
+        }
+        .square-uploader .ant-upload {
+          width: 100% !important;
+          height: 100% !important;
+        }
+        /* Pesan clamp halus */
+        .t-msg {
+          display: -webkit-box;
+          -webkit-box-orient: vertical;
+          -webkit-line-clamp: 3;
+          overflow: hidden;
+          white-space: normal;
+          line-height: 1.45;
+          word-break: break-word;
+          overflow-wrap: anywhere;
+        }
+        @media (max-width: 1200px) {
+          .t-msg {
+            -webkit-line-clamp: 2;
+          }
+        }
+        /* BAR: search + kategori + rating sebaris */
+        .filtersRow {
+          display: grid;
+          grid-template-columns: 1fr 220px 160px;
+          gap: 8px;
+          margin-bottom: 10px;
+          align-items: center;
+        }
+        @media (max-width: 1050px) {
+          .filtersRow {
+            grid-template-columns: 1fr;
+          }
+        }
+      `}</style>
+
+      {/* ===== Page wrapper ===== */}
+      <section
+        style={{
+          width: "100%",
+          position: "relative",
+          minHeight: "100dvh",
+          display: "flex",
+          alignItems: "flex-start",
+          padding: "56px 0",
+          overflowX: "hidden",
+        }}
+      >
+        {/* background */}
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: 0,
+            background:
+              "linear-gradient(180deg, #f8fbff 0%, #eef5ff 40%, #ffffff 100%)",
+            zIndex: 0,
+          }}
+        />
+        <div
+          style={{
+            width: shellW,
+            maxWidth: maxW,
+            margin: "0 auto",
+            position: "relative",
+            zIndex: 1,
+          }}
         >
-          <Space
-            align="center"
-            style={{ width: "100%", justifyContent: "space-between" }}
-          >
-            <div>
-              <Title level={3} style={{ margin: 0 }}>
-                Testimonials
-              </Title>
-
-              <Text type="secondary">
-                Kelola testimoni dari klien/pengguna. Total {total} records.
-              </Text>
+          {/* ===== Header Card ===== */}
+          <div style={styles.cardOuter}>
+            <div style={styles.cardHeaderBar} />
+            <div style={styles.cardInner}>
+              <div style={styles.cardTitle}>{T.title}</div>
+              <div style={styles.totalBadgeWrap}>
+                <div style={styles.totalBadgeLabel}>{T.totalLabel}</div>
+                <div style={styles.totalBadgeValue}>
+                  {vm.total ?? rows.length ?? "—"}
+                </div>
+              </div>
             </div>
+          </div>
 
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              shape="round"
-              onClick={openCreate}
-            >
-              Add Testimonial
-            </Button>
-          </Space>
-        </Card>
+          {/* ===== Data Card ===== */}
+          <div style={{ ...styles.cardOuter, marginTop: 12 }}>
+            <div style={{ ...styles.cardInner, paddingTop: 14 }}>
+              {/* Header: title + add new */}
+              <div style={styles.sectionHeader}>
+                <div style={styles.sectionTitle}>{T.listTitle}</div>
+                <Button
+                  type="primary"
+                  icon={<PlusCircleOutlined />}
+                  onClick={() => {
+                    setCreateOpen(true);
+                    vm.searchCategories?.("");
+                  }}
+                >
+                  {T.addNew}
+                </Button>
+              </div>
 
-        <Card
-          style={{ ...darkCardStyle, marginBottom: 12 }}
-          styles={{ body: { padding: 12 } }}
-        >
-          <Form
-            layout="inline"
-            onFinish={onSearch}
-            style={{ display: "block" }}
-          >
-            <Row gutter={[8, 8]} align="middle" wrap>
-              <Col xs={24} md={10} style={{ flex: "1 1 auto" }}>
-                <Input.Search
+              {/* BAR: Search + Kategori + Rating (sebaris) */}
+              <div className="filtersRow">
+                <Input
                   allowClear
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  placeholder="Cari nama/isi testimoni/tujuan kampus/kategori…"
-                  enterButton
+                  value={searchValue}
+                  onChange={(e) => setSearchValue(e.target.value)}
+                  onPressEnter={() => {
+                    vm.setQ?.((searchValue || "").trim());
+                    vm.setPage?.(1);
+                  }}
+                  placeholder={T.searchPh}
+                  prefix={<SearchOutlined />}
+                  style={styles.searchInput}
                 />
-              </Col>
-
-              {/* ⬇️ NEW: filter kategori (slug) */}
-
-              <Col xs={24} sm={12} md={8} lg={6} xl={5}>
                 <Select
                   allowClear
-                  value={categorySlug || undefined}
-                  onChange={(v) => setCategorySlug(v || "")}
-                  placeholder="Filter kategori"
-                  options={categories.map((c) => ({
-                    value: c.slug,
-
-                    label: c.name || c.slug,
-                  }))}
-                  style={{ width: "100%" }}
+                  placeholder={T.filterCat}
+                  value={vm.categoryId || undefined}
+                  onChange={(v) => {
+                    vm.setCategoryId?.(v || "");
+                    vm.setPage?.(1);
+                  }}
+                  onSearch={setCatSearchQ}
+                  showSearch
+                  filterOption={false}
+                  options={vm.categoryOptions}
                 />
-              </Col>
-
-              <Col xs={24} sm={12} md={6} lg={4} xl={3}>
-                <SelectPerPage
-                  perPage={perPage}
-                  setPerPage={setPerPage}
-                  fetch={fetchTestimonials}
-                  q={q}
+                <Select
+                  allowClear
+                  placeholder={T.filterRating}
+                  value={ratingValue || undefined}
+                  onChange={setRating}
+                  options={[
+                    { value: 5, label: "★★★★★" },
+                    { value: 4, label: "★★★★☆" },
+                    { value: 3, label: "★★★☆☆" },
+                    { value: 2, label: "★★☆☆☆" },
+                    { value: 1, label: "★☆☆☆☆" },
+                  ]}
                 />
-              </Col>
+              </div>
 
-              <Col xs="auto">
-                <Space>
-                  <Button shape="round" onClick={onReset}>
-                    Reset
-                  </Button>
+              {/* Tabel */}
+              <div style={{ overflowX: "auto" }}>
+                <div style={styles.tableHeader}>
+                  <div style={{ ...styles.thLeft, paddingLeft: 8 }}>
+                    {T.nameCol}
+                  </div>
+                  <div style={styles.thCenter}>{T.msgCol}</div>
+                  <div style={styles.thCenter}>{T.ratingCol}</div>
+                  <div style={styles.thCenter}>{T.catCol}</div>
+                  <div style={styles.thCenter}>{T.ytCol}</div>
+                  <div style={styles.thCenter}>{T.campusCol}</div>
+                  <div style={styles.thCenter}>{T.action}</div>
+                </div>
 
-                  <Button shape="round" type="primary" htmlType="submit">
-                    Search
-                  </Button>
-                </Space>
-              </Col>
-            </Row>
-          </Form>
-        </Card>
+                <div style={{ display: "grid", gap: 8, marginTop: 4 }}>
+                  {vm.loading ? (
+                    <div style={{ padding: "8px 4px" }}>
+                      <Skeleton active paragraph={{ rows: 2 }} />
+                    </div>
+                  ) : rows.length === 0 ? (
+                    <div
+                      style={{
+                        display: "grid",
+                        placeItems: "center",
+                        padding: "20px 0",
+                      }}
+                    >
+                      <Empty description="Belum ada data" />
+                    </div>
+                  ) : (
+                    rows.map((r) => {
+                      const name = r.name || "(tanpa nama)";
+                      const yt = r.youtube_url;
+                      const campus = r.kampus_negara_tujuan || "—";
+                      const image =
+                        r.image_public_url || r.photo_public_url || r.photo_url;
 
-        <Card style={{ ...darkCardStyle }} styles={{ body: { padding: 16 } }}>
-          {loading ? (
-            <div style={{ textAlign: "center", padding: "48px 0" }}>
-              <Spin />
+                      return (
+                        <div key={r.id} style={styles.row}>
+                          {/* Nama */}
+                          <div style={styles.colName}>
+                            <div style={styles.thumbBox}>
+                              {image ? (
+                                <img
+                                  src={image}
+                                  alt=""
+                                  style={styles.thumbImg}
+                                />
+                              ) : (
+                                <div style={styles.thumbFallback}>🙂</div>
+                              )}
+                            </div>
+                            <div style={styles.nameWrap}>
+                              <div style={styles.nameText} title={name}>
+                                {name}
+                              </div>
+                              <div style={styles.subDate}>
+                                {fmtDateId(r.created_at)}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Pesan */}
+                          <Tooltip
+                            title={stripTags(r.message)}
+                            placement="topLeft"
+                          >
+                            <div style={styles.colMsg}>
+                              <div className="t-msg">
+                                {stripTags(r.message) || "—"}
+                              </div>
+                            </div>
+                          </Tooltip>
+
+                          {/* Rating */}
+                          <div style={styles.colCenter}>
+                            <div style={styles.rateBox}>
+                              {r.star != null ? (
+                                <Rate disabled value={Number(r.star)} />
+                              ) : (
+                                "—"
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Kategori */}
+                          <div style={styles.colCenter}>
+                            {r.category?.name || "—"}
+                          </div>
+
+                          {/* YouTube */}
+                          <div style={styles.colCenter}>
+                            {yt ? (
+                              <Tag style={styles.ytTag}>
+                                <YoutubeOutlined /> &nbsp;Link
+                              </Tag>
+                            ) : (
+                              <Tag style={styles.ytTagMuted}>—</Tag>
+                            )}
+                          </div>
+
+                          {/* Kampus/Negara */}
+                          <div style={styles.colCenter}>
+                            <span
+                              style={{
+                                display: "inline-block",
+                                maxWidth: "100%",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                verticalAlign: "bottom",
+                              }}
+                              title={campus}
+                            >
+                              {campus}
+                            </span>
+                          </div>
+
+                          {/* Actions */}
+                          <div style={styles.colActionsCenter}>
+                            <Tooltip title={T.view}>
+                              <Button
+                                size="small"
+                                icon={<EyeOutlined />}
+                                onClick={() => {
+                                  setActiveRow(r);
+                                  setViewOpen(true);
+                                  setDetailLoading(true);
+                                  setDetailData(null);
+                                  vm.getTestimonial?.(r.id).then(
+                                    ({ ok: okView, data, error }) => {
+                                      setDetailLoading(false);
+                                      if (!okView) {
+                                        setViewOpen(false);
+                                        return err(
+                                          "Gagal memuat detail",
+                                          error || "Terjadi kesalahan"
+                                        );
+                                      }
+                                      setDetailData(data);
+                                    }
+                                  );
+                                }}
+                                style={styles.iconBtn}
+                              />
+                            </Tooltip>
+                            <Tooltip title={T.del}>
+                              <Popconfirm
+                                title="Hapus testimoni ini?"
+                                okText="Ya"
+                                cancelText="Batal"
+                                onConfirm={() => onDelete(r.id)}
+                              >
+                                <Button
+                                  size="small"
+                                  danger
+                                  icon={<DeleteOutlined />}
+                                  style={styles.iconBtn}
+                                />
+                              </Popconfirm>
+                            </Tooltip>
+                            <Tooltip title={T.edit}>
+                              <Button
+                                size="small"
+                                icon={<EditOutlined />}
+                                onClick={() => openEdit(r)}
+                                style={styles.iconBtn}
+                              />
+                            </Tooltip>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* Pagination */}
+              <div style={styles.pagination}>
+                <Button
+                  icon={<LeftOutlined />}
+                  onClick={() => vm.setPage?.(Math.max(1, vm.page - 1))}
+                  disabled={vm.page <= 1 || vm.loading}
+                />
+                <div style={styles.pageText}>
+                  Page {vm.page}
+                  {vm.totalPages ? ` of ${vm.totalPages}` : ""}
+                </div>
+                <Button
+                  icon={<RightOutlined />}
+                  onClick={() => vm.setPage?.(vm.page + 1)}
+                  disabled={
+                    vm.loading ||
+                    (vm.totalPages
+                      ? vm.page >= vm.totalPages
+                      : rows.length < (vm.perPage || 10))
+                  }
+                />
+              </div>
             </div>
-          ) : testimonials.length === 0 ? (
-            <Empty description="Belum ada data testimonial" />
-          ) : (
-            <Row gutter={[16, 16]}>
-              {testimonials.map((t) => (
-                <Col key={t.id} xs={24} sm={12} md={12} lg={8} xl={6}>
-                  <TestimonialCard
-                    t={t}
-                    onView={() => setView(t)}
-                    onEdit={() => openEdit(t)}
-                    onDelete={async () => {
-                      const { ok, error: err } = await deleteTestimonial(t.id);
-
-                      if (ok) {
-                        notification.success({
-                          message: "Testimonial dihapus",
-
-                          description: "Data berhasil dihapus.",
-
-                          placement: "topRight",
-                        });
-                      } else {
-                        notification.error({
-                          message: "Gagal menghapus",
-
-                          description: err || "Silakan coba lagi.",
-
-                          placement: "topRight",
-                        });
-                      }
-                    }}
-                  />
-                </Col>
-              ))}
-            </Row>
-          )}
-        </Card>
-
-        <Card
-          style={{ ...darkCardStyle, marginTop: 12, marginBottom: 0 }}
-          styles={{ body: { padding: 12 } }}
-        >
-          <div
-            style={{ width: "100%", display: "flex", justifyContent: "center" }}
-          >
-            <Pagination
-              current={page}
-              total={total}
-              pageSize={perPage}
-              showSizeChanger={false}
-              onChange={onPageChange}
-            />
           </div>
-        </Card>
+        </div>
+      </section>
 
-        <TestimonialViewModal
-          open={!!view}
-          data={view}
-          onClose={() => setView(null)}
-        />
+      {/* ===== Create Modal ===== */}
+      <Modal
+        open={createOpen}
+        onCancel={() => {
+          setCreateOpen(false);
+          setImgPrevCreate("");
+          formCreate.resetFields();
+        }}
+        footer={null}
+        width={860}
+        destroyOnClose
+        title={null}
+      >
+        <div style={styles.modalShell}>
+          <Form layout="vertical" form={formCreate}>
+            <div style={styles.coverWrap}>
+              <Form.Item
+                name="image"
+                valuePropName="fileList"
+                getValueFromEvent={(e) =>
+                  Array.isArray(e) ? e : e?.fileList || []
+                }
+                noStyle
+              >
+                <Upload
+                  accept="image/*"
+                  listType="picture-card"
+                  showUploadList={false}
+                  beforeUpload={beforeImgCreate}
+                  className="square-uploader"
+                >
+                  <div style={styles.coverBox}>
+                    {imgPrevCreate ? (
+                      <img
+                        src={imgPrevCreate}
+                        alt="cover"
+                        style={styles.coverImg}
+                      />
+                    ) : (
+                      <div style={styles.coverPlaceholder}>+ {T.image}</div>
+                    )}
+                  </div>
+                </Upload>
+              </Form.Item>
+            </div>
 
-        <TestimonialFormModal
-          open={modalOpen}
-          mode={mode}
-          initialValues={initialValues}
-          saving={saving}
-          onCancel={() => {
-            setModalOpen(false);
+            <Form.Item
+              label={T.nameId}
+              name="name_id"
+              rules={req("Nama wajib diisi")}
+            >
+              <Input placeholder="Contoh: Nadya Kirana" />
+            </Form.Item>
 
-            setEditing(null);
-          }}
-          onSubmit={handleSubmit}
-          categories={categories} // ⬅️ NEW
-        />
-      </div>
+            <Form.Item
+              label={T.msgId}
+              name="message_id"
+              rules={req("Pesan wajib diisi")}
+            >
+              <Input.TextArea rows={4} placeholder="Tulis testimoni..." />
+            </Form.Item>
+
+            <div style={styles.grid2}>
+              <Form.Item label={T.star} name="star">
+                <Rate allowClear allowHalf={false} />
+              </Form.Item>
+              <Form.Item label={T.category} name="category_id">
+                <Select
+                  allowClear
+                  showSearch
+                  placeholder="Pilih kategori"
+                  onSearch={setCatSearchQ}
+                  filterOption={false}
+                  options={vm.categoryOptions}
+                />
+              </Form.Item>
+            </div>
+
+            <div style={styles.grid2}>
+              <Form.Item label={T.youtube} name="youtube_url">
+                <Input placeholder="https://youtube.com/..." />
+              </Form.Item>
+              <Form.Item label={T.campus} name="kampus">
+                <Input placeholder="cth: Monash University, Australia" />
+              </Form.Item>
+            </div>
+
+            <div style={styles.modalFooter}>
+              <Button
+                type="primary"
+                size="large"
+                onClick={onCreate}
+                style={styles.saveBtn}
+              >
+                {T.save}
+              </Button>
+            </div>
+          </Form>
+        </div>
+      </Modal>
+
+      {/* ===== Edit Modal ===== */}
+      <Modal
+        open={editOpen}
+        onCancel={() => {
+          setEditOpen(false);
+          setImgPrevEdit("");
+          formEdit.resetFields();
+        }}
+        footer={null}
+        width={900}
+        destroyOnClose
+        title={null}
+      >
+        <div style={styles.modalShell}>
+          <Spin spinning={detailLoading}>
+            <Form layout="vertical" form={formEdit}>
+              <div style={styles.coverWrap}>
+                <Form.Item
+                  name="image"
+                  valuePropName="fileList"
+                  getValueFromEvent={(e) =>
+                    Array.isArray(e) ? e : e?.fileList || []
+                  }
+                  noStyle
+                >
+                  <Upload
+                    accept="image/*"
+                    listType="picture-card"
+                    showUploadList={false}
+                    beforeUpload={beforeImgEdit}
+                    className="square-uploader"
+                  >
+                    <div style={styles.coverBox}>
+                      {imgPrevEdit ? (
+                        <img
+                          src={imgPrevEdit}
+                          alt="cover"
+                          style={styles.coverImg}
+                        />
+                      ) : (
+                        <div style={styles.coverPlaceholder}>+ {T.image}</div>
+                      )}
+                    </div>
+                  </Upload>
+                </Form.Item>
+              </div>
+
+              <Form.Item label={T.nameId} name="name_id">
+                <Input placeholder="Nama" />
+              </Form.Item>
+
+              <Form.Item label={T.msgId} name="message_id">
+                <Input.TextArea rows={4} placeholder="Pesan" />
+              </Form.Item>
+
+              <div style={styles.grid2}>
+                <Form.Item label={T.star} name="star">
+                  <Rate allowHalf={false} />
+                </Form.Item>
+                <Form.Item label={T.category} name="category_id">
+                  <Select
+                    allowClear
+                    showSearch
+                    placeholder="Pilih kategori"
+                    onSearch={setCatSearchQ}
+                    filterOption={false}
+                    options={vm.categoryOptions}
+                  />
+                </Form.Item>
+              </div>
+
+              <div style={styles.grid2}>
+                <Form.Item label={T.youtube} name="youtube_url">
+                  <Input placeholder="https://youtube.com/..." />
+                </Form.Item>
+                <Form.Item label={T.campus} name="kampus">
+                  <Input placeholder="cth: Monash University, Australia" />
+                </Form.Item>
+              </div>
+
+              <div style={styles.modalFooter}>
+                <Button
+                  type="primary"
+                  size="large"
+                  onClick={onEditSubmit}
+                  style={styles.saveBtn}
+                >
+                  Simpan Perubahan
+                </Button>
+              </div>
+            </Form>
+          </Spin>
+        </div>
+      </Modal>
+
+      {/* ===== View Modal ===== */}
+      <Modal
+        open={viewOpen}
+        onCancel={() => {
+          setViewOpen(false);
+          setDetailData(null);
+        }}
+        footer={null}
+        width={780}
+        destroyOnClose
+        title={null}
+      >
+        <div style={styles.modalShell}>
+          <Spin spinning={detailLoading}>
+            <div style={styles.viewGrid}>
+              <div style={{ gridColumn: "1 / span 2" }}>
+                <div style={styles.coverBoxRead}>
+                  {detailData?.image_public_url ||
+                  detailData?.photo_public_url ||
+                  detailData?.photo_url ? (
+                    <img
+                      src={
+                        detailData.image_public_url ||
+                        detailData.photo_public_url ||
+                        detailData.photo_url
+                      }
+                      alt="cover"
+                      style={styles.coverImgRead}
+                    />
+                  ) : (
+                    <div style={{ padding: 24, textAlign: "center" }}>
+                      Tidak ada foto
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <div style={styles.label}>{T.nameId}</div>
+                <div style={styles.value}>
+                  {detailData?.name || activeRow?.name || "-"}
+                </div>
+              </div>
+
+              <div>
+                <div style={styles.label}>{T.msgId}</div>
+                <div style={{ ...styles.value, whiteSpace: "pre-wrap" }}>
+                  {stripTags(detailData?.message) || "—"}
+                </div>
+              </div>
+
+              <div>
+                <div style={styles.label}>{T.star}</div>
+                <div style={styles.value}>
+                  <div style={styles.rateBox}>
+                    {detailData?.star != null ? (
+                      <Rate disabled value={Number(detailData?.star)} />
+                    ) : (
+                      "—"
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <div style={styles.label}>{T.category}</div>
+                <div style={styles.value}>
+                  {detailData?.category?.name || "—"}
+                </div>
+              </div>
+
+              <div>
+                <div style={styles.label}>{T.youtube}</div>
+                <div style={styles.value}>
+                  {detailData?.youtube_url ? "Ada" : "—"}
+                </div>
+              </div>
+
+              <div>
+                <div style={styles.label}>{T.campus}</div>
+                <div style={styles.value}>
+                  {detailData?.kampus_negara_tujuan || "—"}
+                </div>
+              </div>
+            </div>
+          </Spin>
+        </div>
+      </Modal>
     </ConfigProvider>
   );
 }
 
-/* ===== Small helper component ===== */
+/* ================= STYLES ================= */
+const styles = {
+  cardOuter: {
+    background: "#ffffff",
+    borderRadius: 16,
+    border: "1px solid #e6eeff",
+    boxShadow:
+      "0 10px 40px rgba(11, 86, 201, 0.07), 0 3px 12px rgba(11,86,201,0.05)",
+    overflow: "hidden",
+  },
+  cardHeaderBar: {
+    height: 20,
+    background:
+      "linear-gradient(90deg, #0b56c9 0%, #0b56c9 65%, rgba(11,86,201,0.35) 100%)",
+  },
+  cardInner: { padding: "12px 14px 14px", position: "relative" },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: 800,
+    color: "#0b3e91",
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  totalBadgeWrap: {
+    position: "absolute",
+    right: 14,
+    top: 8,
+    display: "grid",
+    gap: 4,
+    justifyItems: "end",
+    background: "#fff",
+    border: "1px solid #e6eeff",
+    borderRadius: 12,
+    padding: "6px 12px",
+    boxShadow: "0 6px 18px rgba(11,86,201,0.08)",
+  },
+  totalBadgeLabel: { fontSize: 12, color: "#0b3e91", fontWeight: 600 },
+  totalBadgeValue: {
+    fontSize: 16,
+    color: "#0b56c9",
+    fontWeight: 800,
+    lineHeight: 1,
+  },
 
-function SelectPerPage({ perPage, setPerPage, fetch, q }) {
-  return (
-    <Select
-      value={perPage}
-      onChange={(v) => {
-        setPerPage(v);
+  sectionHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  sectionTitle: { fontSize: 18, fontWeight: 800, color: "#0b3e91" },
 
-        fetch({ page: 1, perPage: v, q });
-      }}
-      options={[8, 12, 16, 24, 32, 64].map((n) => ({ value: n, label: n }))}
-      style={{ width: "100%" }}
-      placeholder="Per page"
-    />
-  );
-}
+  searchInput: { height: 36, borderRadius: 10 },
+
+  tableHeader: {
+    display: "grid",
+    gridTemplateColumns: GRID_COLS,
+    gap: 8,
+    marginBottom: 4,
+    color: "#0b3e91",
+    fontWeight: 700,
+    alignItems: "center",
+    minWidth: 1080,
+  },
+
+  row: {
+    display: "grid",
+    gridTemplateColumns: GRID_COLS,
+    gap: 8,
+    alignItems: "center",
+    background: "#f5f8ff",
+    borderRadius: 10,
+    border: "1px solid #e8eeff",
+    padding: "8px 10px",
+    boxShadow: "0 6px 12px rgba(11, 86, 201, 0.05)",
+    minWidth: 1080,
+  },
+
+  thLeft: { display: "flex", justifyContent: "flex-start", width: "100%" },
+  thCenter: { display: "flex", justifyContent: "center", width: "100%" },
+
+  colName: {
+    background: "#ffffff",
+    borderRadius: 10,
+    border: "1px solid #eef3ff",
+    padding: "6px 10px",
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    minWidth: 0,
+  },
+  thumbBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    background: "#fff",
+    border: "1px solid #e5edff",
+    display: "grid",
+    placeItems: "center",
+    overflow: "hidden",
+    boxShadow: "0 2px 6px rgba(0,0,0,.04) inset",
+    flex: "0 0 48px",
+  },
+  thumbImg: { width: "100%", height: "100%", objectFit: "cover" },
+  thumbFallback: { fontSize: 18 },
+  nameWrap: { display: "grid", gap: 2, minWidth: 0 },
+  nameText: {
+    fontWeight: 600,
+    color: "#111827",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  subDate: { fontSize: 11.5, color: "#6b7280" },
+
+  colMsg: {
+    background: "#ffffff",
+    borderRadius: 10,
+    border: "1px solid #eef3ff",
+    padding: "8px 12px",
+    color: "#0f172a",
+    minWidth: 0,
+  },
+
+  colCenter: {
+    textAlign: "center",
+    color: "#0f172a",
+    fontWeight: 600,
+    minWidth: 0,
+  },
+
+  colActionsCenter: {
+    display: "flex",
+    justifyContent: "center",
+    gap: 6,
+    flexWrap: "nowrap",
+    minWidth: 0,
+  },
+  iconBtn: { borderRadius: 8 },
+
+  pagination: {
+    marginTop: 12,
+    display: "grid",
+    gridTemplateColumns: "36px 1fr 36px",
+    alignItems: "center",
+    justifyItems: "center",
+    gap: 8,
+  },
+  pageText: { fontSize: 12, color: "#475569" },
+
+  label: { fontSize: 11.5, color: "#64748b" },
+  value: {
+    fontWeight: 600,
+    color: "#0f172a",
+    background: "#f8fafc",
+    border: "1px solid #e8eeff",
+    borderRadius: 10,
+    padding: "8px 10px",
+    boxShadow: "inset 0 2px 6px rgba(11,86,201,0.05)",
+    wordBreak: "break-word",
+  },
+
+  modalShell: {
+    position: "relative",
+    background: "#fff",
+    borderRadius: 16,
+    padding: "14px 14px 8px",
+    boxShadow: "0 10px 36px rgba(11,86,201,0.08)",
+  },
+
+  coverWrap: {
+    display: "grid",
+    justifyContent: "center",
+    justifyItems: "center",
+    marginTop: 6,
+    marginBottom: 10,
+  },
+
+  coverBox: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 12,
+    border: "2px dashed #c0c8d8",
+    background: "#f8fbff",
+    display: "grid",
+    placeItems: "center",
+    overflow: "hidden",
+  },
+  coverImg: { width: "100%", height: "100%", objectFit: "cover" },
+  coverPlaceholder: { fontWeight: 700, color: "#0b56c9", userSelect: "none" },
+
+  coverBoxRead: {
+    width: "100%",
+    borderRadius: 12,
+    border: "1px solid #e6eeff",
+    overflow: "hidden",
+    background: "#f8fbff",
+    display: "grid",
+    placeItems: "center",
+  },
+  coverImgRead: {
+    maxWidth: "100%",
+    maxHeight: "72vh",
+    width: "auto",
+    height: "auto",
+    display: "block",
+  },
+
+  modalFooter: { marginTop: 8, display: "grid", placeItems: "center" },
+  saveBtn: { minWidth: 200, height: 40, borderRadius: 12 },
+
+  grid2: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 },
+
+  rateBox: { display: "inline-block", width: 112, textAlign: "center" },
+
+  ytTag: {
+    borderRadius: 12,
+    padding: "2px 8px",
+    fontSize: 12,
+    lineHeight: "18px",
+    whiteSpace: "nowrap",
+  },
+  ytTagMuted: {
+    borderRadius: 12,
+    padding: "2px 8px",
+    fontSize: 12,
+    lineHeight: "18px",
+    background: "#f1f5f9",
+    borderColor: "#e2e8f0",
+    color: "#64748b",
+    whiteSpace: "nowrap",
+  },
+
+  viewGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 },
+};

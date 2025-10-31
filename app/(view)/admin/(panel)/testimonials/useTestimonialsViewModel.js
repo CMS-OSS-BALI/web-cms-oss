@@ -1,276 +1,332 @@
 ﻿"use client";
 
-import { useCallback, useMemo, useState, useEffect } from "react";
-import useSWR from "swr";
-import { fetcher } from "@/lib/swr/fetcher";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const DEFAULT_LOCALE = "id";
-const DEFAULT_LIMIT = 500;
+/** util: GET JSON (with credentials) */
+async function getJson(url) {
+  const res = await fetch(url, { credentials: "include" });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = data?.error?.message || data?.message || res.statusText;
+    const e = new Error(msg);
+    e.status = res.status;
+    e.data = data;
+    throw e;
+  }
+  return data;
+}
 
-const toJsonPayload = (payload = {}) => {
-  const result = {};
-  Object.entries(payload).forEach(([key, value]) => {
-    if (value === undefined) return;
-    result[key] = value;
-  });
-  return result;
-};
+/** util: POST/PUT/DELETE (json or form) */
+async function send(url, { method = "POST", json, form }) {
+  const init = { method, credentials: "include", headers: {} };
+  if (form) {
+    init.body = form; // multipart
+  } else if (json) {
+    init.headers["Content-Type"] = "application/json";
+    init.body = JSON.stringify(json);
+  }
+  const res = await fetch(url, init);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = data?.error?.message || data?.message || res.statusText;
+    const e = new Error(msg);
+    e.status = res.status;
+    e.data = data;
+    throw e;
+  }
+  return data;
+}
 
-const appendFormDataSafe = (formData, payload = {}) => {
-  Object.entries(payload).forEach(([key, value]) => {
-    if (value === undefined) return;
-    if (value === null) {
-      formData.append(key, "");
-    } else if (value instanceof Blob) {
-      formData.append(key, value);
-    } else {
-      formData.append(key, String(value));
-    }
-  });
-};
+const DEFAULT_PER_PAGE = 10;
+const MAX_FETCH = 200;
 
-const isFileObject = (value) =>
-  typeof File !== "undefined" && value instanceof File;
+export default function useTestimonialsViewModel({
+  locale: initialLocale = "id",
+} = {}) {
+  const [locale, setLocale] = useState(initialLocale);
 
-export default function useTestimonialsViewModel() {
-  // filter & paging (client-side + server filter by category)
+  // list
+  const [loading, setLoading] = useState(false);
+  const [rows, setRows] = useState([]);
+  const [total, setTotal] = useState(0);
+
+  // filters & pagination
   const [q, setQ] = useState("");
-  const [categorySlug, setCategorySlug] = useState(""); // NEW
+  const [categoryId, setCategoryId] = useState("");
+  const [rating, setRating] = useState(""); // number | ""
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(12);
-  const [total, setTotal] = useState(0); // derived
-  const [totalPages, setTotalPages] = useState(1); // derived
+  const [perPage, setPerPage] = useState(DEFAULT_PER_PAGE);
 
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
+  // categories
+  const [catLoading, setCatLoading] = useState(false);
+  const [allCategories, setAllCategories] = useState([]);
+  const [categoryOptions, setCategoryOptions] = useState([]);
 
-  // SWR: daftar kategori untuk dropdown (id, slug, name)
-  const { data: catJson } = useSWR(
-    `/api/testimonials-category?locale=${DEFAULT_LOCALE}`,
-    fetcher
-  );
-  const categories = useMemo(() => catJson?.data || [], [catJson]);
+  const abortRef = useRef(null);
 
-  // SWR: testimonials (server diberi filter slug biar hemat)
-  const listKey = useMemo(() => {
-    const params = new URLSearchParams();
-    params.set("limit", String(DEFAULT_LIMIT));
-    params.set("locale", DEFAULT_LOCALE);
-    if (categorySlug) params.set("category_slug", categorySlug);
-    return `/api/testimonials?${params.toString()}`;
-  }, [categorySlug]);
+  const refresh = useCallback(async () => {
+    if (abortRef.current) abortRef.current.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
 
-  const {
-    data: rawJson,
-    error: rawErr,
-    isLoading: listLoading,
-    mutate,
-  } = useSWR(listKey, fetcher);
-
-  const rawList = useMemo(
-    () =>
-      (rawJson?.data || [])
-        .filter((it) => !it.deleted_at)
-        .map((it) => ({
-          ...it,
-          photo_public_url: it.photo_public_url ?? null,
-        })),
-    [rawJson]
-  );
-
-  const computePaged = useCallback(() => {
-    const qv = (q || "").trim().toLowerCase();
-    const pp = Number(perPage) || 12;
-    let pg = Number(page) || 1;
-
-    let filtered = rawList;
-    if (qv) {
-      filtered = filtered.filter((it) => {
-        const name = (it.name || "").toLowerCase();
-        const messageVal = (it.message || "").toLowerCase();
-        const campus = (it.kampus_negara_tujuan || "").toLowerCase();
-        const catName = (it.category?.name || "").toLowerCase();
-        const catSlug = (it.category?.slug || "").toLowerCase();
-        return (
-          name.includes(qv) ||
-          messageVal.includes(qv) ||
-          campus.includes(qv) ||
-          catName.includes(qv) ||
-          catSlug.includes(qv)
-        );
-      });
+    setLoading(true);
+    try {
+      const url = `/api/testimonials?locale=${encodeURIComponent(
+        locale
+      )}&limit=${MAX_FETCH}`;
+      const { data } = await getJson(url);
+      const list = Array.isArray(data) ? data : [];
+      setRows(list);
+      setTotal(list.length);
+      setPage(1);
+    } catch (e) {
+      console.error("fetch testimonials failed:", e);
+    } finally {
+      setLoading(false);
     }
-
-    const ttl = filtered.length;
-    const ttlPages = Math.max(1, Math.ceil(ttl / pp));
-    if (pg > ttlPages) pg = ttlPages;
-    const start = (pg - 1) * pp;
-    const list = filtered.slice(start, start + pp);
-    return { list, ttl, ttlPages, pg, pp };
-  }, [rawList, q, page, perPage]);
-
-  const { list: testimonials, ttl, ttlPages, pg, pp } = computePaged();
+  }, [locale]);
 
   useEffect(() => {
-    setTotal(ttl);
-    setTotalPages(ttlPages);
-    if (pg !== page) setPage(pg);
-    if (pp !== perPage) setPerPage(pp);
-  }, [ttl, ttlPages, pg, pp]); // eslint-disable-line react-hooks/exhaustive-deps
+    refresh();
+  }, [refresh]);
 
-  const fetchTestimonials = useCallback(async (opts = {}) => {
-    if ("q" in opts) setQ(opts.q || "");
-    if ("page" in opts) setPage(Math.max(1, opts.page));
-    if ("perPage" in opts) setPerPage(opts.perPage);
-    if ("categorySlug" in opts) setCategorySlug(opts.categorySlug || "");
-  }, []);
-
-  const createTestimonial = async (payload = {}) => {
-    setError("");
-    setMessage("");
-
-    const { file, ...rest } = payload;
-    const basePayload = {
-      name: rest.name,
-      photo_url: rest.photo_url,
-      message: rest.message,
-      star: typeof rest.star === "number" ? rest.star : undefined,
-      youtube_url: rest.youtube_url ?? undefined,
-      kampus_negara_tujuan:
-        rest.kampus_negara_tujuan !== undefined
-          ? rest.kampus_negara_tujuan
-          : undefined,
-      category_slug: rest.category_slug,
-      category_id: rest.category_id,
-      locale: rest.locale ?? DEFAULT_LOCALE,
-    };
-
+  // categories: fetch semua, set default options
+  const fetchCategories = useCallback(async () => {
+    setCatLoading(true);
     try {
-      let res;
-      if (isFileObject(file)) {
-        const fd = new FormData();
-        fd.append("file", file);
-        const { photo_url, ...payloadWithoutPhotoUrl } = basePayload;
-        appendFormDataSafe(fd, payloadWithoutPhotoUrl);
-        res = await fetch("/api/testimonials", {
-          method: "POST",
-          body: fd,
-        });
-      } else {
-        const body = toJsonPayload(basePayload);
-        res = await fetch("/api/testimonials", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
+      const { data } = await getJson(
+        `/api/testimonials-category?locale=${encodeURIComponent(locale)}`
+      );
+      const all = Array.isArray(data) ? data : [];
+      setAllCategories(all);
+      setCategoryOptions(
+        all.map((c) => ({
+          value: c.id,
+          label: c.name || c.slug || "(no name)",
+        }))
+      );
+    } catch (e) {
+      console.error("fetch categories failed:", e);
+      setAllCategories([]);
+      setCategoryOptions([]);
+    } finally {
+      setCatLoading(false);
+    }
+  }, [locale]);
+
+  useEffect(() => {
+    fetchCategories();
+  }, [fetchCategories]);
+
+  // exposed: live search (client-side) that also updates options state
+  const searchCategories = useCallback(
+    (keyword = "") => {
+      const s = String(keyword || "")
+        .trim()
+        .toLowerCase();
+      const opts = (allCategories || [])
+        .filter((c) => {
+          if (!s) return true;
+          const name = (c?.name || "").toLowerCase();
+          const slug = (c?.slug || "").toLowerCase();
+          return name.includes(s) || slug.includes(s);
+        })
+        .map((c) => ({ value: c.id, label: c.name || c.slug || "(no name)" }));
+      setCategoryOptions(opts);
+      return opts;
+    },
+    [allCategories]
+  );
+
+  // client-side filtered & paginated
+  const filtered = useMemo(() => {
+    const s = (q || "").trim().toLowerCase();
+    return (rows || []).filter((r) => {
+      const okQ =
+        !s ||
+        (r?.name || "").toLowerCase().includes(s) ||
+        (r?.message || "").toLowerCase().includes(s);
+      const okCat = !categoryId || (r?.category?.id || "") === categoryId;
+      const okStar = !rating || Number(r?.star ?? 0) === Number(rating);
+      return okQ && okCat && okStar;
+    });
+  }, [rows, q, categoryId, rating]);
+
+  const totalPages = useMemo(
+    () =>
+      Math.max(1, Math.ceil(filtered.length / (perPage || DEFAULT_PER_PAGE))),
+    [filtered.length, perPage]
+  );
+
+  const pageItems = useMemo(() => {
+    const p = Math.min(Math.max(1, page), totalPages);
+    const start = (p - 1) * (perPage || DEFAULT_PER_PAGE);
+    const end = start + (perPage || DEFAULT_PER_PAGE);
+    return filtered.slice(start, end);
+  }, [filtered, page, perPage, totalPages]);
+
+  // ========== CRUD (wrapped with {ok, data|error}) ==========
+  const getTestimonial = useCallback(
+    async (id) => {
+      try {
+        const { data } = await getJson(
+          `/api/testimonials/${id}?locale=${encodeURIComponent(locale)}`
+        );
+        return { ok: true, data };
+      } catch (e) {
+        return { ok: false, error: e?.message || "Failed to load" };
       }
+    },
+    [locale]
+  );
 
-      const json = await res.json().catch(() => null);
-      if (!res.ok)
-        throw new Error(json?.message || "Gagal menambah testimonial");
-
-      setMessage("Testimonial berhasil ditambahkan");
-      await fetchTestimonials({ page: 1 });
-      await mutate();
-      return { ok: true, data: json?.data };
-    } catch (e) {
-      const msg = e?.message || "Gagal menambah testimonial";
-      setError(msg);
-      return { ok: false, error: msg };
-    }
-  };
-
-  const updateTestimonial = async (id, payload = {}) => {
-    setError("");
-    setMessage("");
-
-    const { file, ...rest } = payload;
-    const basePayload = {
-      name: rest.name,
-      photo_url: rest.photo_url,
-      message: rest.message,
-      star: typeof rest.star === "number" ? rest.star : undefined,
-      youtube_url: rest.youtube_url ?? undefined,
-      kampus_negara_tujuan:
-        rest.kampus_negara_tujuan !== undefined
-          ? rest.kampus_negara_tujuan
-          : undefined,
-      category_slug: rest.category_slug,
-      category_id: rest.category_id,
-      locale: rest.locale ?? DEFAULT_LOCALE,
-    };
-
-    try {
-      let res;
-      if (isFileObject(file)) {
-        const fd = new FormData();
-        fd.append("file", file);
-        const { photo_url, ...payloadWithoutPhotoUrl } = basePayload;
-        appendFormDataSafe(fd, payloadWithoutPhotoUrl);
-        res = await fetch(`/api/testimonials/${encodeURIComponent(id)}`, {
-          method: "PUT",
-          body: fd,
+  const createTestimonial = useCallback(
+    async ({
+      file,
+      name,
+      message,
+      star,
+      youtube_url,
+      kampus_negara_tujuan,
+      category_id,
+    }) => {
+      try {
+        let body;
+        if (file) {
+          const fd = new FormData();
+          fd.append("file", file);
+          fd.append("name", name || "");
+          fd.append("message", message || "");
+          fd.append("locale", locale || "id");
+          if (star != null) fd.append("star", String(star));
+          if (youtube_url != null) fd.append("youtube_url", youtube_url);
+          if (kampus_negara_tujuan != null)
+            fd.append("kampus_negara_tujuan", kampus_negara_tujuan);
+          if (category_id) fd.append("category_id", category_id);
+          body = { form: fd };
+        } else {
+          body = {
+            json: {
+              name,
+              message,
+              locale: locale || "id",
+              star,
+              youtube_url,
+              kampus_negara_tujuan,
+              category_id: category_id || null,
+            },
+          };
+        }
+        const { data } = await send("/api/testimonials", {
+          method: "POST",
+          ...body,
         });
-      } else {
-        const body = toJsonPayload(basePayload);
-        res = await fetch(`/api/testimonials/${encodeURIComponent(id)}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
+        await refresh();
+        return { ok: true, data };
+      } catch (e) {
+        return { ok: false, error: e?.message || "Failed to create" };
       }
+    },
+    [locale, refresh]
+  );
 
-      const json = await res.json().catch(() => null);
-      if (!res.ok)
-        throw new Error(json?.message || "Gagal memperbarui testimonial");
+  const updateTestimonial = useCallback(
+    async (
+      id,
+      {
+        file,
+        name,
+        message,
+        star,
+        youtube_url,
+        kampus_negara_tujuan,
+        category_id,
+      }
+    ) => {
+      try {
+        let body;
+        if (file) {
+          const fd = new FormData();
+          fd.append("locale", locale || "id");
+          fd.append("file", file);
+          if (name != null) fd.append("name", name);
+          if (message != null) fd.append("message", message);
+          if (star != null) fd.append("star", String(star));
+          if (youtube_url != null) fd.append("youtube_url", youtube_url);
+          if (kampus_negara_tujuan != null)
+            fd.append("kampus_negara_tujuan", kampus_negara_tujuan);
+          if (category_id != null) fd.append("category_id", category_id);
+          body = { form: fd };
+        } else {
+          body = {
+            json: {
+              locale: locale || "id",
+              ...(name != null ? { name } : {}),
+              ...(message != null ? { message } : {}),
+              ...(star != null ? { star } : {}),
+              ...(youtube_url != null ? { youtube_url } : {}),
+              ...(kampus_negara_tujuan != null ? { kampus_negara_tujuan } : {}),
+              ...(category_id != null ? { category_id } : {}),
+            },
+          };
+        }
+        const { data } = await send(`/api/testimonials/${id}`, {
+          method: "PUT",
+          ...body,
+        });
+        await refresh();
+        return { ok: true, data };
+      } catch (e) {
+        return { ok: false, error: e?.message || "Failed to update" };
+      }
+    },
+    [locale, refresh]
+  );
 
-      setMessage("Testimonial berhasil diperbarui");
-      await mutate();
-      return { ok: true, data: json?.data };
-    } catch (e) {
-      const msg = e?.message || "Gagal memperbarui testimonial";
-      setError(msg);
-      return { ok: false, error: msg };
-    }
-  };
-
-  const deleteTestimonial = async (id) => {
-    setError("");
-    setMessage("");
-    try {
-      const res = await fetch(`/api/testimonials/${encodeURIComponent(id)}`, {
-        method: "DELETE",
-      });
-      const json = await res.json().catch(() => null);
-      if (!res.ok)
-        throw new Error(json?.message || "Gagal menghapus testimonial");
-      setMessage("Testimonial dihapus");
-      await mutate();
-      return { ok: true, data: json?.data };
-    } catch (e) {
-      const msg = e?.message || "Gagal menghapus testimonial";
-      setError(msg);
-      return { ok: false, error: msg };
-    }
-  };
+  const deleteTestimonial = useCallback(
+    async (id) => {
+      try {
+        await send(`/api/testimonials/${id}`, { method: "DELETE" });
+        await refresh();
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: e?.message || "Failed to delete" };
+      }
+    },
+    [refresh]
+  );
 
   return {
-    loading: listLoading,
-    testimonials,
-    categories, // NEW: untuk dropdown
-    categorySlug, // NEW
-    setCategorySlug, // NEW
+    // base
+    locale,
+    setLocale,
+    loading,
+    total,
+
+    // filters & pagination
     q,
     setQ,
+    categoryId,
+    setCategoryId,
+    rating,
+    setRating,
     page,
     setPage,
     perPage,
     setPerPage,
-    total,
     totalPages,
-    error: error || rawErr?.message || "",
-    message,
-    fetchTestimonials,
+
+    // derived/list
+    testimonials: pageItems,
+
+    // categories
+    catLoading,
+    categoryOptions,
+    searchCategories,
+
+    // ops
+    refresh,
+    getTestimonial,
     createTestimonial,
     updateTestimonial,
     deleteTestimonial,

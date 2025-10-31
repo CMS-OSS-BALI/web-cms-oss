@@ -1,192 +1,346 @@
-"use client";
+/* app/(view)/admin/events/useEventsViewModel.js */
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
-import { useCallback, useEffect, useState } from "react";
-import useSWR from "swr";
-import { fetcher } from "@/lib/swr/fetcher";
+/** Small helpers */
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const toISODate = (y, m, d) =>
+  new Date(Date.UTC(y, m - 1, d, 0, 0, 0)).toISOString();
 
-const DEFAULT_LOCALE = "id";
-const FALLBACK_LOCALE = "en";
+function useEventsViewModel() {
+  const router = useRouter();
 
-export default function useEventsViewModel() {
+  // ===== query state =====
   const [q, setQ] = useState("");
-  const [isPublished, setIsPublished] = useState("");
-  const [status, setStatus] = useState(""); // "done" | ""
-  const [from, setFrom] = useState(null);
-  const [to, setTo] = useState(null);
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(6);
-  const [total, setTotal] = useState(0); // kept for compatibility (derived)
-  const [totalPages, setTotalPages] = useState(1); // derived
+  const [perPage, setPerPage] = useState(10);
+  const [year, setYear] = useState(null); // e.g. 2025
+  const [categoryId, setCategoryId] = useState(null);
+  const [showCharts, setShowCharts] = useState(true);
 
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
+  // ===== data state =====
+  const [loading, setLoading] = useState(false);
+  const [opLoading, setOpLoading] = useState(false);
+  const [events, setEvents] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
-  const buildQuery = useCallback(
-    (params = {}) => {
-      const sp = new URLSearchParams();
-      const p = {
-        page,
-        perPage,
-        q,
-        is_published: isPublished, // "1" | "0" | ""
-        status,
-        from,
-        to,
-        ...params,
-      };
+  const [categoryOptions, setCategoryOptions] = useState([]);
+  const [yearOptions, setYearOptions] = useState([]);
 
-      if (p.page) sp.set("page", String(p.page));
-      if (p.perPage) sp.set("perPage", String(p.perPage));
-      if (p.q) sp.set("q", p.q);
-      if (p.is_published === "1" || p.is_published === "0") {
-        sp.set("is_published", p.is_published);
-      }
-      if (p.status) sp.set("status", p.status);
-      if (p.from) sp.set("from", p.from);
-      if (p.to) sp.set("to", p.to);
-      sp.set("locale", DEFAULT_LOCALE);
-      sp.set("fallback", FALLBACK_LOCALE);
-      return sp.toString();
-    },
-    [page, perPage, q, isPublished, status, from, to]
-  );
+  // metrics
+  const [totalStudents, setTotalStudents] = useState(null);
+  const [totalStudentsLoading, setTotalStudentsLoading] = useState(false);
+  const [totalReps, setTotalReps] = useState(0);
+  const [totalRevenue, setTotalRevenue] = useState(0);
 
-  // SWR key builder based on current filters/pagination
-  const listKey = `/api/events?${buildQuery({
-    page,
-    perPage,
-    q,
-    is_published: isPublished,
-    status,
-    from,
-    to,
-  })}`;
-  const {
-    data: listJson,
-    error: listErr,
-    isLoading: listLoading,
-    mutate,
-  } = useSWR(listKey, fetcher);
+  // charts
+  const [chartLoading, setChartLoading] = useState(false);
+  const [chartStudent, setChartStudent] = useState([]); // {id,label,short,value,percent}
+  const [chartRep, setChartRep] = useState([]);
 
-  const events = Array.isArray(listJson?.data) ? listJson.data : [];
-  useEffect(() => {
-    if (typeof listJson?.total === "number") {
-      setTotal(listJson.total);
-      setTotalPages(Number(listJson?.totalPages || 1));
+  const abortRef = useRef(null);
+
+  const buildQuery = useCallback(() => {
+    const p = new URLSearchParams();
+    p.set("include_category", "1");
+    p.set("perPage", String(perPage));
+    p.set("page", String(page));
+    if (q) p.set("q", q);
+    if (categoryId) p.set("category_id", categoryId);
+    if (year) {
+      p.set("from", toISODate(year, 1, 1));
+      p.set("to", toISODate(year, 12, 31));
     }
-  }, [listJson]);
+    return "/api/events?" + p.toString();
+  }, [q, page, perPage, categoryId, year]);
 
-  const fetchEvents = useCallback(async (overrides = {}) => {
-    // update filters/pagination; SWR will refetch due to key change
-    if ("page" in overrides) setPage(Math.max(1, overrides.page));
-    if ("perPage" in overrides) setPerPage(overrides.perPage);
-    if ("q" in overrides) setQ(overrides.q);
-    if ("is_published" in overrides) setIsPublished(overrides.is_published);
-    if ("status" in overrides) setStatus(overrides.status ?? "");
-    if ("from" in overrides) setFrom(overrides.from ?? null);
-    if ("to" in overrides) setTo(overrides.to ?? null);
+  const loadCategories = useCallback(async () => {
+    try {
+      const res = await fetch(
+        "/api/event-categories?perPage=100&sort=sort:asc"
+      );
+      const js = await res.json();
+      const rows = js?.data || [];
+      setCategoryOptions(
+        rows.map((r) => ({
+          value: r.id,
+          label: r.name || r.slug || "Kategori",
+        }))
+      );
+    } catch {
+      /* ignore */
+    }
   }, []);
 
-  /** CREATE */
-  const createEvent = useCallback(
-    async (payload) => {
-      setError("");
-      setMessage("");
-      try {
-        const res = await fetch(`/api/events`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...payload, locale: DEFAULT_LOCALE }),
-        });
-        if (!res.ok)
-          throw new Error(
-            (await res.json().catch(() => null))?.message || "Failed to create"
-          );
-        setMessage("Event berhasil ditambahkan.");
-        // go to first page and revalidate
-        await fetchEvents({ page: 1 });
-        await mutate();
-        return { ok: true };
-      } catch (e) {
-        return { ok: false, error: e?.message || "Failed to create" };
-      }
-    },
-    [fetchEvents, mutate]
-  );
+  const loadEvents = useCallback(async () => {
+    abortRef.current?.abort?.();
+    abortRef.current = new AbortController();
+    const { signal } = abortRef.current;
+    setLoading(true);
+    try {
+      const res = await fetch(buildQuery(), { signal });
+      const js = await res.json();
+      const rows = js?.data || [];
+      setEvents(rows);
+      setTotal(js?.meta?.total || rows.length || 0);
+      setTotalPages(js?.meta?.totalPages || 1);
 
-  /** UPDATE (pakai /api/events/[id]) */
-  const updateEvent = useCallback(
-    async (id, payload) => {
-      setError("");
-      setMessage("");
-      try {
-        const res = await fetch(`/api/events/${id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...payload, locale: DEFAULT_LOCALE }),
-        });
-        if (!res.ok)
-          throw new Error(
-            (await res.json().catch(() => null))?.message || "Failed to update"
-          );
-        setMessage("Event berhasil diperbarui.");
-        await mutate();
-        return { ok: true };
-      } catch (e) {
-        return { ok: false, error: e?.message || "Failed to update" };
-      }
-    },
-    [mutate]
-  );
+      // dynamic year options
+      const years = new Set(
+        rows
+          .map((r) => {
+            const d = r?.start_ts ? new Date(r.start_ts) : null;
+            return d ? d.getUTCFullYear?.() || d.getFullYear?.() : null;
+          })
+          .filter(Boolean)
+      );
+      const arr = Array.from(years).sort((a, b) => b - a);
+      setYearOptions((prev) => {
+        const merged = Array.from(new Set([...prev, ...arr])).sort(
+          (a, b) => b - a
+        );
+        return merged.slice(0, 8);
+      });
 
-  /** DELETE (pakai /api/events/[id]) */
+      // metrics derived from events
+      const reps = rows.reduce(
+        (acc, r) => acc + Number(r?.booth_sold_count || 0),
+        0
+      );
+      setTotalReps(reps);
+      const revenueEst = rows.reduce(
+        (acc, r) =>
+          acc +
+          Number(r?.booth_sold_count || 0) *
+            Math.max(0, Number(r?.booth_price || 0)),
+        0
+      );
+      setTotalRevenue(revenueEst);
+
+      // charts (rep)
+      const top = rows.slice(0, 8);
+      const maxRep = Math.max(
+        1,
+        ...top.map((r) => Number(r?.booth_sold_count || 0))
+      );
+      setChartRep(
+        top.map((r) => {
+          const label = r.title || "Event";
+          const short =
+            label.length > 10 ? label.slice(0, 9).trim() + "…" : label;
+          const v = Number(r?.booth_sold_count || 0);
+          return {
+            id: r.id,
+            label,
+            short,
+            value: v,
+            percent: (v / maxRep) * 100,
+          };
+        })
+      );
+
+      // chart students loaded separately (tickets per event)
+      await loadStudentCounts(top);
+    } catch (e) {
+      if (e?.name !== "AbortError") console.error("[Events] load error:", e);
+    } finally {
+      if (!signal.aborted) setLoading(false);
+    }
+  }, [buildQuery]);
+
+  const loadTotalStudents = useCallback(async () => {
+    setTotalStudentsLoading(true);
+    try {
+      const res = await fetch("/api/tickets?status=CONFIRMED&perPage=1");
+      const js = await res.json();
+      setTotalStudents(js?.total ?? null);
+    } catch {
+      setTotalStudents(null);
+    } finally {
+      setTotalStudentsLoading(false);
+    }
+  }, []);
+
+  const loadStudentCounts = useCallback(async (eventRows) => {
+    setChartLoading(true);
+    try {
+      const promises = (eventRows || []).map(async (ev) => {
+        const url = `/api/tickets?event_id=${encodeURIComponent(
+          ev.id
+        )}&status=CONFIRMED&perPage=1`;
+        const r = await fetch(url);
+        const j = await r.json();
+        return { id: ev.id, title: ev.title || "Event", total: j?.total || 0 };
+      });
+      const items = await Promise.all(promises);
+      const max = Math.max(1, ...items.map((i) => i.total));
+      setChartStudent(
+        items.map((i) => ({
+          id: i.id,
+          label: i.title,
+          short:
+            i.title.length > 10 ? i.title.slice(0, 9).trim() + "…" : i.title,
+          value: i.total,
+          percent: (i.total / max) * 100,
+        }))
+      );
+    } catch (e) {
+      console.error("[Events] load student counts err:", e);
+      setChartStudent([]);
+    } finally {
+      setChartLoading(false);
+    }
+  }, []);
+
+  // (optional future) get revenue via payments endpoint — placeholder
+  const loadRevenue = useCallback(async () => {
+    // If you later expose `/api/admin/metrics?sum=revenue`, compute here.
+    // For now, revenue is estimated from events in `loadEvents`.
+    return;
+  }, []);
+
+  const refresh = useCallback(async () => {
+    await Promise.all([loadEvents(), loadTotalStudents(), loadRevenue()]);
+  }, [loadEvents, loadTotalStudents, loadRevenue]);
+
+  useEffect(() => {
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, page, perPage, categoryId, year]);
+
+  useEffect(() => {
+    loadCategories();
+  }, [loadCategories]);
+
+  /** ===== actions ===== */
   const deleteEvent = useCallback(
     async (id) => {
-      setError("");
-      setMessage("");
+      setOpLoading(true);
       try {
         const res = await fetch(`/api/events/${id}`, { method: "DELETE" });
-        if (!res.ok)
-          throw new Error(
-            (await res.json().catch(() => null))?.message || "Failed to delete"
-          );
-        setMessage("Event berhasil dihapus.");
-        await mutate();
+        const js = await res.json();
+        if (!res.ok) return { ok: false, error: js?.error?.message || "Gagal" };
+        await sleep(250);
+        await loadEvents();
         return { ok: true };
       } catch (e) {
-        return { ok: false, error: e?.message || "Failed to delete" };
+        return { ok: false, error: e?.message || "Gagal" };
+      } finally {
+        setOpLoading(false);
       }
     },
-    [mutate]
+    [loadEvents]
   );
 
-  // initial page size
-  // keep default perPage 8
+  const goCreate = useCallback(() => {
+    router.push("/admin/events/new");
+  }, [router]);
 
+  const goEdit = useCallback(
+    (id) => {
+      router.push(`/admin/events/${id}/edit`);
+    },
+    [router]
+  );
+
+  const toggleCharts = useCallback(() => setShowCharts((v) => !v), []);
+
+  /** ===== CSV download ===== */
+  const downloadCSV = useCallback(async () => {
+    const headers = [
+      "Event ID",
+      "Judul",
+      "Mulai",
+      "Selesai",
+      "Lokasi",
+      "Kategori",
+      "Capacity",
+      "Sold Ticket (calc)",
+      "Booth Price",
+      "Booth Sold",
+      "Booth Quota",
+      "Est. Revenue (Rp)",
+    ];
+    const lines = [headers.join(",")];
+
+    for (const r of events) {
+      const est =
+        Number(r?.booth_sold_count || 0) * Number(r?.booth_price || 0);
+      const row = [
+        r.id,
+        `"${(r.title || "").replace(/"/g, '""')}"`,
+        new Date(
+          r.start_ts || r.start_at || r.startAt || r.start || Date.now()
+        ).toISOString(),
+        new Date(
+          r.end_ts || r.end_at || r.endAt || r.end || Date.now()
+        ).toISOString(),
+        `"${(r.location || "").replace(/"/g, '""')}"`,
+        `"${(r.category_name || r.category_slug || "").replace(/"/g, '""')}"`,
+        r.capacity ?? "",
+        r.sold ?? "",
+        r.booth_price ?? "",
+        r.booth_sold_count ?? "",
+        r.booth_quota ?? "",
+        est,
+      ];
+      lines.push(row.join(","));
+    }
+
+    const blob = new Blob([lines.join("\n")], {
+      type: "text/csv;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `events-${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [events]);
+
+  /** ===== expose ===== */
   return {
-    loading: listLoading,
-    events,
+    // query
     q,
     setQ,
-    isPublished,
-    setIsPublished,
-    from,
-    setFrom,
-    to,
-    setTo,
     page,
     setPage,
     perPage,
     setPerPage,
+    year,
+    setYear,
+    yearOptions,
+    categoryId,
+    setCategoryId,
+    categoryOptions,
+
+    // data
+    loading,
+    opLoading,
+    events,
     total,
     totalPages,
-    error: error || listErr?.message || "",
-    message,
-    fetchEvents,
-    status,
-    setStatus,
-    createEvent,
-    updateEvent,
+
+    // metrics
+    totalStudents,
+    totalStudentsLoading,
+    totalReps,
+    totalRevenue,
+
+    // charts
+    showCharts,
+    chartLoading,
+    chartStudent,
+    chartRep,
+    toggleCharts,
+
+    // actions
+    downloadCSV,
     deleteEvent,
+    goCreate,
+    goEdit,
   };
 }
+
+export default useEventsViewModel;

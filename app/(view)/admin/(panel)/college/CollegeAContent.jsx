@@ -1,6 +1,7 @@
+// app/(view)/admin/college/CollegeAContent.jsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import useCollegeAViewModel from "./useCollegeAViewModel";
 import {
   ConfigProvider,
@@ -16,6 +17,7 @@ import {
   Spin,
   Select,
   InputNumber,
+  notification,
 } from "antd";
 import {
   PlusCircleOutlined,
@@ -114,10 +116,24 @@ const numOrNull = (v) =>
 const stripTags = (s) => (s ? String(s).replace(/<[^>]*>/g, "") : "");
 
 export default function CollegeAContent(props) {
+  // gunakan VM yang dipassing dari page; fallback buat sendiri jika tidak ada
   const vm =
     props && Object.prototype.hasOwnProperty.call(props, "colleges")
       ? props
       : useCollegeAViewModel({ locale: props?.locale || "id" });
+
+  // ----- notification (top-right)
+  const [notify, contextHolder] = notification.useNotification();
+  const ok = useCallback(
+    (message, description) =>
+      notify.success({ message, description, placement: "topRight" }),
+    [notify]
+  );
+  const err = useCallback(
+    (message, description) =>
+      notify.error({ message, description, placement: "topRight" }),
+    [notify]
+  );
 
   // ----- UI state
   const [createOpen, setCreateOpen] = useState(false);
@@ -130,6 +146,14 @@ export default function CollegeAContent(props) {
   const [logoPrevEdit, setLogoPrevEdit] = useState("");
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailData, setDetailData] = useState(null);
+
+  // cleanup objectURL
+  useEffect(() => {
+    return () => {
+      if (logoPrevCreate) URL.revokeObjectURL(logoPrevCreate);
+      if (logoPrevEdit) URL.revokeObjectURL(logoPrevEdit);
+    };
+  }, [logoPrevCreate, logoPrevEdit]);
 
   // Ukuran gambar untuk lebar modal view dinamis
   const [viewImgMeta, setViewImgMeta] = useState({ w: 0, h: 0 });
@@ -154,14 +178,18 @@ export default function CollegeAContent(props) {
   const beforeLogoCreate = (file) => {
     if (!isImg(file) || tooBig(file, 10)) return Upload.LIST_IGNORE;
     try {
-      setLogoPrevCreate(URL.createObjectURL(file));
+      const url = URL.createObjectURL(file);
+      if (logoPrevCreate) URL.revokeObjectURL(logoPrevCreate);
+      setLogoPrevCreate(url);
     } catch {}
     return false;
   };
   const beforeLogoEdit = (file) => {
     if (!isImg(file) || tooBig(file, 10)) return Upload.LIST_IGNORE;
     try {
-      setLogoPrevEdit(URL.createObjectURL(file));
+      const url = URL.createObjectURL(file);
+      if (logoPrevEdit) URL.revokeObjectURL(logoPrevEdit);
+      setLogoPrevEdit(url);
     } catch {}
     return false;
   };
@@ -192,11 +220,13 @@ export default function CollegeAContent(props) {
     });
 
     if (!out.ok) {
-      Modal.error({ title: "Gagal", content: out.error || "Gagal menyimpan" });
+      err("Gagal membuat kampus", out.error || "Gagal menyimpan");
       return;
     }
+    ok("Berhasil", `Kampus “${v.name}” berhasil dibuat.`);
     setCreateOpen(false);
     formCreate.resetFields();
+    if (logoPrevCreate) URL.revokeObjectURL(logoPrevCreate);
     setLogoPrevCreate("");
   };
 
@@ -206,11 +236,12 @@ export default function CollegeAContent(props) {
     setEditOpen(true);
     setDetailLoading(true);
     setDetailData(null);
-    const { ok, data, error } = await vm.getCollege(row.id);
+    const { ok: okDetail, data, error } = await vm.getCollege(row.id);
     setDetailLoading(false);
-    if (!ok) {
+    if (!okDetail) {
       setEditOpen(false);
-      return Modal.error({ title: "Gagal memuat", content: error });
+      err("Gagal memuat detail", error);
+      return;
     }
     const d = data || row;
     setDetailData(d);
@@ -265,24 +296,26 @@ export default function CollegeAContent(props) {
     });
 
     if (!res.ok) {
-      return Modal.error({
-        title: "Gagal",
-        content: res.error || "Gagal menyimpan",
-      });
+      err("Gagal menyimpan perubahan", res.error || "Gagal menyimpan");
+      return;
     }
+    ok(
+      "Perubahan tersimpan",
+      `Data kampus “${v.name || activeRow.name}” diperbarui.`
+    );
     setEditOpen(false);
     formEdit.resetFields();
+    if (logoPrevEdit) URL.revokeObjectURL(logoPrevEdit);
     setLogoPrevEdit("");
   };
 
   const onDelete = async (id) => {
     const res = await vm.deleteCollege(id);
     if (!res.ok) {
-      Modal.error({
-        title: "Gagal",
-        content: res.error || "Tidak bisa menghapus",
-      });
+      err("Gagal menghapus", res.error || "Tidak bisa menghapus");
+      return;
     }
+    ok("Terhapus", "Kampus berhasil dihapus.");
   };
 
   // ===== Search (nama) & Filter (negara) =====
@@ -317,6 +350,8 @@ export default function CollegeAContent(props) {
         components: { Button: { borderRadius: 10 } },
       }}
     >
+      {contextHolder}
+
       {/* paksa rasio 9:16 untuk Upload */}
       <style jsx global>{`
         .portrait-uploader.ant-upload.ant-upload-select-picture-card {
@@ -515,10 +550,7 @@ export default function CollegeAContent(props) {
                                       setDetailLoading(false);
                                       if (!ok) {
                                         setViewOpen(false);
-                                        Modal.error({
-                                          title: "Gagal memuat",
-                                          content: error,
-                                        });
+                                        err("Gagal memuat detail", error);
                                         return;
                                       }
                                       setDetailData(data);
@@ -591,6 +623,7 @@ export default function CollegeAContent(props) {
         open={createOpen}
         onCancel={() => {
           setCreateOpen(false);
+          if (logoPrevCreate) URL.revokeObjectURL(logoPrevCreate);
           setLogoPrevCreate("");
           formCreate.resetFields();
         }}
@@ -790,6 +823,7 @@ export default function CollegeAContent(props) {
         open={editOpen}
         onCancel={() => {
           setEditOpen(false);
+          if (logoPrevEdit) URL.revokeObjectURL(logoPrevEdit);
           setLogoPrevEdit("");
           formEdit.resetFields();
         }}

@@ -4,12 +4,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/lib/swr/fetcher";
 
-/* ===== defaults ===== */
+/* ===================== Defaults ===================== */
 const DEFAULT_SORT = "sort:asc";
 const DEFAULT_LOCALE = "id";
 const DEFAULT_FALLBACK = "id";
+const API_BASE = "/api/aktivitas";
 
-/* ===== helpers ===== */
+/* ===================== Helpers ===================== */
 function buildQuery({
   page,
   perPage,
@@ -33,7 +34,7 @@ function buildQuery({
   if (isPublished !== null && isPublished !== undefined) {
     params.set("is_published", isPublished ? "1" : "0");
   }
-  return `/api/aktivitas?${params.toString()}`;
+  return `${API_BASE}?${params.toString()}`;
 }
 
 function toFormData(payload = {}) {
@@ -63,8 +64,19 @@ function firstErrMessage(obj) {
   );
 }
 
+async function jsonReq(url, options = {}) {
+  const res = await fetch(url, {
+    credentials: "include",
+    ...options,
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(firstErrMessage(data));
+  return data;
+}
+
+/* ===================== View Model ===================== */
 export default function useActivityViewModel(init = {}) {
-  // list filters
+  // filters
   const [q, setQ] = useState(init.q ?? "");
   const [page, setPage] = useState(init.page ?? 1);
   const [perPage, setPerPage] = useState(init.perPage ?? 10);
@@ -73,13 +85,15 @@ export default function useActivityViewModel(init = {}) {
   const [fallback, setFallback] = useState(init.fallback ?? DEFAULT_FALLBACK);
   const [withDeleted, setWithDeleted] = useState(!!init.withDeleted);
   const [onlyDeleted, setOnlyDeleted] = useState(!!init.onlyDeleted);
-  // default to Published list to match UI dropdown’s default label
-  const [isPublished, setIsPublished] = useState(init.isPublished ?? true); // true|false|null
+  // Default published to match dropdown label
+  const [isPublished, setIsPublished] = useState(
+    init.isPublished ?? true // true|false|null
+  );
 
-  // non-GET operations loading
+  // state
   const [opLoading, setOpLoading] = useState(false);
 
-  // swr key
+  // SWR key
   const listKey = buildQuery({
     page,
     perPage,
@@ -99,7 +113,7 @@ export default function useActivityViewModel(init = {}) {
     mutate: mutateList,
   } = useSWR(listKey, fetcher);
 
-  // normalize rows
+  // Normalize list
   const activities = useMemo(() => {
     const rows = listJson?.data ?? [];
     return rows.map((r) => ({
@@ -134,7 +148,7 @@ export default function useActivityViewModel(init = {}) {
 
   const refresh = useCallback(() => mutateList(), [mutateList]);
 
-  /* ===== CRUD ===== */
+  /* ===================== CRUD ===================== */
   async function createActivity(payload) {
     setOpLoading(true);
     try {
@@ -143,31 +157,27 @@ export default function useActivityViewModel(init = {}) {
         payload?.image instanceof File ||
         payload?.image_file instanceof File;
 
-      let res;
-      if (hasFile) {
-        const fd = toFormData({
-          ...payload,
-          image: payload.file || payload.image || payload.image_file,
-        });
-        res = await fetch("/api/aktivitas", {
-          method: "POST",
-          body: fd,
-          credentials: "include",
-        });
-      } else {
-        res = await fetch("/api/aktivitas", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-          credentials: "include",
-        });
-      }
-      const info = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(firstErrMessage(info));
+      const body = hasFile
+        ? toFormData({
+            ...payload,
+            image: payload.file || payload.image || payload.image_file,
+          })
+        : JSON.stringify(payload);
+
+      const headers = hasFile
+        ? undefined
+        : { "Content-Type": "application/json" };
+
+      const info = await jsonReq(API_BASE, {
+        method: "POST",
+        ...(headers ? { headers } : {}),
+        body,
+      });
+
       await refresh();
       return { ok: true, data: info?.data };
-    } catch (err) {
-      return { ok: false, error: err?.message || "Gagal menambah aktivitas" };
+    } catch (e) {
+      return { ok: false, error: e?.message || "Gagal menambah aktivitas" };
     } finally {
       setOpLoading(false);
     }
@@ -181,34 +191,27 @@ export default function useActivityViewModel(init = {}) {
         payload?.image instanceof File ||
         payload?.image_file instanceof File;
 
-      let res;
-      if (hasFile) {
-        const fd = toFormData({
-          ...payload,
-          image: payload.file || payload.image || payload.image_file,
-        });
-        res = await fetch(`/api/aktivitas/${encodeURIComponent(id)}`, {
-          method: "PATCH",
-          body: fd,
-          credentials: "include",
-        });
-      } else {
-        res = await fetch(`/api/aktivitas/${encodeURIComponent(id)}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-          credentials: "include",
-        });
-      }
-      const info = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(firstErrMessage(info));
+      const body = hasFile
+        ? toFormData({
+            ...payload,
+            image: payload.file || payload.image || payload.image_file,
+          })
+        : JSON.stringify(payload);
+
+      const headers = hasFile
+        ? undefined
+        : { "Content-Type": "application/json" };
+
+      const info = await jsonReq(`${API_BASE}/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        ...(headers ? { headers } : {}),
+        body,
+      });
+
       await refresh();
       return { ok: true, data: info?.data };
-    } catch (err) {
-      return {
-        ok: false,
-        error: err?.message || "Gagal memperbarui aktivitas",
-      };
+    } catch (e) {
+      return { ok: false, error: e?.message || "Gagal memperbarui aktivitas" };
     } finally {
       setOpLoading(false);
     }
@@ -217,33 +220,28 @@ export default function useActivityViewModel(init = {}) {
   async function deleteActivity(id) {
     setOpLoading(true);
     try {
-      const res = await fetch(`/api/aktivitas/${encodeURIComponent(id)}`, {
+      const info = await jsonReq(`${API_BASE}/${encodeURIComponent(id)}`, {
         method: "DELETE",
-        credentials: "include",
       });
-      const info = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(firstErrMessage(info));
       await refresh();
       return { ok: true, data: info?.data };
-    } catch (err) {
-      return { ok: false, error: err?.message || "Gagal menghapus aktivitas" };
+    } catch (e) {
+      return { ok: false, error: e?.message || "Gagal menghapus aktivitas" };
     } finally {
       setOpLoading(false);
     }
   }
 
-  /* ===== Detail ===== */
+  /* ===================== Detail ===================== */
   async function getActivity(id) {
     try {
-      const res = await fetch(
-        `/api/aktivitas/${encodeURIComponent(
+      const info = await jsonReq(
+        `${API_BASE}/${encodeURIComponent(
           id
         )}?locale=${locale}&fallback=${fallback}`,
-        { method: "GET", credentials: "include" }
+        { method: "GET" }
       );
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(firstErrMessage(json));
-      const data = json?.data ?? json;
+      const data = info?.data ?? info;
       return { ok: true, data };
     } catch (e) {
       return { ok: false, error: e?.message || "Gagal memuat detail" };

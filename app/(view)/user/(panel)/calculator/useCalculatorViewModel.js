@@ -3,8 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /**
- * Kategori yang dipakai kalkulator.
- * Pastikan slug sama persis dengan tabel service_categories.
+ * Kategori yang dipakai kalkulator (sinkron dgn service_categories.slug)
  */
 const KATEGORI = [
   { key: "service_fee", name: "Service Fee", slug: "service-fee" },
@@ -19,7 +18,6 @@ async function fetchServicesByCategory({
   locale = "id",
   fallback = "en",
 }) {
-  // pakai filter category_slug agar server hanya kirim service pada kategori tsb
   const qs = new URLSearchParams({
     category_slug: slug,
     published: "true",
@@ -37,8 +35,6 @@ async function fetchServicesByCategory({
     throw new Error(`Fetch services failed (${slug}): ${res.status}`);
   const json = await res.json();
   const list = Array.isArray(json?.data) ? json.data : [];
-
-  // Amankan: jika server mengembalikan data lain, tetap filter by kategori slug
   return list.filter((s) => s?.category?.slug === slug);
 }
 
@@ -69,7 +65,6 @@ export default function useCalculatorViewModel({
     }, {})
   );
 
-  // Guards untuk dev StrictMode & de-dupe
   const abortRef = useRef(null);
   const inflightRef = useRef(null);
   const mountedOnceRef = useRef(false);
@@ -81,7 +76,6 @@ export default function useCalculatorViewModel({
     setLoading(true);
     setError(null);
 
-    // batalkan request sebelumnya jika ada
     abortRef.current?.abort?.();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -96,11 +90,10 @@ export default function useCalculatorViewModel({
               locale,
               fallback,
             });
-            // dari /api/services sudah include terjemahan (field 'name')
             const items = (raw || []).map((s) => ({
               id: s.id,
-              name: s.name ?? "", // dari services_translate (locale/fallback)
-              price: s.price ?? 0, // harga dari tabel services
+              name: s.name ?? "",
+              price: s.price ?? 0,
             }));
             return { key: k.key, meta: k, items };
           })
@@ -126,13 +119,13 @@ export default function useCalculatorViewModel({
     return inflightRef.current;
   }, [locale, fallback]);
 
-  // Jalankan sekali saat mount (hindari double fetch di StrictMode)
+  // Mount sekali (hindari double fetch di StrictMode)
   useEffect(() => {
     if (mountedOnceRef.current) return;
     mountedOnceRef.current = true;
     load();
     return () => {
-      mountedOnceRef.current = false; // allow StrictMode re-run to trigger load again
+      mountedOnceRef.current = false;
       try {
         abortRef.current?.abort();
       } catch {}
@@ -141,7 +134,7 @@ export default function useCalculatorViewModel({
     };
   }, [load]);
 
-  // Refetch ketika locale/fallback berubah setelah mount
+  // Refetch saat locale/fallback berubah
   useEffect(() => {
     const prev = prevLocaleRef.current;
     if (prev.locale !== locale || prev.fallback !== fallback) {
@@ -158,7 +151,7 @@ export default function useCalculatorViewModel({
   return {
     loading,
     error,
-    categories: data, // { service_fee: {key,name,slug,items:[{id,name,price}]}, ... }
+    categories: data,
     flatList,
     refetch: load,
   };

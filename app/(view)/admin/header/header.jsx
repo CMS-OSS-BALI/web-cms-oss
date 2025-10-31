@@ -22,14 +22,20 @@ export default function Header() {
   };
 
   return (
-    <header className="ah-root">
+    <header className="ah-root" role="banner">
       <div className="ah-left">
         <Breadcrumb className="ah-bc" items={vm.breadcrumbs} />
       </div>
 
       <div className="ah-right">
-        <Tooltip title="Notifikasi">
-          <Badge dot>
+        <Tooltip
+          title="Notifikasi"
+          placement="bottomRight"
+          arrow
+          /** pastikan tooltip nempel ke body supaya gak kena clipping parent */
+          getPopupContainer={() => document.body}
+        >
+          <Badge dot offset={[2, -2]}>
             <button className="ah-icon-btn" aria-label="Notifications">
               <BellOutlined />
             </button>
@@ -40,6 +46,9 @@ export default function Header() {
           trigger={["click"]}
           placement="bottomRight"
           menu={{ items: menuItems, onClick: onMenuClick }}
+          arrow
+          overlayStyle={{ marginTop: 10 }} // beri jarak ekstra dari tepi atas viewport
+          getPopupContainer={() => document.body}
         >
           <button className="ah-avatar-btn" aria-label="User menu">
             {vm.user.image ? (

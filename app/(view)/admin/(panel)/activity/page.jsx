@@ -1,3 +1,4 @@
+// app/(view)/admin/activity/page.jsx
 "use client";
 
 import { Suspense, lazy, useEffect } from "react";
@@ -15,13 +16,12 @@ const pickLocale = (v) => {
 
 export default function ActivityPage({ searchParams }) {
   const vm = useActivityViewModel();
-
-  // Set once from URL to avoid hydration mismatch
   const initialLocale = pickLocale(searchParams?.lang);
+
   useEffect(() => {
     vm.setLocale?.(initialLocale);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialLocale]); // jangan menambahkan `vm` agar tidak rerun
+  }, [initialLocale]);
 
   return (
     <Suspense
@@ -31,7 +31,6 @@ export default function ActivityPage({ searchParams }) {
         </div>
       }
     >
-      {/* pass as a single object, bukan spread */}
       <ActivityContentLazy vm={vm} />
     </Suspense>
   );

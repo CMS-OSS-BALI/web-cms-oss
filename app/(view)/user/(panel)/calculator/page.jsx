@@ -24,8 +24,11 @@ export default function CalculatorPage() {
     return pickLocale(q, ls);
   }, [search]);
 
-  // VM di-evaluate di page agar props bisa di-pass ke content
-  const vm = useCalculatorViewModel({ locale });
+  // VM dieksekusi di page agar props bisa dipass ke content
+  const vm = useCalculatorViewModel({
+    locale,
+    fallback: locale === "id" ? "en" : "id",
+  });
 
   return (
     <Suspense
@@ -35,8 +38,8 @@ export default function CalculatorPage() {
         </div>
       }
     >
-      {/* key=locale agar remount saat bahasa berubah */}
-      <CalculatorContentLazy key={locale} {...vm} />
+      {/* key=locale supaya remount ketika bahasa berubah */}
+      <CalculatorContentLazy key={locale} locale={locale} {...vm} />
     </Suspense>
   );
 }

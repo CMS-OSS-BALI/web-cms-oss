@@ -23,7 +23,7 @@ const styles = {
     fontFamily: FONT_FAMILY,
   },
 
-  /* ================= HERO ================= */
+  /* ============== HERO ============== */
   hero: {
     section: {
       marginTop: "calc(-1 * clamp(48px, 8vw, 84px))",
@@ -51,7 +51,7 @@ const styles = {
       left: 0,
       bottom: 0,
       width: "100%",
-      height: "clamp(140px, 20vw, 280px)",
+      height: "clamp(140px, 20vw, 300px)",
       zIndex: 2,
       pointerEvents: "none",
     },
@@ -88,7 +88,7 @@ const styles = {
     ring: {
       position: "relative",
       width: "min(380px, 38vw)",
-      aspectRatio: "1 / 1",
+      aspectRatio: "1/1",
       borderRadius: "50%",
       background: "#ffd21e",
       padding: "clamp(10px, 2vw, 20px)",
@@ -115,18 +115,18 @@ const styles = {
     },
   },
 
-  /* ================= ABOUT ================= */
+  /* ============== ABOUT ============== */
   about: {
-    section: { padding: "clamp(48px, 8vw, 96px) 0 0", marginTop: "-75px" },
+    section: { padding: "clamp(48px, 0px, 96px) 0 0", marginTop: "-75px" },
     grid: {
       display: "grid",
-      gridTemplateColumns: "1.25fr 1fr",
+      /* NOTE: kita TIDAK set gridTemplateColumns di inline lagi agar bisa di-override by CSS */
       gridTemplateRows: "auto 1fr",
       columnGap: "clamp(18px, 2.4vw, 28px)",
       rowGap: "clamp(14px, 2vw, 20px)",
       alignItems: "stretch",
     },
-    header: { gridColumn: "1 / 2", gridRow: "1 / 2", marginBottom: 4 },
+    header: { marginBottom: 4 },
     title: {
       margin: 0,
       fontWeight: 900,
@@ -141,10 +141,9 @@ const styles = {
       fontSize: "clamp(14px, 1.6vw, 16px)",
       lineHeight: 1.9,
       color: "#2a3e65",
+      textAlign: "justify",
     },
     leftCard: {
-      gridColumn: "1 / 2",
-      gridRow: "2 / 3",
       position: "relative",
       background: "#fff",
       borderRadius: 18,
@@ -154,8 +153,6 @@ const styles = {
       height: "clamp(260px, 32vw, 420px)",
     },
     rightCard: {
-      gridColumn: "2 / 3",
-      gridRow: "1 / span 2",
       position: "relative",
       background: "#fff",
       borderRadius: 18,
@@ -173,7 +170,7 @@ const styles = {
     },
   },
 
-  /* ================= PROGRAMS ================= */
+  /* ============== PROGRAMS ============== */
   programs: {
     section: { padding: "36px 0 8px" },
     title: {
@@ -202,8 +199,6 @@ const styles = {
       height: "100%",
       objectFit: "cover",
       display: "block",
-      filter: "none",
-      transition: "transform .3s ease",
     },
     navBtnBase: {
       position: "absolute",
@@ -220,7 +215,6 @@ const styles = {
       placeItems: "center",
       boxShadow: "0 10px 20px rgba(0,0,0,.22)",
       cursor: "pointer",
-      transition: "transform .2s ease, opacity .2s ease",
       opacity: 0.95,
     },
     navPrev: { left: -56 },
@@ -228,7 +222,7 @@ const styles = {
     navIcon: { display: "block" },
   },
 
-  /* ================= CTA (kartu seperti screenshot) ================= */
+  /* ============== CTA ============== */
   cta: {
     section: { padding: "36px 0 88px" },
     container: {
@@ -314,12 +308,11 @@ export default function ConsultantDetailContent({
       <section style={styles.hero.section}>
         <div style={styles.hero.bleed}>
           <div className="heroGrid" style={styles.hero.wrapper}>
-            <div style={styles.hero.curveWrap}>
+            <div style={styles.hero.curveWrap} aria-hidden="true">
               <svg
                 viewBox="0 0 1440 280"
                 preserveAspectRatio="none"
                 style={styles.hero.curveSvg}
-                aria-hidden="true"
               >
                 <path
                   d="M0,150 C 360,240 1080,40 1440,160 L1440,280 L0,280 Z"
@@ -330,10 +323,8 @@ export default function ConsultantDetailContent({
 
             <div style={styles.hero.copy}>
               <h1 style={styles.hero.hello}>
-                {(hero?.greet || "Hey there,").trim()}
-                <br />
-                {(hero?.title || "It's Consultant").trim()}
-                <br />
+                {(hero?.greet || "Hey there,").trim()} <br />
+                {(hero?.title || "It's Consultant").trim()} <br />
                 {(hero?.name || "Your Name").trim()}
               </h1>
               <div style={styles.hero.role}>
@@ -365,17 +356,19 @@ export default function ConsultantDetailContent({
       <section style={styles.about.section}>
         <div style={styles.sectionInner}>
           <div className="aboutGrid" style={styles.about.grid}>
-            <div style={styles.about.header}>
+            <div className="about-header" style={styles.about.header}>
               <h2 style={styles.about.title}>
                 {about?.title || `About Kak ${hero?.name || ""}!`}
               </h2>
+
               {aboutHtml ? (
                 <div
+                  className="about-intro"
                   style={styles.about.intro}
                   dangerouslySetInnerHTML={{ __html: aboutHtml }}
                 />
               ) : (
-                <p style={styles.about.intro}>
+                <p className="about-intro" style={styles.about.intro}>
                   {locale === "en"
                     ? FALLBACK_ABOUT_MESSAGE_EN
                     : FALLBACK_ABOUT_MESSAGE_ID}
@@ -383,8 +376,7 @@ export default function ConsultantDetailContent({
               )}
             </div>
 
-            <div style={styles.about.leftCard}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
+            <div className="about-left" style={styles.about.leftCard}>
               <img
                 src={about?.leftImg || "/images/fallback.jpg"}
                 alt="About left"
@@ -394,8 +386,7 @@ export default function ConsultantDetailContent({
               />
             </div>
 
-            <div style={styles.about.rightCard}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
+            <div className="about-right" style={styles.about.rightCard}>
               <img
                 src={about?.rightImg || "/images/fallback.jpg"}
                 alt="About right"
@@ -535,7 +526,6 @@ export default function ConsultantDetailContent({
                 </Link>
               </div>
             </div>
-
             <div style={styles.cta.artWrap}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
@@ -551,66 +541,58 @@ export default function ConsultantDetailContent({
       </section>
 
       <style jsx>{`
-        :global(.progSwiper .swiper-slide .progCard) {
-          transform: scale(0.96);
+        /* ===== ABOUT grid columns (dipindah dari inline agar bisa responsive) ===== */
+        .aboutGrid {
+          grid-template-columns: 1.25fr 1fr; /* desktop: 2 kolom */
         }
-        :global(.progSwiper .swiper-slide-active .progCard) {
-          transform: scale(1.05);
+        /* header hanya di kolom kiri pada desktop */
+        .about-header {
+          grid-column: 1 / 2;
+          grid-row: 1 / 2;
         }
-        :global(.progSwiper .swiper-slide .progCard img:hover) {
-          transform: scale(1.02);
+        .about-left {
+          grid-column: 1 / 2;
+          grid-row: 2 / 3;
         }
-        :global(.progSwiper img) {
-          filter: none !important;
-        }
-        :global(.prog-prev:hover),
-        :global(.prog-next:hover) {
-          transform: translateY(-50%) scale(1.05);
-          opacity: 1;
-        }
-
-        /* Link CTA tanpa underline */
-        :global(.ctaBtn),
-        :global(.ctaBtn:hover),
-        :global(.ctaBtn:focus),
-        :global(.ctaBtn:active),
-        :global(.ctaBtn:visited) {
-          text-decoration: none !important;
-        }
-        :global(.ctaBtn:hover) {
-          filter: brightness(1.06);
-          transform: translateY(-1px);
-        }
-        :global(.ctaBtn:active) {
-          filter: brightness(0.98);
-          transform: translateY(0);
+        .about-right {
+          grid-column: 2 / 3;
+          grid-row: 1 / span 2;
         }
 
-        /* Responsive */
+        /* Tablet & Mobile: collapse ke 1 kolom penuh (hilangin “space kanan”) */
         @media (max-width: 1024px) {
-          .heroGrid {
-            grid-template-columns: 1fr;
-            row-gap: 24px;
-            padding-bottom: 72px;
-          }
-        }
-        @media (max-width: 900px) {
           .aboutGrid {
             grid-template-columns: 1fr !important;
-            grid-template-rows: auto auto !important;
           }
-          :global(.ctaContainer) {
-            grid-template-columns: 1fr !important;
-            text-align: center;
+          .about-header,
+          .about-left,
+          .about-right {
+            grid-column: 1 / -1 !important;
+            grid-row: auto;
           }
         }
+
+        /* Mobile: sembunyikan gambar about */
         @media (max-width: 640px) {
-          :global(.prog-prev) {
-            left: -8px !important;
+          .about-right,
+          .about-left {
+            display: none !important;
           }
-          :global(.prog-next) {
-            right: -8px !important;
+          .about-header {
+            margin-bottom: 0 !important;
           }
+        }
+
+        /* Justify helper untuk konten rich text */
+        .about-intro {
+          text-align: justify;
+          text-justify: inter-word;
+          hyphens: auto;
+          -webkit-hyphens: auto;
+          overflow-wrap: anywhere;
+        }
+        .about-intro p {
+          margin: 0.4em 0;
         }
       `}</style>
     </>

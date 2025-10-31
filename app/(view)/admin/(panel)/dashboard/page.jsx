@@ -1,19 +1,11 @@
+// app/(view)/admin/dashboard/page.jsx
 "use client";
 
-import dynamic from "next/dynamic";
-import { useSearchParams } from "next/navigation";
+import { Suspense, lazy, useEffect } from "react";
 import Loading from "@/app/components/loading/LoadingImage";
 import useDashboardViewModel from "./useDashboardViewModel";
 
-// Client-only render untuk komponen berbasis AntD (hindari hydration mismatch)
-const DashboardContent = dynamic(() => import("./DashboardContent"), {
-  ssr: false,
-  loading: () => (
-    <div>
-      <Loading />
-    </div>
-  ),
-});
+const DashboardContentLazy = lazy(() => import("./DashboardContent"));
 
 const pickLocale = (v) => {
   const s = String(v || "id")
@@ -22,10 +14,24 @@ const pickLocale = (v) => {
   return s.startsWith("en") ? "en" : "id";
 };
 
-export default function Page() {
-  const sp = useSearchParams();
-  const locale = pickLocale(sp.get("lang"));
-  const vm = useDashboardViewModel({ locale });
+export default function DashboardPage({ searchParams }) {
+  const vm = useDashboardViewModel();
+  const initialLocale = pickLocale(searchParams?.lang);
 
-  return <DashboardContent vm={vm} />;
+  useEffect(() => {
+    vm.setLocale?.(initialLocale);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialLocale]);
+
+  return (
+    <Suspense
+      fallback={
+        <div className="page-wrap">
+          <Loading />
+        </div>
+      }
+    >
+      <DashboardContentLazy vm={vm} />
+    </Suspense>
+  );
 }

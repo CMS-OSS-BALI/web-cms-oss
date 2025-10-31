@@ -1,3 +1,4 @@
+// app/(view)/admin/college/useCollegeAViewModel.js
 "use client";
 
 import useSWR from "swr";
@@ -278,7 +279,7 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
     perPage,
     q, // query nama kampus
     country,
-    setLocale: () => {},
+    setLocale: () => {}, // sengaja no-op agar kompatibel dengan pola di page.jsx
     setPage,
     setPerPage,
     setQ, // set query nama

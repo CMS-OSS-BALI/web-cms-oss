@@ -15,11 +15,10 @@ const pickLocale = (v) => {
 
 export default function MasterDataPage({ searchParams }) {
   const vm = useMasterDataViewModel();
-
-  // set locale awal dari URL agar tidak mismatch saat hydration
   const initialLocale = pickLocale(searchParams?.lang);
+
   useEffect(() => {
-    vm.setLocale?.(initialLocale);
+    vm.setLocale(initialLocale);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialLocale]);
 

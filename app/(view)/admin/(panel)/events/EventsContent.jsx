@@ -1,1542 +1,1678 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
+import Image from "next/image";
 import dayjs from "dayjs";
 import {
-  Button,
-  Card,
-  Col,
   ConfigProvider,
-  Descriptions,
-  Divider,
-  Empty,
-  Form,
-  Image,
+  Button,
   Input,
-  InputNumber,
-  Modal,
-  notification,
-  Pagination,
-  Popconfirm,
-  Row,
   Select,
-  Space,
-  Spin,
-  Table,
   Tag,
-  Typography,
-  theme as antdTheme,
+  Tooltip,
+  Popconfirm,
+  Empty,
+  Skeleton,
+  Modal,
+  Spin,
+  notification,
+  Upload,
+  Form,
+  InputNumber,
   DatePicker,
 } from "antd";
-import { PlusOutlined, EyeOutlined, QrcodeOutlined } from "@ant-design/icons";
-import { QRCodeCanvas } from "qrcode.react";
-import HtmlEditor from "@/../app/components/editor/HtmlEditor";
-import { sanitizeHtml } from "@/app/utils/dompurify";
+import {
+  SearchOutlined,
+  FilterOutlined,
+  BarChartOutlined,
+  EyeOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  DownloadOutlined,
+  PlusOutlined,
+  LeftOutlined,
+  RightOutlined,
+} from "@ant-design/icons";
 
-const { Title, Text, Paragraph } = Typography;
-
-/* ===== Helpers ===== */
-const clean = (v) => (v === "" || v === undefined ? null : v);
-const fmtDate = (d) => (d ? dayjs(d).format("DD/MM/YYYY") : "—");
-const fmtTime = (d) => (d ? dayjs(d).format("HH.mm") : "—");
-const fmtDT = (d) => (d ? dayjs(d).format("DD/MM/YYYY HH.mm") : "—");
-const isHttpUrl = (s = "") => /^https?:\/\//i.test(s);
-const simplifyUrl = (u = "") => u.replace(/^https?:\/\//i, "");
+/* ===== helpers ===== */
+const fmtDateId = (dLike) => {
+  if (!dLike && dLike !== 0) return "—";
+  let ts = null;
+  if (typeof dLike === "number") ts = dLike < 1e12 ? dLike * 1000 : dLike;
+  else ts = new Date(String(dLike)).getTime();
+  if (Number.isNaN(ts)) return "—";
+  return new Date(ts).toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+};
 const fmtIDR = (n) =>
-  `Rp ${new Intl.NumberFormat("id-ID").format(Number(n || 0))}`;
-const PLACEHOLDER =
-  "https://images.unsplash.com/photo-1540575467063-178a50c2df87?q=80&w=1200&auto=format&fit=crop";
-
-/* normalize is_published */
-const normalizePub = (v) => {
-  if (v === undefined || v === null || v === "") return "";
-  if (v === true || v === "true") return "1";
-  if (v === false || v === "false") return "0";
-  if (v === "1" || v === "0") return v;
-  return "";
+  new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR" }).format(
+    Math.round(Number(n || 0))
+  );
+const toTs = (v) => {
+  if (v == null) return null;
+  const n = Number(v);
+  if (!Number.isNaN(n)) return n < 1e12 ? n * 1000 : n;
+  const t = new Date(String(v)).getTime();
+  return Number.isNaN(t) ? null : t;
 };
-
-/* ===== Theme ===== */
-const CARD_BG = "rgba(11, 18, 35, 0.94)";
-const darkCardStyle = {
-  background: CARD_BG,
-  border: "1px solid #2f3f60",
-  borderRadius: 16,
-  boxShadow: "0 10px 24px rgba(2,6,23,.35)",
+const numFormatter = (val) => {
+  if (val == null || val === "") return "";
+  const s = String(val).replace(/\D/g, "");
+  return s.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 };
+const numParser = (val) => (!val ? "" : val.replace(/\./g, ""));
+const isImg = (f) =>
+  ["image/jpeg", "image/png", "image/webp"].includes(f?.type || "");
+const tooBig = (f, mb = 10) => (f?.size || 0) / 1024 / 1024 > mb;
+const stripTags = (s) => (s ? String(s).replace(/<[^>]*>/g, "") : "");
 
-/* =========================================================
-   FORM MODAL
-========================================================= */
-function EventFormModal({
-  open,
-  mode,
-  initialValues,
-  saving,
-  onCancel,
-  onSubmit,
-}) {
-  const [form] = Form.useForm();
-  const isCreate = mode === "create";
-
-  useEffect(() => {
-    if (!open) return;
-    form.resetFields();
-    form.setFieldsValue({
-      is_published: false,
-      capacity: 0,
-      pricing_type: "FREE",
-      ticket_price: 0,
-      ...initialValues,
-      start_at: initialValues?.start_at ? dayjs(initialValues.start_at) : null,
-      end_at: initialValues?.end_at ? dayjs(initialValues.end_at) : null,
-    });
-  }, [open, initialValues, form]);
-
-  const pricingType = Form.useWatch("pricing_type", form) || "FREE";
-
-  useEffect(() => {
-    if (pricingType === "FREE") form.setFieldsValue({ ticket_price: 0 });
-  }, [pricingType, form]);
-
-  const handleFinish = (values) => {
-    const start = values.start_at?.toDate ? values.start_at.toDate() : null;
-    const end = values.end_at?.toDate ? values.end_at.toDate() : null;
-
-    if (!start || !end) {
-      Modal.error({
-        title: "Tanggal wajib",
-        content: "start_at dan end_at wajib diisi.",
-      });
-      return;
+/* normalizer supaya View & Edit konsisten */
+const normalizeEvent = (src = {}) => {
+  const get = (...keys) => {
+    for (const k of keys) {
+      if (k.includes(".")) {
+        const parts = k.split(".");
+        let cur = src;
+        let ok = true;
+        for (const p of parts) {
+          cur = cur?.[p];
+          if (cur == null) {
+            ok = false;
+            break;
+          }
+        }
+        if (ok) return cur;
+      } else if (src?.[k] != null) return src[k];
     }
-    if (end < start) {
-      Modal.error({
-        title: "Tanggal tidak valid",
-        content: "end_at harus ≥ start_at.",
-      });
-      return;
-    }
-
-    const payload = {
-      title: values.title?.trim(),
-      description: clean(values.description),
-      start_at: start.toISOString(),
-      end_at: end.toISOString(),
-      location: clean(values.location),
-      banner_url: clean(values.banner_url),
-      is_published: values.is_published === true,
-      capacity: Number(values.capacity ?? 0),
-      pricing_type: values.pricing_type,
-      ticket_price:
-        values.pricing_type === "PAID" ? Number(values.ticket_price || 0) : 0,
-    };
-
-    onSubmit(payload);
+    return undefined;
   };
 
-  const ctrlStyle = {
-    background: "#0e182c",
-    borderColor: "#2f3f60",
-    color: "#e6eaf2",
-    borderRadius: 12,
+  const pricing_type = String(
+    get("pricing_type", "pricingType") || "FREE"
+  ).toUpperCase();
+
+  return {
+    banner_url: get("banner_url", "bannerUrl", "banner", "image_url") || "",
+    title_id: get("title_id", "title") || "",
+    description_id: get("description_id", "description") || "",
+    start_at: get("start_at", "start_ts", "start"),
+    end_at: get("end_at", "end_ts", "end"),
+    location: get("location", "venue", "place") || "",
+    category_id: get("category_id"),
+    category_name:
+      get("category_name", "category.name", "category.label") || "—",
+    is_published: !!get("is_published", "published", "isPublished"),
+    capacity: get("capacity", "quota", "max_capacity") ?? null,
+    pricing_type,
+    ticket_price:
+      pricing_type === "PAID"
+        ? Number(get("ticket_price", "ticketPrice", "price") ?? 0)
+        : 0,
+    booth_price: Number(get("booth_price", "boothPrice") ?? 0),
+    booth_quota: get("booth_quota", "boothQuota") ?? null,
+  };
+};
+
+export default function EventsContent({ vm }) {
+  const viewModel = vm ?? require("./useEventsViewModel").default?.();
+
+  const TOKENS = {
+    shellW: "94%",
+    maxW: 1140,
+    blue: "#0b56c9",
+    text: "#0f172a",
+  };
+  const T = {
+    title: "Manajemen Event",
+    listTitle: "Daftar Event",
+    searchPh: "Search Event (judul/lokasi/kategori)",
+    action: "Aksi",
+    addNew: "Buat Event",
+    csv: "Download CSV",
   };
 
-  const reqText = (label) =>
-    isCreate
-      ? [{ required: true, whitespace: true, message: `${label} wajib diisi` }]
-      : [];
-  const reqNumber = (label) =>
-    isCreate
-      ? [
-          { required: true, message: `${label} wajib diisi` },
-          { type: "number", min: 0, message: `${label} harus ≥ 0` },
-        ]
-      : [];
-  const reqDate = (label) =>
-    isCreate
-      ? [
-          {
-            validator: (_, v) =>
-              v && dayjs.isDayjs(v) && v.isValid()
-                ? Promise.resolve()
-                : Promise.reject(new Error(`${label} wajib diisi`)),
-          },
-        ]
-      : [];
-  const priceRules =
-    pricingType === "PAID"
-      ? [
-          { required: true, message: "Ticket Price wajib diisi" },
-          { type: "number", min: 1, message: "Ticket Price harus ≥ 1" },
-        ]
-      : [];
+  const [api, contextHolder] = notification.useNotification();
+  const toast = {
+    ok: (m, d) =>
+      api.success({ message: m, description: d, placement: "topRight" }),
+    err: (m, d) =>
+      api.error({ message: m, description: d, placement: "topRight" }),
+  };
+
+  const rows = useMemo(() => viewModel?.events || [], [viewModel?.events]);
+  const [q, setQ] = useState(viewModel?.q || "");
+  const onSearchNow = () => {
+    viewModel?.setQ?.((q || "").trim());
+    viewModel?.setPage?.(1);
+  };
+
+  /* ===== view modal (mirror edit fields) ===== */
+  const [viewOpen, setViewOpen] = useState(false);
+  const [viewLoading, setViewLoading] = useState(false);
+  const [viewData, setViewData] = useState(null);
+
+  const openView = async (row) => {
+    setViewOpen(true);
+    setViewLoading(true);
+    try {
+      let payload = null;
+      if (typeof viewModel?.getEvent === "function") {
+        const { ok, data, error } = await viewModel.getEvent(row.id, {
+          includeCategory: true,
+        });
+        if (!ok) throw new Error(error || "Gagal memuat detail.");
+        payload = data || row;
+      } else {
+        const r = await fetch(`/api/events/${row.id}?include_category=1`);
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j?.error?.message || "Gagal memuat detail.");
+        payload = j?.data || row;
+      }
+      setViewData(normalizeEvent(payload));
+    } catch (e) {
+      toast.err("Gagal memuat detail event", e?.message);
+      setViewOpen(false);
+      setViewData(null);
+    } finally {
+      setViewLoading(false);
+    }
+  };
+
+  /* ===== create / edit ===== */
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [activeRow, setActiveRow] = useState(null);
+
+  const [formCreate] = Form.useForm();
+  const [formEdit] = Form.useForm();
+
+  const [imgPrevCreate, setImgPrevCreate] = useState("");
+  const [imgPrevEdit, setImgPrevEdit] = useState("");
+
+  const categoryOptions = viewModel?.categoryOptions || [];
+  const beforeImgCreate = (file) => {
+    if (!isImg(file) || tooBig(file, 10)) return Upload.LIST_IGNORE;
+    try {
+      setImgPrevCreate(URL.createObjectURL(file));
+    } catch {}
+    return false;
+  };
+  const beforeImgEdit = (file) => {
+    if (!isImg(file) || tooBig(file, 10)) return Upload.LIST_IGNORE;
+    try {
+      setImgPrevEdit(URL.createObjectURL(file));
+    } catch {}
+    return false;
+  };
+  const normList = (e) => (Array.isArray(e) ? e : e?.fileList || []);
+
+  /* create submit (tetap autoTranslate true jika endpointmu butuh) */
+  const submitCreate = async (values) => {
+    if (
+      !values.title_id ||
+      !values.start_at ||
+      !values.end_at ||
+      !values.location
+    ) {
+      toast.err("Form belum lengkap", "Judul, waktu, dan lokasi wajib diisi.");
+      return;
+    }
+    if (
+      values.pricing_type === "PAID" &&
+      (!values.ticket_price || Number(values.ticket_price) < 1)
+    ) {
+      toast.err("Harga tiket tidak valid", "Event berbayar butuh harga tiket.");
+      return;
+    }
+
+    const fd = new FormData();
+    const file = values.image?.[0]?.originFileObj || null;
+    if (file) fd.append("file", file);
+    fd.append("title_id", values.title_id);
+    if (values.description_id != null)
+      fd.append("description_id", String(values.description_id));
+    fd.append("start_at", dayjs(values.start_at).toDate().toISOString());
+    fd.append("end_at", dayjs(values.end_at).toDate().toISOString());
+    fd.append("location", values.location);
+    if (values.category_id)
+      fd.append("category_id", String(values.category_id));
+    fd.append("is_published", String(values.is_published === true));
+    if (values.capacity == null || values.capacity === "") {
+      // kirim kosong untuk null
+    } else {
+      fd.append("capacity", String(values.capacity));
+    }
+    fd.append("pricing_type", values.pricing_type || "FREE");
+    if (values.pricing_type === "PAID")
+      fd.append("ticket_price", String(values.ticket_price || 0));
+    fd.append("booth_price", String(values.booth_price ?? 0));
+    if (values.booth_quota == null || values.booth_quota === "") {
+      // kosong
+    } else {
+      fd.append("booth_quota", String(values.booth_quota));
+    }
+    // biarkan true jika server membaca ini, atau hapus kalau server auto.
+    fd.append("autoTranslate", "true");
+
+    let res;
+    if (typeof viewModel?.createEvent === "function") {
+      res = await viewModel.createEvent(fd);
+    } else {
+      const r = await fetch("/api/events", { method: "POST", body: fd });
+      const j = await r.json().catch(() => ({}));
+      res = r.ok
+        ? { ok: true, data: j?.data }
+        : { ok: false, error: j?.error?.message || "Gagal" };
+    }
+
+    if (!res?.ok)
+      return toast.err("Gagal membuat event", res?.error || "Periksa isian.");
+    toast.ok("Berhasil", "Event berhasil dibuat.");
+    setCreateOpen(false);
+    formCreate.resetFields();
+    setImgPrevCreate("");
+    viewModel?.refetch?.();
+    viewModel?.setPage?.(1);
+  };
+
+  /* edit submit —> HAPUS autoTranslate (tidak dikirim) */
+  const submitEdit = async (values) => {
+    if (!activeRow?.id) return;
+    if (!values.title_id) return toast.err("Judul (ID) wajib diisi");
+    if (!values.start_at || !values.end_at)
+      return toast.err("Waktu mulai & selesai wajib diisi");
+    if (
+      values.pricing_type === "PAID" &&
+      (!values.ticket_price || Number(values.ticket_price) < 1)
+    ) {
+      return toast.err(
+        "Harga tiket tidak valid",
+        "Event berbayar butuh harga tiket."
+      );
+    }
+
+    const fd = new FormData();
+    const file = values.image?.[0]?.originFileObj || null;
+    if (file) fd.append("file", file);
+    fd.append("title_id", values.title_id);
+    fd.append("description_id", String(values.description_id || ""));
+    fd.append("start_at", dayjs(values.start_at).toDate().toISOString());
+    fd.append("end_at", dayjs(values.end_at).toDate().toISOString());
+    fd.append("location", values.location || "");
+    fd.append("is_published", String(values.is_published === true));
+    if (values.capacity == null || values.capacity === "")
+      fd.append("capacity", "");
+    else fd.append("capacity", String(values.capacity));
+    fd.append("pricing_type", values.pricing_type || "FREE");
+    if (values.pricing_type === "PAID")
+      fd.append("ticket_price", String(values.ticket_price || 0));
+    else fd.append("ticket_price", "0");
+    fd.append("booth_price", String(values.booth_price ?? 0));
+    if (values.booth_quota == null || values.booth_quota === "")
+      fd.append("booth_quota", "");
+    else fd.append("booth_quota", String(values.booth_quota));
+    if (values.category_id)
+      fd.append("category_id", String(values.category_id));
+    else fd.append("category_id", ""); // kosongkan=disconnect
+
+    // ⚠️ Tidak mengirim autoTranslate apapun pada EDIT
+
+    let res;
+    if (typeof viewModel?.updateEvent === "function") {
+      res = await viewModel.updateEvent(activeRow.id, fd);
+    } else {
+      const r = await fetch(`/api/events/${activeRow.id}`, {
+        method: "PATCH",
+        body: fd,
+      });
+      const j = await r.json().catch(() => ({}));
+      res = r.ok
+        ? { ok: true, data: j?.data }
+        : { ok: false, error: j?.error?.message || "Gagal" };
+    }
+
+    if (!res?.ok)
+      return toast.err(
+        "Gagal memperbarui event",
+        res?.error || "Periksa isian."
+      );
+    toast.ok("Berhasil", "Perubahan berhasil disimpan.");
+    setEditOpen(false);
+    formEdit.resetFields();
+    setImgPrevEdit("");
+    viewModel?.refetch?.();
+  };
+
+  const openCreate = () => {
+    setCreateOpen(true);
+    formCreate.resetFields();
+    setImgPrevCreate("");
+  };
+
+  const openEdit = async (row) => {
+    setActiveRow(row);
+    setEditOpen(true);
+    setImgPrevEdit("");
+    setDetailLoading(true);
+
+    try {
+      let data = null;
+      if (typeof viewModel?.getEvent === "function") {
+        const {
+          ok,
+          data: d,
+          error,
+        } = await viewModel.getEvent(row.id, { includeCategory: true });
+        if (!ok) throw new Error(error || "Terjadi kesalahan");
+        data = d || row;
+      } else {
+        const r = await fetch(`/api/events/${row.id}?include_category=1`);
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j?.error?.message || "Error");
+        data = j?.data || row;
+      }
+
+      const ev = normalizeEvent(data);
+      formEdit.setFieldsValue({
+        title_id: ev.title_id || "",
+        description_id: ev.description_id || "",
+        start_at: ev.start_at ? dayjs(ev.start_at) : null,
+        end_at: ev.end_at ? dayjs(ev.end_at) : null,
+        location: ev.location || "",
+        category_id: ev.category_id || undefined,
+        is_published: !!ev.is_published,
+        capacity: ev.capacity ?? null,
+        pricing_type: ev.pricing_type || "FREE",
+        ticket_price: ev.ticket_price ?? 0,
+        booth_price: ev.booth_price ?? 0,
+        booth_quota: ev.booth_quota ?? null,
+      });
+      setImgPrevEdit(ev.banner_url || "");
+    } catch (e) {
+      setEditOpen(false);
+      toast.err("Gagal memuat detail event", e?.message || "Terjadi kesalahan");
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const pricingCreate = Form.useWatch("pricing_type", formCreate);
+  const pricingEdit = Form.useWatch("pricing_type", formEdit);
+
+  const goPrev = () =>
+    viewModel?.setPage?.(Math.max(1, (viewModel?.page || 1) - 1));
+  const goNext = () => viewModel?.setPage?.((viewModel?.page || 1) + 1);
+  const statusPill = (s0, e0) => {
+    const now = Date.now();
+    const s = toTs(s0);
+    const e = toTs(e0);
+    if (s && e) {
+      if (now < s) return <Tag color="blue">UPCOMING</Tag>;
+      if (now >= s && now <= e) return <Tag color="green">ONGOING</Tag>;
+      if (now > e) return <Tag color="default">DONE</Tag>;
+    }
+    return <Tag>—</Tag>;
+  };
+
+  const { shellW, maxW, blue, text } = TOKENS;
 
   return (
-    <Modal
-      title={mode === "edit" ? "Edit Event" : "Add Event"}
-      open={open}
-      centered
-      width={900}
-      onCancel={onCancel}
-      footer={
-        <Space style={{ width: "100%", justifyContent: "flex-end" }}>
-          <Button shape="round" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button
-            shape="round"
-            type="primary"
-            loading={saving}
-            onClick={() => form.submit()}
-          >
-            {mode === "edit" ? "Update" : "Save"}
-          </Button>
-        </Space>
-      }
-      styles={{
-        content: { ...darkCardStyle, borderRadius: 16 },
-        header: {
-          background: "transparent",
-          borderBottom: "1px solid #2f3f60",
+    <ConfigProvider
+      componentSize="middle"
+      theme={{
+        token: {
+          colorPrimary: blue,
+          colorText: text,
+          fontFamily:
+            '"Poppins", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
+          borderRadius: 12,
+          fontSize: 13,
+          controlHeight: 36,
         },
-        body: { padding: 0 },
-        mask: { backgroundColor: "rgba(0,0,0,.6)" },
+        components: { Button: { borderRadius: 10 } },
       }}
-      destroyOnHidden
     >
-      <div className="form-scroll">
-        <div style={{ padding: 16 }}>
-          <Form layout="vertical" form={form} onFinish={handleFinish}>
-            <Row gutter={[12, 8]}>
-              <Col xs={24} md={12}>
-                <Form.Item name="title" label="Title" rules={reqText("Title")}>
-                  <Input maxLength={191} style={ctrlStyle} />
-                </Form.Item>
-              </Col>
+      {contextHolder}
 
-              <Col xs={24} md={12}>
-                <Form.Item
-                  name="capacity"
-                  label="Ticket Supply (Capacity)"
-                  rules={reqNumber("Capacity")}
+      <style jsx global>{`
+        .landscape-uploader.ant-upload.ant-upload-select-picture-card {
+          width: 320px !important;
+          height: 180px !important;
+          padding: 0 !important;
+        }
+        .landscape-uploader .ant-upload {
+          width: 100% !important;
+          height: 100% !important;
+        }
+      `}</style>
+
+      <section
+        style={{
+          width: "100%",
+          position: "relative",
+          minHeight: "100dvh",
+          display: "flex",
+          alignItems: "flex-start",
+          padding: "56px 0",
+          overflowX: "hidden",
+        }}
+      >
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: 0,
+            background:
+              "linear-gradient(180deg, #f8fbff 0%, #eef5ff 40%, #ffffff 100%)",
+            zIndex: 0,
+          }}
+        />
+        <div
+          style={{
+            width: shellW,
+            maxWidth: maxW,
+            margin: "0 auto",
+            paddingTop: 12,
+            position: "relative",
+            zIndex: 1,
+          }}
+        >
+          {/* Header */}
+          <div style={styles.cardOuter}>
+            <div style={styles.cardHeaderBar} />
+            <div style={styles.cardInner}>
+              <div style={styles.cardTitle}>{T.title}</div>
+              <div style={styles.totalBadgeWrap}>
+                <div style={styles.totalBadgeLabel}>Total Event</div>
+                <div style={styles.totalBadgeValue}>
+                  {viewModel?.total ?? rows.length ?? "—"}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Stats */}
+          <div style={styles.statsRow}>
+            <div style={styles.statCard}>
+              <div style={styles.statIconBox}>
+                <Image
+                  src="/simbolstudent.png"
+                  alt="Student"
+                  width={28}
+                  height={28}
+                  style={styles.statIconImg}
+                  priority
+                />
+              </div>
+              <div style={styles.statTitle}>Total Student</div>
+              <div style={styles.statValue}>
+                {viewModel?.totalStudentsLoading
+                  ? "…"
+                  : viewModel?.totalStudents ?? "—"}
+              </div>
+            </div>
+
+            <div style={styles.statCard}>
+              <div style={styles.statIconBox}>
+                <Image
+                  src="/simbolrep.png"
+                  alt="Rep"
+                  width={28}
+                  height={28}
+                  style={styles.statIconImg}
+                  priority
+                />
+              </div>
+              <div style={styles.statTitle}>Total Representative</div>
+              <div style={styles.statValue}>{viewModel?.totalReps ?? "—"}</div>
+            </div>
+
+            <div style={styles.statCard}>
+              <div style={styles.statIconBox}>
+                <Image
+                  src="/revenue.png"
+                  alt="Revenue"
+                  width={28}
+                  height={28}
+                  style={styles.statIconImg}
+                  priority
+                />
+              </div>
+              <div style={styles.statTitle}>Total Revenue</div>
+              <div
+                style={styles.statValue}
+                title="Estimasi dari booth sold x booth price"
+              >
+                {fmtIDR(viewModel?.totalRevenue || 0)}
+              </div>
+            </div>
+          </div>
+
+          {/* Charts */}
+          <div style={{ ...styles.cardOuter, marginTop: 12 }}>
+            <div style={{ ...styles.cardInner, paddingTop: 14 }}>
+              <div style={styles.sectionHeader}>
+                <div style={styles.sectionTitle}>Analisis Event</div>
+                <Button
+                  size="small"
+                  icon={<BarChartOutlined />}
+                  onClick={viewModel?.toggleCharts}
                 >
-                  <InputNumber
-                    min={0}
-                    step={1}
-                    style={{ width: "100%", ...ctrlStyle }}
-                  />
-                </Form.Item>
-              </Col>
+                  {viewModel?.showCharts
+                    ? "Sembunyikan Grafik"
+                    : "Tampilkan Grafik"}
+                </Button>
+              </div>
 
-              <Col xs={24} md={12}>
+              {!viewModel?.showCharts ? null : (
+                <div style={styles.chartsGrid}>
+                  <div style={styles.chartCard}>
+                    <div style={styles.chartTitle}>Student</div>
+                    {viewModel?.chartLoading ? (
+                      <Skeleton active paragraph={{ rows: 3 }} />
+                    ) : (viewModel?.chartStudent || []).length === 0 ? (
+                      <Empty description="Belum ada data" />
+                    ) : (
+                      <div style={styles.barsArea}>
+                        {viewModel.chartStudent.map((it) => (
+                          <div key={it.id} style={styles.barItem}>
+                            <div style={styles.barCol}>
+                              <div
+                                style={{
+                                  ...styles.barInner,
+                                  height: `${Math.min(100, it.percent)}%`,
+                                }}
+                                title={`${it.label}: ${it.value}`}
+                              />
+                            </div>
+                            <div style={styles.barLabel} title={it.label}>
+                              {it.short}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={styles.chartCard}>
+                    <div style={styles.chartTitle}>Representative</div>
+                    {viewModel?.chartLoading ? (
+                      <Skeleton active paragraph={{ rows: 3 }} />
+                    ) : (viewModel?.chartRep || []).length === 0 ? (
+                      <Empty description="Belum ada data" />
+                    ) : (
+                      <div style={styles.barsArea}>
+                        {viewModel.chartRep.map((it) => (
+                          <div key={it.id} style={styles.barItem}>
+                            <div style={styles.barCol}>
+                              <div
+                                style={{
+                                  ...styles.barInnerAlt,
+                                  height: `${Math.min(100, it.percent)}%`,
+                                }}
+                                title={`${it.label}: ${it.value}`}
+                              />
+                            </div>
+                            <div style={styles.barLabel} title={it.label}>
+                              {it.short}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Filters */}
+          <div style={{ ...styles.cardOuter, marginTop: 12 }}>
+            <div style={{ ...styles.cardInner, paddingTop: 14 }}>
+              <div style={styles.filtersRowBig}>
+                <Input
+                  allowClear
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  onPressEnter={onSearchNow}
+                  placeholder={T.searchPh}
+                  prefix={<SearchOutlined />}
+                  style={styles.searchInput}
+                />
+                <Select
+                  value={viewModel?.year ?? "ALL"}
+                  onChange={(v) => {
+                    viewModel?.setYear?.(v === "ALL" ? null : Number(v));
+                    viewModel?.setPage?.(1);
+                  }}
+                  options={[
+                    { value: "ALL", label: "Semua Tahun" },
+                    ...(viewModel?.yearOptions || []).map((y) => ({
+                      value: String(y),
+                      label: String(y),
+                    })),
+                  ]}
+                  style={{ minWidth: 140 }}
+                  suffixIcon={<FilterOutlined />}
+                />
+                <Select
+                  showSearch
+                  allowClear
+                  placeholder="Kategori"
+                  value={viewModel?.categoryId || undefined}
+                  onChange={(v) => {
+                    viewModel?.setCategoryId?.(v || null);
+                    viewModel?.setPage?.(1);
+                  }}
+                  filterOption={(input, opt) =>
+                    String(opt?.label ?? "")
+                      .toLowerCase()
+                      .includes(String(input).toLowerCase())
+                  }
+                  options={categoryOptions}
+                  style={{ minWidth: 220, width: "100%" }}
+                />
+                <Button
+                  icon={<DownloadOutlined />}
+                  onClick={() =>
+                    viewModel
+                      ?.downloadCSV?.()
+                      .catch((e) => toast.err("Gagal unduh CSV", e?.message))
+                  }
+                >
+                  {T.csv}
+                </Button>
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={openCreate}
+                >
+                  {T.addNew}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Table */}
+          <div style={{ ...styles.cardOuter, marginTop: 12 }}>
+            <div style={{ ...styles.cardInner, paddingTop: 14 }}>
+              <div style={styles.sectionHeader}>
+                <div style={styles.sectionTitle}>{T.listTitle}</div>
+              </div>
+
+              <div style={{ overflowX: "auto" }}>
+                <div style={styles.tableHeader}>
+                  <div style={{ ...styles.thLeft, paddingLeft: 8 }}>
+                    Nama Event
+                  </div>
+                  <div style={styles.thCenter}>Status</div>
+                  <div style={styles.thCenter}>Tanggal</div>
+                  <div style={styles.thCenter}>Tempat</div>
+                  <div style={styles.thCenter}>Kapasitas</div>
+                  <div style={styles.thCenter}>Total Rep</div>
+                  <div style={styles.thCenter}>{T.action}</div>
+                </div>
+
+                <div style={{ display: "grid", gap: 8, marginTop: 4 }}>
+                  {viewModel?.loading ? (
+                    <div style={{ padding: "8px 4px" }}>
+                      <Skeleton active paragraph={{ rows: 3 }} />
+                    </div>
+                  ) : rows.length === 0 ? (
+                    <div
+                      style={{
+                        display: "grid",
+                        placeItems: "center",
+                        padding: "20px 0",
+                      }}
+                    >
+                      <Empty description="Belum ada data" />
+                    </div>
+                  ) : (
+                    rows.map((r) => (
+                      <div key={r.id} style={styles.row}>
+                        <div style={styles.colName}>
+                          <div style={styles.nameWrap}>
+                            <div style={styles.nameText}>
+                              {r.title || "(tanpa judul)"}
+                            </div>
+                            <div style={styles.subDate}>
+                              {r.category_name
+                                ? `Kategori: ${r.category_name}`
+                                : "—"}
+                            </div>
+                          </div>
+                        </div>
+                        <div style={styles.colCenter}>
+                          {statusPill(r.start_ts, r.end_ts)}
+                        </div>
+                        <div style={styles.colCenter}>
+                          <span style={styles.cellEllipsis}>
+                            {fmtDateId(r.start_ts)}
+                          </span>
+                        </div>
+                        <div style={styles.colCenter}>
+                          <span style={styles.cellEllipsis}>
+                            {r.location || "—"}
+                          </span>
+                        </div>
+                        <div style={styles.colCenter}>
+                          <span style={styles.cellEllipsis}>
+                            {r.capacity == null ? "∞" : r.capacity}
+                          </span>
+                        </div>
+                        <div style={styles.colCenter}>
+                          <span style={styles.cellEllipsis}>
+                            {r.booth_sold_count ?? 0}
+                          </span>
+                        </div>
+                        <div style={styles.colActionsCenter}>
+                          <Tooltip title="Lihat">
+                            <Button
+                              size="small"
+                              icon={<EyeOutlined />}
+                              onClick={() => openView(r)}
+                              style={styles.iconBtn}
+                            />
+                          </Tooltip>
+                          <Tooltip title="Edit">
+                            <Button
+                              size="small"
+                              icon={<EditOutlined />}
+                              onClick={() => openEdit(r)}
+                              style={styles.iconBtn}
+                            />
+                          </Tooltip>
+                          <Tooltip title="Hapus">
+                            <Popconfirm
+                              title="Hapus event ini?"
+                              okText="Ya"
+                              cancelText="Batal"
+                              onConfirm={async () => {
+                                const res = await viewModel?.deleteEvent?.(
+                                  r.id
+                                );
+                                if (!res?.ok)
+                                  return toast.err(
+                                    "Gagal menghapus",
+                                    res?.error
+                                  );
+                                toast.ok(
+                                  "Terhapus",
+                                  "Event dihapus (soft delete)."
+                                );
+                                viewModel?.refetch?.();
+                              }}
+                            >
+                              <Button
+                                size="small"
+                                danger
+                                icon={<DeleteOutlined />}
+                                loading={viewModel?.opLoading}
+                                style={styles.iconBtn}
+                              />
+                            </Popconfirm>
+                          </Tooltip>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div style={styles.pagination}>
+                <Button
+                  icon={<LeftOutlined />}
+                  onClick={goPrev}
+                  disabled={(viewModel?.page || 1) <= 1 || viewModel?.loading}
+                />
+                <div style={styles.pageText}>
+                  Page {viewModel?.page || 1}
+                  {viewModel?.totalPages ? ` of ${viewModel.totalPages}` : ""}
+                </div>
+                <Button
+                  icon={<RightOutlined />}
+                  onClick={goNext}
+                  disabled={
+                    viewModel?.loading ||
+                    (viewModel?.totalPages
+                      ? (viewModel?.page || 1) >= viewModel.totalPages
+                      : rows.length < (viewModel?.perPage || 10))
+                  }
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ===== Create Modal ===== */}
+      <Modal
+        open={createOpen}
+        onCancel={() => {
+          setCreateOpen(false);
+          setImgPrevCreate("");
+          formCreate.resetFields();
+        }}
+        footer={null}
+        width={920}
+        destroyOnClose
+        title={null}
+      >
+        <div style={styles.modalShell}>
+          <Form layout="vertical" form={formCreate}>
+            <div style={styles.coverWrap}>
+              <Form.Item
+                name="image"
+                valuePropName="fileList"
+                getValueFromEvent={normList}
+                noStyle
+              >
+                <Upload
+                  accept="image/*"
+                  listType="picture-card"
+                  showUploadList={false}
+                  beforeUpload={beforeImgCreate}
+                  className="landscape-uploader"
+                >
+                  <div style={styles.coverBox}>
+                    {imgPrevCreate ? (
+                      <img
+                        src={imgPrevCreate}
+                        alt="cover"
+                        style={styles.coverImg}
+                      />
+                    ) : (
+                      <div style={styles.coverPlaceholder}>+ Banner (16:9)</div>
+                    )}
+                  </div>
+                </Upload>
+              </Form.Item>
+            </div>
+
+            <Form.Item
+              label="Judul (Bahasa Indonesia)"
+              name="title_id"
+              rules={[{ required: true, message: "Judul wajib diisi" }]}
+            >
+              <Input placeholder="cth: OSS Education Fair 2025" />
+            </Form.Item>
+
+            <Form.Item
+              label="Deskripsi (Bahasa Indonesia)"
+              name="description_id"
+            >
+              <Input.TextArea rows={3} placeholder="Deskripsi singkat..." />
+            </Form.Item>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 8,
+              }}
+            >
+              <Form.Item
+                label="Mulai"
+                name="start_at"
+                rules={[{ required: true, message: "Waktu mulai wajib diisi" }]}
+              >
+                <DatePicker showTime style={{ width: "100%" }} />
+              </Form.Item>
+              <Form.Item
+                label="Selesai"
+                name="end_at"
+                rules={[
+                  { required: true, message: "Waktu selesai wajib diisi" },
+                ]}
+              >
+                <DatePicker showTime style={{ width: "100%" }} />
+              </Form.Item>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 8,
+              }}
+            >
+              <Form.Item
+                label="Lokasi"
+                name="location"
+                rules={[{ required: true, message: "Lokasi wajib diisi" }]}
+              >
+                <Input placeholder="cth: Bali Nusa Dua Convention Center" />
+              </Form.Item>
+              <Form.Item label="Kategori" name="category_id">
+                <Select
+                  allowClear
+                  showSearch
+                  placeholder="Pilih kategori"
+                  options={categoryOptions}
+                />
+              </Form.Item>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr 1fr",
+                gap: 8,
+              }}
+            >
+              <Form.Item label="Capacity" name="capacity">
+                <InputNumber
+                  style={{ width: "100%" }}
+                  min={0}
+                  controls={false}
+                />
+              </Form.Item>
+              <Form.Item
+                label="Tipe Tiket"
+                name="pricing_type"
+                initialValue="FREE"
+              >
+                <Select
+                  options={[
+                    { value: "FREE", label: "FREE" },
+                    { value: "PAID", label: "PAID" },
+                  ]}
+                />
+              </Form.Item>
+              <Form.Item
+                label="Harga Tiket"
+                name="ticket_price"
+                tooltip="Wajib diisi bila PAID"
+              >
+                <InputNumber
+                  style={{ width: "100%" }}
+                  min={0}
+                  controls={false}
+                  formatter={numFormatter}
+                  parser={numParser}
+                  disabled={(pricingCreate || "FREE") !== "PAID"}
+                  placeholder="cth: 150.000"
+                />
+              </Form.Item>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr 1fr",
+                gap: 8,
+              }}
+            >
+              <Form.Item
+                label="Booth Price"
+                name="booth_price"
+                initialValue={0}
+              >
+                <InputNumber
+                  style={{ width: "100%" }}
+                  min={0}
+                  controls={false}
+                  formatter={numFormatter}
+                  parser={numParser}
+                />
+              </Form.Item>
+              <Form.Item label="Booth Quota" name="booth_quota">
+                <InputNumber
+                  style={{ width: "100%" }}
+                  min={0}
+                  controls={false}
+                />
+              </Form.Item>
+              <Form.Item
+                label="Published"
+                name="is_published"
+                initialValue={false}
+              >
+                <Select
+                  options={[
+                    { value: true, label: "Published" },
+                    { value: false, label: "Draft" },
+                  ]}
+                />
+              </Form.Item>
+            </div>
+
+            <div style={styles.modalFooter}>
+              <Button
+                type="primary"
+                size="large"
+                onClick={() => {
+                  formCreate
+                    .validateFields()
+                    .then((v) => submitCreate(v))
+                    .catch(() => {});
+                }}
+                style={styles.saveBtn}
+              >
+                Simpan
+              </Button>
+            </div>
+          </Form>
+        </div>
+      </Modal>
+
+      {/* ===== Edit Modal (tanpa Auto-translate) ===== */}
+      <Modal
+        open={editOpen}
+        onCancel={() => {
+          setEditOpen(false);
+          setImgPrevEdit("");
+          formEdit.resetFields();
+        }}
+        footer={null}
+        width={960}
+        destroyOnClose
+        title={null}
+      >
+        <div style={styles.modalShell}>
+          <Spin spinning={detailLoading}>
+            <Form layout="vertical" form={formEdit}>
+              <div style={styles.coverWrap}>
                 <Form.Item
+                  name="image"
+                  valuePropName="fileList"
+                  getValueFromEvent={normList}
+                  noStyle
+                >
+                  <Upload
+                    accept="image/*"
+                    listType="picture-card"
+                    showUploadList={false}
+                    beforeUpload={beforeImgEdit}
+                    className="landscape-uploader"
+                  >
+                    <div style={styles.coverBox}>
+                      {imgPrevEdit ? (
+                        <img
+                          src={imgPrevEdit}
+                          alt="cover"
+                          style={styles.coverImg}
+                        />
+                      ) : (
+                        <div style={styles.coverPlaceholder}>
+                          + Banner (16:9)
+                        </div>
+                      )}
+                    </div>
+                  </Upload>
+                </Form.Item>
+              </div>
+
+              <Form.Item
+                label="Judul (Bahasa Indonesia)"
+                name="title_id"
+                rules={[{ required: true, message: "Judul wajib diisi" }]}
+              >
+                <Input placeholder="cth: OSS Education Fair 2025" />
+              </Form.Item>
+
+              <Form.Item
+                label="Deskripsi (Bahasa Indonesia)"
+                name="description_id"
+              >
+                <Input.TextArea rows={3} placeholder="Deskripsi singkat..." />
+              </Form.Item>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 8,
+                }}
+              >
+                <Form.Item
+                  label="Mulai"
                   name="start_at"
-                  label="Start At"
-                  rules={reqDate("Start At")}
-                  validateTrigger={["onChange", "onBlur"]}
+                  rules={[
+                    { required: true, message: "Waktu mulai wajib diisi" },
+                  ]}
                 >
-                  <DatePicker
-                    showTime
-                    style={{ width: "100%", ...ctrlStyle }}
-                  />
+                  <DatePicker showTime style={{ width: "100%" }} />
                 </Form.Item>
-              </Col>
-
-              <Col xs={24} md={12}>
                 <Form.Item
+                  label="Selesai"
                   name="end_at"
-                  label="End At"
-                  rules={reqDate("End At")}
-                  validateTrigger={["onChange", "onBlur"]}
+                  rules={[
+                    { required: true, message: "Waktu selesai wajib diisi" },
+                  ]}
                 >
-                  <DatePicker
-                    showTime
-                    style={{ width: "100%", ...ctrlStyle }}
+                  <DatePicker showTime style={{ width: "100%" }} />
+                </Form.Item>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 8,
+                }}
+              >
+                <Form.Item label="Lokasi" name="location">
+                  <Input placeholder="cth: Bali Nusa Dua Convention Center" />
+                </Form.Item>
+                <Form.Item label="Kategori" name="category_id">
+                  <Select
+                    allowClear
+                    showSearch
+                    placeholder="Pilih kategori"
+                    options={categoryOptions}
                   />
                 </Form.Item>
-              </Col>
+              </div>
 
-              <Col span={24}>
-                <Form.Item
-                  name="location"
-                  label="Location"
-                  rules={reqText("Location")}
-                >
-                  <Input style={ctrlStyle} />
-                </Form.Item>
-              </Col>
-
-              <Col span={24}>
-                <Form.Item
-                  name="banner_url"
-                  label="Banner URL"
-                  rules={reqText("Banner URL")}
-                >
-                  <Input placeholder="https://..." style={ctrlStyle} />
-                </Form.Item>
-              </Col>
-
-              <Col span={24}>
-                <Form.Item
-                  name="description"
-                  label="Description"
-                  rules={reqText("Description")}
-                >
-                  <HtmlEditor
-                    className="editor-dark"
-                    variant="mini"
-                    minHeight={200}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr 1fr",
+                  gap: 8,
+                }}
+              >
+                <Form.Item label="Capacity" name="capacity">
+                  <InputNumber
+                    style={{ width: "100%" }}
+                    min={0}
+                    controls={false}
                   />
                 </Form.Item>
-              </Col>
-
-              <Col xs={24} md={12}>
-                <Form.Item
-                  name="pricing_type"
-                  label="Pricing"
-                  rules={reqText("Pricing")}
-                >
+                <Form.Item label="Tipe Tiket" name="pricing_type">
                   <Select
                     options={[
-                      { value: "FREE", label: "Free" },
-                      { value: "PAID", label: "Paid" },
+                      { value: "FREE", label: "FREE" },
+                      { value: "PAID", label: "PAID" },
                     ]}
-                    style={ctrlStyle}
                   />
                 </Form.Item>
-              </Col>
-
-              <Col xs={24} md={12}>
-                <Form.Item
-                  name="ticket_price"
-                  label="Ticket Price"
-                  tooltip={
-                    pricingType === "FREE"
-                      ? "Free event — harga otomatis 0"
-                      : "Isi harga tiket (Rp)"
-                  }
-                  rules={priceRules}
-                >
+                <Form.Item label="Harga Tiket" name="ticket_price">
                   <InputNumber
-                    min={pricingType === "FREE" ? 0 : 1}
-                    step={1000}
-                    style={{ width: "100%", ...ctrlStyle }}
-                    disabled={pricingType === "FREE"}
-                    formatter={(v) =>
-                      pricingType === "FREE"
-                        ? "FREE"
-                        : v === undefined || v === null || v === ""
-                        ? ""
-                        : new Intl.NumberFormat("id-ID").format(Number(v))
-                    }
-                    parser={(v) =>
-                      pricingType === "FREE"
-                        ? "0"
-                        : String(v || "")
-                            .replace(/\./g, "")
-                            .replace(/,/g, "")
-                    }
+                    style={{ width: "100%" }}
+                    min={0}
+                    controls={false}
+                    formatter={numFormatter}
+                    parser={numParser}
+                    disabled={(pricingEdit || "FREE") !== "PAID"}
                   />
                 </Form.Item>
-              </Col>
+              </div>
 
-              <Col span={24}>
-                <Form.Item name="is_published" label="Status">
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr 1fr",
+                  gap: 8,
+                }}
+              >
+                <Form.Item label="Booth Price" name="booth_price">
+                  <InputNumber
+                    style={{ width: "100%" }}
+                    min={0}
+                    controls={false}
+                    formatter={numFormatter}
+                    parser={numParser}
+                  />
+                </Form.Item>
+                <Form.Item label="Booth Quota" name="booth_quota">
+                  <InputNumber
+                    style={{ width: "100%" }}
+                    min={0}
+                    controls={false}
+                  />
+                </Form.Item>
+                <Form.Item label="Published" name="is_published">
                   <Select
                     options={[
                       { value: true, label: "Published" },
                       { value: false, label: "Draft" },
                     ]}
-                    style={ctrlStyle}
                   />
                 </Form.Item>
-              </Col>
-            </Row>
-          </Form>
+              </div>
+
+              <div style={styles.modalFooter}>
+                <Button
+                  type="primary"
+                  size="large"
+                  onClick={() => {
+                    formEdit
+                      .validateFields()
+                      .then((v) => submitEdit(v))
+                      .catch(() => {});
+                  }}
+                  style={styles.saveBtn}
+                >
+                  Simpan Perubahan
+                </Button>
+              </div>
+            </Form>
+          </Spin>
         </div>
-      </div>
-    </Modal>
-  );
-}
+      </Modal>
 
-/* =========================================================
-   VIEW MODAL (Detail + Registrations)
-========================================================= */
-function EventViewModal({ open, data, onClose }) {
-  // Detail
-  const rows = [];
-  if (data?.description)
-    rows.push({
-      label: "Description",
-      content: (
-        <div
-          dangerouslySetInnerHTML={{ __html: sanitizeHtml(data.description ?? "") }}
-        />
-      ),
-    });
-  rows.push({
-    label: "Schedule",
-    content:
-      data?.start_at || data?.end_at ? (
-        <div style={{ display: "grid" }}>
-          <span>
-            Date: {fmtDate(data.start_at)} – {fmtDate(data.end_at)}
-          </span>
-          <span>
-            Time: {fmtTime(data.start_at)} – {fmtTime(data.end_at)}
-          </span>
-        </div>
-      ) : (
-        "—"
-      ),
-  });
-  if (data?.location) rows.push({ label: "Location", content: data.location });
-
-  const sold = Number(data?.sold ?? data?.tickets_sold ?? 0);
-  const remaining =
-    data?.remaining != null
-      ? Number(data.remaining)
-      : Math.max(0, Number(data?.capacity ?? 0) - sold);
-
-  rows.push({
-    label: "Ticket Price",
-    content:
-      data?.pricing_type === "PAID" ? fmtIDR(data?.ticket_price) : "FREE",
-  });
-  if (data?.capacity != null)
-    rows.push({ label: "Capacity", content: data.capacity });
-  rows.push({ label: "Sold", content: sold });
-  rows.push({ label: "Remaining", content: remaining });
-
-  // Registrations
-  const [tLoading, setTLoading] = useState(false);
-  const [tRows, setTRows] = useState([]);
-  const [tPage, setTPage] = useState(1);
-  const [tPerPage, setTPerPage] = useState(10);
-  const [tTotal, setTTotal] = useState(0);
-  const [tQ, setTQ] = useState("");
-  const [tStatus, setTStatus] = useState(""); // PENDING|CONFIRMED|CANCELLED (opsional)
-  const [tCheckin, setTCheckin] = useState(""); // CHECKED_IN|NOT_CHECKED_IN
-  const [exporting, setExporting] = useState(false);
-  const [api, contextHolder] = notification.useNotification();
-
-  const checkinColor = (c) => (c === "CHECKED_IN" ? "success" : "default");
-
-  async function fetchTickets() {
-    if (!open || !data?.id) return;
-    setTLoading(true);
-    try {
-      const params = new URLSearchParams({
-        event_id: data.id,
-        page: String(tPage),
-        perPage: String(tPerPage),
-      });
-      if (tQ) params.set("q", tQ);
-      if (tStatus) params.set("status", tStatus);
-      if (tCheckin) params.set("checkin_status", tCheckin);
-
-      const res = await fetch(`/api/tickets?${params.toString()}`, {
-        cache: "no-store",
-      });
-      const json = await res.json();
-      setTRows(json?.data || []);
-      setTTotal(Number(json?.total || 0));
-    } catch (e) {
-      api.error({
-        message: "Gagal memuat registrations",
-        description: e?.message || "Coba lagi.",
-        placement: "topRight",
-      });
-    } finally {
-      setTLoading(false);
-    }
-  }
-
-  async function exportRegistrations() {
-    if (!data?.id) return;
-    setExporting(true);
-    try {
-      // kumpulkan SEMUA data sesuai filter aktif
-      const base = new URLSearchParams({ event_id: data.id });
-      if (tQ) base.set("q", tQ);
-      if (tStatus) base.set("status", tStatus);
-      if (tCheckin) base.set("checkin_status", tCheckin);
-
-      let all = [];
-      let page = 1;
-      const per = 200; // batch besar
-      while (true) {
-        const params = new URLSearchParams(base);
-        params.set("page", String(page));
-        params.set("perPage", String(per));
-        const res = await fetch(`/api/tickets?${params.toString()}`, {
-          cache: "no-store",
-        });
-        const json = await res.json();
-        const batch = json?.data || [];
-        all = all.concat(batch);
-        const total = Number(json?.total || all.length);
-        if (all.length >= total || batch.length === 0) break;
-        page += 1;
-      }
-
-      const headers = [
-        "No",
-        "Name",
-        "Email",
-        "WA",
-        "Status Check-in",
-        "Jam Check-in",
-      ];
-      const asWaText = (v) => (v ? `="${String(v).trim()}"` : "");
-      const rows = all.map((r, i) => ({
-        No: i + 1,
-        Name: r.full_name || "",
-        Email: r.email || "",
-        WA: asWaText(r.whatsapp), // ← paksa Excel jadi teks
-        "Status Check-in": r.checkin_status || "",
-        "Jam Check-in": r.checked_in_at
-          ? dayjs(r.checked_in_at).format("DD/MM/YYYY HH.mm")
-          : "",
-      }));
-
-      const guessDelimiter = () => {
-        try {
-          const s = (1.1).toLocaleString();
-          return s.includes(",") ? ";" : ",";
-        } catch {
-          return ";";
-        }
-      };
-      const DELIM = guessDelimiter();
-
-      const esc = (v) => {
-        const s = String(v ?? "");
-        // perlu quote kalau ada tanda kutip, baris baru, atau delimiter aktif
-        return s.includes('"') || s.includes("\n") || s.includes(DELIM)
-          ? `"${s.replace(/"/g, '""')}"`
-          : s;
-      };
-
-      const csv = [
-        headers.join(DELIM),
-        ...rows.map((r) => headers.map((h) => esc(r[h])).join(DELIM)),
-      ].join("\n");
-
-      // Tambah BOM agar Excel baca UTF-8 dengan benar
-      const blob = new Blob(["\uFEFF" + csv], {
-        type: "text/csv;charset=utf-8;",
-      });
-
-      const safeTitle = (data?.title || "event")
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "");
-      const stamp = dayjs().format("YYYYMMDD-HHmm");
-
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `registrations-${safeTitle}-${stamp}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-
-      api.success({
-        message: "Export CSV selesai",
-        description: `Total ${rows.length} baris diekspor.`,
-        placement: "topRight",
-      });
-    } catch (e) {
-      api.error({
-        message: "Export gagal",
-        description: e?.message || "Silakan coba lagi.",
-        placement: "topRight",
-      });
-    } finally {
-      setExporting(false);
-    }
-  }
-
-  // Load awal saat modal dibuka
-  useEffect(() => {
-    if (!open || !data?.id) return;
-    setTPage(1);
-    fetchTickets();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, data?.id]);
-
-  // Re-fetch ketika filter/pagination berubah
-  useEffect(() => {
-    fetchTickets();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tPage, tPerPage, tStatus, tCheckin]);
-
-  const columns = [
-    {
-      title: "Name",
-      dataIndex: "full_name",
-      key: "full_name",
-      render: (v) => v || "—",
-    },
-    {
-      title: "Email",
-      dataIndex: "email",
-      key: "email",
-      render: (v) => v || "—",
-    },
-    {
-      title: "WA",
-      dataIndex: "whatsapp",
-      key: "whatsapp",
-      render: (v) =>
-        v ? (
-          <a href={`https://wa.me/${v}`} target="_blank" rel="noreferrer">
-            {v}
-          </a>
-        ) : (
-          "—"
-        ),
-    },
-    {
-      title: "Status Check-in",
-      dataIndex: "checkin_status",
-      key: "checkin_status",
-      render: (v) => <Tag color={checkinColor(v)}>{v || "—"}</Tag>,
-    },
-    {
-      title: "Jam Check-in",
-      dataIndex: "checked_in_at",
-      key: "checked_in_at",
-      render: (_, r) =>
-        r?.checkin_status === "CHECKED_IN" ? fmtTime(r?.checked_in_at) : "—",
-    },
-    {
-      title: "Actions",
-      key: "actions",
-      render: (_, row) => (
-        <Space>
-          <Button
-            size="small"
-            onClick={async () => {
-              try {
-                const res = await fetch(`/api/tickets?id=${row.id}`, {
-                  method: "PATCH",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ action: "resend" }),
-                });
-                if (!res.ok) throw new Error("Gagal mengirim ulang email");
-                api.success({
-                  key: "ticket-resend",
-                  message: "Email terkirim",
-                  description: "Ticket email telah dikirim ulang.",
-                  placement: "topRight",
-                });
-              } catch (e) {
-                api.error({
-                  key: "ticket-resend",
-                  message: "Resend gagal",
-                  description: e?.message || "Silakan coba lagi.",
-                  placement: "topRight",
-                });
-              }
-            }}
-          >
-            Resend
-          </Button>
-        </Space>
-      ),
-    },
-  ];
-
-  return (
-    <Modal
-      open={open}
-      onCancel={onClose}
-      centered
-      width={960}
-      title={data?.title || "Detail Event"}
-      footer={
-        <Button shape="round" type="primary" onClick={onClose}>
-          Close
-        </Button>
-      }
-      styles={{
-        content: { ...darkCardStyle },
-        header: {
-          background: "transparent",
-          borderBottom: "1px solid #2f3f60",
-        },
-        body: { padding: 0 },
-        mask: { backgroundColor: "rgba(0,0,0,.6)" },
-      }}
-      destroyOnHidden
-    >
-      {contextHolder}
-      <div className="view-scroll">
-        <div style={{ padding: 16 }}>
-          <Image
-            src={data?.banner_url || PLACEHOLDER}
-            alt={data?.title}
-            width="100%"
-            style={{
-              borderRadius: 10,
-              marginBottom: 12,
-              maxHeight: 320,
-              objectFit: "cover",
-            }}
-          />
-
-          <Space size={[8, 8]} wrap style={{ marginBottom: 16 }}>
-            {(() => {
-              const end = data?.end_at ? new Date(data.end_at).getTime() : NaN;
-              const isDone = Number.isFinite(end) && end < Date.now();
-              return isDone ? <Tag color="default">Done</Tag> : null;
-            })()}
-            <Tag color={data?.is_published ? "success" : "default"}>
-              {data?.is_published ? "Published" : "Draft"}
-            </Tag>
-            {data?.pricing_type && (
-              <Tag color={data.pricing_type === "PAID" ? "blue" : "default"}>
-                {data.pricing_type === "PAID"
-                  ? fmtIDR(data.ticket_price)
-                  : "FREE"}
-              </Tag>
-            )}
-            {data?.capacity != null && <Tag>Capacity: {data.capacity}</Tag>}
-            <Tag color="processing">Sold: {sold}</Tag>
-            <Tag color="warning">Remaining: {remaining}</Tag>
-          </Space>
-
-          <Descriptions size="small" bordered column={1}>
-            {rows.map((r, i) => (
-              <Descriptions.Item key={i} label={r.label}>
-                {r.content}
-              </Descriptions.Item>
-            ))}
-          </Descriptions>
-
-          <Divider style={{ borderColor: "#2f3f60" }} />
-
-          {/* Toolbar di atas tabel */}
-          <Space
-            align="center"
-            style={{
-              width: "100%",
-              justifyContent: "space-between",
-              marginBottom: 8,
-            }}
-          >
-            <Title level={5} style={{ margin: 0 }}>
-              Registrations
-            </Title>
-            <Space wrap>
-              <Input.Search
-                allowClear
-                placeholder="Cari nama/email/WA…"
-                onSearch={(v) => {
-                  setTQ((v || "").trim());
-                  setTPage(1);
-                  setTimeout(() => fetchTickets(), 0);
-                }}
-              />
-              <Select
-                placeholder="Check-in"
-                allowClear
-                style={{ minWidth: 170 }}
-                options={[
-                  { value: "CHECKED_IN", label: "CHECKED_IN" },
-                  { value: "NOT_CHECKED_IN", label: "NOT_CHECKED_IN" },
-                ]}
-                value={tCheckin || undefined}
-                onChange={(v) => {
-                  setTCheckin(v || "");
-                  setTPage(1);
-                }}
-              />
-              <Select
-                style={{ minWidth: 110 }}
-                value={tPerPage}
-                onChange={(v) => {
-                  setTPerPage(v);
-                  setTPage(1);
-                }}
-                options={[10, 20, 50, 100].map((n) => ({
-                  value: n,
-                  label: `${n}/page`,
-                }))}
-              />
-              <Button
-                shape="round"
-                onClick={exportRegistrations}
-                loading={exporting}
-              >
-                Export CSV
-              </Button>
-            </Space>
-          </Space>
-
-          <Table
-            rowKey="id"
-            size="small"
-            bordered
-            loading={tLoading}
-            dataSource={tRows}
-            columns={columns}
-            pagination={false}
-            style={{ borderColor: "#2f3f60" }}
-          />
-
-          <div
-            style={{ display: "flex", justifyContent: "center", marginTop: 12 }}
-          >
-            <Pagination
-              size="small"
-              current={tPage}
-              total={tTotal}
-              pageSize={tPerPage}
-              showSizeChanger={false}
-              onChange={(p) => setTPage(p)}
-            />
-          </div>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-/* ===== Chip ===== */
-function Pill({ children }) {
-  return (
-    <div
-      style={{
-        border: "1px solid #2f3f60",
-        background: "rgba(255,255,255,0.06)",
-        borderRadius: 999,
-        padding: "2px 8px",
-        fontSize: 12,
-        textAlign: "center",
-        whiteSpace: "nowrap",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-      }}
-      title={typeof children === "string" ? children : undefined}
-    >
-      {children}
-    </div>
-  );
-}
-
-/* =========================================================
-   CARD
-========================================================= */
-function EventCard({ e, onView, onEdit, onDelete, onShowQr }) {
-  const badgeStyle = {
-    position: "absolute",
-    top: 8,
-    right: 8,
-    padding: "2px 10px",
-    borderRadius: 9999,
-    fontSize: 11,
-    fontWeight: 700,
-    color: "#fff",
-    background: "rgba(15,23,42,.7)",
-    border: "1px solid rgba(255,255,255,.35)",
-    boxShadow: "0 6px 14px rgba(0,0,0,.25)",
-  };
-
-  const cleanedDesc = (e.description || "").replace(/^[`"'\s]+|[`"'\s]+$/g, "").trim();
-  const safeDesc = sanitizeHtml(cleanedDesc || "");
-  const plainDesc = safeDesc.replace(/<[^>]*>/g, "").trim();
-  const hasDesc = plainDesc.length > 0;
-  const dateRange =
-    e.start_at && e.end_at
-      ? `${fmtDate(e.start_at)} – ${fmtDate(e.end_at)}`
-      : "—";
-  const timeRange =
-    e.start_at && e.end_at
-      ? `${fmtTime(e.start_at)} – ${fmtTime(e.end_at)}`
-      : "—";
-
-  const sold = Number(e?.sold ?? e?.tickets_sold ?? 0);
-  const remaining =
-    e?.remaining != null
-      ? Number(e.remaining)
-      : Math.max(0, Number(e?.capacity ?? 0) - sold);
-
-  return (
-    <Card
-      hoverable
-      style={{ ...darkCardStyle, overflow: "hidden" }}
-      styles={{ body: { padding: 12 } }}
-      cover={
-        <div
-          style={{
-            position: "relative",
-            aspectRatio: "16 / 9",
-            borderBottom: "1px solid #2f3f60",
-            overflow: "hidden",
-            cursor: "pointer",
-          }}
-          onClick={onView}
-        >
-          <img
-            alt={e.title}
-            src={e.banner_url || PLACEHOLDER}
-            style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            onError={(ev) => {
-              ev.currentTarget.onerror = null;
-              ev.currentTarget.src = PLACEHOLDER;
-            }}
-          />
-          {(() => {
-            const isDone = (() => {
-              if (e?.status === "done") return true;
-              const end = e?.end_at ? new Date(e.end_at).getTime() : NaN;
-              return Number.isFinite(end) && end < Date.now();
-            })();
-            const style = isDone
-              ? { ...badgeStyle, background: "#334155", borderColor: "#94a3b8" }
-              : badgeStyle;
-            return (
-              <span style={style}>
-                {isDone ? "Done" : e.is_published ? "Published" : "Draft"}
-              </span>
-            );
-          })()}
-        </div>
-      }
-    >
-      <div
-        style={{ display: "grid", gap: 6, gridTemplateRows: "auto auto auto" }}
+      {/* ===== View Modal (mirror edit fields) ===== */}
+      <Modal
+        open={viewOpen}
+        onCancel={() => {
+          setViewOpen(false);
+          setViewData(null);
+        }}
+        footer={null}
+        width={920}
+        destroyOnClose
+        title={null}
       >
-        <Text
-          strong
-          ellipsis={{ tooltip: e.title }}
-          style={{ fontSize: 14, display: "block", lineHeight: 1.35 }}
-        >
-          {e.title}
-        </Text>
+        <div style={styles.modalShell}>
+          <Spin spinning={viewLoading}>
+            {!viewData ? null : (
+              <div style={{ display: "grid", gap: 10 }}>
+                {/* Banner (readonly) */}
+                <div style={styles.coverWrap}>
+                  <div style={styles.coverBox}>
+                    {viewData.banner_url ? (
+                      <img
+                        src={viewData.banner_url}
+                        alt="banner"
+                        style={styles.coverImg}
+                      />
+                    ) : (
+                      <div style={styles.coverPlaceholder}>
+                        Tidak ada banner
+                      </div>
+                    )}
+                  </div>
+                </div>
 
-        <div style={{ minHeight: "calc(1.45em * 3)" }}>
-          {hasDesc ? (
-            <div
-              title={plainDesc || undefined}
-              style={{
-                margin: 0,
-                lineHeight: 1.45,
-                color: "#94a3b8",
-                display: "-webkit-box",
-                WebkitLineClamp: 3,
-                WebkitBoxOrient: "vertical",
-                overflow: "hidden",
-              }}
-              dangerouslySetInnerHTML={{ __html: safeDesc }}
-            />
-          ) : (
-            <Paragraph style={{ margin: 0, lineHeight: 1.45 }} type="secondary">
-              -
-            </Paragraph>
-          )}
-        </div>
+                {/* Judul & Deskripsi (ID) */}
+                <div>
+                  <div style={styles.label}>Judul (Bahasa Indonesia)</div>
+                  <div style={styles.value}>{viewData.title_id || "—"}</div>
+                </div>
+                <div>
+                  <div style={styles.label}>Deskripsi (Bahasa Indonesia)</div>
+                  <div style={{ ...styles.value, whiteSpace: "pre-wrap" }}>
+                    {stripTags(viewData.description_id) || "—"}
+                  </div>
+                </div>
 
-        <div style={{ display: "grid", gap: 6 }}>
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-              alignItems: "baseline",
-              flexWrap: "wrap",
-            }}
-          >
-            <Text strong style={{ fontSize: 12 }}>
-              Schedule:
-            </Text>
-            <div style={{ display: "grid" }}>
-              <Text style={{ fontSize: 12 }}>Date: {dateRange}</Text>
-              <Text style={{ fontSize: 12 }}>Time: {timeRange}</Text>
-            </div>
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-              gap: 8,
-              alignItems: "center",
-            }}
-          >
-            <Pill>
-              {e.pricing_type === "PAID" ? fmtIDR(e.ticket_price) : "FREE"}
-            </Pill>
-            <Pill>{e.capacity != null ? `Cap: ${e.capacity}` : "Cap: —"}</Pill>
-            <Pill>{`Sold: ${sold}`}</Pill>
-            <Pill>{`Left: ${remaining}`}</Pill>
-          </div>
-
-          {e.location &&
-            (() => {
-              const href = isHttpUrl(e.location) ? e.location : null;
-              const label = href ? simplifyUrl(e.location) : e.location;
-              const ellipsisStyle = {
-                fontSize: 12,
-                flex: 1,
-                minWidth: 0,
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              };
-              return (
+                {/* Waktu */}
                 <div
                   style={{
-                    display: "flex",
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
                     gap: 8,
-                    alignItems: "baseline",
-                    flexWrap: "nowrap",
                   }}
                 >
-                  <Text strong style={{ fontSize: 12 }}>
-                    Location:
-                  </Text>
-                  {href ? (
-                    <a
-                      href={href}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={ellipsisStyle}
-                    >
-                      {label}
-                    </a>
-                  ) : (
-                    <Text style={ellipsisStyle}>{label}</Text>
-                  )}
+                  <div>
+                    <div style={styles.label}>Mulai</div>
+                    <div style={styles.value}>
+                      {fmtDateId(viewData.start_at)}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={styles.label}>Selesai</div>
+                    <div style={styles.value}>{fmtDateId(viewData.end_at)}</div>
+                  </div>
                 </div>
-              );
-            })()}
-        </div>
-      </div>
 
-      <div
-        style={{
-          display: "flex",
-          gap: 8,
-          marginTop: 12,
-          flexWrap: "nowrap",
-          paddingBottom: 2,
-        }}
-      >
-        <div style={{ flex: 1 }}>
-          <Button
-            type="primary"
-            size="small"
-            shape="round"
-            block
-            onClick={onView}
-            icon={<EyeOutlined />}
-          >
-            View
-          </Button>
-        </div>
-        <div style={{ flex: 1 }}>
-          <Button size="small" shape="round" block onClick={() => onShowQr(e)} icon={<QrcodeOutlined />}>
-            QR Code
-          </Button>
-        </div>
-        <div style={{ flex: 1 }}>
-          <Button size="small" shape="round" block onClick={onEdit}>
-            Edit
-          </Button>
-        </div>
-        <div style={{ flex: 1 }}>
-          <Popconfirm
-            title="Hapus event?"
-            description="Tindakan ini tidak dapat dibatalkan."
-            okText="Hapus"
-            okButtonProps={{ danger: true }}
-            placement="topRight"
-            onConfirm={onDelete}
-          >
-            <Button danger size="small" shape="round" block>
-              Delete
-            </Button>
-          </Popconfirm>
-        </div>
-      </div>
-    </Card>
-  );
-}
+                {/* Lokasi & Kategori */}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 8,
+                  }}
+                >
+                  <div>
+                    <div style={styles.label}>Lokasi</div>
+                    <div style={styles.value}>{viewData.location || "—"}</div>
+                  </div>
+                  <div>
+                    <div style={styles.label}>Kategori</div>
+                    <div style={styles.value}>
+                      {viewData.category_name || "—"}
+                    </div>
+                  </div>
+                </div>
 
-/* =========================================================
-   MAIN
-========================================================= */
-export default function EventsContent(props) {
-  const {
-    loading,
-    events = [],
-    q,
-    setQ,
-    isPublished,
-    setIsPublished, // "", "1", "0"
-    status,
-    setStatus,
-    page,
-    setPage,
-    perPage,
-    setPerPage,
-    total = 0,
-    error,
-    fetchEvents,
-    createEvent,
-    updateEvent,
-    deleteEvent,
-  } = props;
+                {/* Capacity & Published */}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 8,
+                  }}
+                >
+                  <div>
+                    <div style={styles.label}>Capacity</div>
+                    <div style={styles.value}>
+                      {viewData.capacity == null
+                        ? "Tanpa batas"
+                        : viewData.capacity}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={styles.label}>Status</div>
+                    <div style={styles.value}>
+                      {viewData.is_published ? "Published" : "Draft"}
+                    </div>
+                  </div>
+                </div>
 
-  const [api, contextHolder] = notification.useNotification();
-  const [filterForm] = Form.useForm();
-  const mounted = useRef(false);
+                {/* Pricing */}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 8,
+                  }}
+                >
+                  <div>
+                    <div style={styles.label}>Tipe Tiket</div>
+                    <div style={styles.value}>{viewData.pricing_type}</div>
+                  </div>
+                  <div>
+                    <div style={styles.label}>Harga Tiket</div>
+                    <div style={styles.value}>
+                      {viewData.pricing_type === "PAID"
+                        ? fmtIDR(viewData.ticket_price || 0)
+                        : "—"}
+                    </div>
+                  </div>
+                </div>
 
-  const [modalOpen, setModalOpen] = useState(false);
-  const [mode, setMode] = useState("create");
-  const [saving, setSaving] = useState(false);
-  const [editing, setEditing] = useState(null);
-  const [view, setView] = useState(null);
-  const [qrEvent, setQrEvent] = useState(null);
-
-  // Prefill form
-  useEffect(() => {
-    filterForm.setFieldsValue({
-      q,
-      status: status || isPublished || undefined,
-      perPage,
-    });
-  }, [q, isPublished, status, perPage, filterForm]);
-
-  // Initial fetch only
-  useEffect(() => {
-    if (mounted.current) return;
-    mounted.current = true;
-    fetchEvents({
-      page,
-      perPage,
-      q,
-      is_published: isPublished,
-      status,
-      _ts: Date.now(),
-    });
-  }, []); // eslint-disable-line
-
-  // Global errors
-  useEffect(() => {
-    if (error)
-      api.error({
-        key: "event-error",
-        message: "Terjadi kesalahan",
-        description: error,
-        placement: "topRight",
-      });
-  }, [error, api]);
-
-  const openCreate = () => {
-    setMode("create");
-    setEditing(null);
-    setModalOpen(true);
-  };
-  const openEdit = (e) => {
-    setMode("edit");
-    setEditing(e);
-    setModalOpen(true);
-  };
-
-  const handleSubmit = async (payload) => {
-    setSaving(true);
-    try {
-      if (mode === "edit") {
-        await updateEvent(editing.id, payload);
-        api.success({
-          key: "event-save",
-          message: "Event diperbarui",
-          description: "Data telah tersimpan.",
-          placement: "topRight",
-        });
-      } else {
-        await createEvent(payload);
-        api.success({
-          key: "event-save",
-          message: "Event ditambahkan",
-          description: "Data telah tersimpan.",
-          placement: "topRight",
-        });
-      }
-      setModalOpen(false);
-      setEditing(null);
-      fetchEvents({
-        page,
-        q,
-        is_published: isPublished,
-        status,
-        perPage,
-        _ts: Date.now(),
-      });
-    } catch (e) {
-      api.error({
-        key: "event-save",
-        message: "Gagal menyimpan",
-        description: e?.message || "Silakan coba lagi.",
-        placement: "topRight",
-      });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // Filters
-  const onSearch = (vals) => {
-    const nextQ = (vals?.q || "").trim();
-    const rawStatus = vals?.status;
-    const isDone = rawStatus === "done";
-    const nextPub = isDone ? "" : normalizePub(rawStatus);
-    const nextPer = vals?.perPage || perPage;
-
-    setQ(nextQ);
-    setIsPublished(nextPub);
-    setStatus(isDone ? "done" : "");
-    setPerPage(nextPer);
-    setPage(1);
-
-    fetchEvents({
-      page: 1,
-      q: nextQ,
-      is_published: nextPub,
-      status: isDone ? "done" : "",
-      perPage: nextPer,
-      _ts: Date.now(),
-    });
-  };
-
-  const onReset = () => {
-    filterForm.resetFields();
-    setQ("");
-    setIsPublished("");
-    setStatus("");
-    setPage(1);
-    fetchEvents({
-      page: 1,
-      q: "",
-      is_published: "",
-      status: "",
-      perPage,
-      _ts: Date.now(),
-    });
-  };
-
-  const onPageChange = (p) => {
-    setPage(p);
-    fetchEvents({
-      page: p,
-      perPage,
-      q,
-      is_published: isPublished,
-      status,
-      _ts: Date.now(),
-    });
-  };
-
-  const initialValues = useMemo(() => {
-    if (!editing)
-      return {
-        is_published: false,
-        capacity: 0,
-        pricing_type: "FREE",
-        ticket_price: 0,
-      };
-    return {
-      title: editing.title || "",
-      description: editing.description || "",
-      start_at: editing.start_at || null,
-      end_at: editing.end_at || null,
-      location: editing.location || "",
-      banner_url: editing.banner_url || "",
-      capacity: editing.capacity ?? 0,
-      is_published: !!editing.is_published,
-      pricing_type: editing.pricing_type || "FREE",
-      ticket_price: editing.ticket_price ?? 0,
-    };
-  }, [editing]);
-
-  // Sinkronkan isi modal view dengan events terbaru
-  useEffect(() => {
-    if (!view) return;
-    const updated = events.find((x) => x.id === view.id);
-    if (updated) setView(updated);
-  }, [events, view]);
-
-  const pageWrapStyle = {
-    maxWidth: 1320,
-    margin: "0 auto",
-    padding: "24px 32px 12px",
-  };
-
-  return (
-    <ConfigProvider
-      theme={{
-        algorithm: antdTheme.darkAlgorithm,
-        token: {
-          colorPrimary: "#3b82f6",
-          colorBorder: "#2f3f60",
-          colorText: "#e6eaf2",
-          colorBgContainer: CARD_BG,
-          borderRadius: 12,
-          controlHeight: 36,
-        },
-        components: {
-          Card: {
-            headerBg: "transparent",
-            colorBorderSecondary: "#2f3f60",
-            borderRadiusLG: 16,
-          },
-          Button: { borderRadius: 999 },
-          Input: { colorBgContainer: "#0e182c" },
-          Select: { colorBgContainer: "#0e182c" },
-          Pagination: { borderRadius: 999 },
-          Modal: { borderRadiusLG: 16 },
-          DatePicker: { colorBgContainer: "#0e182c" },
-        },
-      }}
-    >
-      <div style={pageWrapStyle}>
-        {contextHolder}
-
-        {/* Header */}
-        <Card
-          styles={{ body: { padding: 16 } }}
-          style={{ ...darkCardStyle, marginBottom: 12 }}
-        >
-          <Space
-            align="center"
-            style={{ width: "100%", justifyContent: "space-between" }}
-          >
-            <div>
-              <Title level={3} style={{ margin: 0 }}>
-                Events
-              </Title>
-              <Text type="secondary">
-                Kelola data event. Total {total} records.
-              </Text>
-            </div>
-            <Space>
-              <Button
-                href="/admin/scanner"
-                icon={<QrcodeOutlined />}
-                shape="round"
-              >
-                Scanner
-              </Button>
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                shape="round"
-                onClick={openCreate}
-              >
-                Add Event
-              </Button>
-            </Space>
-          </Space>
-        </Card>
-
-        {/* Filters */}
-        <Card
-          styles={{ body: { padding: 12 } }}
-          style={{ ...darkCardStyle, marginBottom: 12 }}
-        >
-          <Form
-            form={filterForm}
-            layout="inline"
-            onFinish={onSearch}
-            style={{ display: "block" }}
-            initialValues={{
-              q,
-              status: status || isPublished || undefined,
-              perPage,
-            }}
-          >
-            <Row gutter={[8, 8]} align="middle" wrap>
-              <Col xs={24} md={12} style={{ flex: "1 1 auto" }}>
-                <Form.Item name="q" style={{ width: "100%" }}>
-                  <Input.Search
-                    allowClear
-                    placeholder="Cari judul/deskripsi/lokasi…"
-                    enterButton
-                  />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} sm={12} md={8} lg={6} xl={5}>
-                <Form.Item name="status" style={{ width: "100%" }}>
-                  <Select
-                    allowClear
-                    placeholder="Status"
-                    options={[
-                      { value: "1", label: "Published" },
-                      { value: "0", label: "Draft" },
-                      { value: "done", label: "Done" },
-                    ]}
-                    onChange={() => filterForm.submit()}
-                  />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} sm={8} md={6} lg={4} xl={3}>
-                <Form.Item name="perPage" style={{ width: "100%" }}>
-                  <Select
-                    options={[6, 12, 24, 48, 96].map((n) => ({
-                      value: n,
-                      label: n,
-                    }))}
-                    placeholder="Per page"
-                    onChange={() => filterForm.submit()}
-                  />
-                </Form.Item>
-              </Col>
-
-              <Col xs="auto">
-                <Space>
-                  <Button shape="round" onClick={onReset}>
-                    Reset
-                  </Button>
-                  <Button shape="round" type="primary" htmlType="submit">
-                    Search
-                  </Button>
-                </Space>
-              </Col>
-            </Row>
-          </Form>
-        </Card>
-
-        {/* Cards */}
-        <Card styles={{ body: { padding: 16 } }} style={{ ...darkCardStyle }}>
-          {loading ? (
-            <div style={{ textAlign: "center", padding: "48px 0" }}>
-              <Spin />
-            </div>
-          ) : events.length === 0 ? (
-            <Empty description="Belum ada data event" />
-          ) : (
-            <Row gutter={[16, 16]}>
-              {events.map((e) => (
-                <Col key={e.id} xs={24} sm={12} md={8} lg={8} xl={8}>
-                  <EventCard
-                    e={e}
-                    onView={() => setView(e)}
-                    onEdit={() => openEdit(e)}
-                    onShowQr={(ev) => setQrEvent(ev)}
-                    onDelete={async () => {
-                      try {
-                        await deleteEvent(e.id);
-                        api.success({
-                          key: "event-delete",
-                          message: "Event dihapus",
-                          description: "Data berhasil dihapus.",
-                          placement: "topRight",
-                        });
-                        fetchEvents({
-                          page,
-                          perPage,
-                          q,
-                          is_published: isPublished,
-                          status,
-                          _ts: Date.now(),
-                        });
-                      } catch (err) {
-                        api.error({
-                          key: "event-delete",
-                          message: "Gagal menghapus",
-                          description: err?.message || "Silakan coba lagi.",
-                          placement: "topRight",
-                        });
-                      }
-                    }}
-                  />
-                </Col>
-              ))}
-            </Row>
-          )}
-        </Card>
-
-        {/* Pagination */}
-        <Card
-          styles={{ body: { padding: 12 } }}
-          style={{ ...darkCardStyle, marginTop: 12, marginBottom: 0 }}
-        >
-          <div style={{ display: "flex", justifyContent: "center" }}>
-            <Pagination
-              current={page}
-              total={total}
-              pageSize={perPage}
-              showSizeChanger={false}
-              onChange={onPageChange}
-            />
-          </div>
-        </Card>
-
-        {/* Modals */}
-        <EventViewModal
-          open={!!view}
-          data={view}
-          onClose={() => setView(null)}
-        />
-        <EventFormModal
-          open={modalOpen}
-          mode={mode}
-          initialValues={initialValues}
-          saving={saving}
-          onCancel={() => {
-            setModalOpen(false);
-            setEditing(null);
-          }}
-          onSubmit={handleSubmit}
-        />
-
-        {/* QR Code Modal */}
-        <Modal
-          open={!!qrEvent}
-          onCancel={() => setQrEvent(null)}
-          footer={null}
-          centered
-          width={420}
-          title={qrEvent ? `QR — ${qrEvent.title || qrEvent.id}` : "QR Code"}
-          styles={{
-            content: { ...darkCardStyle },
-            header: {
-              background: "transparent",
-              borderBottom: "1px solid #2f3f60",
-            },
-            body: { padding: 16 },
-            mask: { backgroundColor: "rgba(0,0,0,.6)" },
-          }}
-          destroyOnHidden
-        >
-          <div style={{ display: "grid", placeItems: "center" }}>
-            {qrEvent && (
-              <QRCodeCanvas
-                value={qrEvent.id}
-                size={256}
-                includeMargin
-                imageSettings={{
-                  src: "/images/logo.jpg",
-                  width: 56,
-                  height: 56,
-                  excavate: true,
-                }}
-              />
+                {/* Booth */}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 8,
+                  }}
+                >
+                  <div>
+                    <div style={styles.label}>Booth Price</div>
+                    <div style={styles.value}>
+                      {fmtIDR(viewData.booth_price || 0)}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={styles.label}>Booth Quota</div>
+                    <div style={styles.value}>
+                      {viewData.booth_quota == null
+                        ? "—"
+                        : viewData.booth_quota}
+                    </div>
+                  </div>
+                </div>
+              </div>
             )}
-            <div style={{ marginTop: 10, color: "#94a3b8", fontSize: 12 }}>
-              ID: {qrEvent?.id}
-            </div>
-          </div>
-        </Modal>
-      </div>
+          </Spin>
+        </div>
+      </Modal>
     </ConfigProvider>
   );
 }
+
+/* ===== styles ===== */
+const styles = {
+  cardOuter: {
+    background: "#ffffff",
+    borderRadius: 16,
+    border: "1px solid #e6eeff",
+    boxShadow:
+      "0 10px 40px rgba(11, 86, 201, 0.07), 0 3px 12px rgba(11,86,201,0.05)",
+    overflow: "hidden",
+  },
+  cardHeaderBar: {
+    height: 20,
+    background:
+      "linear-gradient(90deg, #0b56c9 0%, #0b56c9 65%, rgba(11,86,201,0.35) 100%)",
+  },
+  cardInner: { padding: "12px 14px 14px", position: "relative" },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: 800,
+    color: "#0b3e91",
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  totalBadgeWrap: {
+    position: "absolute",
+    right: 14,
+    top: 8,
+    display: "grid",
+    gap: 4,
+    justifyItems: "end",
+    background: "#fff",
+    border: "1px solid #e6eeff",
+    borderRadius: 12,
+    padding: "6px 12px",
+    boxShadow: "0 6px 18px rgba(11,86,201,0.08)",
+  },
+  totalBadgeLabel: { fontSize: 12, color: "#0b3e91", fontWeight: 600 },
+  totalBadgeValue: {
+    fontSize: 16,
+    color: "#0b56c9",
+    fontWeight: 800,
+    lineHeight: 1,
+  },
+
+  statsRow: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr 1fr",
+    gap: 14,
+    marginTop: 12,
+  },
+  statCard: {
+    background: "#fff",
+    borderRadius: 14,
+    border: "1px solid #e6eeff",
+    boxShadow: "0 10px 24px rgba(11,86,201,0.08)",
+    padding: "12px 16px",
+    display: "grid",
+    gridTemplateColumns: "48px 1fr auto",
+    alignItems: "center",
+    columnGap: 12,
+  },
+  statIconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    border: "1px solid #e6eeff",
+    background: "#f8fbff",
+    display: "grid",
+    placeItems: "center",
+    boxShadow: "inset 0 2px 8px rgba(11,86,201,0.06)",
+  },
+  statIconImg: { width: 28, height: 28, objectFit: "contain" },
+  statTitle: { fontWeight: 800, color: "#0b3e91", textAlign: "center" },
+  statValue: { fontWeight: 800, fontSize: 24, color: "#0b56c9" },
+
+  sectionHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  sectionTitle: { fontSize: 18, fontWeight: 800, color: "#0b3e91" },
+
+  filtersRowBig: {
+    display: "grid",
+    gridTemplateColumns: "1fr 140px minmax(220px, 1fr) auto auto",
+    gap: 8,
+    alignItems: "center",
+  },
+  searchInput: { height: 36, borderRadius: 10 },
+
+  chartsGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 },
+  chartCard: {
+    background: "#fff",
+    border: "1px solid #e6eeff",
+    borderRadius: 14,
+    padding: "12px",
+  },
+  chartTitle: { fontWeight: 800, color: "#0b3e91", marginBottom: 8 },
+  barsArea: {
+    display: "grid",
+    gridTemplateColumns: "repeat(8, minmax(0, 1fr))",
+    gap: 10,
+    height: 180,
+    alignItems: "end",
+  },
+  barItem: { display: "grid", gap: 6, justifyItems: "center" },
+  barCol: {
+    width: "100%",
+    height: "100%",
+    background: "linear-gradient(180deg,#f3f7ff 0%,#fbfdff 100%)",
+    border: "1px solid #e6eeff",
+    borderRadius: 10,
+    display: "flex",
+    alignItems: "flex-end",
+    padding: 4,
+  },
+  barInner: {
+    width: "100%",
+    borderRadius: 8,
+    background:
+      "linear-gradient(180deg, rgba(11,86,201,0.8) 0%, rgba(11,86,201,0.45) 100%)",
+    boxShadow: "0 3px 10px rgba(11,86,201,0.25)",
+  },
+  barInnerAlt: {
+    width: "100%",
+    borderRadius: 8,
+    background:
+      "linear-gradient(180deg, rgba(9,132,71,0.85) 0%, rgba(9,132,71,0.45) 100%)",
+    boxShadow: "0 3px 10px rgba(9,132,71,0.25)",
+  },
+  barLabel: {
+    fontSize: 11.5,
+    color: "#475569",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    maxWidth: "100%",
+  },
+
+  tableHeader: {
+    display: "grid",
+    gridTemplateColumns: "1.6fr .8fr 1.2fr 1fr .8fr .7fr .9fr",
+    gap: 8,
+    marginBottom: 4,
+    color: "#0b3e91",
+    fontWeight: 700,
+    alignItems: "center",
+    minWidth: 1060,
+  },
+  thLeft: { display: "flex", justifyContent: "flex-start", width: "100%" },
+  thCenter: { display: "flex", justifyContent: "center", width: "100%" },
+
+  row: {
+    display: "grid",
+    gridTemplateColumns: "1.6fr .8fr 1.2fr 1fr .8fr .7fr .9fr",
+    gap: 8,
+    alignItems: "center",
+    background: "#f5f8ff",
+    borderRadius: 10,
+    border: "1px solid #e8eeff",
+    padding: "8px 10px",
+    boxShadow: "0 6px 12px rgba(11, 86, 201, 0.05)",
+    minWidth: 1060,
+  },
+
+  colName: {
+    background: "#ffffff",
+    borderRadius: 10,
+    border: "1px solid #eef3ff",
+    padding: "6px 10px",
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    minWidth: 0,
+  },
+  nameWrap: { display: "grid", gap: 2, minWidth: 0 },
+  nameText: {
+    fontWeight: 600,
+    color: "#111827",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  subDate: { fontSize: 11.5, color: "#6b7280" },
+
+  colCenter: {
+    textAlign: "center",
+    color: "#0f172a",
+    fontWeight: 600,
+    minWidth: 0,
+  },
+  cellEllipsis: {
+    display: "inline-block",
+    maxWidth: "100%",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    verticalAlign: "bottom",
+  },
+  colActionsCenter: { display: "flex", justifyContent: "center", gap: 6 },
+  iconBtn: { borderRadius: 8 },
+
+  pagination: {
+    marginTop: 12,
+    display: "grid",
+    gridTemplateColumns: "36px 1fr 36px",
+    alignItems: "center",
+    justifyItems: "center",
+    gap: 8,
+  },
+  pageText: { fontSize: 12, color: "#475569" },
+
+  /* modal read/edit styles */
+  label: { fontSize: 11.5, color: "#64748b" },
+  value: {
+    fontWeight: 600,
+    color: "#0f172a",
+    background: "#f8fafc",
+    border: "1px solid #e8eeff",
+    borderRadius: 10,
+    padding: "8px 10px",
+    boxShadow: "inset 0 2px 6px rgba(11,86,201,0.05)",
+    wordBreak: "break-word",
+  },
+  modalShell: {
+    position: "relative",
+    background: "#fff",
+    borderRadius: 16,
+    padding: "14px 14px 8px",
+    boxShadow: "0 10px 36px rgba(11,86,201,0.08)",
+  },
+
+  coverWrap: {
+    display: "grid",
+    justifyContent: "center",
+    justifyItems: "center",
+    marginTop: 6,
+    marginBottom: 10,
+  },
+  coverBox: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 12,
+    border: "2px dashed #c0c8d8",
+    background: "#f8fbff",
+    display: "grid",
+    placeItems: "center",
+    overflow: "hidden",
+  },
+  coverImg: { width: "100%", height: "100%", objectFit: "cover" },
+  coverPlaceholder: { fontWeight: 700, color: "#0b56c9", userSelect: "none" },
+
+  modalFooter: { marginTop: 8, display: "grid", placeItems: "center" },
+  saveBtn: { minWidth: 200, height: 40, borderRadius: 12 },
+};

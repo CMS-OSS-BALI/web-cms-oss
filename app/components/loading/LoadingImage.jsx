@@ -7,14 +7,25 @@ export default function LoadingSplash({
   label = "Memuat data…",
   size = 112,
   brand = "#003A6F",
+  /** Tinggi header+breadcrumb+padding konten */
+  offset = 160,
 }) {
   return (
     <div
-      className={`loaderWrap ${fullscreen ? "fullscreen" : ""}`}
+      className={`loaderWrap ${fullscreen ? "fullscreen" : "inPage"}`}
       role="status"
       aria-live="polite"
       aria-label={label}
       aria-busy="true"
+      style={
+        fullscreen
+          ? undefined
+          : {
+              // pastikan area konten punya tinggi cukup agar bisa center vertical
+              minHeight: `calc(100dvh - ${offset}px)`,
+              width: "100%",
+            }
+      }
     >
       <div className="logoWrap" style={{ width: size, height: size }}>
         {/* Cincin animasi */}
@@ -37,17 +48,26 @@ export default function LoadingSplash({
 
       <style jsx>{`
         .loaderWrap {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
+          /* Grid = center horizontal+vertical dengan simpel */
+          display: grid;
+          place-items: center;
           gap: 12px;
           padding: 20px;
           color: ${brand};
+          text-align: center;
         }
+
+        /* mode di dalam halaman (bukan overlay) */
+        .inPage {
+          position: relative;
+          isolation: isolate;
+        }
+
+        /* mode overlay layar penuh */
         .fullscreen {
           position: fixed;
           inset: 0;
+          z-index: 50;
           background: radial-gradient(
               1200px 600px at 50% -10%,
               ${brand}0d,
@@ -59,8 +79,8 @@ export default function LoadingSplash({
               transparent 60%
             ),
             #ffffff;
-          z-index: 50;
         }
+
         .logoWrap {
           position: relative;
           display: grid;

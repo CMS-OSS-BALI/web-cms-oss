@@ -1,6 +1,7 @@
+// app/(view)/admin/blog/BlogContent.jsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import useBlogViewModel from "./useBlogViewModel";
 import {
   ConfigProvider,
@@ -27,7 +28,7 @@ import {
   FilterOutlined,
 } from "@ant-design/icons";
 
-/* ===== compact tokens ===== */
+/* ===== tokens ===== */
 const TOKENS = {
   shellW: "94%",
   maxW: 1140,
@@ -36,14 +37,14 @@ const TOKENS = {
   text: "#0f172a",
 };
 
-const T_ID = {
+/* ===== copy (ID) ===== */
+const T = {
   title: "Manajemen Berita",
   totalLabel: "Berita",
   listTitle: "Data Berita",
   addNew: "Buat Data Baru",
-  searchPh: "Search",
+  searchPh: "Cari judul...",
   status: "Status",
-  filter: "Filter",
   name: "Berita",
   category: "Kategori",
   views: "Melihat",
@@ -59,6 +60,7 @@ const T_ID = {
   view: "Lihat",
 };
 
+/* ===== helpers ===== */
 const monthsId = [
   "Januari",
   "Februari",
@@ -73,17 +75,19 @@ const monthsId = [
   "November",
   "Desember",
 ];
+
 const fmtDateId = (dLike) => {
   if (dLike === null || dLike === undefined || dLike === "") return "-";
   try {
     const dt =
       typeof dLike === "number" ? new Date(dLike) : new Date(String(dLike));
-    if (isNaN(dt.getTime())) return "-";
+    if (Number.isNaN(dt.getTime())) return "-";
     return `${dt.getDate()} ${monthsId[dt.getMonth()]}`;
   } catch {
     return "-";
   }
 };
+
 const abbr = (n) => {
   const v = Number(n || 0);
   if (v >= 1_000_000_000)
@@ -93,66 +97,89 @@ const abbr = (n) => {
   return String(v);
 };
 
-export default function BlogContent(props) {
-  const vm =
-    props && Object.prototype.hasOwnProperty.call(props, "blogs")
-      ? props
-      : useBlogViewModel();
+export default function BlogContent({ initialLocale = "id" }) {
+  const vm = useBlogViewModel();
 
-  const locale = props?.locale || "id";
+  // set locale sekali dari server param
   useEffect(() => {
-    vm.setLocale?.(locale);
-  }, [locale]); // eslint-disable-line
+    vm.setLocale?.(initialLocale);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialLocale]);
 
-  // ----- state ui -----
+  // ----- UI state -----
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
   const [activeRow, setActiveRow] = useState(null);
   const [formCreate] = Form.useForm();
   const [formEdit] = Form.useForm();
+
   const [coverPrevCreate, setCoverPrevCreate] = useState("");
   const [coverPrevEdit, setCoverPrevEdit] = useState("");
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailData, setDetailData] = useState(null);
 
+  // revoke object URL saat modal ditutup / komponen unmount
+  useEffect(() => {
+    return () => {
+      if (coverPrevCreate) URL.revokeObjectURL(coverPrevCreate);
+      if (coverPrevEdit) URL.revokeObjectURL(coverPrevEdit);
+    };
+  }, [coverPrevCreate, coverPrevEdit]);
+
   const rows = useMemo(() => vm.blogs || [], [vm.blogs]);
 
-  const normList = (e) => (Array.isArray(e) ? e : e?.fileList || []);
+  /* ===== Upload guards ===== */
   const isImg = (f) =>
     ["image/jpeg", "image/png", "image/webp"].includes(f?.type || "");
   const tooBig = (f, mb = 3) => f.size / 1024 / 1024 >= mb;
-  const beforeCoverCreate = (file) => {
-    if (!isImg(file) || tooBig(file, 3)) return Upload.LIST_IGNORE;
-    try {
-      setCoverPrevCreate(URL.createObjectURL(file));
-    } catch {}
-    return false;
-  };
-  const beforeCoverEdit = (file) => {
-    if (!isImg(file) || tooBig(file, 3)) return Upload.LIST_IGNORE;
-    try {
-      setCoverPrevEdit(URL.createObjectURL(file));
-    } catch {}
-    return false;
-  };
 
-  // Fallback getBlog jika VM tidak menyediakan
-  const getBlogDetail = async (id) => {
-    if (typeof vm.getBlog === "function") return vm.getBlog(id);
-    try {
-      const res = await fetch(
-        `/api/blog/${encodeURIComponent(id)}?include_category=1`
-      );
-      if (!res.ok) throw new Error("Gagal memuat detail");
-      const json = await res.json();
-      return { ok: true, data: json?.data };
-    } catch (e) {
-      return { ok: false, error: e?.message || "Gagal memuat detail" };
-    }
-  };
+  const beforeCoverCreate = useCallback(
+    (file) => {
+      if (!isImg(file) || tooBig(file, 3)) return Upload.LIST_IGNORE;
+      try {
+        const url = URL.createObjectURL(file);
+        if (coverPrevCreate) URL.revokeObjectURL(coverPrevCreate);
+        setCoverPrevCreate(url);
+      } catch {}
+      return false; // prevent auto upload
+    },
+    [coverPrevCreate]
+  );
 
-  const onCreate = async () => {
+  const beforeCoverEdit = useCallback(
+    (file) => {
+      if (!isImg(file) || tooBig(file, 3)) return Upload.LIST_IGNORE;
+      try {
+        const url = URL.createObjectURL(file);
+        if (coverPrevEdit) URL.revokeObjectURL(coverPrevEdit);
+        setCoverPrevEdit(url);
+      } catch {}
+      return false;
+    },
+    [coverPrevEdit]
+  );
+
+  /* ===== Detail (fallback jika VM tidak expose getBlog) ===== */
+  const getBlogDetail = useCallback(
+    async (id) => {
+      if (typeof vm.getBlog === "function") return vm.getBlog(id);
+      try {
+        const res = await fetch(
+          `/api/blog/${encodeURIComponent(id)}?include_category=1`
+        );
+        if (!res.ok) throw new Error("Gagal memuat detail");
+        const json = await res.json();
+        return { ok: true, data: json?.data };
+      } catch (e) {
+        return { ok: false, error: e?.message || "Gagal memuat detail" };
+      }
+    },
+    [vm]
+  );
+
+  /* ===== Actions ===== */
+  const onCreate = useCallback(async () => {
     const v = await formCreate.validateFields().catch(() => null);
     if (!v) return;
     const cover = v.cover?.[0]?.originFileObj || null;
@@ -160,7 +187,7 @@ export default function BlogContent(props) {
     const out = await vm.createBlog({
       file: cover,
       name_id: v.title,
-      category_slug: v.category || null, // NOTE: Select pakai slug
+      category_slug: v.category || null,
       description_id: v.description || "",
       autoTranslate: true,
     });
@@ -168,6 +195,7 @@ export default function BlogContent(props) {
     if (out.ok) {
       setCreateOpen(false);
       formCreate.resetFields();
+      if (coverPrevCreate) URL.revokeObjectURL(coverPrevCreate);
       setCoverPrevCreate("");
     } else {
       Modal.error({
@@ -175,30 +203,35 @@ export default function BlogContent(props) {
         content: out.error || "Gagal membuat blog",
       });
     }
-  };
+  }, [formCreate, vm, coverPrevCreate]);
 
-  const openEdit = async (row) => {
-    setActiveRow(row);
-    setEditOpen(true);
-    setDetailLoading(true);
-    setDetailData(null);
-    const { ok, data, error } = await getBlogDetail(row.id);
-    setDetailLoading(false);
-    if (!ok) {
-      setEditOpen(false);
-      return Modal.error({ title: "Gagal memuat", content: error });
-    }
-    const d = data || row;
-    setDetailData(d);
-    formEdit.setFieldsValue({
-      title: d.name || d.title || row.title || "",
-      category: d.category_slug || "", // NOTE: value slug agar cocok dengan options form
-      description: d.description || d.description_id || "",
-    });
-    setCoverPrevEdit(d.image_url || d.image_public_url || row.image_src || "");
-  };
+  const openEdit = useCallback(
+    async (row) => {
+      setActiveRow(row);
+      setEditOpen(true);
+      setDetailLoading(true);
+      setDetailData(null);
+      const { ok, data, error } = await getBlogDetail(row.id);
+      setDetailLoading(false);
+      if (!ok) {
+        setEditOpen(false);
+        return Modal.error({ title: "Gagal memuat", content: error });
+      }
+      const d = data || row;
+      setDetailData(d);
+      formEdit.setFieldsValue({
+        title: d.name || d.title || row.title || "",
+        category: d.category_slug || "",
+        description: d.description || d.description_id || "",
+      });
+      setCoverPrevEdit(
+        d.image_url || d.image_public_url || row.image_src || ""
+      );
+    },
+    [formEdit, getBlogDetail]
+  );
 
-  const onEditSubmit = async () => {
+  const onEditSubmit = useCallback(async () => {
     if (!activeRow) return;
     const v = await formEdit.validateFields().catch(() => null);
     if (!v) return;
@@ -207,7 +240,7 @@ export default function BlogContent(props) {
     const res = await vm.updateBlog(activeRow.id, {
       ...(cover ? { file: cover } : {}),
       name_id: v.title,
-      category_slug: v.category || null, // NOTE: Select pakai slug
+      category_slug: v.category || null,
       description_id: v.description || "",
       autoTranslate: false,
     });
@@ -215,66 +248,85 @@ export default function BlogContent(props) {
     if (res.ok) {
       setEditOpen(false);
       formEdit.resetFields();
+      if (coverPrevEdit) URL.revokeObjectURL(coverPrevEdit);
       setCoverPrevEdit("");
     } else {
       Modal.error({ title: "Gagal", content: res.error || "Gagal menyimpan" });
     }
-  };
+  }, [activeRow, formEdit, vm, coverPrevEdit]);
 
-  const onDelete = async (id) => {
-    const res = await vm.deleteBlog(id);
-    if (!res.ok) {
-      Modal.error({
-        title: "Gagal",
-        content: res.error || "Tidak bisa menghapus",
-      });
-    }
-  };
+  const onDelete = useCallback(
+    async (id) => {
+      const res = await vm.deleteBlog(id);
+      if (!res.ok) {
+        Modal.error({
+          title: "Gagal",
+          content: res.error || "Tidak bisa menghapus",
+        });
+      }
+    },
+    [vm]
+  );
 
-  const openView = async (row) => {
-    setActiveRow(row);
-    setViewOpen(true);
-    setDetailLoading(true);
-    setDetailData(null);
-    const { ok, data, error } = await getBlogDetail(row.id);
-    setDetailLoading(false);
-    if (!ok) {
-      setViewOpen(false);
-      return Modal.error({ title: "Gagal memuat", content: error });
-    }
-    setDetailData(data);
-  };
+  const openView = useCallback(
+    async (row) => {
+      setActiveRow(row);
+      setViewOpen(true);
+      setDetailLoading(true);
+      setDetailData(null);
+      const { ok, data, error } = await getBlogDetail(row.id);
+      setDetailLoading(false);
+      if (!ok) {
+        setViewOpen(false);
+        return Modal.error({ title: "Gagal memuat", content: error });
+      }
+      setDetailData(data);
+    },
+    [getBlogDetail]
+  );
 
-  const goPrev = () => vm.setPage(Math.max(1, vm.page - 1));
-  const goNext = () => vm.setPage(vm.page + 1); // aman saat totalPages undefined
+  const goPrev = useCallback(() => vm.setPage(Math.max(1, vm.page - 1)), [vm]);
+  const goNext = useCallback(() => vm.setPage(vm.page + 1), [vm]);
 
   const [searchValue, setSearchValue] = useState(vm.q || "");
   useEffect(() => setSearchValue(vm.q || ""), [vm.q]);
-  const triggerSearch = () => {
+
+  const triggerSearch = useCallback(() => {
     vm.setQ?.(searchValue || "");
     vm.setPage?.(1);
-  };
+  }, [searchValue, vm]);
 
-  const onChangeStatus = (v) => {
-    vm.setStatus?.(v);
-    if (v === "deleted") {
-      vm.setOnlyDeleted?.(true);
-      vm.setWithDeleted?.(false);
-    } else {
-      vm.setOnlyDeleted?.(false);
-      vm.setWithDeleted?.(false);
-    }
-    vm.setPage?.(1);
-  };
+  const onChangeStatus = useCallback(
+    (v) => {
+      vm.setStatus?.(v);
+      if (v === "deleted") {
+        vm.setOnlyDeleted?.(true);
+        vm.setWithDeleted?.(false);
+      } else {
+        vm.setOnlyDeleted?.(false);
+        vm.setWithDeleted?.(false);
+      }
+      vm.setPage?.(1);
+    },
+    [vm]
+  );
 
-  // FILTER kategori by ID (untuk list)
-  const onChangeCategory = (v) => {
-    vm.setCategoryId?.(v || "");
-    vm.setPage?.(1);
-  };
+  const onChangeCategory = useCallback(
+    (v) => {
+      vm.setCategoryId?.(v || "");
+      vm.setPage?.(1);
+    },
+    [vm]
+  );
 
-  const t = T_ID;
   const { shellW, maxW, blue, text } = TOKENS;
+
+  const disablePrev = vm.page <= 1 || vm.loading;
+  const disableNext =
+    vm.loading ||
+    (vm.totalPages
+      ? vm.page >= vm.totalPages
+      : rows.length < (vm.perPage || 10));
 
   return (
     <ConfigProvider
@@ -329,9 +381,9 @@ export default function BlogContent(props) {
           <div style={styles.cardOuter}>
             <div style={styles.cardHeaderBar} />
             <div style={styles.cardInner}>
-              <div style={styles.cardTitle}>{t.title}</div>
+              <div style={styles.cardTitle}>{T.title}</div>
               <div style={styles.totalBadgeWrap}>
-                <div style={styles.totalBadgeLabel}>{t.totalLabel}</div>
+                <div style={styles.totalBadgeLabel}>{T.totalLabel}</div>
                 <div style={styles.totalBadgeValue}>
                   {vm.total ?? rows.length ?? "—"}
                 </div>
@@ -343,13 +395,13 @@ export default function BlogContent(props) {
           <div style={{ ...styles.cardOuter, marginTop: 12 }}>
             <div style={{ ...styles.cardInner, paddingTop: 14 }}>
               <div style={styles.sectionHeader}>
-                <div style={styles.sectionTitle}>{t.listTitle}</div>
+                <div style={styles.sectionTitle}>{T.listTitle}</div>
                 <Button
                   type="primary"
                   icon={<PlusCircleOutlined />}
                   onClick={() => setCreateOpen(true)}
                 >
-                  {t.addNew}
+                  {T.addNew}
                 </Button>
               </div>
 
@@ -360,7 +412,7 @@ export default function BlogContent(props) {
                   value={searchValue}
                   onChange={(e) => setSearchValue(e.target.value)}
                   onPressEnter={triggerSearch}
-                  placeholder={t.searchPh}
+                  placeholder={T.searchPh}
                   prefix={<SearchOutlined />}
                   style={styles.searchInput}
                 />
@@ -391,11 +443,11 @@ export default function BlogContent(props) {
 
               {/* Table header */}
               <div style={styles.tableHeader}>
-                <div style={{ ...styles.thLeft, paddingLeft: 8 }}>{t.name}</div>
-                <div style={styles.thCenter}>{t.category}</div>
-                <div style={styles.thCenter}>{t.views}</div>
-                <div style={styles.thCenter}>{t.likes}</div>
-                <div style={styles.thCenter}>{t.action}</div>
+                <div style={{ ...styles.thLeft, paddingLeft: 8 }}>{T.name}</div>
+                <div style={styles.thCenter}>{T.category}</div>
+                <div style={styles.thCenter}>{T.views}</div>
+                <div style={styles.thCenter}>{T.likes}</div>
+                <div style={styles.thCenter}>{T.action}</div>
               </div>
 
               {/* Rows */}
@@ -433,15 +485,16 @@ export default function BlogContent(props) {
                       <div style={styles.colCenter}>{abbr(r.views_count)}</div>
                       <div style={styles.colCenter}>{abbr(r.likes_count)}</div>
                       <div style={styles.colActionsCenter}>
-                        <Tooltip title={t.view}>
+                        <Tooltip title={T.view}>
                           <Button
                             size="small"
+                            aria-label="lihat"
                             icon={<EyeOutlined />}
                             onClick={() => openView(r)}
                             style={styles.iconBtn}
                           />
                         </Tooltip>
-                        <Tooltip title={t.del}>
+                        <Tooltip title={T.del}>
                           <Popconfirm
                             title="Hapus berita ini?"
                             okText="Ya"
@@ -451,14 +504,16 @@ export default function BlogContent(props) {
                             <Button
                               size="small"
                               danger
+                              aria-label="hapus"
                               icon={<DeleteOutlined />}
                               style={styles.iconBtn}
                             />
                           </Popconfirm>
                         </Tooltip>
-                        <Tooltip title={t.edit}>
+                        <Tooltip title={T.edit}>
                           <Button
                             size="small"
+                            aria-label="edit"
                             icon={<EditOutlined />}
                             onClick={() => openEdit(r)}
                             style={styles.iconBtn}
@@ -475,7 +530,7 @@ export default function BlogContent(props) {
                 <Button
                   icon={<LeftOutlined />}
                   onClick={goPrev}
-                  disabled={vm.page <= 1 || vm.loading}
+                  disabled={disablePrev}
                 />
                 <div style={styles.pageText}>
                   Page {vm.page}
@@ -484,12 +539,7 @@ export default function BlogContent(props) {
                 <Button
                   icon={<RightOutlined />}
                   onClick={goNext}
-                  disabled={
-                    vm.loading ||
-                    (vm.totalPages
-                      ? vm.page >= vm.totalPages
-                      : rows.length < (vm.perPage || 10))
-                  }
+                  disabled={disableNext}
                 />
               </div>
             </div>
@@ -497,11 +547,12 @@ export default function BlogContent(props) {
         </div>
       </section>
 
-      {/* ===== Modals ===== */}
+      {/* ===== Create ===== */}
       <Modal
         open={createOpen}
         onCancel={() => {
           setCreateOpen(false);
+          if (coverPrevCreate) URL.revokeObjectURL(coverPrevCreate);
           setCoverPrevCreate("");
           formCreate.resetFields();
         }}
@@ -536,21 +587,20 @@ export default function BlogContent(props) {
                         style={styles.coverImg}
                       />
                     ) : (
-                      <div style={styles.coverPlaceholder}>+ {T_ID.cover}</div>
+                      <div style={styles.coverPlaceholder}>+ {T.cover}</div>
                     )}
                   </div>
                 </Upload>
               </Form.Item>
             </div>
             <Form.Item
-              label={T_ID.blogTitle}
+              label={T.blogTitle}
               name="title"
               rules={[{ required: true, message: "Judul wajib diisi" }]}
             >
               <Input placeholder="Contoh: Beasiswa Kanada" />
             </Form.Item>
-            {/* NEW: kategori pakai Select (value = slug) */}
-            <Form.Item label={T_ID.blogCategory} name="category">
+            <Form.Item label={T.blogCategory} name="category">
               <Select
                 allowClear
                 showSearch
@@ -559,7 +609,7 @@ export default function BlogContent(props) {
                 optionFilterProp="label"
               />
             </Form.Item>
-            <Form.Item label={T_ID.blogDesc} name="description">
+            <Form.Item label={T.blogDesc} name="description">
               <Input.TextArea rows={4} placeholder="Deskripsi singkat..." />
             </Form.Item>
             <div style={styles.modalFooter}>
@@ -570,17 +620,19 @@ export default function BlogContent(props) {
                 loading={vm.opLoading}
                 style={styles.saveBtn}
               >
-                {T_ID.save}
+                {T.save}
               </Button>
             </div>
           </Form>
         </div>
       </Modal>
 
+      {/* ===== Edit ===== */}
       <Modal
         open={editOpen}
         onCancel={() => {
           setEditOpen(false);
+          if (coverPrevEdit) URL.revokeObjectURL(coverPrevEdit);
           setCoverPrevEdit("");
           formEdit.resetFields();
         }}
@@ -615,23 +667,20 @@ export default function BlogContent(props) {
                           style={styles.coverImg}
                         />
                       ) : (
-                        <div style={styles.coverPlaceholder}>
-                          + {T_ID.cover}
-                        </div>
+                        <div style={styles.coverPlaceholder}>+ {T.cover}</div>
                       )}
                     </div>
                   </Upload>
                 </Form.Item>
               </div>
               <Form.Item
-                label={T_ID.blogTitle}
+                label={T.blogTitle}
                 name="title"
                 rules={[{ required: true, message: "Judul wajib diisi" }]}
               >
                 <Input placeholder="Judul berita" />
               </Form.Item>
-              {/* NEW: kategori pakai Select (value = slug) */}
-              <Form.Item label={T_ID.blogCategory} name="category">
+              <Form.Item label={T.blogCategory} name="category">
                 <Select
                   allowClear
                   showSearch
@@ -640,7 +689,7 @@ export default function BlogContent(props) {
                   optionFilterProp="label"
                 />
               </Form.Item>
-              <Form.Item label={T_ID.blogDesc} name="description">
+              <Form.Item label={T.blogDesc} name="description">
                 <Input.TextArea rows={4} placeholder="Deskripsi (opsional)" />
               </Form.Item>
               <div style={styles.modalFooter}>
@@ -659,6 +708,7 @@ export default function BlogContent(props) {
         </div>
       </Modal>
 
+      {/* ===== View ===== */}
       <Modal
         open={viewOpen}
         onCancel={() => {
@@ -686,7 +736,7 @@ export default function BlogContent(props) {
             </div>
             <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
               <div>
-                <div style={styles.label}>{T_ID.blogTitle}</div>
+                <div style={styles.label}>{T.blogTitle}</div>
                 <div style={styles.value}>
                   {detailData?.name ||
                     detailData?.title ||
@@ -695,7 +745,7 @@ export default function BlogContent(props) {
                 </div>
               </div>
               <div>
-                <div style={styles.label}>{T_ID.blogCategory}</div>
+                <div style={styles.label}>{T.blogCategory}</div>
                 <div style={styles.value}>
                   {detailData?.category_name ||
                     detailData?.category_slug ||
@@ -722,20 +772,20 @@ export default function BlogContent(props) {
                 }}
               >
                 <div>
-                  <div style={styles.label}>{T_ID.views}</div>
+                  <div style={styles.label}>{T.views}</div>
                   <div style={styles.value}>
                     {abbr(detailData?.views_count ?? activeRow?.views_count)}
                   </div>
                 </div>
                 <div>
-                  <div style={styles.label}>{T_ID.likes}</div>
+                  <div style={styles.label}>{T.likes}</div>
                   <div style={styles.value}>
                     {abbr(detailData?.likes_count ?? activeRow?.likes_count)}
                   </div>
                 </div>
               </div>
               <div>
-                <div style={styles.label}>{T_ID.blogDesc}</div>
+                <div style={styles.label}>{T.blogDesc}</div>
                 <div style={styles.value}>
                   {detailData?.description || detailData?.description_id || "-"}
                 </div>
@@ -748,7 +798,7 @@ export default function BlogContent(props) {
   );
 }
 
-/* ===== compact styles ===== */
+/* ===== styles ===== */
 const styles = {
   cardOuter: {
     background: "#ffffff",
@@ -802,7 +852,7 @@ const styles = {
 
   filtersRow: {
     display: "grid",
-    gridTemplateColumns: "1fr 180px 180px", // sebelumnya ada 4 kolom
+    gridTemplateColumns: "1fr 180px 180px",
     gap: 8,
     marginBottom: 10,
     alignItems: "center",

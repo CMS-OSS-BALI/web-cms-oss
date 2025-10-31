@@ -2,1097 +2,1619 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  Button,
-  Card,
-  Col,
   ConfigProvider,
-  Descriptions,
-  Empty,
-  Form,
-  Image,
-  Input,
+  Button,
   Modal,
-  notification,
-  Pagination,
-  Popconfirm,
-  Row,
+  Form,
+  Input,
   Select,
-  Space,
+  Empty,
+  Skeleton,
+  Popconfirm,
+  Tooltip,
   Spin,
-  Typography,
-  theme as antdTheme,
+  Tag,
+  Upload,
+  notification,
 } from "antd";
 import {
-  PlusOutlined,
   EyeOutlined,
-  MailOutlined,
-  PhoneOutlined,
-  InstagramOutlined,
-  TwitterOutlined,
-  LinkOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  LeftOutlined,
+  RightOutlined,
+  SearchOutlined,
+  FilterOutlined,
+  DownloadOutlined,
+  PaperClipOutlined,
 } from "@ant-design/icons";
-import HtmlEditor from "@/../app/components/editor/HtmlEditor";
-import { sanitizeHtml } from "@/app/utils/dompurify";
 
-const { Title, Text, Paragraph } = Typography;
+/* =======================
+   Lightweight Donut Pie
+======================= */
+const PIE_COLORS = [
+  "#0b56c9",
+  "#5aa8ff",
+  "#8ab6ff",
+  "#b3d4ff",
+  "#d1e5ff",
+  "#2c3e50",
+];
 
-const PLACEHOLDER =
-  "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=1200&auto=format&fit=crop";
+function PieDonut({
+  data,
+  size = 240,
+  inner = 86,
+  palette = PIE_COLORS,
+  centerTitle = "Total Mitra",
+}) {
+  const safe = Array.isArray(data) ? data : [];
+  const total = Math.max(
+    1,
+    safe.reduce((a, b) => a + (Number(b.value) || 0), 0)
+  );
+  const cx = size / 2;
+  const cy = size / 2;
+  const r = size / 2;
+  let acc = 0;
+  const EPS = 1e-4;
 
-const clean = (v) => (v === "" || v === undefined ? null : v);
+  const polar = (cx, cy, r, a) => {
+    const rad = ((a - 90) * Math.PI) / 180;
+    return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+  };
+  const donutPath = (cx, cy, rO, rI, start, end) => {
+    const large = end - start > 180 ? 1 : 0;
+    const sO = polar(cx, cy, rO, start);
+    const eO = polar(cx, cy, rO, end);
+    const sI = polar(cx, cy, rI, end);
+    const eI = polar(cx, cy, rI, start);
+    return [
+      `M ${sO.x} ${sO.y}`,
+      `A ${rO} ${rO} 0 ${large} 1 ${eO.x} ${eO.y}`,
+      `L ${sI.x} ${sI.y}`,
+      `A ${rI} ${rI} 0 ${large} 0 ${eI.x} ${eI.y}`,
+      "Z",
+    ].join(" ");
+  };
 
-const CARD_BG = "rgba(11, 18, 35, 0.94)";
-const darkCardStyle = {
-  background: CARD_BG,
-  border: "1px solid #2f3f60",
-  borderRadius: 16,
-  boxShadow: "0 10px 24px rgba(2,6,23,.35)",
+  const totalLabel = safe.reduce((a, b) => a + (Number(b.value) || 0), 0);
+
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      role="img"
+      aria-label="Distribusi kategori mitra"
+      style={{ display: "block" }}
+    >
+      {safe.map((d, i) => {
+        const value = Number(d.value) || 0;
+        if (value <= 0) return null;
+        const pct = value / total;
+        const angle = pct * 360;
+        const start = acc;
+        const end = acc + angle;
+        acc = end;
+        const fill = palette[i % palette.length];
+
+        if (1 - pct < EPS) {
+          return (
+            <g key={i}>
+              <circle cx={cx} cy={cy} r={r} fill={fill}>
+                <title>{`${d.label}: ${value} (100%)`}</title>
+              </circle>
+            </g>
+          );
+        }
+        return (
+          <path
+            key={i}
+            d={donutPath(cx, cy, r, inner, start, Math.max(start + EPS, end))}
+            fill={fill}
+            stroke="#fff"
+            strokeWidth="2"
+          >
+            <title>{`${d.label}: ${value} (${Math.round(pct * 100)}%)`}</title>
+          </path>
+        );
+      })}
+      <circle cx={cx} cy={cy} r={inner - 8} fill="#fff" />
+      <text
+        x={cx}
+        y={cy - 2}
+        textAnchor="middle"
+        fontWeight="800"
+        fontSize="22"
+        fill="#0f172a"
+      >
+        {totalLabel}
+      </text>
+      <text x={cx} y={cy + 16} textAnchor="middle" fontSize="11" fill="#6b7280">
+        {centerTitle}
+      </text>
+    </svg>
+  );
+}
+
+/* ===== tokens ===== */
+const TOKENS = { shellW: "94%", maxW: 1140, blue: "#0b56c9", text: "#0f172a" };
+
+const T = {
+  title: "Manajemen Mitra",
+  totalLabel: "Mitra",
+  listTitle: "Data Mitra",
+  searchPh: "Search",
+  // table
+  nameCol: "Mitra",
+  statusCol: "Status",
+  typeCol: "Tipe",
+  dateCol: "Tanggal",
+  action: "Aksi",
+  // filters
+  category: "Kategori",
+  status: "Status",
+  // detail / edit labels
+  merchant: "Nama Mitra",
+  email: "Email",
+  phone: "No. Telepon",
+  website: "Website",
+  instagram: "Instagram",
+  twitter: "Twitter",
+  mou_url: "Link MoU",
+  address: "Alamat",
+  city: "Kota",
+  province: "Provinsi",
+  postal_code: "Kode Pos",
+  contact_name: "Nama PIC",
+  contact_position: "Jabatan PIC",
+  contact_whatsapp: "WhatsApp PIC",
+  categoryLbl: "Kategori",
+  logo: "Logo / Gambar (1:1)",
+  about: "Tentang",
+  attachments: "Lampiran (opsional)",
+  review_notes: "Catatan Review",
 };
 
-/* ===== Form Modal ===== */
-/* ===== Form Modal (ALL FIELDS REQUIRED) ===== */
-function MerchantFormModal({
-  open,
-  mode,
-  initialValues,
-  saving,
-  onCancel,
-  onSubmit,
-}) {
-  const [form] = Form.useForm();
-  const isEdit = mode === "edit";
+/* ===== helpers ===== */
+const PUB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const PUB_BUCKET =
+  process.env.NEXT_PUBLIC_SUPABASE_BUCKET ||
+  process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET ||
+  "";
 
-  useEffect(() => {
-    if (!open) return;
-    form.resetFields();
-    form.setFieldsValue({
-      merchant_name: "",
-      email: "",
-      phone: "",
-      instagram: "",
-      twitter: "",
-      website: "",
-      image_url: "",
-      mou_url: "",
-      about: "",
-      address: "",
-      ...initialValues,
-    });
-  }, [open, initialValues, form]);
-
-  const ctrlStyle = {
-    background: "#0e182c",
-    borderColor: "#2f3f60",
-    color: "#e6eaf2",
-    borderRadius: 12,
-  };
-
-  const handleFinish = (v) => {
-    // payload langsung sesuai API / DB
-    const payload = {
-      merchant_name: v.merchant_name.trim(),
-      email: v.email.trim(),
-      phone: v.phone.trim(),
-      instagram: v.instagram.trim(),
-      twitter: v.twitter.trim(),
-      website: v.website.trim(),
-      image_url: v.image_url.trim(),
-      mou_url: v.mou_url.trim(),
-      about: v.about.trim(),
-      address: v.address.trim(),
-    };
-    onSubmit(payload);
-  };
-
-  return (
-    <Modal
-      title={mode === "edit" ? "Edit Mitra Dalam Negeri" : "Add Mitra Dalam Negeri"}
-      open={open}
-      centered
-      width={900}
-      onCancel={onCancel}
-      footer={
-        <Space style={{ width: "100%", justifyContent: "flex-end" }}>
-          <Button shape="round" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button
-            shape="round"
-            type="primary"
-            loading={saving}
-            onClick={() => form.submit()}
-          >
-            {mode === "edit" ? "Update" : "Save"}
-          </Button>
-        </Space>
-      }
-      styles={{
-        content: { ...darkCardStyle, borderRadius: 16 },
-        header: {
-          background: "transparent",
-          borderBottom: "1px solid #2f3f60",
-        },
-        body: { padding: 0 },
-        mask: { backgroundColor: "rgba(0,0,0,.6)" },
-      }}
-      destroyOnHidden
-    >
-      <div className="form-scroll">
-        <div style={{ padding: 16 }}>
-          <Form layout="vertical" form={form} onFinish={handleFinish}>
-            <Row gutter={[12, 8]}>
-              {/* Name */}
-              <Col xs={24} md={12}>
-                <Form.Item
-                  name="merchant_name"
-                  label="Name"
-                  rules={
-                    isEdit
-                      ? []
-                      : [
-                          {
-                            required: true,
-                            whitespace: true,
-                            message: "Name wajib diisi",
-                          },
-                        ]
-                  }
-                >
-                  <Input maxLength={191} style={ctrlStyle} />
-                </Form.Item>
-              </Col>
-
-              {/* Email */}
-              <Col xs={24} md={12}>
-                <Form.Item
-                  name="email"
-                  label="Email"
-                  rules={[
-                    ...(!isEdit
-                      ? [{ required: true, message: "Email wajib diisi" }]
-                      : []),
-                    { type: "email", message: "Email tidak valid" },
-                  ]}
-                >
-                  <Input style={ctrlStyle} />
-                </Form.Item>
-              </Col>
-
-              {/* Phone */}
-              <Col xs={24} md={12}>
-                <Form.Item
-                  name="phone"
-                  label="Phone"
-                  rules={
-                    isEdit
-                      ? []
-                      : [
-                          {
-                            required: true,
-                            whitespace: true,
-                            message: "Phone wajib diisi",
-                          },
-                        ]
-                  }
-                >
-                  <Input placeholder="+62..." style={ctrlStyle} />
-                </Form.Item>
-              </Col>
-
-              {/* Instagram */}
-              <Col xs={24} md={12}>
-                <Form.Item
-                  name="instagram"
-                  label="Instagram (handle atau URL)"
-                  rules={
-                    isEdit
-                      ? []
-                      : [
-                          {
-                            required: true,
-                            whitespace: true,
-                            message: "Instagram wajib diisi",
-                          },
-                        ]
-                  }
-                >
-                  <Input
-                    placeholder="@brand atau https://instagram.com/brand"
-                    style={ctrlStyle}
-                  />
-                </Form.Item>
-              </Col>
-
-              {/* Twitter/X */}
-              <Col xs={24} md={12}>
-                <Form.Item
-                  name="twitter"
-                  label="Twitter/X (handle atau URL)"
-                  rules={
-                    isEdit
-                      ? []
-                      : [
-                          {
-                            required: true,
-                            whitespace: true,
-                            message: "Twitter/X wajib diisi",
-                          },
-                        ]
-                  }
-                >
-                  <Input
-                    placeholder="@brand atau https://twitter.com/brand"
-                    style={ctrlStyle}
-                  />
-                </Form.Item>
-              </Col>
-
-              {/* Website */}
-              <Col xs={24} md={12}>
-                <Form.Item
-                  name="website"
-                  label="Website"
-                  rules={[
-                    ...(!isEdit
-                      ? [{ required: true, message: "Website wajib diisi" }]
-                      : []),
-                    {
-                      type: "url",
-                      message:
-                        "URL website tidak valid (awali dengan http/https)",
-                    },
-                  ]}
-                >
-                  <Input placeholder="https://example.com" style={ctrlStyle} />
-                </Form.Item>
-              </Col>
-
-              {/* Image URL */}
-              <Col xs={24} md={12}>
-                <Form.Item
-                  name="image_url"
-                  label="Image URL"
-                  rules={[
-                    ...(!isEdit
-                      ? [{ required: true, message: "Image URL wajib diisi" }]
-                      : []),
-                    { type: "url", message: "URL gambar tidak valid" },
-                  ]}
-                >
-                  <Input placeholder="https://..." style={ctrlStyle} />
-                </Form.Item>
-              </Col>
-
-              {/* MOU URL */}
-              <Col xs={24} md={12}>
-                <Form.Item
-                  name="mou_url"
-                  label="MOU URL"
-                  rules={[
-                    ...(!isEdit
-                      ? [{ required: true, message: "MOU URL wajib diisi" }]
-                      : []),
-                    { type: "url", message: "URL MOU tidak valid" },
-                  ]}
-                >
-                  <Input placeholder="https://..." style={ctrlStyle} />
-                </Form.Item>
-              </Col>
-
-              {/* About (WYSIWYG) */}
-              <Col span={24}>
-                <Form.Item
-                  name="about"
-                  label="About"
-                  rules={
-                    isEdit
-                      ? []
-                      : [
-                          {
-                            required: true,
-                            whitespace: true,
-                            message: "About wajib diisi",
-                          },
-                        ]
-                  }
-                >
-                  <HtmlEditor
-                    className="editor-dark"
-                    variant="mini"
-                    minHeight={200}
-                  />
-                </Form.Item>
-              </Col>
-
-              {/* Address */}
-              <Col span={24}>
-                <Form.Item
-                  name="address"
-                  label="Address"
-                  rules={
-                    isEdit
-                      ? []
-                      : [
-                          {
-                            required: true,
-                            whitespace: true,
-                            message: "Address wajib diisi",
-                          },
-                        ]
-                  }
-                >
-                  <Input.TextArea
-                    rows={3}
-                    style={{ ...ctrlStyle, resize: "vertical" }}
-                  />
-                </Form.Item>
-              </Col>
-            </Row>
-          </Form>
-        </div>
-      </div>
-
-      <style jsx global>{`
-        .form-scroll {
-          max-height: 62vh;
-          overflow: auto;
-        }
-        .form-scroll::-webkit-scrollbar {
-          width: 8px;
-        }
-        .form-scroll::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .form-scroll::-webkit-scrollbar-thumb {
-          background: rgba(148, 163, 184, 0.25);
-          border-radius: 9999px;
-        }
-        .form-scroll:hover::-webkit-scrollbar-thumb {
-          background: rgba(148, 163, 184, 0.35);
-        }
-        .form-scroll {
-          scrollbar-width: thin;
-          scrollbar-color: rgba(148, 163, 184, 0.25) transparent;
-        }
-      `}</style>
-    </Modal>
+const monthsId = [
+  "Januari",
+  "Februari",
+  "Maret",
+  "April",
+  "Mei",
+  "Juni",
+  "Juli",
+  "Agustus",
+  "September",
+  "Oktober",
+  "November",
+  "Desember",
+];
+const fmtDateId = (dLike) => {
+  if (dLike === null || dLike === undefined || dLike === "") return "-";
+  try {
+    const dt =
+      typeof dLike === "number" ? new Date(dLike) : new Date(String(dLike));
+    if (isNaN(dt.getTime())) return "-";
+    return `${dt.getDate()} ${monthsId[dt.getMonth()]} ${dt.getFullYear()}`;
+  } catch {
+    return "-";
+  }
+};
+const clip = (s) => (s ? String(s) : "—");
+const isImg = (f) =>
+  ["image/jpeg", "image/png", "image/webp", "image/svg+xml"].includes(
+    f?.type || ""
   );
-}
-function MerchantViewModal({ open, data, onClose }) {
-  const rows = [];
-  if (data?.about)
-    rows.push({
-      label: "About",
-      content: (
-        <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(data.about ?? "") }} />
-      ),
-    });
-  if (data?.address) rows.push({ label: "Address", content: data.address });
-  if (data?.email)
-    rows.push({
-      label: "Email",
-      content: <a href={`mailto:${data.email}`}>{data.email}</a>,
-    });
-  if (data?.phone)
-    rows.push({
-      label: "Phone",
-      content: <a href={`tel:${data.phone}`}>{data.phone}</a>,
-    });
-  if (data?.instagram)
-    rows.push({
-      label: "Instagram",
-      content: (
-        <a
-          href={
-            /^https?:\/\//i.test(data.instagram)
-              ? data.instagram
-              : `https://instagram.com/${data.instagram.replace(/^@/, "")}`
-          }
-          target="_blank"
-          rel="noreferrer"
-        >
-          {data.instagram}
-        </a>
-      ),
-    });
-  if (data?.twitter)
-    rows.push({
-      label: "Twitter/X",
-      content: (
-        <a
-          href={
-            /^https?:\/\//i.test(data.twitter)
-              ? data.twitter
-              : `https://twitter.com/${data.twitter.replace(/^@/, "")}`
-          }
-          target="_blank"
-          rel="noreferrer"
-        >
-          {data.twitter}
-        </a>
-      ),
-    });
-  if (data?.website)
-    rows.push({
-      label: "Website",
-      content: (
-        <a
-          href={
-            /^https?:\/\//i.test(data.website)
-              ? data.website
-              : `https://${data.website}`
-          }
-          target="_blank"
-          rel="noreferrer"
-        >
-          {data.website}
-        </a>
-      ),
-    });
-  if (data?.mou_url)
-    rows.push({
-      label: "MOU",
-      content: (
-        <a href={data.mou_url} target="_blank" rel="noreferrer">
-          {data.mou_url}
-        </a>
-      ),
-    });
-  if (data?.created_at)
-    rows.push({
-      label: "Created At",
-      content: new Date(data.created_at).toLocaleString(),
-    });
+const tooBig = (f, mb = 10) => f.size / 1024 / 1024 > mb;
 
-  return (
-    <Modal
-      open={open}
-      onCancel={onClose}
-      centered
-      width={900}
-      title={data?.merchant_name || "Detail Mitra Dalam Negeri"}
-      footer={
-        <Button shape="round" type="primary" onClick={onClose}>
-          Close
-        </Button>
-      }
-      styles={{
-        content: { ...darkCardStyle },
-        header: {
-          background: "transparent",
-          borderBottom: "1px solid #2f3f60",
-        },
-        body: { padding: 0 },
-        mask: { backgroundColor: "rgba(0,0,0,.6)" },
-      }}
-      destroyOnHidden
-    >
-      <div className="view-scroll">
-        <div style={{ padding: 16 }}>
-          {/* Image preview */}
-          <Image
-            src={data?.image_url || PLACEHOLDER}
-            alt={data?.merchant_name}
-            width="100%"
-            style={{
-              borderRadius: 10,
-              marginBottom: 12,
-              maxHeight: 320,
-              objectFit: "cover",
-            }}
-          />
+/** Build public URL from Supabase storage path when bucket is public */
+const toPublicUrl = (pathOrUrl) => {
+  const s = String(pathOrUrl || "");
+  if (!s) return "";
+  if (/^https?:\/\//i.test(s)) return s;
+  if (PUB_URL && PUB_BUCKET) {
+    return `${PUB_URL.replace(
+      /\/$/,
+      ""
+    )}/storage/v1/object/public/${PUB_BUCKET}/${s.replace(/^\/+/, "")}`;
+  }
+  return s;
+};
+/** Derive filename from Supabase path */
+const baseName = (p = "") => String(p).split("/").pop() || "file";
+/** Build download href that ALWAYS works (private/public) */
+const toDownloadHref = (storagePath = "", name) => {
+  if (!storagePath) return "#";
+  const n = encodeURIComponent(name || baseName(storagePath));
+  const p = encodeURIComponent(String(storagePath));
+  return `/api/supabase/download?path=${p}&name=${n}`;
+};
 
-          <Descriptions size="small" bordered column={1}>
-            {rows.map((r, i) => (
-              <Descriptions.Item key={i} label={r.label}>
-                {r.content}
-              </Descriptions.Item>
-            ))}
-          </Descriptions>
-        </div>
-      </div>
+export default function MerchantsContent({ vm }) {
+  const viewModel = vm ?? require("./useMerchantsViewModel").default();
+  const { shellW, maxW, blue, text } = TOKENS;
 
-      <style jsx global>{`
-        .view-scroll {
-          max-height: 72vh;
-          overflow: auto;
-        }
-        .view-scroll::-webkit-scrollbar {
-          width: 8px;
-        }
-        .view-scroll::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .view-scroll::-webkit-scrollbar-thumb {
-          background: rgba(148, 163, 184, 0.25);
-          border-radius: 9999px;
-        }
-        .view-scroll:hover::-webkit-scrollbar-thumb {
-          background: rgba(148, 163, 184, 0.35);
-        }
-        .view-scroll {
-          scrollbar-width: thin;
-          scrollbar-color: rgba(148, 163, 184, 0.25) transparent;
-        }
-      `}</style>
-    </Modal>
-  );
-}
-
-function MerchantCard({ m, onView, onEdit, onDelete }) {
-  // Build URL untuk sosial/website (boleh handle atau full URL)
-  const igUrl = m.instagram
-    ? /^https?:\/\//i.test(m.instagram)
-      ? m.instagram
-      : `https://instagram.com/${String(m.instagram).replace(/^@/, "")}`
-    : null;
-
-  const twUrl = m.twitter
-    ? /^https?:\/\//i.test(m.twitter)
-      ? m.twitter
-      : `https://twitter.com/${String(m.twitter).replace(/^@/, "")}`
-    : null;
-
-  const webUrl = m.website
-    ? /^https?:\/\//i.test(m.website)
-      ? m.website
-      : `https://${m.website}`
-    : null;
-
-  const websiteLabel = (() => {
-    if (!webUrl) return "";
-    const fallbackLabel = webUrl.replace(/^https?:\/\//i, "");
-    try {
-      const urlObj = new URL(webUrl);
-      const base = urlObj.hostname.replace(/^www\./, "");
-      const path = urlObj.pathname && urlObj.pathname !== "/" ? urlObj.pathname : "";
-      const label = `${base}${path}`.replace(/\/$/, "");
-      return label.length > 28 ? `${label.slice(0, 25)}...` : label;
-    } catch (_err) {
-      return fallbackLabel.length > 28 ? `${fallbackLabel.slice(0, 25)}...` : fallbackLabel;
-    }
-  })();
-
-  const cleanedDesc = (m.about || m.address || "").replace(/^[`"'\s]+|[`"'\s]+$/g, "").trim();
-  const safeDesc = sanitizeHtml(cleanedDesc || "");
-  const plainDesc = safeDesc.replace(/<[^>]*>/g, "").trim();
-  const hasDesc = plainDesc.length > 0;
-
-  return (
-    <Card
-      hoverable
-      style={darkCardStyle}
-      styles={{ body: { padding: 12 } }}
-      cover={
-        <div
-          style={{
-            position: "relative",
-            aspectRatio: "16 / 9",
-            borderBottom: "1px solid #2f3f60",
-            overflow: "hidden",
-            cursor: "pointer",
-          }}
-          onClick={onView}
-        >
-          <img
-            alt={m.merchant_name}
-            src={m.image_url || PLACEHOLDER}
-            style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            onError={(e) => {
-              e.currentTarget.onerror = null;
-              e.currentTarget.src = PLACEHOLDER;
-            }}
-          />
-        </div>
-      }
-    >
-      {/* Nama */}
-      <Text strong style={{ fontSize: 14, display: "block" }}>
-        {m.merchant_name}
-      </Text>
-
-      {/* Email & Phone */}
-      <div
-        style={{
-          display: "flex",
-          gap: 10,
-          flexWrap: "wrap",
-          alignItems: "center",
-          marginTop: 4,
-        }}
-      >
-        {m.email && (
-          <a
-            href={`mailto:${m.email}`}
-            style={{ fontSize: 12, color: "rgba(226,232,240,0.9)" }}
-          >
-            <MailOutlined style={{ marginRight: 6 }} />
-            {m.email}
-          </a>
-        )}
-        {m.phone && (
-          <a
-            href={`tel:${m.phone}`}
-            style={{ fontSize: 12, color: "rgba(226,232,240,0.9)" }}
-          >
-            <PhoneOutlined style={{ marginRight: 6 }} />
-            {m.phone}
-          </a>
-        )}
-      </div>
-
-      {/* Sosial */}
-      <div
-        style={{
-          display: "flex",
-          gap: 8,
-          flexWrap: "wrap",
-          marginTop: 8,
-        }}
-      >
-        {igUrl && (
-          <Button
-            size="small"
-            shape="round"
-            icon={<InstagramOutlined />}
-            href={igUrl}
-            target="_blank"
-            rel="noreferrer"
-            style={{
-              borderColor: "#2f3f60",
-              background: "rgba(255,255,255,.04)",
-            }}
-          >
-            Instagram
-          </Button>
-        )}
-        {twUrl && (
-          <Button
-            size="small"
-            shape="round"
-            icon={<TwitterOutlined />}
-            href={twUrl}
-            target="_blank"
-            rel="noreferrer"
-            style={{
-              borderColor: "#2f3f60",
-              background: "rgba(255,255,255,.04)",
-            }}
-          >
-            Twitter
-          </Button>
-        )}
-        {webUrl && (
-          <Button
-            size="small"
-            shape="round"
-            icon={<LinkOutlined />}
-            href={webUrl}
-            target="_blank"
-            rel="noreferrer"
-            title={webUrl}
-            style={{
-              borderColor: "#2f3f60",
-              background: "rgba(255,255,255,.04)",
-              maxWidth: 220,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            {websiteLabel}
-          </Button>
-        )}
-      </div>
-
-      {/* Deskripsi */}
-      <div style={{ minHeight: "calc(1.3em * 2)", margin: "10px 0 0" }}>
-        {hasDesc ? (
-          <div
-            title={plainDesc || undefined}
-            style={{
-              lineHeight: 1.3,
-              color: "#94a3b8",
-              display: "-webkit-box",
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: "vertical",
-              overflow: "hidden",
-            }}
-            dangerouslySetInnerHTML={{ __html: safeDesc }}
-          />
-        ) : (
-          <Paragraph style={{ margin: 0, lineHeight: 1.3 }} type="secondary">
-            -
-          </Paragraph>
-        )}
-      </div>
-
-      {/* Actions */}
-      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-        <Button
-          type="primary"
-          size="small"
-          shape="round"
-          icon={<EyeOutlined />}
-          onClick={onView}
-        >
-          View
-        </Button>
-        <Button size="small" shape="round" onClick={onEdit}>
-          Edit
-        </Button>
-        <Popconfirm
-          title="Hapus Mitra Dalam Negeri?"
-          description="Tindakan ini tidak dapat dibatalkan."
-          okText="Hapus"
-          okButtonProps={{ danger: true }}
-          placement="topRight"
-          onConfirm={onDelete}
-        >
-          <Button danger size="small" shape="round">
-            Delete
-          </Button>
-        </Popconfirm>
-      </div>
-    </Card>
-  );
-}
-
-/* ===== Main ===== */
-export default function MerchantsContent(props) {
-  const {
-    loading,
-    merchants = [],
-    q,
-    setQ,
-    page,
-    setPage,
-    perPage,
-    setPerPage,
-    total = 0,
-    error,
-    fetchMerchants,
-    createMerchant,
-    updateMerchant,
-    deleteMerchant,
-  } = props;
-
+  // notifications
   const [api, contextHolder] = notification.useNotification();
+  const toast = {
+    ok: (m, d) =>
+      api.success({ message: m, description: d, placement: "topRight" }),
+    err: (m, d) =>
+      api.error({ message: m, description: d, placement: "topRight" }),
+    info: (m, d) =>
+      api.info({ message: m, description: d, placement: "topRight" }),
+  };
 
-  const [modalOpen, setModalOpen] = useState(false);
-  const [mode, setMode] = useState("create");
-  const [saving, setSaving] = useState(false);
-  const [editing, setEditing] = useState(null);
-  const [view, setView] = useState(null);
+  // UI states
+  const [viewOpen, setViewOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [activeRow, setActiveRow] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailData, setDetailData] = useState(null);
+  const [formEdit] = Form.useForm();
 
+  // upload previews (logo)
+  const [imgPrevEdit, setImgPrevEdit] = useState("");
+
+  // attachments delete list
+  const [delAttach, setDelAttach] = useState([]);
+  const toggleDelAttach = (id) =>
+    setDelAttach((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+
+  // new attachments
+  const [newAttList, setNewAttList] = useState([]);
+
+  // derived
+  const rows = useMemo(() => viewModel.merchants || [], [viewModel.merchants]);
+
+  // status counts
+  const pendingCount =
+    viewModel.statusCounts?.pending ??
+    rows.filter((r) => r.status === "PENDING").length;
+  const approvedCount =
+    viewModel.statusCounts?.approved ??
+    rows.filter((r) => r.status === "APPROVED").length;
+  const declinedCount =
+    viewModel.statusCounts?.declined ??
+    rows.filter((r) => r.status === "DECLINED").length;
+
+  const chartStats = useMemo(() => {
+    const map = new Map();
+    rows.forEach((r) => {
+      const key = r?.category?.name || "Lainnya";
+      map.set(key, (map.get(key) || 0) + 1);
+    });
+    const parts = Array.from(map.entries()).map(([label, count]) => ({
+      label,
+      count,
+    }));
+    const total = parts.reduce((a, b) => a + b.count, 0) || 1;
+    return {
+      parts: parts
+        .sort((a, b) => b.count - a.count)
+        .map((p) => ({ ...p, pct: Math.round((p.count / total) * 100) })),
+      total,
+    };
+  }, [rows]);
+
+  // Filters
+  const [searchValue, setSearchValue] = useState(viewModel.q || "");
+  useEffect(() => setSearchValue(viewModel.q || ""), [viewModel.q]);
   useEffect(() => {
-    if (error) {
-      api.error({
-        key: "merchant-error",
-        message: "Terjadi kesalahan",
-        description: error,
-        placement: "topRight",
-      });
+    const t = setTimeout(() => {
+      viewModel.setQ?.((searchValue || "").trim());
+      viewModel.setPage?.(1);
+    }, 400);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchValue]);
+
+  // category remote
+  useEffect(() => {
+    viewModel.fetchCategoryOptions?.("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const onCategorySearch = (kw) => {
+    viewModel.fetchCategoryOptions?.(kw);
+  };
+
+  const statusTag = (s) => {
+    const v = String(s || "").toUpperCase();
+    if (v === "APPROVED") return <Tag color="green">APPROVED</Tag>;
+    if (v === "DECLINED") return <Tag color="red">DECLINED</Tag>;
+    return <Tag color="gold">PENDING</Tag>;
+  };
+
+  // unify vm ops
+  const vmGetDetail = viewModel.getDetail || viewModel.getMerchant;
+  const vmUpdate = viewModel.update || viewModel.updateMerchant;
+  const vmRemove = viewModel.remove || viewModel.deleteMerchant;
+  const vmExport = viewModel.exportCsv || viewModel.exportCSV;
+
+  // view
+  const openView = async (row) => {
+    setActiveRow(row);
+    setViewOpen(true);
+    setDetailLoading(true);
+    setDetailData(null);
+    const { ok, data, error } = (await vmGetDetail?.(row.id)) || {};
+    setDetailLoading(false);
+    if (!ok) {
+      setViewOpen(false);
+      return toast.err(
+        "Gagal memuat detail",
+        error || "Tidak dapat memuat data."
+      );
     }
-  }, [error, api]);
-
-  const openCreate = () => {
-    setMode("create");
-    setEditing(null);
-    setModalOpen(true);
-  };
-  const openEdit = (m) => {
-    setMode("edit");
-    setEditing(m);
-    setModalOpen(true);
+    setDetailData(data);
   };
 
-  const handleSubmit = async (payload) => {
-    setSaving(true);
-    const res =
-      mode === "edit"
-        ? await updateMerchant(editing.id, payload, editing?.locale_used ?? undefined)
-        : await createMerchant(payload);
-    setSaving(false);
+  // edit
+  const beforeImgEdit = (file) => {
+    if (!isImg(file) || tooBig(file, 10)) return Upload.LIST_IGNORE;
+    try {
+      setImgPrevEdit(URL.createObjectURL(file));
+    } catch {}
+    return false;
+  };
 
-    if (res?.ok) {
-      api.success({
-        key: "merchant-save",
-        message:
-          mode === "edit" ? "Mitra Dalam Negeri diperbarui" : "Mitra Dalam Negeri ditambahkan",
-        description: "Data telah tersimpan.",
-        placement: "topRight",
-      });
-      setModalOpen(false);
-      setEditing(null);
-    } else {
-      api.error({
-        key: "merchant-save",
-        message: "Gagal menyimpan",
-        description: res?.error || "Silakan coba lagi.",
-        placement: "topRight",
-      });
+  const openEdit = async (row) => {
+    setActiveRow(row);
+    setEditOpen(true);
+    setDetailLoading(true);
+    setDetailData(null);
+    setImgPrevEdit("");
+    setDelAttach([]);
+    setNewAttList([]);
+
+    const { ok, data, error } = (await vmGetDetail?.(row.id)) || {};
+    setDetailLoading(false);
+    if (!ok) {
+      setEditOpen(false);
+      return toast.err(
+        "Gagal memuat detail",
+        error || "Tidak dapat memuat data."
+      );
     }
+    const d = data || row;
+    setDetailData(d);
+
+    formEdit.setFieldsValue({
+      merchant_name: d.merchant_name || "",
+      email: d.email || "",
+      phone: d.phone || "",
+      website: d.website || "",
+      instagram: d.instagram || "",
+      twitter: d.twitter || "",
+      mou_url: d.mou_url || "",
+      address: d.address || "",
+      city: d.city || "",
+      province: d.province || "",
+      postal_code: d.postal_code || "",
+      contact_name: d.contact_name || "",
+      contact_position: d.contact_position || "",
+      contact_whatsapp: d.contact_whatsapp || "",
+      category_id: d.category?.id || undefined,
+      about: d.about || "",
+      status: (d.status || "PENDING").toUpperCase(),
+      review_notes: d.review_notes || "",
+    });
+
+    setImgPrevEdit(toPublicUrl(d.image_url || ""));
+    viewModel.fetchCategoryOptions?.("");
   };
 
-  const onSearch = () => fetchMerchants({ page: 1, q, perPage });
-  const onReset = () => {
-    setQ("");
-    fetchMerchants({ page: 1, q: "", perPage });
+  const onEditSubmit = async () => {
+    if (!activeRow) return;
+    const v = await formEdit.validateFields().catch(() => null);
+    if (!v) return;
+
+    const file = v.image?.[0]?.originFileObj || null;
+    const newFiles = (newAttList || [])
+      .map((i) => i.originFileObj)
+      .filter(Boolean);
+
+    const payload = {
+      file,
+      merchant_name: v.merchant_name,
+      email: v.email,
+      phone: v.phone,
+      website: v.website || null,
+      instagram: v.instagram || null,
+      twitter: v.twitter || null,
+      mou_url: v.mou_url || null,
+      address: v.address,
+      city: v.city || null,
+      province: v.province || null,
+      postal_code: v.postal_code || null,
+      contact_name: v.contact_name || null,
+      contact_position: v.contact_position || null,
+      contact_whatsapp: v.contact_whatsapp || null,
+      category_id: v.category_id || null,
+      about: v.about ?? null,
+      status: v.status,
+      review_notes: v.review_notes ?? null,
+      attachments_new: newFiles,
+      attachments_to_delete: delAttach,
+    };
+
+    const res = (await vmUpdate?.(activeRow.id, payload)) || {};
+    if (!res?.ok)
+      return toast.err(
+        "Gagal menyimpan",
+        res?.error || "Perubahan tidak tersimpan."
+      );
+
+    toast.ok("Perubahan disimpan", "Data mitra berhasil diperbarui.");
+    setEditOpen(false);
+    formEdit.resetFields();
+    setImgPrevEdit("");
+    setDelAttach([]);
+    setNewAttList([]);
   };
 
-  const onPageChange = (p) => {
-    setPage(p);
-    fetchMerchants({ page: p, perPage, q });
+  const onDelete = async (id) => {
+    const res = (await vmRemove?.(id)) || {};
+    if (!res?.ok)
+      return toast.err(
+        "Gagal menghapus",
+        res?.error || "Tidak bisa menghapus data."
+      );
+    toast.ok("Terhapus", "Mitra berhasil dihapus (soft delete).");
   };
 
-  const initialValues = useMemo(
-    () =>
-      !editing
-        ? {}
-        : {
-            merchant_name: editing.merchant_name || "",
-            email: editing.email || "",
-            phone: editing.phone || "",
-            instagram: editing.instagram || "",
-            twitter: editing.twitter || "",
-            website: editing.website || "",
-            image_url: editing.image_url || "",
-            mou_url: editing.mou_url || "",
-            about: editing.about || "",
-            address: editing.address || "",
-          },
-    [editing]
-  );
-
-  const pageWrapStyle = {
-    maxWidth: 1320,
-    margin: "0 auto",
-    padding: "24px 32px 12px",
+  const onDownloadCsv = async () => {
+    if (!vmExport)
+      return toast.err("Tidak tersedia", "Fitur ekspor belum diimplementasi.");
+    const blob = await vmExport();
+    if (!blob) return toast.err("Gagal", "Tidak bisa membuat CSV.");
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `mitra_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   };
 
   return (
     <ConfigProvider
+      componentSize="middle"
       theme={{
-        algorithm: antdTheme.darkAlgorithm,
         token: {
-          colorPrimary: "#3b82f6",
-          colorBorder: "#2f3f60",
-          colorText: "#e6eaf2",
-          colorBgContainer: CARD_BG,
+          colorPrimary: blue,
+          colorText: text,
+          fontFamily:
+            '"Poppins", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
           borderRadius: 12,
+          fontSize: 13,
           controlHeight: 36,
         },
-        components: {
-          Card: {
-            headerBg: "transparent",
-            colorBorderSecondary: "#2f3f60",
-            borderRadiusLG: 16,
-          },
-          Button: { borderRadius: 999 },
-          Input: { colorBgContainer: "#0e182c" },
-          Select: { colorBgContainer: "#0e182c" },
-          Pagination: { borderRadius: 999 },
-          Modal: { borderRadiusLG: 16 },
-        },
+        components: { Button: { borderRadius: 10 } },
       }}
     >
-      <div style={pageWrapStyle}>
-        {contextHolder}
+      {contextHolder}
 
-        {/* Header */}
-        <Card
-          styles={{ body: { padding: 16 } }}
-          style={{ ...darkCardStyle, marginBottom: 12 }}
-        >
-          <Space
-            align="center"
-            style={{ width: "100%", justifyContent: "space-between" }}
-          >
-            <div>
-              <Title level={3} style={{ margin: 0 }}>
-                Mitra Dalam Negeri
-              </Title>
-              <Text type="secondary">
-                Kelola data Mitra Dalam Negeri. Total {total} records.
-              </Text>
-            </div>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              shape="round"
-              onClick={() => {
-                setMode("create");
-                setEditing(null);
-                setModalOpen(true);
-              }}
-            >
-              Add Mitra Dalam Negeri
-            </Button>
-          </Space>
-        </Card>
+      {/* paksa rasio 1:1 untuk Upload logo */}
+      <style jsx global>{`
+        .square-uploader.ant-upload.ant-upload-select-picture-card {
+          width: 180px !important;
+          height: 180px !important;
+          padding: 0 !important;
+        }
+        .square-uploader .ant-upload {
+          width: 100% !important;
+          height: 100% !important;
+        }
+      `}</style>
 
-        {/* Filters */}
-        <Card
-          styles={{ body: { padding: 12 } }}
-          style={{ ...darkCardStyle, marginBottom: 12 }}
-        >
-          <Form
-            layout="inline"
-            onFinish={() => onSearch()}
-            style={{ display: "block" }}
-          >
-            <Row gutter={[8, 8]} align="middle" wrap>
-              <Col xs={24} md={12} style={{ flex: "1 1 auto" }}>
-                <Input.Search
-                  allowClear
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  placeholder="Cari nama/email/phone/alamat…"
-                  enterButton
-                />
-              </Col>
-
-              {/* Per page */}
-              <Col xs={24} sm={8} md={6} lg={4} xl={3}>
-                <Select
-                  value={perPage}
-                  onChange={(v) => {
-                    setPerPage(v);
-                    setPage(1);
-                    fetchMerchants({ page: 1, perPage: v, q });
-                  }}
-                  options={[8, 16, 32, 64, 128].map((n) => ({
-                    value: n,
-                    label: n,
-                  }))}
-                  style={{ width: "100%" }}
-                  placeholder="Per page"
-                />
-              </Col>
-
-              <Col xs="auto">
-                <Space>
-                  <Button shape="round" onClick={onReset}>
-                    Reset
-                  </Button>
-                  <Button shape="round" type="primary" htmlType="submit">
-                    Search
-                  </Button>
-                </Space>
-              </Col>
-            </Row>
-          </Form>
-        </Card>
-
-        {/* Cards */}
-        <Card styles={{ body: { padding: 16 } }} style={{ ...darkCardStyle }}>
-          {loading ? (
-            <div style={{ textAlign: "center", padding: "48px 0" }}>
-              <Spin />
-            </div>
-          ) : merchants.length === 0 ? (
-            <Empty description="Belum ada data Mitra Dalam Negeri" />
-          ) : (
-            <Row gutter={[16, 16]}>
-              {merchants.map((m) => (
-                <Col key={m.id} xs={24} sm={12} md={12} lg={8} xl={6}>
-                  <MerchantCard
-                    m={m}
-                    onView={() => setView(m)}
-                    onEdit={() => {
-                      setMode("edit");
-                      setEditing(m);
-                      setModalOpen(true);
-                    }}
-                    onDelete={async () => {
-                      const { ok, error: err } = await deleteMerchant(m.id);
-                      if (ok) {
-                        notification.success({
-                          message: "Mitra Dalam Negeri dihapus",
-                          description: "Data berhasil dihapus.",
-                          placement: "topRight",
-                        });
-                      } else {
-                        notification.error({
-                          message: "Gagal menghapus",
-                          description: err || "Silakan coba lagi.",
-                          placement: "topRight",
-                        });
-                      }
-                    }}
-                  />
-                </Col>
-              ))}
-            </Row>
-          )}
-        </Card>
-
-        {/* Pagination */}
-        <Card
-          styles={{ body: { padding: 12 } }}
-          style={{ ...darkCardStyle, marginTop: 12, marginBottom: 0 }}
-        >
-          <div style={{ display: "flex", justifyContent: "center" }}>
-            <Pagination
-              current={page}
-              total={total}
-              pageSize={perPage}
-              showSizeChanger={false}
-              onChange={(p) => {
-                setPage(p);
-                fetchMerchants({ page: p, perPage, q });
-              }}
-            />
-          </div>
-        </Card>
-
-        {/* Modals */}
-        <MerchantViewModal
-          open={!!view}
-          data={view}
-          onClose={() => setView(null)}
-        />
-        <MerchantFormModal
-          open={modalOpen}
-          mode={mode}
-          initialValues={useMemo(() => {
-            if (!editing) return {};
-            return {
-              merchant_name: editing.merchant_name || "",
-              about: editing.about || "",
-              address: editing.address || "",
-              email: editing.email || "",
-              phone: editing.phone || "",
-              instagram: editing.instagram || "",
-              twitter: editing.twitter || "",
-              website: editing.website || "",
-              mou_url: editing.mou_url || "",
-              image_url: editing.image_url || "",
-            };
-          }, [editing])}
-          saving={saving}
-          onCancel={() => {
-            setModalOpen(false);
-            setEditing(null);
+      <section
+        style={{
+          width: "100%",
+          position: "relative",
+          minHeight: "100dvh",
+          display: "flex",
+          alignItems: "flex-start",
+          padding: "56px 0",
+          overflowX: "hidden",
+        }}
+      >
+        {/* background */}
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: 0,
+            background:
+              "linear-gradient(180deg, #f8fbff 0%, #eef5ff 40%, #ffffff 100%)",
+            zIndex: 0,
           }}
-          onSubmit={handleSubmit}
         />
-      </div>
+        <div
+          style={{
+            width: shellW,
+            maxWidth: maxW,
+            margin: "0 auto",
+            paddingTop: 12,
+            position: "relative",
+            zIndex: 1,
+          }}
+        >
+          {/* Header Card */}
+          <div style={styles.cardOuter}>
+            <div style={styles.cardHeaderBar} />
+            <div style={styles.cardInner}>
+              <div style={styles.cardTitle}>{T.title}</div>
+              <div style={styles.totalBadgeWrap}>
+                <div style={styles.totalBadgeLabel}>{T.totalLabel}</div>
+                <div style={styles.totalBadgeValue}>
+                  {viewModel.total ?? rows.length ?? "—"}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Summary cards */}
+          <div style={styles.statsRow}>
+            <div style={styles.statCard}>
+              <div style={styles.statIconBox}>
+                <img
+                  src="/image266.svg"
+                  alt=""
+                  aria-hidden="true"
+                  style={styles.statIconImg}
+                />
+              </div>
+              <div style={styles.statTitle}>Pending</div>
+              <div style={styles.statValue}>{pendingCount ?? "—"}</div>
+            </div>
+            <div style={styles.statCard}>
+              <div style={styles.statIconBox}>
+                <img
+                  src="/image266.svg"
+                  alt=""
+                  aria-hidden="true"
+                  style={styles.statIconImg}
+                />
+              </div>
+              <div style={styles.statTitle}>Approved</div>
+              <div style={styles.statValue}>{approvedCount ?? "—"}</div>
+            </div>
+            <div style={styles.statCard}>
+              <div style={styles.statIconBox}>
+                <img
+                  src="/image266.svg"
+                  alt=""
+                  aria-hidden="true"
+                  style={styles.statIconImg}
+                />
+              </div>
+              <div style={styles.statTitle}>Declined</div>
+              <div style={styles.statValue}>{declinedCount ?? "—"}</div>
+            </div>
+          </div>
+
+          {/* Chart (Pie) + legend */}
+          <div style={{ ...styles.cardOuter, marginTop: 12 }}>
+            <div style={{ ...styles.cardInner, paddingTop: 14 }}>
+              <div style={styles.sectionHeader}>
+                <div style={styles.sectionTitle}>
+                  Persentase Peningkatan Mitra OSS
+                </div>
+                <Select
+                  value="Tahun"
+                  options={[{ value: "Tahun", label: "Tahun" }]}
+                  style={{ width: 120 }}
+                  disabled
+                />
+              </div>
+
+              <div style={styles.chartRow}>
+                <PieDonut
+                  data={chartStats.parts.map((p) => ({
+                    label: p.label,
+                    value: p.count,
+                  }))}
+                  size={240}
+                  inner={90}
+                  palette={PIE_COLORS}
+                  centerTitle="Total Mitra"
+                />
+
+                <div style={styles.chartTable}>
+                  <div style={styles.chartThead}>
+                    <div>Tipe Mitra</div>
+                    <div style={styles.numHead}>Jumlah</div>
+                    <div style={styles.numHead}>Persen</div>
+                  </div>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    {chartStats.parts.length === 0 ? (
+                      <div style={{ padding: 10, color: "#64748b" }}>
+                        Tidak ada data
+                      </div>
+                    ) : (
+                      chartStats.parts.map((p, i) => (
+                        <div key={p.label} style={styles.chartRowItem}>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
+                              minWidth: 0,
+                            }}
+                          >
+                            <span
+                              style={{
+                                width: 10,
+                                height: 10,
+                                borderRadius: 3,
+                                background: PIE_COLORS[i % PIE_COLORS.length],
+                                display: "inline-block",
+                                flex: "0 0 10px",
+                              }}
+                              aria-hidden
+                            />
+                            <span
+                              style={{
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {p.label}
+                            </span>
+                          </div>
+                          <div style={styles.numCell}>{p.count}</div>
+                          <div style={styles.numCell}>{p.pct}%</div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Data Card */}
+          <div style={{ ...styles.cardOuter, marginTop: 12 }}>
+            <div style={{ ...styles.cardInner, paddingTop: 14 }}>
+              <div style={styles.sectionHeader}>
+                <div style={styles.sectionTitle}>{T.listTitle}</div>
+                <div>
+                  <Button
+                    icon={<DownloadOutlined />}
+                    onClick={onDownloadCsv}
+                    style={{ borderRadius: 10 }}
+                  >
+                    Download CSV
+                  </Button>
+                </div>
+              </div>
+
+              {/* Filters */}
+              <div style={styles.filtersRow}>
+                <Input
+                  allowClear
+                  value={searchValue}
+                  onChange={(e) => setSearchValue(e.target.value)}
+                  onPressEnter={() => {
+                    viewModel.setQ?.((searchValue || "").trim());
+                    viewModel.setPage?.(1);
+                  }}
+                  placeholder={T.searchPh}
+                  prefix={<SearchOutlined />}
+                  style={styles.searchInput}
+                />
+                <Select
+                  allowClear
+                  placeholder={T.category}
+                  value={viewModel.categoryId || undefined}
+                  onChange={(v) => {
+                    viewModel.setCategoryId?.(v || "");
+                    viewModel.setPage?.(1);
+                  }}
+                  onSearch={onCategorySearch}
+                  showSearch
+                  filterOption={false}
+                  options={viewModel.categoryOptions}
+                  style={styles.filterSelect}
+                  suffixIcon={<FilterOutlined />}
+                />
+                <Select
+                  allowClear
+                  placeholder={T.status}
+                  value={viewModel.status || undefined}
+                  onChange={(v) => {
+                    viewModel.setStatus?.(v || "");
+                    viewModel.setPage?.(1);
+                  }}
+                  options={[
+                    { value: "PENDING", label: "Pending" },
+                    { value: "APPROVED", label: "Approved" },
+                    { value: "DECLINED", label: "Declined" },
+                  ]}
+                  style={styles.filterSelect}
+                  suffixIcon={<FilterOutlined />}
+                />
+              </div>
+
+              {/* Table */}
+              <div style={{ overflowX: "auto" }}>
+                <div style={styles.tableHeader}>
+                  <div style={{ ...styles.thLeft, paddingLeft: 8 }}>
+                    {T.nameCol}
+                  </div>
+                  <div style={styles.thCenter}>{T.statusCol}</div>
+                  <div style={styles.thCenter}>{T.typeCol}</div>
+                  <div style={styles.thCenter}>{T.dateCol}</div>
+                  <div style={styles.thCenter}>{T.action}</div>
+                </div>
+
+                <div style={{ display: "grid", gap: 8, marginTop: 4 }}>
+                  {viewModel.loading ? (
+                    <div style={{ padding: "8px 4px" }}>
+                      <Skeleton active paragraph={{ rows: 2 }} />
+                    </div>
+                  ) : rows.length === 0 ? (
+                    <div
+                      style={{
+                        display: "grid",
+                        placeItems: "center",
+                        padding: "20px 0",
+                      }}
+                    >
+                      <Empty description="Belum ada data" />
+                    </div>
+                  ) : (
+                    rows.map((r) => {
+                      const image = toPublicUrl(r.image_url);
+                      const title = r.merchant_name || "(tanpa nama)";
+                      const date = fmtDateId(r.created_at);
+                      const cat = r.category?.name || "—";
+                      return (
+                        <div key={r.id} style={styles.row}>
+                          {/* Mitra */}
+                          <div style={styles.colName}>
+                            <div style={styles.thumbBox}>
+                              {image ? (
+                                <img
+                                  src={image}
+                                  alt=""
+                                  style={styles.thumbImg}
+                                />
+                              ) : (
+                                <div style={styles.thumbFallback}>🏢</div>
+                              )}
+                            </div>
+                            <div style={styles.nameWrap}>
+                              <Tooltip title={title}>
+                                <div style={styles.nameText}>{title}</div>
+                              </Tooltip>
+                              <div style={styles.subDate}>{date}</div>
+                            </div>
+                          </div>
+
+                          {/* Status */}
+                          <div style={styles.colCenter}>
+                            {statusTag(r.status)}
+                          </div>
+
+                          {/* Tipe */}
+                          <div style={styles.colCenter}>
+                            <span style={styles.cellEllipsis}>{cat}</span>
+                          </div>
+
+                          {/* Tanggal */}
+                          <div style={styles.colCenter}>{date}</div>
+
+                          {/* Aksi */}
+                          <div style={styles.colActionsCenter}>
+                            <Tooltip title="Lihat">
+                              <Button
+                                size="small"
+                                icon={<EyeOutlined />}
+                                onClick={() => openView(r)}
+                                style={styles.iconBtn}
+                              />
+                            </Tooltip>
+                            <Tooltip title="Hapus">
+                              <Popconfirm
+                                title="Hapus mitra ini?"
+                                okText="Ya"
+                                cancelText="Batal"
+                                onConfirm={() => onDelete(r.id)}
+                              >
+                                <Button
+                                  size="small"
+                                  danger
+                                  icon={<DeleteOutlined />}
+                                  style={styles.iconBtn}
+                                />
+                              </Popconfirm>
+                            </Tooltip>
+                            <Tooltip title="Edit">
+                              <Button
+                                size="small"
+                                icon={<EditOutlined />}
+                                onClick={() => openEdit(r)}
+                                style={styles.iconBtn}
+                              />
+                            </Tooltip>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* Pagination */}
+              <div style={styles.pagination}>
+                <Button
+                  icon={<LeftOutlined />}
+                  onClick={() =>
+                    viewModel.setPage?.(Math.max(1, (viewModel.page || 1) - 1))
+                  }
+                  disabled={viewModel.page <= 1 || viewModel.loading}
+                />
+                <div style={styles.pageText}>
+                  Page {viewModel.page}
+                  {viewModel.totalPages ? ` of ${viewModel.totalPages}` : ""}
+                </div>
+                <Button
+                  icon={<RightOutlined />}
+                  onClick={() => viewModel.setPage?.((viewModel.page || 1) + 1)}
+                  disabled={
+                    viewModel.loading ||
+                    (viewModel.totalPages
+                      ? viewModel.page >= viewModel.totalPages
+                      : rows.length < (viewModel.perPage || 10))
+                  }
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ===== View Modal ===== */}
+      <Modal
+        open={viewOpen}
+        onCancel={() => {
+          setViewOpen(false);
+          setDetailData(null);
+        }}
+        footer={null}
+        width={900}
+        destroyOnClose
+        title={null}
+      >
+        <div style={styles.modalShell}>
+          <Spin spinning={detailLoading}>
+            {detailData ? (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 10,
+                }}
+              >
+                {/* logo */}
+                <div
+                  style={{
+                    gridColumn: "1 / span 2",
+                    display: "grid",
+                    justifyContent: "center",
+                  }}
+                >
+                  <div style={styles.coverBoxRead}>
+                    {detailData.image_url ? (
+                      <img
+                        src={toPublicUrl(detailData.image_url)}
+                        alt="logo"
+                        style={styles.coverImgRead}
+                      />
+                    ) : (
+                      <div style={{ padding: 24, textAlign: "center" }}>
+                        Tidak ada logo
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* kiri */}
+                <div>
+                  <div style={styles.label}>{T.merchant}</div>
+                  <div style={styles.value}>
+                    {clip(detailData.merchant_name)}
+                  </div>
+                </div>
+                <div>
+                  <div style={styles.label}>{T.categoryLbl}</div>
+                  <div style={styles.value}>
+                    {clip(detailData.category?.name)}
+                  </div>
+                </div>
+
+                <div>
+                  <div style={styles.label}>{T.email}</div>
+                  <div style={styles.value}>{clip(detailData.email)}</div>
+                </div>
+                <div>
+                  <div style={styles.label}>{T.phone}</div>
+                  <div style={styles.value}>{clip(detailData.phone)}</div>
+                </div>
+
+                <div>
+                  <div style={styles.label}>{T.website}</div>
+                  <div style={styles.value}>{clip(detailData.website)}</div>
+                </div>
+                <div>
+                  <div style={styles.label}>{T.instagram}</div>
+                  <div style={styles.value}>{clip(detailData.instagram)}</div>
+                </div>
+
+                <div>
+                  <div style={styles.label}>{T.twitter}</div>
+                  <div style={styles.value}>{clip(detailData.twitter)}</div>
+                </div>
+                <div>
+                  <div style={styles.label}>{T.mou_url}</div>
+                  <div style={styles.value}>{clip(detailData.mou_url)}</div>
+                </div>
+
+                <div style={{ gridColumn: "1 / span 2" }}>
+                  <div style={styles.label}>{T.address}</div>
+                  <div style={styles.value}>{clip(detailData.address)}</div>
+                </div>
+
+                <div>
+                  <div style={styles.label}>{T.city}</div>
+                  <div style={styles.value}>{clip(detailData.city)}</div>
+                </div>
+                <div>
+                  <div style={styles.label}>{T.province}</div>
+                  <div style={styles.value}>{clip(detailData.province)}</div>
+                </div>
+
+                <div>
+                  <div style={styles.label}>{T.postal_code}</div>
+                  <div style={styles.value}>{clip(detailData.postal_code)}</div>
+                </div>
+                <div>
+                  <div style={styles.label}>Status</div>
+                  <div style={styles.value}>{statusTag(detailData.status)}</div>
+                </div>
+
+                <div>
+                  <div style={styles.label}>{T.contact_name}</div>
+                  <div style={styles.value}>
+                    {clip(detailData.contact_name)}
+                  </div>
+                </div>
+                <div>
+                  <div style={styles.label}>{T.contact_position}</div>
+                  <div style={styles.value}>
+                    {clip(detailData.contact_position)}
+                  </div>
+                </div>
+
+                <div>
+                  <div style={styles.label}>{T.contact_whatsapp}</div>
+                  <div style={styles.value}>
+                    {clip(detailData.contact_whatsapp)}
+                  </div>
+                </div>
+                <div>
+                  <div style={styles.label}>{T.review_notes}</div>
+                  <div style={styles.value}>
+                    {clip(detailData.review_notes)}
+                  </div>
+                </div>
+
+                <div style={{ gridColumn: "1 / span 2" }}>
+                  <div style={styles.label}>{T.about}</div>
+                  <div style={{ ...styles.value, whiteSpace: "pre-wrap" }}>
+                    {clip(detailData.about)}
+                  </div>
+                </div>
+
+                {/* Lampiran: gunakan signed URL via API */}
+                <div style={{ gridColumn: "1 / span 2" }}>
+                  <div style={styles.label}>Lampiran</div>
+                  <div style={{ ...styles.value, display: "grid", gap: 6 }}>
+                    {(detailData.files || []).length === 0 ? (
+                      <span style={{ color: "#64748b" }}>
+                        Tidak ada lampiran
+                      </span>
+                    ) : (
+                      detailData.files.map((f) => {
+                        const href = toDownloadHref(
+                          f.file_url,
+                          baseName(f.file_url)
+                        );
+                        return (
+                          <div
+                            key={f.id}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
+                            }}
+                          >
+                            <PaperClipOutlined />
+                            <a
+                              href={href}
+                              style={{
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                color: "#0b56c9",
+                                fontWeight: 600,
+                              }}
+                              title={baseName(f.file_url)}
+                            >
+                              {baseName(f.file_url)}
+                            </a>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </Spin>
+        </div>
+      </Modal>
+
+      {/* ===== Edit Modal ===== */}
+      <Modal
+        open={editOpen}
+        onCancel={() => {
+          setEditOpen(false);
+          setDetailData(null);
+          setImgPrevEdit("");
+          setDelAttach([]);
+          setNewAttList([]);
+          formEdit.resetFields();
+        }}
+        footer={null}
+        width={960}
+        destroyOnClose
+        title={null}
+      >
+        <div style={styles.modalShell}>
+          <Spin spinning={detailLoading}>
+            <Form layout="vertical" form={formEdit}>
+              {/* Gambar di atas */}
+              <div
+                style={{
+                  display: "grid",
+                  justifyContent: "center",
+                  marginBottom: 10,
+                }}
+              >
+                <Form.Item
+                  name="image"
+                  valuePropName="fileList"
+                  getValueFromEvent={(e) =>
+                    Array.isArray(e) ? e : e?.fileList || []
+                  }
+                  label={T.logo}
+                  style={{ marginBottom: 8 }}
+                >
+                  <Upload
+                    accept="image/*"
+                    listType="picture-card"
+                    showUploadList={false}
+                    beforeUpload={beforeImgEdit}
+                    className="square-uploader"
+                  >
+                    <div style={styles.coverBox}>
+                      {imgPrevEdit ? (
+                        <img
+                          src={imgPrevEdit}
+                          alt="logo"
+                          style={styles.coverImg}
+                        />
+                      ) : (
+                        <div style={styles.coverPlaceholder}>+ {T.logo}</div>
+                      )}
+                    </div>
+                  </Upload>
+                </Form.Item>
+              </div>
+
+              {/* Field 2 kolom */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 8,
+                }}
+              >
+                <Form.Item
+                  label={T.merchant}
+                  name="merchant_name"
+                  rules={[{ required: true, message: "Wajib diisi" }]}
+                >
+                  <Input placeholder="Nama mitra" />
+                </Form.Item>
+                <Form.Item label={T.categoryLbl} name="category_id">
+                  <Select
+                    allowClear
+                    showSearch
+                    placeholder="Pilih kategori"
+                    filterOption={false}
+                    onSearch={(kw) => viewModel.fetchCategoryOptions?.(kw)}
+                    options={viewModel.categoryOptions}
+                  />
+                </Form.Item>
+
+                <Form.Item
+                  label={T.email}
+                  name="email"
+                  rules={[{ required: true, message: "Wajib diisi" }]}
+                >
+                  <Input placeholder="email@domain.com" />
+                </Form.Item>
+                <Form.Item
+                  label={T.phone}
+                  name="phone"
+                  rules={[{ required: true, message: "Wajib diisi" }]}
+                >
+                  <Input placeholder="08xxxxxxxxxx" />
+                </Form.Item>
+
+                <Form.Item label={T.website} name="website">
+                  <Input placeholder="https://..." />
+                </Form.Item>
+                <Form.Item label={T.instagram} name="instagram">
+                  <Input placeholder="@handle" />
+                </Form.Item>
+
+                <Form.Item label={T.twitter} name="twitter">
+                  <Input placeholder="@handle" />
+                </Form.Item>
+                <Form.Item label={T.mou_url} name="mou_url">
+                  <Input placeholder="https://..." />
+                </Form.Item>
+
+                <Form.Item
+                  label={T.address}
+                  name="address"
+                  style={{ gridColumn: "1 / span 2" }}
+                  rules={[{ required: true, message: "Wajib diisi" }]}
+                >
+                  <Input.TextArea rows={3} placeholder="Alamat lengkap" />
+                </Form.Item>
+
+                <Form.Item label={T.city} name="city">
+                  <Input />
+                </Form.Item>
+                <Form.Item label={T.province} name="province">
+                  <Input />
+                </Form.Item>
+
+                <Form.Item label={T.postal_code} name="postal_code">
+                  <Input />
+                </Form.Item>
+                <Form.Item label="Status" name="status">
+                  <Select
+                    options={[
+                      { value: "PENDING", label: "Pending" },
+                      { value: "APPROVED", label: "Approved" },
+                      { value: "DECLINED", label: "Declined" },
+                    ]}
+                  />
+                </Form.Item>
+
+                <Form.Item label={T.contact_name} name="contact_name">
+                  <Input />
+                </Form.Item>
+                <Form.Item label={T.contact_position} name="contact_position">
+                  <Input />
+                </Form.Item>
+
+                <Form.Item label={T.contact_whatsapp} name="contact_whatsapp">
+                  <Input />
+                </Form.Item>
+                <Form.Item label={T.review_notes} name="review_notes">
+                  <Input />
+                </Form.Item>
+
+                <Form.Item
+                  label={T.about}
+                  name="about"
+                  style={{ gridColumn: "1 / span 2" }}
+                >
+                  <Input.TextArea rows={4} placeholder="Deskripsi singkat" />
+                </Form.Item>
+              </div>
+
+              {/* Lampiran lama + hapus */}
+              <div style={{ marginTop: 8 }}>
+                <div style={styles.label}>Lampiran yang sudah ada</div>
+                <div style={{ ...styles.value, display: "grid", gap: 6 }}>
+                  {(detailData?.files || []).length === 0 ? (
+                    <span style={{ color: "#64748b" }}>Tidak ada lampiran</span>
+                  ) : (
+                    (detailData?.files || []).map((f) => {
+                      const href = toDownloadHref(
+                        f.file_url,
+                        baseName(f.file_url)
+                      );
+                      const marked = delAttach.includes(f.id);
+                      return (
+                        <div
+                          key={f.id}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                          }}
+                        >
+                          <PaperClipOutlined />
+                          <a
+                            href={href}
+                            style={{
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              flex: 1,
+                              color: "#0b56c9",
+                              fontWeight: 600,
+                              textDecoration: marked ? "line-through" : "none",
+                            }}
+                            title={baseName(f.file_url)}
+                          >
+                            {baseName(f.file_url)}
+                          </a>
+                          <Tag
+                            color={marked ? "red" : "default"}
+                            onClick={() => toggleDelAttach(f.id)}
+                            style={{ cursor: "pointer", userSelect: "none" }}
+                          >
+                            {marked ? "Akan dihapus" : "Hapus?"}
+                          </Tag>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* Upload lampiran baru */}
+              <div style={{ marginTop: 8 }}>
+                <Form.Item label={T.attachments}>
+                  <Upload
+                    multiple
+                    fileList={newAttList}
+                    onChange={({ fileList }) => setNewAttList(fileList)}
+                  >
+                    <Button icon={<PaperClipOutlined />}>
+                      Tambah Lampiran
+                    </Button>
+                  </Upload>
+                </Form.Item>
+              </div>
+
+              <div style={styles.modalFooter}>
+                <Button
+                  type="primary"
+                  size="large"
+                  onClick={onEditSubmit}
+                  loading={viewModel.opLoading}
+                  style={styles.saveBtn}
+                >
+                  Simpan Perubahan
+                </Button>
+              </div>
+            </Form>
+          </Spin>
+        </div>
+      </Modal>
     </ConfigProvider>
   );
 }
 
+/* ===== styles ===== */
+const GRID_COLS = "1.8fr 1fr 1fr .9fr .7fr";
+/* Grid untuk tabel persentase: label | jumlah | persen */
+const CHART_COLS = "1fr 96px 96px";
 
+const styles = {
+  cardOuter: {
+    background: "#ffffff",
+    borderRadius: 16,
+    border: "1px solid #e6eeff",
+    boxShadow:
+      "0 10px 40px rgba(11, 86, 201, 0.07), 0 3px 12px rgba(11,86,201,0.05)",
+    overflow: "hidden",
+  },
+  cardHeaderBar: {
+    height: 20,
+    background:
+      "linear-gradient(90deg, #0b56c9 0%, #0b56c9 65%, rgba(11,86,201,0.35) 100%)",
+  },
+  cardInner: { padding: "12px 14px 14px", position: "relative" },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: 800,
+    color: "#0b3e91",
+    marginTop: 8,
+    marginBottom: 8,
+  },
 
+  totalBadgeWrap: {
+    position: "absolute",
+    right: 14,
+    top: 8,
+    display: "grid",
+    gap: 4,
+    justifyItems: "end",
+    background: "#fff",
+    border: "1px solid #e6eeff",
+    borderRadius: 12,
+    padding: "6px 12px",
+    boxShadow: "0 6px 18px rgba(11,86,201,0.08)",
+  },
+  totalBadgeLabel: { fontSize: 12, color: "#0b3e91", fontWeight: 600 },
+  totalBadgeValue: {
+    fontSize: 16,
+    color: "#0b56c9",
+    fontWeight: 800,
+    lineHeight: 1,
+  },
 
+  statsRow: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr 1fr",
+    gap: 14,
+    marginTop: 12,
+  },
+  statCard: {
+    background: "#fff",
+    borderRadius: 14,
+    border: "1px solid #e6eeff",
+    boxShadow: "0 10px 24px rgba(11,86,201,0.08)",
+    padding: "12px 16px",
+    display: "grid",
+    gridTemplateColumns: "48px 1fr auto",
+    alignItems: "center",
+    columnGap: 12,
+  },
+  statIconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    border: "1px solid #e6eeff",
+    background: "#f8fbff",
+    display: "grid",
+    placeItems: "center",
+    boxShadow: "inset 0 2px 8px rgba(11,86,201,0.06)",
+  },
+  statIconImg: {
+    width: 32,
+    height: 32,
+    objectFit: "contain",
+    display: "block",
+  },
+  statTitle: { fontWeight: 800, color: "#0b3e91", textAlign: "center" },
+  statValue: { fontWeight: 800, fontSize: 24, color: "#0b56c9" },
 
+  sectionHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  sectionTitle: { fontSize: 18, fontWeight: 800, color: "#0b3e91" },
 
+  filtersRow: {
+    display: "grid",
+    gridTemplateColumns: "1fr 220px 180px",
+    gap: 8,
+    marginBottom: 10,
+    alignItems: "center",
+  },
+  searchInput: { height: 36, borderRadius: 10 },
+  filterSelect: { width: "100%" },
 
+  chartRow: {
+    display: "grid",
+    gridTemplateColumns: "280px 1fr",
+    gap: 14,
+    alignItems: "center",
+  },
+  chartTable: {
+    background: "#fff",
+    borderRadius: 12,
+    border: "1px solid #e6eeff",
+    padding: 10,
+  },
+  chartThead: {
+    display: "grid",
+    gridTemplateColumns: CHART_COLS,
+    fontWeight: 700,
+    color: "#0b3e91",
+    marginBottom: 6,
+    alignItems: "center",
+  },
+  chartRowItem: {
+    display: "grid",
+    gridTemplateColumns: CHART_COLS,
+    alignItems: "center",
+    background: "#f5f8ff",
+    padding: "6px 8px",
+    borderRadius: 8,
+    border: "1px solid #e8eeff",
+  },
+  /* Header & cell angka: right-align + tabular numbers */
+  numHead: {
+    textAlign: "right",
+    fontVariantNumeric: "tabular-nums",
+    fontFeatureSettings: '"tnum" 1, "lnum" 1',
+  },
+  numCell: {
+    textAlign: "right",
+    fontWeight: 700,
+    color: "#0f172a",
+    fontVariantNumeric: "tabular-nums",
+    fontFeatureSettings: '"tnum" 1, "lnum" 1',
+  },
 
+  tableHeader: {
+    display: "grid",
+    gridTemplateColumns: GRID_COLS,
+    gap: 8,
+    marginBottom: 4,
+    color: "#0b3e91",
+    fontWeight: 700,
+    alignItems: "center",
+    minWidth: 980,
+  },
+  thLeft: { display: "flex", justifyContent: "flex-start", width: "100%" },
+  thCenter: { display: "flex", justifyContent: "center", width: "100%" },
 
+  row: {
+    display: "grid",
+    gridTemplateColumns: GRID_COLS,
+    gap: 8,
+    alignItems: "center",
+    background: "#f5f8ff",
+    borderRadius: 10,
+    border: "1px solid #e8eeff",
+    padding: "8px 10px",
+    boxShadow: "0 6px 12px rgba(11, 86, 201, 0.05)",
+    minWidth: 980,
+  },
 
+  colName: {
+    background: "#ffffff",
+    borderRadius: 10,
+    border: "1px solid #eef3ff",
+    padding: "6px 10px",
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    minWidth: 0,
+  },
+  thumbBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    background: "#fff",
+    border: "1px solid #e5edff",
+    display: "grid",
+    placeItems: "center",
+    overflow: "hidden",
+    boxShadow: "0 2px 6px rgba(0,0,0,.04) inset",
+    flex: "0 0 44px",
+  },
+  thumbImg: { width: "100%", height: "100%", objectFit: "cover" },
+  thumbFallback: { fontSize: 18 },
+  nameWrap: { display: "grid", gap: 2, minWidth: 0 },
+  nameText: {
+    fontWeight: 600,
+    color: "#111827",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  subDate: { fontSize: 11.5, color: "#6b7280" },
 
+  colCenter: {
+    textAlign: "center",
+    color: "#0f172a",
+    fontWeight: 600,
+    minWidth: 0,
+  },
+  cellEllipsis: {
+    display: "inline-block",
+    maxWidth: "100%",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    verticalAlign: "bottom",
+  },
 
+  colActionsCenter: { display: "flex", justifyContent: "center", gap: 6 },
+  iconBtn: { borderRadius: 8 },
 
+  pagination: {
+    marginTop: 12,
+    display: "grid",
+    gridTemplateColumns: "36px 1fr 36px",
+    alignItems: "center",
+    justifyItems: "center",
+    gap: 8,
+  },
+  pageText: { fontSize: 12, color: "#475569" },
 
+  label: { fontSize: 11.5, color: "#64748b" },
+  value: {
+    fontWeight: 600,
+    color: "#0f172a",
+    background: "#f8fafc",
+    border: "1px solid #e8eeff",
+    borderRadius: 10,
+    padding: "8px 10px",
+    boxShadow: "inset 0 2px 6px rgba(11,86,201,0.05)",
+    wordBreak: "break-word",
+  },
+
+  modalShell: {
+    position: "relative",
+    background: "#fff",
+    borderRadius: 16,
+    padding: "14px 14px 8px",
+    boxShadow: "0 10px 36px rgba(11,86,201,0.08)",
+  },
+
+  coverBoxRead: {
+    width: "100%",
+    borderRadius: 12,
+    border: "1px solid #e6eeff",
+    overflow: "hidden",
+    background: "#f8fbff",
+    display: "grid",
+    placeItems: "center",
+  },
+  coverImgRead: {
+    maxWidth: "100%",
+    maxHeight: "48vh",
+    width: "auto",
+    height: "auto",
+    display: "block",
+  },
+
+  coverBox: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 12,
+    border: "2px dashed #c0c8d8",
+    background: "#f8fbff",
+    display: "grid",
+    placeItems: "center",
+    overflow: "hidden",
+  },
+  coverImg: { width: "100%", height: "100%", objectFit: "cover" },
+  coverPlaceholder: { fontWeight: 700, color: "#0b56c9", userSelect: "none" },
+
+  modalFooter: { marginTop: 8, display: "grid", placeItems: "center" },
+  saveBtn: { minWidth: 220, height: 40, borderRadius: 12 },
+};

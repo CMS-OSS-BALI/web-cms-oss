@@ -1,3 +1,4 @@
+// app/(view)/admin/blog/useBlogViewModel.js
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -9,7 +10,8 @@ const DEFAULT_SORT = "created_at:desc";
 const DEFAULT_LOCALE = "id";
 const DEFAULT_FALLBACK = "id";
 
-function buildQuery({
+/* ===== query builders ===== */
+function buildListQuery({
   page,
   perPage,
   q,
@@ -35,36 +37,7 @@ function buildQuery({
   return `/api/blog?${params.toString()}`;
 }
 
-// helper: payload -> FormData (dukung file/cover_file)
-function toFormData(payload = {}) {
-  const fd = new FormData();
-  Object.entries(payload).forEach(([k, v]) => {
-    if (v === undefined || v === null) return;
-
-    if (v instanceof File) {
-      fd.append(k, v);
-      return;
-    }
-    if (Array.isArray(v)) {
-      v.forEach((it) => fd.append(`${k}[]`, it));
-      return;
-    }
-    if (typeof v === "boolean") {
-      fd.append(k, v ? "true" : "false");
-      return;
-    }
-    fd.append(k, String(v));
-  });
-  return fd;
-}
-
-/* ===== NEW: query builder untuk kategori blog ===== */
-function buildBlogCategoriesQuery({
-  page = 1,
-  perPage = 200,
-  locale,
-  fallback,
-}) {
+function buildCategoriesQuery({ page = 1, perPage = 200, locale, fallback }) {
   const p = new URLSearchParams();
   p.set("page", String(page));
   p.set("perPage", String(perPage));
@@ -72,6 +45,24 @@ function buildBlogCategoriesQuery({
   p.set("locale", locale || DEFAULT_LOCALE);
   p.set("fallback", fallback || DEFAULT_FALLBACK);
   return `/api/blog-categories?${p.toString()}`;
+}
+
+/* ===== helpers ===== */
+function toFormData(payload = {}) {
+  const fd = new FormData();
+  Object.entries(payload).forEach(([k, v]) => {
+    if (v === undefined || v === null) return;
+    if (v instanceof File) {
+      fd.append(k, v);
+    } else if (Array.isArray(v)) {
+      v.forEach((it) => fd.append(`${k}[]`, it));
+    } else if (typeof v === "boolean") {
+      fd.append(k, v ? "true" : "false");
+    } else {
+      fd.append(k, String(v));
+    }
+  });
+  return fd;
 }
 
 export default function useBlogViewModel() {
@@ -85,15 +76,15 @@ export default function useBlogViewModel() {
   const [withDeleted, setWithDeleted] = useState(false);
   const [onlyDeleted, setOnlyDeleted] = useState(false);
 
-  // UI-only status (tidak dikirim ke API, kita pakai untuk toggle deleted)
-  const [status, setStatus] = useState("all"); // all | deleted
-  const [categoryId, setCategoryId] = useState(""); // filter by ID
+  // UI-only status (toggle), filter by kategori (ID)
+  const [status, setStatus] = useState("all"); // all | published | draft | deleted
+  const [categoryId, setCategoryId] = useState("");
 
   // non-GET operations loading
   const [opLoading, setOpLoading] = useState(false);
 
   // ===== LIST BLOG =====
-  const listKey = buildQuery({
+  const listKey = buildListQuery({
     page,
     perPage,
     q,
@@ -112,34 +103,38 @@ export default function useBlogViewModel() {
     mutate: mutateList,
   } = useSWR(listKey, fetcher);
 
-  // normalize rows -> pastikan created_at dipakai
+  // normalize rows
   const blogs = useMemo(() => {
     const rows = listJson?.data ?? [];
-    return rows.map((b) => ({
-      ...b,
-      id: b.id,
-      title:
-        b.name ||
-        b.title ||
-        b.name_id ||
-        b.title_id ||
-        b.name_en ||
-        b.title_en ||
-        "-",
-      created_at: b.created_at || null,
-      created_ts:
-        b.created_ts ?? (b.created_at ? Date.parse(b.created_at) : null),
+    return rows.map((b) => {
+      const createdAt = b.created_at || null;
+      const createdTs =
+        b.created_ts ?? (createdAt ? Date.parse(createdAt) : null);
+      return {
+        ...b,
+        id: b.id,
+        title:
+          b.name ||
+          b.title ||
+          b.name_id ||
+          b.title_id ||
+          b.name_en ||
+          b.title_en ||
+          "-",
+        created_at: createdAt,
+        created_ts: createdTs,
 
-      category_id: b.category_id || b.category?.id || "",
-      category_name: b.category_name || b.category?.name || b.category || "-",
+        category_id: b.category_id || b.category?.id || "",
+        category_name: b.category_name || b.category?.name || b.category || "-",
 
-      views_count: Number(b.views_count ?? b.views ?? 0),
-      likes_count: Number(b.likes_count ?? b.likes ?? 0),
+        views_count: Number(b.views_count ?? b.views ?? 0),
+        likes_count: Number(b.likes_count ?? b.likes ?? 0),
 
-      image_src: b.image_public_url || b.image_url || b.cover_url || "",
+        image_src: b.image_public_url || b.image_url || b.cover_url || "",
 
-      status: b.status || "published",
-    }));
+        status: b.status || "published",
+      };
+    });
   }, [listJson]);
 
   const total = listJson?.meta?.total ?? 0;
@@ -148,6 +143,7 @@ export default function useBlogViewModel() {
     [total, perPage]
   );
 
+  // sinkron meta pagination → state (kalau API override)
   useEffect(() => {
     if (listJson?.meta?.page) setPage(listJson.meta.page);
     if (listJson?.meta?.perPage) setPerPage(listJson.meta.perPage);
@@ -155,24 +151,24 @@ export default function useBlogViewModel() {
 
   const refresh = useCallback(() => mutateList(), [mutateList]);
 
-  // ===== NEW: KATEGORI BLOG (from /api/blog-categories) =====
-  const blogCatsKey = buildBlogCategoriesQuery({ locale, fallback });
+  // ===== KATEGORI BLOG =====
+  const blogCatsKey = buildCategoriesQuery({ locale, fallback });
   const { data: blogCatsJson } = useSWR(blogCatsKey, fetcher);
 
-  // opsi untuk FILTER (by id)
+  // opsi FILTER (by id)
   const blogCategoryFilterOptions = useMemo(() => {
     const arr = blogCatsJson?.data || [];
     return arr.map((c) => ({
-      value: c.id, // filter ke /api/blog pakai category_id
+      value: c.id,
       label: c.name ?? c.slug ?? "(tanpa nama)",
     }));
   }, [blogCatsJson]);
 
-  // opsi untuk FORM (by slug)
+  // opsi FORM (by slug)
   const blogCategoryFormOptions = useMemo(() => {
     const arr = blogCatsJson?.data || [];
     return arr.map((c) => ({
-      value: c.slug, // create/update blog pakai category_slug
+      value: c.slug,
       label: c.name ?? c.slug ?? "(tanpa nama)",
     }));
   }, [blogCatsJson]);
@@ -181,23 +177,18 @@ export default function useBlogViewModel() {
   async function createBlog(payload) {
     setOpLoading(true);
     try {
-      let res;
-      if (
-        payload?.file instanceof File ||
-        payload?.cover_file instanceof File
-      ) {
-        const fd = toFormData({
-          ...payload,
-          file: payload.cover_file || payload.file,
-        });
-        res = await fetch("/api/blog", { method: "POST", body: fd });
-      } else {
-        res = await fetch("/api/blog", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-      }
+      const hasFile =
+        payload?.file instanceof File || payload?.cover_file instanceof File;
+      const body = hasFile
+        ? toFormData({ ...payload, file: payload.cover_file || payload.file })
+        : JSON.stringify(payload);
+
+      const res = await fetch("/api/blog", {
+        method: "POST",
+        ...(hasFile ? {} : { headers: { "Content-Type": "application/json" } }),
+        body,
+      });
+
       if (!res.ok) {
         const info = await res.json().catch(() => null);
         throw new Error(info?.message || "Gagal menambah blog");
@@ -214,26 +205,18 @@ export default function useBlogViewModel() {
   async function updateBlog(id, payload) {
     setOpLoading(true);
     try {
-      let res;
-      if (
-        payload?.file instanceof File ||
-        payload?.cover_file instanceof File
-      ) {
-        const fd = toFormData({
-          ...payload,
-          file: payload.cover_file || payload.file,
-        });
-        res = await fetch(`/api/blog/${encodeURIComponent(id)}`, {
-          method: "PATCH",
-          body: fd,
-        });
-      } else {
-        res = await fetch(`/api/blog/${encodeURIComponent(id)}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-      }
+      const hasFile =
+        payload?.file instanceof File || payload?.cover_file instanceof File;
+      const body = hasFile
+        ? toFormData({ ...payload, file: payload.cover_file || payload.file })
+        : JSON.stringify(payload);
+
+      const res = await fetch(`/api/blog/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        ...(hasFile ? {} : { headers: { "Content-Type": "application/json" } }),
+        body,
+      });
+
       if (!res.ok) {
         const info = await res.json().catch(() => null);
         throw new Error(info?.message || "Gagal memperbarui blog");
@@ -279,7 +262,6 @@ export default function useBlogViewModel() {
     }
   }
 
-  // ===== Detail =====
   async function getBlog(id) {
     try {
       const res = await fetch(
@@ -328,7 +310,7 @@ export default function useBlogViewModel() {
     categoryId,
     setCategoryId,
 
-    // kategori blog (NEW)
+    // kategori blog
     blogCategoryFilterOptions, // value=id (untuk filter list /api/blog)
     blogCategoryFormOptions, // value=slug (untuk create/edit /api/blog)
 

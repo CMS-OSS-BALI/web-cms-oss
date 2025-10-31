@@ -175,6 +175,21 @@ export function useLandingViewModel(arg) {
         image: "/program-career.svg",
         label: t("KARIER LUAR NEGERI", "OVERSEAS CAREERS"),
       },
+      {
+        id: "destinations",
+        image: "/program-destinations.svg",
+        label: t("PULUHAN NEGARA TUJUAN", "DOZENS OF DESTINATION COUNTRIES"),
+      },
+      {
+        id: "campus",
+        image: "/program-campus.svg",
+        label: t("RATUSAN MITRA KAMPUS", "HUNDREDS OF CAMPUS PARTNERS"),
+      },
+      {
+        id: "career",
+        image: "/program-career.svg",
+        label: t("KARIER LUAR NEGERI", "OVERSEAS CAREERS"),
+      },
     ],
   };
 

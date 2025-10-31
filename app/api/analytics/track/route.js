@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req) {
   try {
-    // sendBeacon sering kirim "text/plain"
+    // sendBeacon sering pakai text/plain
     const raw = await req.text();
     const body = raw ? JSON.parse(raw) : {};
     const { path, referrer, visitor_id, session_id } = body || {};

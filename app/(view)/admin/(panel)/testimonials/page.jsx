@@ -1,13 +1,27 @@
 "use client";
 
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import Loading from "@/app/components/loading/LoadingImage";
 import useTestimonialsViewModel from "./useTestimonialsViewModel";
 
 const TestimonialsContentLazy = lazy(() => import("./TestimonialsContent"));
 
-export default function TestimonialsPage() {
+const pickLocale = (v) => {
+  const s = String(v || "id")
+    .trim()
+    .toLowerCase();
+  return s.startsWith("en") ? "en" : "id";
+};
+
+export default function TestimonialsPage({ searchParams }) {
   const vm = useTestimonialsViewModel();
+  const initialLocale = pickLocale(searchParams?.lang);
+
+  useEffect(() => {
+    vm.setLocale(initialLocale);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialLocale]);
+
   return (
     <Suspense
       fallback={
@@ -16,7 +30,7 @@ export default function TestimonialsPage() {
         </div>
       }
     >
-      <TestimonialsContentLazy {...vm} />
+      <TestimonialsContentLazy vm={vm} />
     </Suspense>
   );
 }
