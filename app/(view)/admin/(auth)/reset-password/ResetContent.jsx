@@ -8,17 +8,20 @@ import useResetViewModel from "./useResetViewModel";
 
 const { Title, Text } = Typography;
 
-/* ---------- Tokens (samakan dengan LoginContent.jsx) ---------- */
+/* ---------- Design Tokens (match Login/Forgot) ---------- */
 const FONT_FAMILY = '"Poppins", sans-serif';
 const COLORS = {
-  blue: "#0b56c9",
-  blueDark: "#0a469f",
-  yellow: "#ffd21e",
+  blue: "#0B56C9",
+  blueDark: "#0B3E91",
+  blueSoft: "#4DA3FF",
+  text: "#0f172a",
+  subtext: "#73839b",
   white: "#ffffff",
+  border: "rgba(12,42,97,.08)",
 };
 const ASSETS = {
-  bg: "/images/login-bg.svg", // <- ganti sesuai asetmu
-  mascot: "/images/oss-bird.svg", // <- ganti sesuai asetmu
+  bg: "/images/login-bg.svg",
+  mascot: "/images/oss-bird.svg",
 };
 
 /* ---------- Styles ---------- */
@@ -37,7 +40,7 @@ const styles = {
     position: "absolute",
     inset: 0,
     background:
-      "linear-gradient(90deg, rgba(255,255,255,.65) 0%, rgba(255,255,255,.35) 45%, rgba(255,255,255,.65) 100%)",
+      "linear-gradient(180deg, rgba(255,255,255,.85) 0%, rgba(255,255,255,.65) 40%, rgba(255,255,255,.75) 100%)",
     pointerEvents: "none",
   },
   container: {
@@ -52,41 +55,56 @@ const styles = {
     textAlign: "center",
     color: COLORS.blueDark,
     fontWeight: 800,
-    letterSpacing: ".6px",
+    letterSpacing: ".4px",
+    marginBottom: 18,
+  },
+  subtitle: {
+    textAlign: "center",
+    color: COLORS.subtext,
     marginBottom: 24,
+    fontWeight: 500,
   },
   mascotWrap: {
     position: "relative",
-    height: "min(72vh, 720px)",
+    height: "min(72vh, 700px)",
     minHeight: 420,
   },
   glassCard: {
-    borderRadius: 24,
-    background: "rgba(255,255,255,.35)",
-    border: "1px solid rgba(255,255,255,.5)",
-    boxShadow: "0 16px 36px rgba(10,20,40,.16)",
-    backdropFilter: "blur(8px)",
-    WebkitBackdropFilter: "blur(8px)",
+    borderRadius: 20,
+    background: "rgba(255,255,255,.68)",
+    border: `1px solid ${COLORS.border}`,
+    boxShadow: "0 20px 40px rgba(11, 38, 86, .12)",
+    backdropFilter: "blur(10px)",
+    WebkitBackdropFilter: "blur(10px)",
   },
-  label: {
-    fontWeight: 700,
-    color: COLORS.blueDark,
-    marginBottom: 6,
-  },
+  label: { fontWeight: 700, color: COLORS.blueDark, marginBottom: 6 },
   input: {
     background: "transparent",
     border: "none",
-    color: COLORS.white,
-    padding: "8px 0 10px",
+    color: COLORS.text,
+    padding: "10px 0 8px",
   },
   underline: (active) => ({
     width: "100%",
-    height: 3,
-    background: active ? COLORS.yellow : "rgba(255,255,255,.9)",
+    height: 2,
+    background: active
+      ? "linear-gradient(90deg, #0B56C9 0%, #4DA3FF 100%)"
+      : "rgba(11, 86, 201, .18)",
     borderRadius: 2,
     marginBottom: 14,
+    transition: "background .2s ease",
   }),
-  btn: { width: "100%", fontWeight: 800, letterSpacing: ".6px", height: 44 },
+  btn: {
+    width: "100%",
+    fontWeight: 800,
+    letterSpacing: ".6px",
+    height: 44,
+    borderRadius: 12,
+    border: "none",
+    background: "linear-gradient(90deg, #0B56C9 0%, #4DA3FF 100%)",
+    color: "#fff",
+    boxShadow: "0 10px 24px rgba(11, 86, 201, .28)",
+  },
   helperRow: {
     display: "flex",
     justifyContent: "space-between",
@@ -95,16 +113,17 @@ const styles = {
   link: {
     color: COLORS.blueDark,
     fontWeight: 700,
-    textDecoration: "underline",
+    textDecoration: "none",
   },
   responsiveCSS: `
     .reset-col-left { order: 1 }
     .reset-col-right { order: 2 }
     @media (max-width: 992px) {
       .reset-col-left { order: 2; height: 360px }
-      .reset-col-right { order: 1; margin-bottom: 20px }
+      .reset-col-right { order: 1; margin-bottom: 16px }
     }
-    .login-input::placeholder { color: rgba(255,255,255,.85) }
+    .login-input::placeholder { color: #9AA6B2 }
+    .reset-link:hover { text-decoration: underline }
   `,
 };
 
@@ -142,6 +161,10 @@ export default function ResetContent() {
     [focus]
   );
 
+  // Optional: deteksi sukses (tidak mengubah logic inti)
+  const successRegex = /berhasil|success|updated/i;
+  const isSuccess = msg && successRegex.test(msg);
+
   return (
     <div style={styles.page}>
       <style>{styles.responsiveCSS}</style>
@@ -151,6 +174,7 @@ export default function ResetContent() {
         <Title level={1} style={styles.title}>
           DASHBOARD ADMIN OSS BALI
         </Title>
+        <Text style={styles.subtitle}>Buat kata sandi baru untuk akunmu</Text>
 
         <Row gutter={[28, 28]} align="middle" justify="space-between">
           {/* Left: Mascot */}
@@ -179,9 +203,9 @@ export default function ResetContent() {
               >
                 Reset Kata Sandi
               </Title>
-              <Text style={{ color: COLORS.blueDark }}>
-                Masukkan kode 4 digit yang dikirim ke email, lalu buat password
-                baru.
+              <Text style={{ color: COLORS.subtext }}>
+                Masukkan kode 4 digit yang dikirim ke email, lalu buat kata
+                sandi baru.
               </Text>
 
               <Form
@@ -263,10 +287,10 @@ export default function ResetContent() {
                   <div style={underlinePwd2} />
                 </Form.Item>
 
-                {/* Error/Info */}
+                {/* Error / Info */}
                 {msg ? (
                   <Alert
-                    type="error"
+                    type={isSuccess ? "success" : "error"}
                     showIcon
                     message={msg}
                     style={{ marginBottom: 12 }}
@@ -279,14 +303,7 @@ export default function ResetContent() {
                     type="default"
                     htmlType="submit"
                     loading={loading}
-                    style={{
-                      ...styles.btn,
-                      background: COLORS.yellow,
-                      color: COLORS.blueDark,
-                      boxShadow: "0 8px 16px rgba(255,210,30,.35)",
-                      border: "none",
-                      borderRadius: 12,
-                    }}
+                    style={styles.btn}
                   >
                     RESET PASSWORD
                   </Button>
@@ -294,10 +311,18 @@ export default function ResetContent() {
 
                 {/* Links */}
                 <div style={styles.helperRow}>
-                  <Link href={resendHref} style={styles.link}>
+                  <Link
+                    href={resendHref}
+                    style={styles.link}
+                    className="reset-link"
+                  >
                     Kirim ulang kode
                   </Link>
-                  <Link href="/admin/login-page" style={styles.link}>
+                  <Link
+                    href="/admin/login-page"
+                    style={styles.link}
+                    className="reset-link"
+                  >
                     Kembali ke Login
                   </Link>
                 </div>
