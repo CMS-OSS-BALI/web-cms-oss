@@ -1,4 +1,3 @@
-// app/api/college/[id]/route.js
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
@@ -16,8 +15,9 @@ const BUCKET = process.env.SUPABASE_BUCKET;
 const SUPA_URL =
   process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
 const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
-const ALWAYS_TYPE = "FOREIGN"; // 🔒
-const ALWAYS_CURRENCY = "IDR"; // 🔒
+
+// ⚠️ type (enum) sudah dihapus. Currency tetap dikunci IDR.
+const ALWAYS_CURRENCY = "IDR";
 
 function slugify(s) {
   return String(s || "")
@@ -101,7 +101,6 @@ async function readBodyAndFile(req) {
     const body = {};
     let file = null;
     for (const name of ["logo", "file", "logo_file", "logo_url"]) {
-      // ⬅️ fleksibel
       const f = form.get(name);
       if (f && typeof File !== "undefined" && f instanceof File) {
         file = f;
@@ -181,7 +180,7 @@ export async function GET(req, { params }) {
         admin_user_id: true,
         slug: true,
         country: true,
-        type: true,
+        jenjang: true, // <- ganti dari type
         website: true,
         mou_url: true,
         logo_url: true,
@@ -214,7 +213,7 @@ export async function GET(req, { params }) {
 
     return NextResponse.json({
       ...base,
-      logo_url: toPublicUrl(base.logo_url), // public URL
+      logo_url: toPublicUrl(base.logo_url),
       locale_used: t?.locale || null,
       name: t?.name || null,
       description: t?.description || null,
@@ -246,7 +245,14 @@ export async function PATCH(req, { params }) {
     const patch = {};
 
     if (body.country !== undefined) patch.country = body.country ?? null;
-    patch.type = ALWAYS_TYPE;
+
+    // ❌ patch.type = ALWAYS_TYPE;  ->  ✅ jenjang TEXT
+    if (body.jenjang !== undefined) {
+      patch.jenjang = body.jenjang ?? null;
+    } else if (body.type !== undefined) {
+      // backward-compat: kalau klien lama masih kirim 'type'
+      patch.jenjang = body.type ?? null;
+    }
 
     if (body.website !== undefined) patch.website = body.website ?? null;
     if (body.mou_url !== undefined) patch.mou_url = body.mou_url ?? null;
@@ -405,7 +411,7 @@ export async function PATCH(req, { params }) {
     });
 
     return NextResponse.json({
-      data: { id, logo_url: toPublicUrl(updated?.logo_url || null) }, // ⬅️ public URL
+      data: { id, logo_url: toPublicUrl(updated?.logo_url || null) },
     });
   } catch (err) {
     if (err instanceof Response) return err;

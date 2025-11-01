@@ -1,3 +1,4 @@
+// useSidebarViewModel.js
 "use client";
 
 import { usePathname } from "next/navigation";
@@ -14,7 +15,7 @@ import {
   Megaphone,
   FileText,
   Layers,
-  Activity, // ← tambahkan ini
+  Activity, // dipakai untuk "Aktivitas"
 } from "lucide-react";
 
 /** ===== MENU: Prodi jadi child-nya Jurusan ===== */
@@ -28,6 +29,7 @@ export const MENU = [
     children: [
       { label: "Data Student", href: "/admin/events/students" },
       { label: "Data Representative", href: "/admin/events/representatives" },
+      { label: "Kode Voucher", href: "/admin/events/vouchers" }, // ← ditambahkan
     ],
   },
 
@@ -55,7 +57,7 @@ export const MENU = [
   { label: "Testimoni", href: "/admin/testimonials", icon: MessageSquareText },
 
   // Aktivitas
-  { label: "Aktivitas", href: "/admin/activity", icon: Activity }, // ← pakai Activity
+  { label: "Aktivitas", href: "/admin/activity", icon: Activity },
 
   { label: "Blast", href: "/admin/blast", icon: Megaphone },
   { label: "Master Data", href: "/admin/master-data", icon: Layers },

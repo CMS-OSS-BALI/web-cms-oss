@@ -155,13 +155,13 @@ const NAV_EN = [
   },
   {
     id: "college",
-    label: "College",
+    label: "Campuses",
     href: "/user/college",
     matchers: ["/user/college", "/user/majors", "/user/leads"],
   },
   {
     id: "blog",
-    label: "Blog",
+    label: "News",
     href: "/user/blog?menu=blog",
     matchers: ["/user/blog", "/user/leads"],
   },

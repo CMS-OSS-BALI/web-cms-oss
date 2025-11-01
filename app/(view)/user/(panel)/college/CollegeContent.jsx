@@ -33,6 +33,7 @@ const normalizeImgSrc = (input) => {
   if (/^https?:\/\//i.test(raw)) return raw;
   return raw.startsWith("/") ? raw : `/${raw}`;
 };
+
 const BulletIcon = ({ type }) => {
   const p = {
     width: 18,
@@ -55,10 +56,17 @@ const BulletIcon = ({ type }) => {
         <circle cx="12" cy="12" r="3" />
       </svg>
     );
+  if (type === "cap")
+    return (
+      <svg viewBox="0 0 24 24" {...p}>
+        <path d="M22 10L12 5 2 10l10 5 10-5Z" />
+        <path d="M6 12v4c3 2 9 2 12 0v-4" />
+      </svg>
+    );
+  // default generic
   return (
     <svg viewBox="0 0 24 24" {...p}>
-      <path d="M22 10L12 5 2 10l10 5 10-5Z" />
-      <path d="M6 12v4c3 2 9 2 12 0v-4" />
+      <circle cx="12" cy="12" r="9" />
     </svg>
   );
 };
@@ -170,7 +178,6 @@ const styles = {
       transition: "transform .18s ease, box-shadow .18s ease",
     },
 
-    /* HAPUS iconWrap, dan gunakan iconPlain di bawah */
     iconPlain: { width: 140, height: 140, objectFit: "contain" },
 
     majorTitle: {
@@ -217,7 +224,7 @@ const styles = {
       position: "relative",
       display: "grid",
       alignItems: "center",
-      gridTemplateColumns: "48px 1fr 1px 48px",
+      gridTemplateColumns: "48px 1fr", // << removed divider & mic
       gap: 0,
       height: 62,
       flex: 1,
@@ -249,12 +256,6 @@ const styles = {
       cursor: "pointer",
     },
     icon: { width: 24, height: 24 },
-    divider: {
-      height: "70%",
-      width: 0,
-      borderLeft: "2px dotted #1962BF",
-      justifySelf: "center",
-    },
     filterPill: {
       height: 62,
       minWidth: 180,
@@ -405,7 +406,6 @@ const styles = {
     },
   },
 
-  /* ====== NEW: CTA Beasiswa sesuai desain ====== */
   cta: {
     section: { padding: "10px 0 110px", background: "#fff" },
     container: { width: "min(1180px, 96%)", margin: "0 auto" },
@@ -413,7 +413,7 @@ const styles = {
       background: "#0B56B8",
       color: "#fff",
       padding: "32px clamp(18px,3vw,40px) 40px",
-      borderRadius: "24px 120px 20px 80px", // TL TR BR BL
+      borderRadius: "24px 120px 20px 80px",
       boxShadow: "0 20px 44px rgba(11,86,184,.25)",
     },
     title: {
@@ -484,14 +484,13 @@ export default function CollegeContent({ locale = "id" }) {
     ? marqueeAutoplay
     : undefined;
 
-  /* search state */
+  /* search state (tanpa microphone) */
   const [query, setQuery] = useState("");
   const [country, setCountry] = useState("");
   const [qApplied, setQApplied] = useState("");
   const [countryApplied, setCountryApplied] = useState("");
   const inputRef = useRef(null);
   const listRef = useRef(null);
-  const [listening, setListening] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -503,47 +502,6 @@ export default function CollegeContent({ locale = "id" }) {
     setQApplied(q);
     setCountryApplied(c);
   }, []);
-
-  const SpeechRecognition = useMemo(
-    () =>
-      typeof window !== "undefined"
-        ? window.SpeechRecognition || window.webkitSpeechRecognition || null
-        : null,
-    []
-  );
-
-  const startVoice = () => {
-    if (!SpeechRecognition) {
-      alert(
-        locale === "en"
-          ? "Voice search not supported on this browser."
-          : "Pencarian suara tidak didukung di browser ini."
-      );
-      return;
-    }
-    try {
-      const rec = new SpeechRecognition();
-      rec.lang = locale === "en" ? "en-US" : "id-ID";
-      rec.onstart = () => setListening(true);
-      rec.onend = () => setListening(false);
-      rec.onerror = () => setListening(false);
-      rec.onresult = (e) => {
-        const text = e.results?.[0]?.[0]?.transcript || "";
-        setQuery(text);
-        setQApplied(text);
-        inputRef.current?.focus();
-        listRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-        if (typeof window !== "undefined") {
-          const url = new URL(window.location.href);
-          text ? url.searchParams.set("q", text) : url.searchParams.delete("q");
-          window.history.replaceState({}, "", url.toString());
-        }
-      };
-      rec.start();
-    } catch {
-      setListening(false);
-    }
-  };
 
   const doSearch = () => {
     setQApplied(query);
@@ -654,7 +612,6 @@ export default function CollegeContent({ locale = "id" }) {
                   })
                 }
               >
-                {/* LANGSUNG IKON — pembungkus dihapus */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={m.icon}
@@ -715,28 +672,6 @@ export default function CollegeContent({ locale = "id" }) {
                 style={styles.search.input}
                 aria-label={search.label}
               />
-
-              <div style={styles.search.divider} />
-
-              <button
-                type="button"
-                aria-label={search.voiceHint}
-                title={search.voiceHint}
-                style={styles.search.iconBtn}
-                onClick={startVoice}
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  style={styles.search.icon}
-                  fill={listening ? "#0B4DA6" : "none"}
-                  stroke="#0B4DA6"
-                  strokeWidth="2"
-                >
-                  <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" />
-                  <path d="M19 10a7 7 0 0 1-14 0" />
-                  <path d="M12 17v4" />
-                </svg>
-              </button>
             </div>
 
             <div style={styles.search.filterPill}>
@@ -963,7 +898,7 @@ export default function CollegeContent({ locale = "id" }) {
         </div>
       </section>
 
-      {/* ====== SCHOLARSHIP CTA (sesuai desain) ====== */}
+      {/* ====== SCHOLARSHIP CTA ====== */}
       <section style={styles.cta.section}>
         <div style={styles.cta.container}>
           <article style={styles.cta.card}>

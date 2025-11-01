@@ -16,6 +16,7 @@ import {
   Popconfirm,
   Tooltip,
   Spin,
+  notification, // notifications
 } from "antd";
 import {
   PlusCircleOutlined,
@@ -100,6 +101,17 @@ const abbr = (n) => {
 export default function BlogContent({ initialLocale = "id" }) {
   const vm = useBlogViewModel();
 
+  // notifications (top-right)
+  const [api, contextHolder] = notification.useNotification();
+  const toast = {
+    ok: (m, d) =>
+      api.success({ message: m, description: d, placement: "topRight" }),
+    err: (m, d) =>
+      api.error({ message: m, description: d, placement: "topRight" }),
+    info: (m, d) =>
+      api.info({ message: m, description: d, placement: "topRight" }),
+  };
+
   // set locale sekali dari server param
   useEffect(() => {
     vm.setLocale?.(initialLocale);
@@ -129,14 +141,15 @@ export default function BlogContent({ initialLocale = "id" }) {
 
   const rows = useMemo(() => vm.blogs || [], [vm.blogs]);
 
-  /* ===== Upload guards ===== */
+  /* ===== Upload guards (match referensi) ===== */
   const isImg = (f) =>
     ["image/jpeg", "image/png", "image/webp"].includes(f?.type || "");
-  const tooBig = (f, mb = 3) => f.size / 1024 / 1024 >= mb;
+  const tooBig = (f, mb = 10) => (f?.size || 0) / 1024 / 1024 > mb; // 10MB seperti referensi
+  const normList = (e) => (Array.isArray(e) ? e : e?.fileList || []);
 
   const beforeCoverCreate = useCallback(
     (file) => {
-      if (!isImg(file) || tooBig(file, 3)) return Upload.LIST_IGNORE;
+      if (!isImg(file) || tooBig(file, 10)) return Upload.LIST_IGNORE;
       try {
         const url = URL.createObjectURL(file);
         if (coverPrevCreate) URL.revokeObjectURL(coverPrevCreate);
@@ -149,7 +162,7 @@ export default function BlogContent({ initialLocale = "id" }) {
 
   const beforeCoverEdit = useCallback(
     (file) => {
-      if (!isImg(file) || tooBig(file, 3)) return Upload.LIST_IGNORE;
+      if (!isImg(file) || tooBig(file, 10)) return Upload.LIST_IGNORE;
       try {
         const url = URL.createObjectURL(file);
         if (coverPrevEdit) URL.revokeObjectURL(coverPrevEdit);
@@ -193,15 +206,13 @@ export default function BlogContent({ initialLocale = "id" }) {
     });
 
     if (out.ok) {
+      toast.ok("Tersimpan", "Berita berhasil dibuat.");
       setCreateOpen(false);
       formCreate.resetFields();
       if (coverPrevCreate) URL.revokeObjectURL(coverPrevCreate);
       setCoverPrevCreate("");
     } else {
-      Modal.error({
-        title: "Gagal",
-        content: out.error || "Gagal membuat blog",
-      });
+      toast.err("Gagal", out.error || "Gagal membuat blog");
     }
   }, [formCreate, vm, coverPrevCreate]);
 
@@ -215,7 +226,7 @@ export default function BlogContent({ initialLocale = "id" }) {
       setDetailLoading(false);
       if (!ok) {
         setEditOpen(false);
-        return Modal.error({ title: "Gagal memuat", content: error });
+        return toast.err("Gagal memuat", error);
       }
       const d = data || row;
       setDetailData(d);
@@ -223,6 +234,7 @@ export default function BlogContent({ initialLocale = "id" }) {
         title: d.name || d.title || row.title || "",
         category: d.category_slug || "",
         description: d.description || d.description_id || "",
+        cover: [], // reset file list
       });
       setCoverPrevEdit(
         d.image_url || d.image_public_url || row.image_src || ""
@@ -246,12 +258,13 @@ export default function BlogContent({ initialLocale = "id" }) {
     });
 
     if (res.ok) {
+      toast.ok("Tersimpan", "Perubahan berhasil disimpan.");
       setEditOpen(false);
       formEdit.resetFields();
       if (coverPrevEdit) URL.revokeObjectURL(coverPrevEdit);
       setCoverPrevEdit("");
     } else {
-      Modal.error({ title: "Gagal", content: res.error || "Gagal menyimpan" });
+      toast.err("Gagal", res.error || "Gagal menyimpan");
     }
   }, [activeRow, formEdit, vm, coverPrevEdit]);
 
@@ -259,11 +272,9 @@ export default function BlogContent({ initialLocale = "id" }) {
     async (id) => {
       const res = await vm.deleteBlog(id);
       if (!res.ok) {
-        Modal.error({
-          title: "Gagal",
-          content: res.error || "Tidak bisa menghapus",
-        });
+        return toast.err("Gagal", res.error || "Tidak bisa menghapus");
       }
+      toast.ok("Terhapus", "Berita berhasil dihapus.");
     },
     [vm]
   );
@@ -278,7 +289,7 @@ export default function BlogContent({ initialLocale = "id" }) {
       setDetailLoading(false);
       if (!ok) {
         setViewOpen(false);
-        return Modal.error({ title: "Gagal memuat", content: error });
+        return toast.err("Gagal memuat", error);
       }
       setDetailData(data);
     },
@@ -344,6 +355,21 @@ export default function BlogContent({ initialLocale = "id" }) {
         components: { Button: { borderRadius: 10 } },
       }}
     >
+      {contextHolder}
+
+      {/* === Global style untuk uploader 16:9 (match referensi) === */}
+      <style jsx global>{`
+        .landscape-uploader.ant-upload.ant-upload-select-picture-card {
+          width: 320px !important;
+          height: 180px !important;
+          padding: 0 !important;
+        }
+        .landscape-uploader .ant-upload {
+          width: 100% !important;
+          height: 100% !important;
+        }
+      `}</style>
+
       {/* ===== Page wrapper ===== */}
       <section
         style={{
@@ -567,9 +593,7 @@ export default function BlogContent({ initialLocale = "id" }) {
               <Form.Item
                 name="cover"
                 valuePropName="fileList"
-                getValueFromEvent={(e) =>
-                  Array.isArray(e) ? e : e?.fileList || []
-                }
+                getValueFromEvent={normList}
                 noStyle
                 rules={[{ required: true, message: "Sampul wajib diisi" }]}
               >
@@ -578,16 +602,18 @@ export default function BlogContent({ initialLocale = "id" }) {
                   listType="picture-card"
                   showUploadList={false}
                   beforeUpload={beforeCoverCreate}
+                  className="landscape-uploader"
                 >
                   <div style={styles.coverBox}>
                     {coverPrevCreate ? (
+                      // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={coverPrevCreate}
                         alt="cover"
                         style={styles.coverImg}
                       />
                     ) : (
-                      <div style={styles.coverPlaceholder}>+ {T.cover}</div>
+                      <div style={styles.coverPlaceholder}>+ Sampul (16:9)</div>
                     )}
                   </div>
                 </Upload>
@@ -648,9 +674,7 @@ export default function BlogContent({ initialLocale = "id" }) {
                 <Form.Item
                   name="cover"
                   valuePropName="fileList"
-                  getValueFromEvent={(e) =>
-                    Array.isArray(e) ? e : e?.fileList || []
-                  }
+                  getValueFromEvent={normList}
                   noStyle
                 >
                   <Upload
@@ -658,16 +682,20 @@ export default function BlogContent({ initialLocale = "id" }) {
                     listType="picture-card"
                     showUploadList={false}
                     beforeUpload={beforeCoverEdit}
+                    className="landscape-uploader"
                   >
                     <div style={styles.coverBox}>
                       {coverPrevEdit ? (
+                        // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={coverPrevEdit}
                           alt="cover"
                           style={styles.coverImg}
                         />
                       ) : (
-                        <div style={styles.coverPlaceholder}>+ {T.cover}</div>
+                        <div style={styles.coverPlaceholder}>
+                          + Sampul (16:9)
+                        </div>
                       )}
                     </div>
                   </Upload>
@@ -723,6 +751,7 @@ export default function BlogContent({ initialLocale = "id" }) {
         <div style={styles.modalShell}>
           <Spin spinning={detailLoading}>
             <div style={styles.coverBoxRead}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={
                   detailData?.image_url ||
@@ -944,9 +973,11 @@ const styles = {
     marginTop: 6,
     marginBottom: 10,
   },
+
+  // penting: biar ngikut ukuran card dari .landscape-uploader
   coverBox: {
-    width: 260,
-    height: 156,
+    width: "100%",
+    height: "100%",
     borderRadius: 12,
     border: "2px dashed #c0c8d8",
     background: "#f8fbff",

@@ -20,6 +20,7 @@ export function useReferralViewModel() {
     full_name: "",
     date_of_birth: null,
     gender: undefined,
+    // alamat
     address_line: "",
     rt: "",
     rw: "",
@@ -29,9 +30,14 @@ export function useReferralViewModel() {
     province: "",
     postal_code: "",
     domicile: "",
+    // identitas tambahan
+    pekerjaan: "", // ⬅️ WAJIB
+    // kontak
     whatsapp: "",
     email: "",
-    pic_consultant_id: "", // Wajib
+    // relasi
+    pic_consultant_id: "", // ⬅️ OPSIONAL (tidak wajib)
+    // lainnya
     consent_agreed: false,
     document: { front_file: null, front_preview: "" },
   });
@@ -47,7 +53,6 @@ export function useReferralViewModel() {
   const loadConsultants = useCallback(async (q = "") => {
     try {
       setConsultantsLoading(true);
-      // sesuaikan jika endpoint kamu beda; `public=1` aman untuk publik
       const url = new URL("/api/consultants", window.location.origin);
       url.searchParams.set("public", "1");
       url.searchParams.set("limit", "50");
@@ -85,7 +90,7 @@ export function useReferralViewModel() {
     });
   }, []);
 
-  // Picker file KTP
+  // Picker file Kartu Identitas
   const onPickFront = useCallback((file) => {
     if (!(file instanceof File)) return;
     const allowed = ["image/jpeg", "image/png", "image/webp"];
@@ -116,6 +121,10 @@ export function useReferralViewModel() {
       e.date_of_birth = "Tanggal lahir wajib (format YYYY-MM-DD).";
     if (!v.gender) e.gender = "Jenis kelamin wajib.";
 
+    // pekerjaan wajib
+    if (!nonEmpty(v.pekerjaan) || v.pekerjaan.trim().length < 2)
+      e.pekerjaan = "Pekerjaan wajib (min 2 karakter).";
+
     if (!nonEmpty(v.address_line) || v.address_line.trim().length < 6)
       e.address_line = "Alamat terlalu pendek.";
     if (cleanDigits(v.rt).length === 0) e.rt = "RT wajib.";
@@ -132,11 +141,9 @@ export function useReferralViewModel() {
     if (!EMAIL_RE.test(String(v.email || "").trim()))
       e.email = "Email tidak valid.";
 
-    if (!v.pic_consultant_id)
-      e.pic_consultant_id = "Pilih PIC Konsultan terlebih dahulu.";
-
+    // PIC tidak wajib -> tidak ada error
     if (!(v.document.front_file || v.document.front_preview))
-      e.front = "Foto KTP wajib diunggah.";
+      e.front = "Foto Kartu Identitas wajib diunggah.";
     if (!v.consent_agreed) e.consent_agreed = "Wajib menyetujui syarat.";
     return e;
   }, []);
@@ -155,6 +162,7 @@ export function useReferralViewModel() {
         e.full_name && "Nama",
         e.date_of_birth && "Tanggal Lahir",
         e.gender && "Jenis Kelamin",
+        e.pekerjaan && "Pekerjaan",
         (e.address_line ||
           e.rt ||
           e.rw ||
@@ -166,8 +174,7 @@ export function useReferralViewModel() {
           "Alamat",
         e.whatsapp && "WhatsApp",
         e.email && "Email",
-        e.pic_consultant_id && "PIC Konsultan",
-        e.front && "Foto KTP",
+        e.front && "Foto Kartu Identitas",
         e.consent_agreed && "Persetujuan",
       ]
         .filter(Boolean)
@@ -204,6 +211,7 @@ export function useReferralViewModel() {
         "province",
         "postal_code",
         "domicile",
+        "pekerjaan", // ⬅️ wajib => dipastikan terkirim
       ].forEach((k) => {
         const v = values[k];
         if (v != null && String(v).trim() !== "")
@@ -213,8 +221,10 @@ export function useReferralViewModel() {
       fd.append("whatsapp", values.whatsapp.trim());
       fd.append("email", values.email.trim());
 
-      // Wajib
-      fd.append("pic_consultant_id", String(values.pic_consultant_id));
+      // PIC opsional: kirim hanya jika ada
+      if (values.pic_consultant_id) {
+        fd.append("pic_consultant_id", String(values.pic_consultant_id));
+      }
 
       fd.append("consent_agreed", String(!!values.consent_agreed));
 
@@ -225,7 +235,7 @@ export function useReferralViewModel() {
           values.document.front_file.name
         );
       } else {
-        setMsg({ type: "error", text: "Foto KTP wajib diunggah." });
+        setMsg({ type: "error", text: "Foto Kartu Identitas wajib diunggah." });
         setLoading(false);
         return;
       }
@@ -260,9 +270,10 @@ export function useReferralViewModel() {
         province: "",
         postal_code: "",
         domicile: "",
+        pekerjaan: "", // reset
         whatsapp: "",
         email: "",
-        pic_consultant_id: "",
+        pic_consultant_id: "", // reset (opsional)
         consent_agreed: false,
         document: { front_file: null, front_preview: "" },
       });

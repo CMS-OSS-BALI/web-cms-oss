@@ -1,4 +1,3 @@
-// app/(view)/admin/college/useCollegeAViewModel.js
 "use client";
 
 import useSWR from "swr";
@@ -18,23 +17,21 @@ const jsonFetcher = (url) =>
     return r.json();
   });
 
-/**
- * Pencarian hanya berdasarkan NAMA:
- * - kirim ?name=... (utama)
- * - kirim ?q_name=... (fallback)
- * (opsional: aktifkan baris ?q=... kalau backend lama masih memakainya)
- */
-function buildListKey({ page, perPage, q, locale, fallback, country }) {
+function buildListKey({
+  page,
+  perPage,
+  q,
+  locale,
+  fallback,
+  country,
+  jenjang,
+}) {
   const p = new URLSearchParams();
   p.set("page", String(page));
   p.set("perPage", String(perPage));
-  if (q && q.trim()) {
-    const name = q.trim();
-    p.set("name", name);
-    p.set("q_name", name);
-    // p.set("q", name);
-  }
+  if (q && q.trim()) p.set("q", q.trim());
   if (country) p.set("country", country);
+  if (jenjang) p.set("jenjang", jenjang);
   p.set("locale", locale || DEFAULT_LOCALE);
   p.set("fallback", fallback || FALLBACK_FOR(locale || DEFAULT_LOCALE));
   return `/api/college?${p.toString()}`;
@@ -53,14 +50,22 @@ function pickEnglishLines(reqItems = []) {
 }
 
 export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
-  // ---- list state
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(DEFAULT_PER_PAGE);
-  const [q, setQ] = useState(""); // query nama kampus
+  const [q, setQ] = useState("");
   const [country, setCountry] = useState("");
+  const [jenjang, setJenjang] = useState("");
 
   const fallback = FALLBACK_FOR(locale);
-  const key = buildListKey({ page, perPage, q, locale, fallback, country });
+  const key = buildListKey({
+    page,
+    perPage,
+    q,
+    locale,
+    fallback,
+    country,
+    jenjang,
+  });
 
   const { data, error, isLoading, mutate } = useSWR(key, jsonFetcher, {
     keepPreviousData: true,
@@ -69,7 +74,6 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
 
   const colleges = useMemo(() => data?.data || [], [data]);
 
-  // total pintar (fallback ke panjang data)
   const total = useMemo(() => {
     const d = data || {};
     const candidates = [
@@ -92,7 +96,6 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
     data?.totalPages ??
     (colleges.length < perPage && page > 1 ? page : undefined);
 
-  // ---- english cache (opsional)
   const englishCache = useRef(new Map());
   const [loadingEnglish, setLoadingEnglish] = useState(false);
 
@@ -130,7 +133,132 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
     }
   }, []);
 
-  // ---- CRUD
+  // ===== Requirements API =====
+  const listRequirements = useCallback(
+    async (collegeId, { prodi_id } = {}) => {
+      const p = new URLSearchParams();
+      p.set("locale", locale);
+      p.set("fallback", fallback);
+      if (prodi_id) p.set("prodi_id", prodi_id);
+      const res = await fetch(
+        `/api/college/${encodeURIComponent(
+          collegeId
+        )}/requirements?${p.toString()}`
+      );
+      if (!res.ok) {
+        return { ok: false, error: await res.text() };
+      }
+      const json = await res.json();
+      return { ok: true, data: Array.isArray(json?.data) ? json.data : [] };
+    },
+    [locale, fallback]
+  );
+
+  const createRequirement = useCallback(
+    async (
+      collegeId,
+      { text, prodi_id, sort, loc = locale, autoTranslate = true } = {}
+    ) => {
+      const body = { text, locale: loc, autoTranslate };
+      if (prodi_id) body.prodi_id = String(prodi_id);
+      if (Number.isFinite(sort)) body.sort = Number(sort);
+
+      const res = await fetch(
+        `/api/college/${encodeURIComponent(collegeId)}/requirements`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        }
+      );
+      if (!res.ok) {
+        return {
+          ok: false,
+          error: (await res.json().catch(() => ({})))?.message || res.status,
+        };
+      }
+      const json = await res.json().catch(() => ({}));
+      return { ok: true, data: json?.data || {} };
+    },
+    [locale]
+  );
+
+  const updateRequirement = useCallback(
+    async (
+      collegeId,
+      reqId,
+      { text, prodi_id, sort, loc = locale, autoTranslate = true } = {}
+    ) => {
+      const body = { locale: loc, autoTranslate };
+      if (text !== undefined) body.text = text;
+      if (prodi_id !== undefined) body.prodi_id = prodi_id || "";
+      if (sort !== undefined) body.sort = sort;
+
+      const res = await fetch(
+        `/api/college/${encodeURIComponent(
+          collegeId
+        )}/requirements/${encodeURIComponent(reqId)}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        }
+      );
+      if (!res.ok) {
+        return {
+          ok: false,
+          error: (await res.json().catch(() => ({})))?.message || res.status,
+        };
+      }
+      const json = await res.json().catch(() => ({}));
+      return { ok: true, data: json?.data || {} };
+    },
+    [locale]
+  );
+
+  const deleteRequirement = useCallback(async (collegeId, reqId) => {
+    const res = await fetch(
+      `/api/college/${encodeURIComponent(
+        collegeId
+      )}/requirements/${encodeURIComponent(reqId)}`,
+      { method: "DELETE" }
+    );
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: (await res.json().catch(() => ({})))?.message || res.status,
+      };
+    }
+    return { ok: true };
+  }, []);
+
+  const bulkCreateRequirements = useCallback(
+    async (
+      collegeId,
+      items = [],
+      { loc = locale, autoTranslate = true } = {}
+    ) => {
+      const results = [];
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (!it?.text?.trim()) continue;
+        const sort = Number.isFinite(it.sort) ? it.sort : i + 1;
+        const r = await createRequirement(collegeId, {
+          text: it.text.trim(),
+          prodi_id: it.prodi_id,
+          sort,
+          loc,
+          autoTranslate,
+        });
+        results.push(r);
+      }
+      return results;
+    },
+    [createRequirement, locale]
+  );
+  // ===========================================
+
+  // ---- CRUD College ----
   const createCollege = useCallback(
     async ({
       file,
@@ -148,6 +276,7 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
       contact_name,
       no_telp,
       email,
+      jenjang,
       autoTranslate = true,
     }) => {
       const form = new FormData();
@@ -167,6 +296,8 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
       if (contact_name != null) form.set("contact_name", String(contact_name));
       if (no_telp != null) form.set("no_telp", String(no_telp));
       if (email != null) form.set("email", String(email));
+      if (jenjang != null && jenjang !== "")
+        form.set("jenjang", String(jenjang));
       form.set("autoTranslate", String(Boolean(autoTranslate)));
       if (file) form.set("file", file);
 
@@ -177,8 +308,9 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
           error: (await res.json().catch(() => ({})))?.message || res.status,
         };
       }
+      const json = await res.json().catch(() => ({}));
       await mutate();
-      return { ok: true, data: await res.json() };
+      return { ok: true, data: json };
     },
     [locale, mutate]
   );
@@ -221,6 +353,12 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
           form.set(k, String(payload[k]));
         }
       }
+      if ("jenjang" in payload && payload.jenjang !== undefined) {
+        const v = payload.jenjang;
+        if (v === null || v === "") form.set("jenjang", "");
+        else form.set("jenjang", String(v));
+      }
+
       if ("description" in payload) {
         form.set("locale", locale);
         form.set(
@@ -242,8 +380,9 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
           error: (await res.json().catch(() => ({})))?.message || res.status,
         };
       }
+      const json = await res.json().catch(() => ({}));
       await mutate();
-      return { ok: true, data: await res.json() };
+      return { ok: true, data: json };
     },
     [locale, mutate]
   );
@@ -272,38 +411,41 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
   );
 
   return {
-    // state
     locale,
     fallback,
     page,
     perPage,
-    q, // query nama kampus
+    q,
     country,
-    setLocale: () => {}, // sengaja no-op agar kompatibel dengan pola di page.jsx
+    jenjang,
+    setLocale: () => {},
     setPage,
     setPerPage,
-    setQ, // set query nama
+    setQ,
     setCountry,
+    setJenjang,
 
-    // data
     colleges,
     total,
     totalPages,
     loading: isLoading,
     error,
 
-    // english requirements
     refreshEnglishForPage,
     loadingEnglish,
     englishFor,
 
-    // money format
     money,
 
-    // ops
     createCollege,
     updateCollege,
     deleteCollege,
     getCollege,
+
+    listRequirements,
+    createRequirement,
+    updateRequirement,
+    deleteRequirement,
+    bulkCreateRequirements,
   };
 }

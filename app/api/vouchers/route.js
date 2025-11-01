@@ -9,8 +9,10 @@ export const runtime = "nodejs";
 
 const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
 
+/** Pastikan Date -> ISO string supaya tanggal konsisten di client */
 function sanitize(v) {
   if (v == null) return v;
+  if (v instanceof Date) return v.toISOString();
   if (typeof v === "bigint") return v.toString();
   if (Array.isArray(v)) return v.map(sanitize);
   if (typeof v === "object") {
@@ -44,7 +46,7 @@ function toBool(v) {
   const s = String(v).toLowerCase();
   if (s === "1" || s === "true") return true;
   if (s === "0" || s === "false") return false;
-  return undefined; // biarkan caller putuskan default
+  return undefined;
 }
 function sanitizeCode(s) {
   return String(s || "")
@@ -54,7 +56,7 @@ function sanitizeCode(s) {
     .slice(0, 64);
 }
 
-// ⇩⇩ NEW: helper untuk baca JSON / urlencoded / multipart ⇩⇩
+// Baca JSON / x-www-form-urlencoded / multipart (tanpa file)
 async function readBodyFlexible(req) {
   const ct = (req.headers.get("content-type") || "").toLowerCase();
   const isMultipart = ct.startsWith("multipart/form-data");
@@ -63,7 +65,7 @@ async function readBodyFlexible(req) {
     const form = await req.formData();
     const body = {};
     for (const [k, v] of form.entries()) {
-      if (v instanceof File) continue; // tidak ada file di voucher
+      if (v instanceof File) continue;
       body[k] = v;
     }
     return body;
@@ -87,14 +89,15 @@ async function assertAdmin(req) {
 }
 
 /** GET /api/vouchers
- * - validate publik: ?code=ABC123[&event_id=...]
- * - admin list (pagination)
+ * - Validasi publik: ?code=ABC123[&event_id=...]
+ * - Admin list (pagination)
  */
 export async function GET(req) {
   const url = new URL(req.url);
   const codeParam = (url.searchParams.get("code") || "").trim();
   const event_id = (url.searchParams.get("event_id") || "").trim() || null;
 
+  // === Public validate by code ===
   if (codeParam) {
     const code = sanitizeCode(codeParam);
     if (!code) return json({ valid: false, reason: "INVALID_CODE" });
@@ -137,7 +140,7 @@ export async function GET(req) {
     });
   }
 
-  // admin list
+  // === Admin list ===
   try {
     await assertAdmin(req);
     const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
@@ -145,6 +148,7 @@ export async function GET(req) {
       100,
       Math.max(1, parseInt(url.searchParams.get("perPage") || "20", 10))
     );
+
     const [total, rows] = await Promise.all([
       prisma.vouchers.count(),
       prisma.vouchers.findMany({
@@ -193,7 +197,7 @@ export async function GET(req) {
 export async function POST(req) {
   try {
     await assertAdmin(req);
-    const body = await readBodyFlexible(req); // <<< form-data/json ok
+    const body = await readBodyFlexible(req); // form-data/json OK
 
     const code = sanitizeCode(body?.code);
     if (!code) return bad("code wajib diisi (A-Z 0-9 _ -, max 64)", "code");
@@ -233,7 +237,6 @@ export async function POST(req) {
       if (!ev) return bad("event_id tidak valid", "event_id");
     }
 
-    // is_active dari form-data string
     const isActiveParsed = toBool(body?.is_active);
     const is_active =
       typeof isActiveParsed === "boolean"

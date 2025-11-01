@@ -65,7 +65,7 @@ export default function ReferralContent({ vm }) {
 
   const rows = useMemo(() => viewModel.referrals || [], [viewModel.referrals]);
 
-  // ===== consultant options state (FIX) =====
+  // ===== consultant options state (remote search + cache) =====
   const [consultantOptions, setConsultantOptions] = useState([]);
   const [fetchingConsultant, setFetchingConsultant] = useState(false);
 
@@ -99,7 +99,7 @@ export default function ReferralContent({ vm }) {
     }
   };
 
-  // search
+  // search (debounce)
   const [searchValue, setSearchValue] = useState(viewModel.q || "");
   useEffect(() => setSearchValue(viewModel.q || ""), [viewModel.q]);
   useEffect(() => {
@@ -124,6 +124,8 @@ export default function ReferralContent({ vm }) {
     setDetailOpen(true);
     setDetailLoading(true);
     setDetailData(null);
+    // preload consultant names so label bisa tampil di detail
+    await loadConsultants("");
     const { ok, data, previews, error } = await viewModel.getReferral(row.id);
     setDetailLoading(false);
     if (!ok) {
@@ -156,7 +158,7 @@ export default function ReferralContent({ vm }) {
       pic_consultant_id: data.pic_consultant_id || undefined,
     });
 
-    // ⬇️ Load options and ensure the current selected ID exists with a label
+    // Load options dan pastikan current PIC punya label
     await loadConsultants("");
     if (data.pic_consultant_id) {
       setConsultantOptions((prev) => {
@@ -164,7 +166,7 @@ export default function ReferralContent({ vm }) {
         const exists = prev.some((o) => String(o.value) === id);
         if (exists) return prev;
         const label =
-          viewModel.consultantName?.(id) || `Konsultan ${id.slice(0, 6)}…`; // fallback
+          viewModel.consultantName?.(id) || `Konsultan ${id.slice(0, 6)}…`;
         return [{ value: id, label }, ...prev];
       });
     }
@@ -176,7 +178,7 @@ export default function ReferralContent({ vm }) {
     const res = await viewModel.updateReferral(activeRow.id, {
       status: v.status,
       notes: v.notes || null,
-      pic_consultant_id: v.pic_consultant_id || null,
+      pic_consultant_id: v.pic_consultant_id || null, // ⬅️ admin dapat edit/clear PIC
     });
     if (!res.ok) return toast.err("Gagal menyimpan", res.error);
     toast.ok("Tersimpan", "Perubahan berhasil disimpan.");
@@ -472,6 +474,7 @@ export default function ReferralContent({ vm }) {
                   <div style={styles.label}>Nama</div>
                   <div style={styles.value}>{detailData.full_name || "—"}</div>
                 </div>
+
                 <div
                   style={{
                     display: "grid",
@@ -488,6 +491,7 @@ export default function ReferralContent({ vm }) {
                     <div style={styles.value}>{detailData.gender || "—"}</div>
                   </div>
                 </div>
+
                 <div
                   style={{
                     display: "grid",
@@ -504,6 +508,21 @@ export default function ReferralContent({ vm }) {
                     <div style={styles.value}>{detailData.email || "—"}</div>
                   </div>
                 </div>
+
+                <div>
+                  <div style={styles.label}>Pekerjaan</div>
+                  <div style={styles.value}>{detailData.pekerjaan || "—"}</div>
+                </div>
+
+                <div>
+                  <div style={styles.label}>PIC Konsultan</div>
+                  <div style={styles.value}>
+                    {viewModel.consultantName?.(detailData.pic_consultant_id) ||
+                      detailData.pic_consultant_id ||
+                      "—"}
+                  </div>
+                </div>
+
                 <div>
                   <div style={styles.label}>Alamat KTP</div>
                   <div style={styles.value}>
@@ -520,14 +539,17 @@ export default function ReferralContent({ vm }) {
                       .join(", ")}
                   </div>
                 </div>
+
                 <div>
                   <div style={styles.label}>Status</div>
                   <div style={styles.value}>{detailData.status}</div>
                 </div>
+
                 <div>
                   <div style={styles.label}>Kode Referral</div>
                   <div style={styles.value}>{detailData.code || "—"}</div>
                 </div>
+
                 <div>
                   <div style={styles.label}>Foto KTP</div>
                   <div style={{ ...styles.value, padding: 10 }}>

@@ -107,7 +107,7 @@ export async function GET(_req, { params }) {
   const id = String(params?.id || "");
   if (!id) return json({ error: { code: "BAD_REQUEST" } }, { status: 400 });
 
-  // return all columns then add *_ts
+  // return all columns then add *_ts (pekerjaan ikut terembet)
   const row = await prisma.referral.findUnique({ where: { id } });
   if (!row) return json({ error: { code: "NOT_FOUND" } }, { status: 404 });
 
@@ -191,6 +191,11 @@ export async function PATCH(req, { params }) {
         data.pic_consultant_id = v;
       } else data.pic_consultant_id = null;
     }
+
+    // ⬇️ allow update pekerjaan via multipart
+    if (form.has("pekerjaan")) {
+      data.pekerjaan = trimStr(form.get("pekerjaan"), 100) ?? null;
+    }
   } else {
     const body = await req.json().catch(() => ({}));
 
@@ -227,9 +232,14 @@ export async function PATCH(req, { params }) {
       "postal_code",
       "domicile",
       "notes",
+      "pekerjaan", // ⬅️ allow update pekerjaan via JSON
     ].forEach((k) => {
       if (body[k] !== undefined)
-        data[k] = trimStr(body[k], k === "notes" ? 255 : 191) ?? null;
+        data[k] =
+          trimStr(
+            body[k],
+            k === "notes" ? 255 : k === "pekerjaan" ? 100 : 191
+          ) ?? null;
     });
 
     if (body.pic_consultant_id !== undefined) {
@@ -297,6 +307,7 @@ export async function PATCH(req, { params }) {
         code: true,
         pic_consultant_id: true,
         notes: true,
+        pekerjaan: true, // ⬅️ return pekerjaan
       },
     });
 

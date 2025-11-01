@@ -1,7 +1,7 @@
 // useReferralViewModel.js
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export default function useReferralViewModel() {
   const [rows, setRows] = useState([]);
@@ -19,22 +19,36 @@ export default function useReferralViewModel() {
   const [cntVerified, setCntVerified] = useState(null);
   const [cntRejected, setCntRejected] = useState(null);
 
+  // AbortController untuk mencegah race-condition saat ketik cepat / ganti filter
+  const listAbortRef = useRef(null);
+  const countAbortRef = useRef(null);
+
   const fetchList = useCallback(async () => {
-    setLoading(true);
     try {
+      listAbortRef.current?.abort?.();
+      const ac = new AbortController();
+      listAbortRef.current = ac;
+
+      setLoading(true);
       const url = new URL("/api/referral", window.location.origin);
       url.searchParams.set("page", String(page));
       url.searchParams.set("perPage", String(perPage));
       if (q && q.trim()) url.searchParams.set("q", q.trim());
       if (status && status !== "ALL") url.searchParams.set("status", status);
 
-      const res = await fetch(url.toString(), { credentials: "include" });
+      const res = await fetch(url.toString(), {
+        credentials: "include",
+        signal: ac.signal,
+      });
       const json = await res.json().catch(() => ({}));
       const arr = Array.isArray(json?.data) ? json.data : [];
-      setRows(arr);
-      setTotal(Number(json?.meta?.total || 0));
-      setTotalPages(Number(json?.meta?.totalPages || 1));
+      if (!ac.signal.aborted) {
+        setRows(arr);
+        setTotal(Number(json?.meta?.total || 0));
+        setTotalPages(Number(json?.meta?.totalPages || 1));
+      }
     } catch (e) {
+      if (e?.name === "AbortError") return;
       setRows([]);
       setTotal(0);
       setTotalPages(1);
@@ -44,25 +58,36 @@ export default function useReferralViewModel() {
   }, [page, perPage, q, status]);
 
   const fetchCounts = useCallback(async () => {
-    const get = async (st) => {
-      const url = new URL("/api/referral", window.location.origin);
-      url.searchParams.set("perPage", "1");
-      url.searchParams.set("page", "1");
-      url.searchParams.set("status", st);
-      const res = await fetch(url.toString(), { credentials: "include" });
-      const json = await res.json().catch(() => ({}));
-      return Number(json?.meta?.total || 0);
-    };
     try {
+      countAbortRef.current?.abort?.();
+      const ac = new AbortController();
+      countAbortRef.current = ac;
+
+      const get = async (st) => {
+        const url = new URL("/api/referral", window.location.origin);
+        url.searchParams.set("perPage", "1");
+        url.searchParams.set("page", "1");
+        url.searchParams.set("status", st);
+        const res = await fetch(url.toString(), {
+          credentials: "include",
+          signal: ac.signal,
+        });
+        const json = await res.json().catch(() => ({}));
+        return Number(json?.meta?.total || 0);
+      };
+
       const [p, v, r] = await Promise.all([
         get("PENDING"),
         get("VERIFIED"),
         get("REJECTED"),
       ]);
-      setCntPending(p);
-      setCntVerified(v);
-      setCntRejected(r);
-    } catch {
+      if (!ac.signal.aborted) {
+        setCntPending(p);
+        setCntVerified(v);
+        setCntRejected(r);
+      }
+    } catch (e) {
+      if (e?.name === "AbortError") return;
       setCntPending(null);
       setCntVerified(null);
       setCntRejected(null);
@@ -72,6 +97,7 @@ export default function useReferralViewModel() {
   useEffect(() => {
     fetchCounts();
   }, [fetchCounts]);
+
   useEffect(() => {
     fetchList();
   }, [fetchList]);
@@ -104,6 +130,12 @@ export default function useReferralViewModel() {
             ok: false,
             error: json?.error?.message || "Gagal menyimpan.",
           };
+
+        // Optimistic refresh (tidak hanya menunggu fetchList)
+        setRows((prev) =>
+          prev.map((r) => (r.id === id ? { ...r, ...json?.data } : r))
+        );
+
         await fetchList();
         await fetchCounts();
         return { ok: true, data: json?.data };
@@ -165,7 +197,7 @@ export default function useReferralViewModel() {
     [fetchList, fetchCounts]
   );
 
-  /* ========= Consultant helpers (now with name map) ========= */
+  /* ========= Consultant helpers (with name map cache) ========= */
   const [consultantMap, setConsultantMap] = useState({});
   const consultantName = useCallback(
     (id) => {

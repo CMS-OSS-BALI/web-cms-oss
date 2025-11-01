@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect } from "react";
+import React, { useRef, useEffect, useState } from "react";
 import {
   Button,
   Card,
@@ -18,8 +18,24 @@ import { DeleteOutlined } from "@ant-design/icons";
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 
+/* ========= responsive hook ========= */
+function useIsNarrow(bp = 900) {
+  const [n, setN] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const m = window.matchMedia(`(max-width:${bp}px)`);
+    const apply = () => setN(m.matches);
+    apply();
+    m.addEventListener?.("change", apply);
+    return () => m.removeEventListener?.("change", apply);
+  }, [bp]);
+  return n;
+}
+
+/* ========= base styles ========= */
 const styles = {
   wrap: { width: "100vw", marginLeft: "calc(50% - 50vw)" },
+
   hero: {
     background: "linear-gradient(180deg,#d8edff 0%, #e4f0ff 55%, #ffffff 100%)",
     padding: "36px 16px 300px",
@@ -44,7 +60,9 @@ const styles = {
     borderRadius: 999,
     margin: "12px auto 0",
   },
+
   container: { width: "min(980px, 92%)", margin: "-230px auto 80px" },
+
   card: {
     borderRadius: 16,
     border: "2px solid #cfe0ff",
@@ -52,6 +70,7 @@ const styles = {
     background: "#ffffff",
   },
   cardBody: { padding: 24 },
+
   sectionTitle: {
     fontSize: 14,
     fontWeight: 900,
@@ -69,6 +88,7 @@ const styles = {
   },
   req: { color: "#ff4d4f", marginLeft: 4, fontWeight: 900 },
   item: { marginBottom: 16 },
+
   input: {
     borderRadius: 8,
     background: "#f2f6fd",
@@ -80,6 +100,7 @@ const styles = {
     background: "#f2f6fd",
     border: "1px solid #d9e6ff",
   },
+
   ktpDrop: {
     border: "2px dashed #7fb0ff",
     borderRadius: 12,
@@ -95,6 +116,7 @@ const styles = {
   ktpInner: { display: "grid", placeItems: "center", gap: 8 },
   ktpHint: { color: "#4466aa", fontWeight: 700 },
   ktpSub: { color: "#6e87b8", fontSize: 12 },
+
   previewBox: {
     position: "relative",
     border: "1px solid #d9e6ff",
@@ -131,6 +153,7 @@ const styles = {
     boxShadow: "0 10px 24px rgba(255,77,79,.35)",
     cursor: "pointer",
   },
+
   btnWrap: { marginTop: 16, textAlign: "center" },
   btn: {
     minWidth: 240,
@@ -143,13 +166,11 @@ const styles = {
     color: "#fff",
     border: "none",
   },
-  errText: {
-    color: "#ff4d4f",
-    fontSize: 12,
-    marginTop: 6,
-  },
+
+  errText: { color: "#ff4d4f", fontSize: 12, marginTop: 6 },
 };
 
+/* ========= icon ========= */
 function CameraIcon({ size = 40 }) {
   return (
     <svg
@@ -176,6 +197,7 @@ function CameraIcon({ size = 40 }) {
   );
 }
 
+/* ========= component ========= */
 export default function ReferralContent({
   values,
   errors,
@@ -186,11 +208,12 @@ export default function ReferralContent({
   loading,
   msg,
 
-  // NEW: props dari ViewModel
+  // from ViewModel
   consultants,
   consultantsLoading,
   loadConsultants,
 }) {
+  const isNarrow = useIsNarrow(900);
   const fileInputRef = useRef(null);
 
   // AntD notification hook
@@ -215,7 +238,7 @@ export default function ReferralContent({
     if (!keys.length) return;
     const first = keys[0];
     const el = document.querySelector(`[data-field="${first}"]`);
-    if (el && typeof el.scrollIntoView === "function") {
+    if (el?.scrollIntoView) {
       el.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   }, [errors]);
@@ -255,39 +278,53 @@ export default function ReferralContent({
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
-  const genderOptions = [
-    { value: "MALE", label: "Laki-laki" },
-    { value: "FEMALE", label: "Perempuan" },
-  ];
-
   return (
     <div style={styles.wrap}>
-      {/* Notification portal */}
       {contextHolder}
 
-      {/* Header */}
-      <div style={styles.hero}>
+      {/* HERO */}
+      <div
+        style={{
+          ...styles.hero,
+          padding: isNarrow ? "28px 12px 200px" : styles.hero.padding,
+        }}
+      >
         <div style={styles.heroInner}>
           <Title level={2} style={styles.heroTitle}>
             FORM REFERRAL
           </Title>
-          <div style={styles.underline} />
         </div>
+        <div style={styles.underline} />
       </div>
 
-      {/* Body */}
-      <div style={styles.container}>
-        <Card style={styles.card} bodyStyle={styles.cardBody}>
-          {/* ===== Foto KTP ===== */}
+      {/* BODY */}
+      <div
+        style={{
+          ...styles.container,
+          margin: isNarrow ? "-170px auto 64px" : styles.container.margin,
+        }}
+      >
+        <Card
+          className="referral-card"
+          style={styles.card}
+          bodyStyle={{
+            ...styles.cardBody,
+            padding: isNarrow ? 16 : styles.cardBody.padding,
+          }}
+        >
+          {/* ===== Foto Kartu Identitas ===== */}
           <div style={styles.item} data-field="front">
             <div style={styles.sectionTitle}>
-              Foto KTP (JPG/PNG/WebP) <span style={styles.req}>*</span>
+              Foto Kartu Identitas (JPG/PNG/WebP){" "}
+              <span style={styles.req}>*</span>
             </div>
 
             {!values?.document?.front_preview ? (
               <div
                 style={{
                   ...styles.ktpDrop,
+                  padding: isNarrow ? 14 : styles.ktpDrop.padding,
+                  minHeight: isNarrow ? 110 : styles.ktpDrop.minHeight,
                   borderColor: errors?.front
                     ? "#ff4d4f"
                     : styles.ktpDrop.borderColor,
@@ -302,7 +339,7 @@ export default function ReferralContent({
                 aria-describedby={errors?.front ? "err-front" : undefined}
               >
                 <div style={styles.ktpInner}>
-                  <CameraIcon />
+                  <CameraIcon size={isNarrow ? 34 : 40} />
                   <div style={styles.ktpHint}>
                     Ketuk untuk ambil foto / pilih dari galeri
                   </div>
@@ -329,7 +366,7 @@ export default function ReferralContent({
               >
                 <img
                   src={values.document.front_preview}
-                  alt="Preview KTP"
+                  alt="Preview Kartu Identitas"
                   style={styles.previewImg}
                 />
                 <div style={styles.deleteOverlay} data-role="delov">
@@ -359,7 +396,8 @@ export default function ReferralContent({
           {/* ===== Identitas ===== */}
           <div style={styles.item} data-field="full_name">
             <Text style={styles.label}>
-              Nama Lengkap (sesuai KTP) <span style={styles.req}>*</span>
+              Nama Lengkap (sesuai Kartu Identitas){" "}
+              <span style={styles.req}>*</span>
             </Text>
             <Input
               placeholder="Contoh: Ni Komang Putri Indah Puspita Sari"
@@ -462,8 +500,32 @@ export default function ReferralContent({
             </Col>
           </Row>
 
-          {/* ===== Alamat sesuai KTP ===== */}
-          <div style={styles.sectionTitle}>Alamat sesuai KTP</div>
+          {/* ===== Pekerjaan (WAJIB) ===== */}
+          <div style={styles.item} data-field="pekerjaan">
+            <Text style={styles.label}>
+              Pekerjaan <span style={styles.req}>*</span>
+            </Text>
+            <Input
+              placeholder="Contoh: Mahasiswa, Barista, Staf Administrasi"
+              style={styles.input}
+              status={getStatus("pekerjaan")}
+              value={values.pekerjaan || ""}
+              onChange={(e) => onChange("pekerjaan", e.target.value)}
+              maxLength={100}
+              required
+              aria-required="true"
+              aria-invalid={!!errors?.pekerjaan}
+              aria-describedby={errors?.pekerjaan ? "err-pekerjaan" : undefined}
+            />
+            {errors?.pekerjaan ? (
+              <div id="err-pekerjaan" style={styles.errText}>
+                {errors.pekerjaan}
+              </div>
+            ) : null}
+          </div>
+
+          {/* ===== Alamat sesuai Kartu Identitas ===== */}
+          <div style={styles.sectionTitle}>Alamat sesuai Kartu Identitas</div>
 
           <div style={styles.item} data-field="address_line">
             <Text style={styles.label}>
@@ -678,33 +740,36 @@ export default function ReferralContent({
             </Col>
           </Row>
 
-          {/* ===== PIC Konsultan (Wajib) ===== */}
+          {/* ===== Domisili saat ini ===== */}
+          <div style={styles.item} data-field="domicile">
+            <Text style={styles.label}>
+              Domisili Saat Ini (jika berbeda dengan Kartu Identitas)
+            </Text>
+            <Input
+              placeholder="Contoh: Kuta, Badung"
+              style={styles.input}
+              value={values.domicile || ""}
+              onChange={(e) => onChange("domicile", e.target.value)}
+              maxLength={100}
+            />
+          </div>
+
+          {/* ===== PIC Konsultan (opsional) ===== */}
           <div style={styles.sectionTitle}>PIC Konsultan</div>
           <div style={styles.item} data-field="pic_consultant_id">
             <Text style={styles.label}>
-              Konsultan Penanggung Jawab <span style={styles.req}>*</span>
+              Konsultan Penanggung Jawab (opsional)
             </Text>
             <Select
               style={{ ...styles.input, width: "100%" }}
-              placeholder="Pilih konsultan"
+              placeholder="Pilih konsultan (opsional)"
               options={consultants}
               loading={consultantsLoading}
               value={values.pic_consultant_id || undefined}
               onChange={(v) => onChange("pic_consultant_id", v)}
               showSearch
               optionFilterProp="label"
-              status={getStatus("pic_consultant_id")}
-              aria-required="true"
-              aria-invalid={!!errors?.pic_consultant_id}
-              aria-describedby={
-                errors?.pic_consultant_id ? "err-pic" : undefined
-              }
             />
-            {errors?.pic_consultant_id ? (
-              <div id="err-pic" style={styles.errText}>
-                {errors.pic_consultant_id}
-              </div>
-            ) : null}
           </div>
 
           {/* ===== Kontak ===== */}
@@ -756,17 +821,6 @@ export default function ReferralContent({
                 {errors.email}
               </div>
             ) : null}
-          </div>
-
-          <div style={styles.item} data-field="domicile">
-            <Text style={styles.label}>Domisili saat ini (jika beda KTP)</Text>
-            <Input
-              placeholder="Contoh: Kuta, Badung"
-              style={styles.input}
-              value={values.domicile || ""}
-              onChange={(e) => onChange("domicile", e.target.value)}
-              maxLength={100}
-            />
           </div>
 
           {/* ===== Consent ===== */}
@@ -841,7 +895,11 @@ export default function ReferralContent({
           {/* ===== Submit ===== */}
           <div style={styles.btnWrap}>
             <Button
-              style={styles.btn}
+              style={{
+                ...styles.btn,
+                minWidth: isNarrow ? 200 : styles.btn.minWidth,
+                height: isNarrow ? 42 : styles.btn.height,
+              }}
               size="large"
               loading={loading}
               disabled={!canSubmit}
@@ -852,6 +910,25 @@ export default function ReferralContent({
           </div>
         </Card>
       </div>
+
+      {/* small CSS helpers */}
+      <style jsx global>{`
+        .referral-card .ant-input,
+        .referral-card .ant-select-selector,
+        .referral-card .ant-picker {
+          height: 40px !important;
+          border-radius: 8px !important;
+        }
+        .referral-card .ant-select-selection-placeholder,
+        .referral-card .ant-select-selection-item {
+          line-height: 38px !important;
+        }
+        @media (max-width: 480px) {
+          .referral-card .ant-typography {
+            word-break: break-word;
+          }
+        }
+      `}</style>
     </div>
   );
 }

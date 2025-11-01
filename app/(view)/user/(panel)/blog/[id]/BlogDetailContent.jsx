@@ -1,3 +1,4 @@
+// BlogDetailContent.jsx
 "use client";
 
 import React, { useEffect, useMemo, useState, useCallback } from "react";
@@ -8,7 +9,23 @@ import {
   WhatsAppOutlined,
 } from "@ant-design/icons";
 
-/** Gaya ringkas sesuai screenshot */
+/* ===== util: simple media hook ===== */
+function useIsNarrow(breakpoint = 768) {
+  const [isNarrow, setIsNarrow] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mql = window.matchMedia(`(max-width:${breakpoint}px)`);
+    const apply = () => setIsNarrow(mql.matches);
+    apply();
+    mql.addEventListener?.("change", apply);
+    return () => mql.removeEventListener?.("change", apply);
+  }, [breakpoint]);
+  return isNarrow;
+}
+
+const ROOT = "blog-detail-page";
+
+/** Gaya ringkas + responsif */
 const styles = {
   page: { width: "100%", background: "#fff" },
   container: { width: "min(980px, 92%)", margin: "0 auto" },
@@ -18,14 +35,15 @@ const styles = {
 
   titleWrap: { textAlign: "center", margin: "20px 0 8px", marginTop: "-20px" },
   titleMain: {
-    fontSize: "clamp(24px, 5vw, 40px)",
+    fontSize: "clamp(22px, 5vw, 40px)",
     fontWeight: 900,
     letterSpacing: "0.05em",
     color: "#0B3E91",
     margin: 0,
+    lineHeight: 1.15,
   },
   titleSub: {
-    fontSize: "clamp(16px, 3.2vw, 22px)",
+    fontSize: "clamp(14px, 3.2vw, 22px)",
     fontWeight: 800,
     letterSpacing: "0.03em",
     color: "#0B3E91",
@@ -35,7 +53,7 @@ const styles = {
   // area gambar dengan latar gradient lembut
   visualBlock: {
     background: "linear-gradient(180deg, #EAF4FF 0%, rgba(234,244,255,0) 60%)",
-    padding: "18px 0 28px",
+    padding: "clamp(12px, 3vw, 18px) 0 clamp(18px, 4vw, 28px)",
     marginTop: 10,
     marginBottom: 8,
   },
@@ -43,7 +61,7 @@ const styles = {
     display: "block",
     width: "100%",
     height: "auto",
-    borderRadius: 4,
+    borderRadius: 8,
     boxShadow: "0 10px 30px rgba(13, 52, 116, .12)",
   },
 
@@ -54,9 +72,10 @@ const styles = {
     letterSpacing: "0.08em",
     color: "#0B3E91",
     margin: 0,
+    fontSize: "clamp(14px, 3.2vw, 16px)",
   },
   sectionUnderline: {
-    width: 160,
+    width: "clamp(120px, 28vw, 160px)",
     height: 3,
     background: "#2A66C5",
     margin: "8px auto 0",
@@ -67,7 +86,7 @@ const styles = {
   // body
   article: {
     marginTop: 18,
-    fontSize: 16,
+    fontSize: "clamp(14px, 3.2vw, 16px)",
     lineHeight: 1.9,
     color: "#0e1726",
     textAlign: "justify",
@@ -84,24 +103,34 @@ const styles = {
   metaRow: {
     display: "flex",
     flexWrap: "wrap",
-    gap: 16,
+    gap: 12,
     alignItems: "center",
     marginTop: 18,
   },
-  metaLabel: { fontWeight: 800, letterSpacing: ".04em" },
-  sourceLink: { color: "#114A9C", wordBreak: "break-word" },
+  metaLabel: {
+    fontWeight: 800,
+    letterSpacing: ".04em",
+    fontSize: "clamp(12px, 2.8vw, 13px)",
+    color: "#0B3E91",
+  },
+  sourceLink: {
+    color: "#114A9C",
+    wordBreak: "break-word",
+    fontSize: "clamp(12px, 2.8vw, 14px)",
+  },
   shareWrap: {
     display: "flex",
     alignItems: "center",
     gap: 10,
     marginTop: 10,
+    flexWrap: "wrap",
   },
   shareLink: {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    width: 36,
-    height: 36,
+    width: "clamp(34px, 7.8vw, 40px)",
+    height: "clamp(34px, 7.8vw, 40px)",
     borderRadius: "50%",
     background: "#f1f5ff",
     color: "#0B3E91",
@@ -109,7 +138,7 @@ const styles = {
     transition: "transform .2s ease, opacity .2s ease",
     cursor: "pointer",
   },
-  shareIcon: { fontSize: 18, opacity: 0.9 },
+  shareIcon: { fontSize: "clamp(16px, 3.6vw, 18px)", opacity: 0.9 },
 };
 
 export default function BlogDetailContent({
@@ -122,6 +151,7 @@ export default function BlogDetailContent({
   source,
 }) {
   const [shareUrl, setShareUrl] = useState("");
+  const isNarrow = useIsNarrow(768);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -203,12 +233,19 @@ export default function BlogDetailContent({
   }
 
   return (
-    <div style={styles.page}>
-      <div style={styles.headSpace} />
+    <div className={ROOT} style={styles.page}>
+      <div
+        style={{ ...styles.headSpace, ...(isNarrow ? { height: 6 } : null) }}
+      />
 
       <section style={styles.container}>
         {/* Title */}
-        <div style={styles.titleWrap}>
+        <div
+          style={{
+            ...styles.titleWrap,
+            ...(isNarrow ? { marginTop: 0 } : null),
+          }}
+        >
           {titleMain ? <h1 style={styles.titleMain}>{titleMain}</h1> : null}
           {titleSub ? <h2 style={styles.titleSub}>{titleSub}</h2> : null}
         </div>
@@ -218,7 +255,20 @@ export default function BlogDetailContent({
       <section style={styles.visualBlock}>
         <div style={styles.container}>
           {image ? (
-            <img src={image} alt={titleMain || ""} style={styles.heroImg} />
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={image}
+              alt={titleMain || ""}
+              loading="lazy"
+              style={{
+                ...styles.heroImg,
+                ...(isNarrow ? { borderRadius: 6 } : null),
+              }}
+              onError={(e) => {
+                e.currentTarget.onerror = null;
+                e.currentTarget.style.display = "none";
+              }}
+            />
           ) : null}
         </div>
       </section>
@@ -232,14 +282,16 @@ export default function BlogDetailContent({
 
         <article style={styles.article}>
           <div
+            className="articleInner"
             style={styles.articleInner}
+            // pastikan HTML sudah disanitasi dari sisi server
             dangerouslySetInnerHTML={{ __html: html || "" }}
           />
         </article>
 
         {/* Source (opsional) */}
         {source ? (
-          <div style={styles.metaRow}>
+          <div style={{ ...styles.metaRow, marginTop: 18 }}>
             <div style={styles.metaLabel}>SUMBER:</div>
             <a
               href={/^https?:\/\//i.test(source) ? source : `https://${source}`}
@@ -314,6 +366,65 @@ export default function BlogDetailContent({
       </section>
 
       <div style={{ height: 28 }} />
+
+      {/* ====== Global tweaks khusus konten HTML agar responsif ====== */}
+      <style jsx global>{`
+        .${ROOT} .articleInner img,
+        .${ROOT} .articleInner video {
+          max-width: 100%;
+          height: auto;
+          border-radius: 8px;
+        }
+        .${ROOT} .articleInner iframe {
+          max-width: 100%;
+          width: 100% !important;
+          border: 0;
+          min-height: clamp(220px, 40vw, 420px);
+        }
+        .${ROOT} .articleInner table {
+          display: block;
+          width: 100%;
+          overflow: auto;
+          border-collapse: collapse;
+        }
+        .${ROOT} .articleInner th,
+        .${ROOT} .articleInner td {
+          border: 1px solid #e5e7eb;
+          padding: 8px 10px;
+          font-size: 14px;
+        }
+        .${ROOT} .articleInner pre,
+        .${ROOT} .articleInner code {
+          white-space: pre-wrap;
+          word-break: break-word;
+        }
+        .${ROOT} .articleInner h1,
+        .${ROOT} .articleInner h2,
+        .${ROOT} .articleInner h3,
+        .${ROOT} .articleInner h4,
+        .${ROOT} .articleInner h5,
+        .${ROOT} .articleInner h6 {
+          line-height: 1.25;
+          margin: 16px 0 8px;
+          color: #0b3e91;
+        }
+        .${ROOT} .articleInner p {
+          margin: 0 0 16px;
+        }
+        .${ROOT} .articleInner ul,
+        .${ROOT} .articleInner ol {
+          padding-left: 18px;
+          margin: 0 0 16px;
+        }
+
+        @media (max-width: 768px) {
+          .${ROOT} .articleInner th,
+          .${ROOT} .articleInner td {
+            font-size: 13px;
+            padding: 6px 8px;
+          }
+        }
+      `}</style>
     </div>
   );
 }

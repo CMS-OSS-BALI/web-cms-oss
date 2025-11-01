@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Card, Typography, Row, Col } from "antd";
 import { Swiper, SwiperSlide } from "swiper/react";
@@ -9,6 +9,13 @@ import "swiper/css";
 
 const { Title, Paragraph } = Typography;
 
+/* ===== External links ===== */
+const COMPANY_PROFILE_URL =
+  "https://drive.google.com/file/d/1G4NIWeKa5BRzaTzw8I7QPx91LbZM6g8d/view?usp=sharing";
+
+/* ==================================================
+   Hooks — tiny, SSR-safe media queries
+================================================== */
 function useIsNarrow(breakpoint = 900) {
   const [isNarrow, setIsNarrow] = useState(false);
   useEffect(() => {
@@ -21,12 +28,29 @@ function useIsNarrow(breakpoint = 900) {
   return isNarrow;
 }
 
+function usePrefersReducedMotion() {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+    const apply = () => setReduced(!!mq?.matches);
+    apply();
+    mq?.addEventListener?.("change", apply);
+    return () => mq?.removeEventListener?.("change", apply);
+  }, []);
+  return reduced;
+}
+
+/* ==================================================
+   Constants & shared inline styles
+================================================== */
 const ACT_SWIPER_CLASS = "about-activity-swiper";
-const CARD = { W: 340, H: 300, IMG_H: 170, GAP: 20 };
+const BASE_CARD = { W: 340, H: 300, IMG_H: 170, GAP: 20 };
 
 const styles = {
   page: { width: "100%", overflow: "hidden" },
   container: { width: "min(1100px, 92%)", margin: "0 auto" },
+
+  /* ================= HERO ================= */
   heroWrap: {
     paddingTop: "clamp(16px, 6vw, 40px)",
     paddingBottom: "clamp(40px, 10vw, 72px)",
@@ -86,6 +110,7 @@ const styles = {
     zIndex: 1,
   },
 
+  /* ============ Section (shared) ============ */
   sectionTitle: {
     color: "#1E56B7",
     fontWeight: 900,
@@ -101,6 +126,7 @@ const styles = {
     margin: "0 auto 22px",
   },
 
+  /* ============ Stand For cards ============ */
   standCard: {
     borderRadius: 12,
     background: "#114A9C",
@@ -134,6 +160,7 @@ const styles = {
     maxWidth: 420,
   },
 
+  /* ============== Activities ============== */
   activityWrap: {
     background: "#0B3E91",
     borderRadius: "32px",
@@ -142,7 +169,15 @@ const styles = {
     marginTop: "clamp(28px, 8vw, 64px)",
     overflow: "hidden",
   },
-  actTrackMask: { position: "relative", overflow: "hidden", borderRadius: 18 },
+  actTrackMask: {
+    position: "relative",
+    overflow: "hidden",
+    borderRadius: 18,
+    WebkitMaskImage:
+      "linear-gradient(90deg, transparent 0, #000 6%, #000 94%, transparent 100%)",
+    maskImage:
+      "linear-gradient(90deg, transparent 0, #000 6%, #000 94%, transparent 100%)",
+  },
   activityTitle: {
     color: "#fff",
     fontWeight: 900,
@@ -203,6 +238,7 @@ const styles = {
     overflow: "hidden",
   },
 
+  /* ============== Career v2 ============== */
   career2: {
     section: { padding: "clamp(28px, 9vw, 72px) 0" },
     title: {
@@ -272,18 +308,34 @@ const styles = {
   },
 };
 
-export default function AboutUsContent({ hero, standFor, activities, career }) {
+/* ==================================================
+   Component
+================================================== */
+export default function AboutUsContent({
+  hero = {},
+  standFor = {},
+  activities = {},
+  career = {},
+}) {
   const isNarrow = useIsNarrow(900);
+  const reduced = usePrefersReducedMotion();
   const router = useRouter();
 
   const goCareer = () =>
     router.push(career?.ctaHref || "/user/career?menu=career");
-  const goHero = () => router.push(hero?.ctaHref || "/profile");
+
+  const cardDims = useMemo(
+    () => (isNarrow ? { W: 260, H: 240, IMG_H: 136, GAP: 14 } : BASE_CARD),
+    [isNarrow]
+  );
 
   const cardTitle = career.cardTitle;
   const cardBody = career.cardBody;
   const ctaLabel = career.ctaLabel;
   const mascotSrc = career.mascot || hero?.image || "/mascot-graduation.svg";
+
+  const standItems = Array.isArray(standFor.items) ? standFor.items : [];
+  const activityItems = Array.isArray(activities.items) ? activities.items : [];
 
   return (
     <div style={styles.page}>
@@ -298,15 +350,26 @@ export default function AboutUsContent({ hero, standFor, activities, career }) {
           >
             <div>
               <h1 style={styles.heroTitle}>{hero.title}</h1>
-              <Paragraph style={styles.heroDesc}>{hero.description}</Paragraph>
-              <Button
-                type="primary"
-                onClick={goHero}
-                style={styles.heroCta}
-                size="large"
-              >
-                {hero.ctaLabel}
-              </Button>
+              {hero?.description ? (
+                <Paragraph style={styles.heroDesc}>
+                  {hero.description}
+                </Paragraph>
+              ) : null}
+              {hero?.ctaLabel ? (
+                <Button
+                  type="primary"
+                  href={COMPANY_PROFILE_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    ...styles.heroCta,
+                    ...(isNarrow ? { width: "100%", height: 52 } : null),
+                  }}
+                  size="large"
+                >
+                  {hero.ctaLabel}
+                </Button>
+              ) : null}
             </div>
             <div
               style={{
@@ -319,15 +382,23 @@ export default function AboutUsContent({ hero, standFor, activities, career }) {
                   aria-hidden
                   style={{
                     ...styles.heroBgCircle,
+                    ...(isNarrow
+                      ? {
+                          width: "min(320px, 78%)",
+                          transform: "translate(4%, 0)",
+                        }
+                      : null),
                     backgroundImage: `url(${hero.bgCircle})`,
                   }}
                 />
               ) : null}
-              <img
-                src={hero.image}
-                alt="About OSS Bali"
-                style={styles.heroImg}
-              />
+              {hero?.image ? (
+                <img
+                  src={hero.image}
+                  alt={hero?.imgAlt || "About OSS Bali"}
+                  style={styles.heroImg}
+                />
+              ) : null}
             </div>
           </div>
         </div>
@@ -336,16 +407,26 @@ export default function AboutUsContent({ hero, standFor, activities, career }) {
       {/* WHO WE STAND FOR */}
       <section>
         <div style={styles.container}>
-          <h2 style={styles.sectionTitle}>{standFor.title}</h2>
-          <Paragraph style={styles.sectionSub}>{standFor.subtitle}</Paragraph>
+          {standFor?.title ? (
+            <h2 style={styles.sectionTitle}>{standFor.title}</h2>
+          ) : null}
+          {standFor?.subtitle ? (
+            <Paragraph style={styles.sectionSub}>{standFor.subtitle}</Paragraph>
+          ) : null}
 
           <Row gutter={[16, 16]}>
-            {standFor.items.map((it) => {
+            {standItems.map((it) => {
               const IconComp = it.icon;
               const isImageUrl = typeof IconComp === "string";
               return (
                 <Col key={it.id} xs={24} sm={12} md={8} style={styles.standCol}>
-                  <Card style={styles.standCard} bodyStyle={styles.standInner}>
+                  <Card
+                    style={styles.standCard}
+                    bodyStyle={{
+                      ...styles.standInner,
+                      ...(isNarrow ? { minHeight: 160, padding: 16 } : null),
+                    }}
+                  >
                     {IconComp ? (
                       <div style={styles.standIconWrap}>
                         {isImageUrl ? (
@@ -368,7 +449,9 @@ export default function AboutUsContent({ hero, standFor, activities, career }) {
                     <Title level={4} style={styles.standTitle}>
                       {it.title}
                     </Title>
-                    <Paragraph style={styles.standDesc}>{it.desc}</Paragraph>
+                    {it?.desc ? (
+                      <Paragraph style={styles.standDesc}>{it.desc}</Paragraph>
+                    ) : null}
                   </Card>
                 </Col>
               );
@@ -381,18 +464,22 @@ export default function AboutUsContent({ hero, standFor, activities, career }) {
       <section style={{ marginTop: 24 }}>
         <div style={styles.container}>
           <div style={styles.activityWrap}>
-            <h2 style={styles.activityTitle}>{activities.title}</h2>
-            <Paragraph style={styles.activitySub}>
-              {activities.subtitle}
-            </Paragraph>
+            {activities?.title ? (
+              <h2 style={styles.activityTitle}>{activities.title}</h2>
+            ) : null}
+            {activities?.subtitle ? (
+              <Paragraph style={styles.activitySub}>
+                {activities.subtitle}
+              </Paragraph>
+            ) : null}
 
             <div
               style={{
                 width: "100%",
                 paddingInline: "clamp(8px, 3vw, 16px)",
-                "--act-card-w": `${CARD.W}px`,
-                "--act-card-h": `${CARD.H}px`,
-                "--act-img-h": `${CARD.IMG_H}px`,
+                "--act-card-w": `${cardDims.W}px`,
+                "--act-card-h": `${cardDims.H}px`,
+                "--act-img-h": `${cardDims.IMG_H}px`,
               }}
             >
               <div style={styles.actTrackMask}>
@@ -400,18 +487,22 @@ export default function AboutUsContent({ hero, standFor, activities, career }) {
                   className={ACT_SWIPER_CLASS}
                   modules={[Autoplay, FreeMode]}
                   slidesPerView="auto"
-                  spaceBetween={CARD.GAP}
+                  spaceBetween={cardDims.GAP}
                   loop
-                  speed={6500}
+                  speed={reduced ? 2500 : 6500}
                   allowTouchMove
-                  autoplay={{
-                    delay: 0,
-                    disableOnInteraction: false,
-                    reverseDirection: true,
-                  }}
+                  autoplay={
+                    reduced
+                      ? false
+                      : {
+                          delay: 0,
+                          disableOnInteraction: false,
+                          reverseDirection: true,
+                        }
+                  }
                   freeMode={{ enabled: true, momentum: false, sticky: false }}
                 >
-                  {activities.items.map((a) => (
+                  {activityItems.map((a) => (
                     <SwiperSlide
                       key={a.id}
                       style={{
@@ -421,14 +512,20 @@ export default function AboutUsContent({ hero, standFor, activities, career }) {
                       }}
                     >
                       <Card style={styles.actCard} bodyStyle={{ padding: 0 }}>
-                        <img
-                          src={a.image}
-                          alt={a.title}
-                          style={styles.actImg}
-                        />
+                        {a?.image ? (
+                          <img
+                            src={a.image}
+                            alt={a?.imgAlt || a.title}
+                            style={styles.actImg}
+                          />
+                        ) : null}
                         <div style={styles.actBody}>
-                          <div style={styles.actTitle}>{a.title}</div>
-                          <p style={styles.actDesc}>{a.desc}</p>
+                          {a?.title ? (
+                            <div style={styles.actTitle}>{a.title}</div>
+                          ) : null}
+                          {a?.desc ? (
+                            <p style={styles.actDesc}>{a.desc}</p>
+                          ) : null}
                         </div>
                       </Card>
                     </SwiperSlide>
@@ -442,7 +539,9 @@ export default function AboutUsContent({ hero, standFor, activities, career }) {
 
       {/* CAREER WITH US */}
       <section style={styles.career2.section}>
-        <h2 style={styles.career2.title}>{career.title}</h2>
+        {career?.title ? (
+          <h2 style={styles.career2.title}>{career.title}</h2>
+        ) : null}
         <div
           style={{
             ...styles.career2.grid,
@@ -452,27 +551,39 @@ export default function AboutUsContent({ hero, standFor, activities, career }) {
           }}
         >
           <div style={styles.career2.card}>
-            <h3 style={styles.career2.cardTitle}>{cardTitle}</h3>
-            <p style={styles.career2.cardBody}>{cardBody}</p>
-            <Button
-              type="primary"
-              size="large"
-              style={styles.career2.ctaBtn}
-              onClick={goCareer}
-            >
-              {ctaLabel}
-            </Button>
+            {cardTitle ? (
+              <h3 style={styles.career2.cardTitle}>{cardTitle}</h3>
+            ) : null}
+            {cardBody ? (
+              <p style={styles.career2.cardBody}>{cardBody}</p>
+            ) : null}
+            {ctaLabel ? (
+              <Button
+                type="primary"
+                size="large"
+                style={{
+                  ...styles.career2.ctaBtn,
+                  ...(isNarrow ? { width: "100%", height: 58 } : null),
+                }}
+                onClick={goCareer}
+              >
+                {ctaLabel}
+              </Button>
+            ) : null}
           </div>
           <div style={styles.career2.rightImgWrap}>
-            <img
-              src={mascotSrc}
-              alt="Career Mascot"
-              style={styles.career2.rightImg}
-            />
+            {mascotSrc ? (
+              <img
+                src={mascotSrc}
+                alt={career?.imgAlt || "Career Mascot"}
+                style={styles.career2.rightImg}
+              />
+            ) : null}
           </div>
         </div>
       </section>
 
+      {/* Responsive tune-ups */}
       <style jsx global>{`
         .${ACT_SWIPER_CLASS} {
           overflow: hidden;
@@ -490,6 +601,21 @@ export default function AboutUsContent({ hero, standFor, activities, career }) {
         .${ACT_SWIPER_CLASS} .swiper-slide > .ant-card:hover {
           transform: translateY(-4px);
           box-shadow: 0 10px 22px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Reduce hover lift on touch devices */
+        @media (hover: none) {
+          .${ACT_SWIPER_CLASS} .swiper-slide > .ant-card:hover {
+            transform: none;
+            box-shadow: none;
+          }
+        }
+
+        /* Extra tweaks for very narrow phones */
+        @media (max-width: 480px) {
+          .${ACT_SWIPER_CLASS} .swiper-slide {
+            width: calc(var(--act-card-w));
+          }
         }
       `}</style>
     </div>

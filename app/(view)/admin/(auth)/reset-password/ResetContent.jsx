@@ -174,7 +174,6 @@ export default function ResetContent() {
         <Title level={1} style={styles.title}>
           DASHBOARD ADMIN OSS BALI
         </Title>
-        <Text style={styles.subtitle}>Buat kata sandi baru untuk akunmu</Text>
 
         <Row gutter={[28, 28]} align="middle" justify="space-between">
           {/* Left: Mascot */}

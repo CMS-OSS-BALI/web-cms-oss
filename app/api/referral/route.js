@@ -122,6 +122,7 @@ export async function GET(req) {
         { code: { contains: q } },
         { city: { contains: q } },
         { province: { contains: q } },
+        { pekerjaan: { contains: q } }, // searchable by pekerjaan
       ];
     }
     if (STATUSES.includes(statusRaw)) where.status = statusRaw;
@@ -148,6 +149,7 @@ export async function GET(req) {
           updated_at: true,
           deleted_at: true,
           leads_count: true,
+          pekerjaan: true,
         },
       }),
     ]);
@@ -199,10 +201,12 @@ export async function POST(req) {
   const province = trimStr(form.get("province"), 64);
   const postal_code = trimStr(form.get("postal_code"), 10);
 
+  const pekerjaan = trimStr(form.get("pekerjaan"), 100) ?? null; // ⬅️ Wajib (divalidasi di bawah)
+
   const whatsapp = trimStr(form.get("whatsapp"), 32);
   const email = trimStr(form.get("email"), 191);
 
-  const pic_consultant_id = trimStr(form.get("pic_consultant_id"), 36);
+  const pic_consultant_id_raw = trimStr(form.get("pic_consultant_id"), 36); // ⬅️ opsional
   const consent_agreed = String(form.get("consent_agreed")) === "true";
 
   // --- validate required ---
@@ -237,6 +241,18 @@ export async function POST(req) {
         error: {
           code: "VALIDATION_ERROR",
           message: "Jenis kelamin wajib (MALE/FEMALE)",
+        },
+      },
+      { status: 422 }
+    );
+
+  // pekerjaan wajib
+  if (!pekerjaan || pekerjaan.length < 2)
+    return json(
+      {
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Pekerjaan wajib diisi (min 2 karakter)",
         },
       },
       { status: 422 }
@@ -299,16 +315,6 @@ export async function POST(req) {
       { status: 422 }
     );
 
-  if (!pic_consultant_id)
-    return json(
-      {
-        error: {
-          code: "VALIDATION_ERROR",
-          message: "PIC Konsultan wajib dipilih",
-        },
-      },
-      { status: 422 }
-    );
   if (!consent_agreed)
     return json(
       {
@@ -320,12 +326,15 @@ export async function POST(req) {
       { status: 422 }
     );
 
-  // --- KTP image required ---
+  // --- Kartu Identitas (foto) required ---
   const front = form.get("front");
   if (!(front instanceof File)) {
     return json(
       {
-        error: { code: "VALIDATION_ERROR", message: "Foto KTP wajib diunggah" },
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Foto Kartu Identitas wajib diunggah",
+        },
       },
       { status: 422 }
     );
@@ -349,21 +358,25 @@ export async function POST(req) {
     );
 
   try {
-    // PIC must exist
-    const pic = await prisma.consultants.findUnique({
-      where: { id: pic_consultant_id },
-      select: { id: true },
-    });
-    if (!pic) {
-      return json(
-        {
-          error: {
-            code: "VALIDATION_ERROR",
-            message: "PIC Konsultan tidak ditemukan",
+    // PIC opsional: cek hanya jika ada
+    let pic_consultant_id = null;
+    if (pic_consultant_id_raw) {
+      const pic = await prisma.consultants.findUnique({
+        where: { id: pic_consultant_id_raw },
+        select: { id: true },
+      });
+      if (!pic) {
+        return json(
+          {
+            error: {
+              code: "VALIDATION_ERROR",
+              message: "PIC Konsultan tidak ditemukan",
+            },
           },
-        },
-        { status: 422 }
-      );
+          { status: 422 }
+        );
+      }
+      pic_consultant_id = pic_consultant_id_raw;
     }
 
     const front_url = await uploadFrontToSupabase(front, nik);
@@ -384,6 +397,8 @@ export async function POST(req) {
         province,
         postal_code,
 
+        pekerjaan, // wajib
+
         whatsapp,
         whatsapp_e164,
         email,
@@ -392,7 +407,7 @@ export async function POST(req) {
         domicile: trimStr(form.get("domicile"), 100) ?? null,
         front_url,
         status: "PENDING",
-        pic_consultant_id,
+        pic_consultant_id, // bisa null
         code: null,
       },
       select: {
@@ -410,6 +425,7 @@ export async function POST(req) {
         deleted_at: true,
         code: true,
         pic_consultant_id: true,
+        pekerjaan: true,
       },
     });
 

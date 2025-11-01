@@ -1,7 +1,14 @@
-// app/(view)/admin/college/CollegeAContent.jsx
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  forwardRef,
+  useImperativeHandle,
+} from "react";
 import useCollegeAViewModel from "./useCollegeAViewModel";
 import {
   ConfigProvider,
@@ -27,6 +34,9 @@ import {
   LeftOutlined,
   RightOutlined,
   SearchOutlined,
+  ArrowUpOutlined,
+  ArrowDownOutlined,
+  PlusOutlined,
 } from "@ant-design/icons";
 
 /* ===== compact tokens ===== */
@@ -42,10 +52,11 @@ const T = {
   totalLabel: "Kampus Terdaftar",
   listTitle: "Data Kampus",
   addNew: "Buat Data Baru",
-  searchPh: "Cari nama kampus",
+  searchPh: "Cari nama/desk kampus",
   nameCol: "Nama Kampus",
   priceCol: "Price",
   livingCol: "Living Cost",
+  jenjangCol: "Jenjang",
   countryCol: "Negara",
   action: "Aksi",
   view: "Lihat",
@@ -69,6 +80,13 @@ const T = {
   contact: "Nama Kontak",
   phone: "No. Telp",
   email: "Email",
+  jenjang: "Jenjang",
+
+  // requirements
+  reqTitleCreate: "Requirement",
+  reqTitleEdit: "Requirement Kampus",
+  reqPlaceholder: "Tulis persyaratan, contoh: IELTS 6.0 atau TOEFL iBT 80",
+  reqAdd: "Tambah Requirement",
 };
 
 const monthsId = [
@@ -103,26 +121,393 @@ const isImg = (f) =>
   );
 const tooBig = (f, mb = 10) => f.size / 1024 / 1024 > mb;
 
-// biaya: titik ribuan
+// ✅ formatter & parser angka
 const numFormatter = (val) => {
   if (val === undefined || val === null || val === "") return "";
   const s = String(val).replace(/\D/g, "");
   return s.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 };
-const numParser = (val) => (!val ? "" : val.replace(/\./g, ""));
+// ⬇️ parser sekarang mengembalikan NUMBER/undefined
+const numParser = (val) => {
+  const s = String(val ?? "").replace(/\./g, "");
+  if (!s) return undefined;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : undefined;
+};
 const numOrNull = (v) =>
   v === undefined || v === null || v === "" ? null : Number(v);
 
 const stripTags = (s) => (s ? String(s).replace(/<[^>]*>/g, "") : "");
 
+/* ===== util ===== */
+const safeGetId = (resObj) =>
+  resObj?.data?.data?.id ||
+  resObj?.data?.id ||
+  resObj?.id ||
+  resObj?.data ||
+  null;
+
+/* ============ Requirements Editor (imperative, save on parent submit) ============ */
+const RequirementsEditor = forwardRef(function RequirementsEditor(
+  { mode, vm, collegeId, notifyOk, notifyErr },
+  ref
+) {
+  // CREATE: drafts (belum ke server)
+  const [drafts, setDrafts] = useState([{ id: 1, text: "", sort: 1 }]);
+
+  // EDIT: items di-edit lokal; persist saat parent klik SIMPAN
+  const [items, setItems] = useState([]);
+  const originalRef = useRef([]);
+  const [loading, setLoading] = useState(mode === "edit");
+
+  useEffect(() => {
+    if (mode !== "edit" || !collegeId) return;
+    let alive = true;
+    (async () => {
+      setLoading(true);
+      const { ok, data, error } = await vm.listRequirements(collegeId);
+      if (!alive) return;
+      if (!ok) {
+        notifyErr?.("Gagal memuat requirement", error);
+        originalRef.current = [];
+        setItems([]);
+      } else {
+        const sorted = [...data]
+          .sort((a, b) => (a.sort || 0) - (b.sort || 0))
+          .map((r) => ({ ...r, _dirty: false, _new: false, _deleted: false }));
+        originalRef.current = sorted.map((x) => ({
+          id: String(x.id),
+          text: x.text,
+          sort: x.sort,
+        }));
+        setItems(sorted);
+      }
+      setLoading(false);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [mode, collegeId, vm, notifyErr]);
+
+  // helpers UI
+  const addDraft = () =>
+    setDrafts((prev) => [
+      ...prev,
+      { id: Date.now(), text: "", sort: (prev.at(-1)?.sort || 0) + 1 },
+    ]);
+  const removeDraft = (id) =>
+    setDrafts((prev) => prev.filter((d) => d.id !== id));
+  const updateDraft = (id, patch) =>
+    setDrafts((prev) =>
+      prev.map((d) => (d.id === id ? { ...d, ...patch } : d))
+    );
+
+  const addNewItem = () =>
+    setItems((prev) => [
+      ...prev,
+      {
+        id: `new:${Date.now()}`,
+        text: "",
+        sort: (prev.filter((p) => !p._deleted).at(-1)?.sort || 0) + 1,
+        _new: true,
+        _dirty: true,
+        _deleted: false,
+      },
+    ]);
+
+  const markDelete = (index) =>
+    setItems((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], _deleted: true, _dirty: false };
+      const kept = next.filter((x) => !x._deleted);
+      kept.forEach((x, i) => ((x.sort = i + 1), (x._dirty = true)));
+      const map = new Map(kept.map((k) => [k.id, k]));
+      return next.map((n) => (n._deleted ? n : map.get(n.id)));
+    });
+
+  const moveItem = (setter) => (idx, dir, arrSource) =>
+    setter((prev) => {
+      const arr = arrSource ? [...arrSource] : [...prev];
+      const liveIdx = arr.filter((x) => !x._deleted);
+      const pos = liveIdx.findIndex((x) => x === arr[idx]);
+      if (pos < 0) return prev;
+      const swapWith = pos + (dir === "up" ? -1 : 1);
+      if (swapWith < 0 || swapWith >= liveIdx.length) return prev;
+      const a = liveIdx[pos],
+        b = liveIdx[swapWith];
+      const ai = arr.indexOf(a),
+        bi = arr.indexOf(b);
+      const tmp = arr[ai];
+      arr[ai] = arr[bi];
+      arr[bi] = tmp;
+      let k = 1;
+      for (const it of arr) {
+        if (it._deleted) continue;
+        it.sort = k++;
+        it._dirty = true;
+      }
+      return arr;
+    });
+
+  const moveDraft = moveItem(setDrafts);
+  const moveServer = moveItem(setItems);
+
+  useImperativeHandle(ref, () => ({
+    async applyChanges(targetCollegeId) {
+      if (!targetCollegeId)
+        return { ok: true, created: 0, updated: 0, deleted: 0 };
+
+      if (mode === "create") {
+        const rows = drafts.filter((d) => (d.text || "").trim());
+        if (!rows.length)
+          return { ok: true, created: 0, updated: 0, deleted: 0 };
+        const results = await vm.bulkCreateRequirements(
+          targetCollegeId,
+          rows.map((r, i) => ({
+            text: r.text.trim(),
+            sort: Number.isFinite(r.sort) ? r.sort : i + 1,
+          }))
+        );
+        const fail = results.filter((r) => !r.ok).length;
+        if (fail)
+          notifyErr?.(
+            "Sebagian requirement gagal disimpan",
+            `${fail} baris gagal.`
+          );
+        else
+          notifyOk?.(
+            "Requirement tersimpan",
+            `${results.length} baris ditambahkan.`
+          );
+        return {
+          ok: fail === 0,
+          created: results.length,
+          updated: 0,
+          deleted: 0,
+        };
+      }
+
+      // EDIT: diff dan apply
+      const original = originalRef.current || [];
+      const curr = items || [];
+      const live = curr.filter((x) => !x._deleted);
+
+      const origMap = new Map(original.map((o) => [String(o.id), o]));
+      const currMap = new Map(
+        live
+          .filter((x) => !String(x.id).startsWith("new:"))
+          .map((c) => [String(c.id), c])
+      );
+
+      let created = 0,
+        updated = 0,
+        deleted = 0,
+        anyError = false;
+
+      // delete
+      const deletedIds = new Set(
+        original
+          .map((o) => String(o.id))
+          .filter(
+            (oid) =>
+              !currMap.has(oid) ||
+              curr.find((x) => String(x.id) === oid)?._deleted
+          )
+      );
+      for (const id of deletedIds) {
+        const r = await vm.deleteRequirement(targetCollegeId, id);
+        if (!r.ok) {
+          anyError = true;
+          notifyErr?.("Gagal menghapus requirement", r.error || id);
+        } else deleted++;
+      }
+
+      // create
+      for (const it of live) {
+        if (String(it.id).startsWith("new:")) {
+          const r = await vm.createRequirement(targetCollegeId, {
+            text: (it.text || "").trim(),
+            sort: it.sort,
+          });
+          if (!r.ok) {
+            anyError = true;
+            notifyErr?.("Gagal menambah requirement", r.error || "");
+          } else created++;
+        }
+      }
+
+      // update
+      for (const it of live) {
+        const oid = String(it.id);
+        if (oid.startsWith("new:")) continue;
+        const orig = origMap.get(oid);
+        if (!orig) continue;
+        const changed =
+          (orig.text || "") !== (it.text || "") ||
+          Number(orig.sort || 0) !== Number(it.sort || 0);
+        if (changed) {
+          const r = await vm.updateRequirement(targetCollegeId, oid, {
+            text: (it.text || "").trim(),
+            sort: it.sort,
+          });
+          if (!r.ok) {
+            anyError = true;
+            notifyErr?.("Gagal memperbarui requirement", r.error || oid);
+          } else updated++;
+        }
+      }
+
+      if (!anyError) {
+        const total = created + updated + deleted;
+        if (total > 0)
+          notifyOk?.(
+            "Requirement disinkronkan",
+            `Create ${created} • Update ${updated} • Delete ${deleted}`
+          );
+      }
+      return { ok: !anyError, created, updated, deleted };
+    },
+  }));
+
+  if (mode === "create") {
+    return (
+      <div style={styles.reqBlock}>
+        <div style={styles.reqHeader}>
+          <div style={styles.reqTitle}>{T.reqTitleCreate}</div>
+        </div>
+
+        <div style={{ display: "grid", gap: 8 }}>
+          {drafts.map((d, i) => (
+            <div key={d.id} style={styles.reqRow}>
+              <div style={styles.reqSort}>{i + 1}</div>
+              <Input.TextArea
+                autoSize={{ minRows: 1, maxRows: 4 }}
+                placeholder={T.reqPlaceholder}
+                value={d.text}
+                onChange={(e) => updateDraft(d.id, { text: e.target.value })}
+              />
+              <div style={styles.reqBtns}>
+                <Button
+                  icon={<ArrowUpOutlined />}
+                  onClick={() => moveDraft(i, "up", drafts)}
+                  disabled={i === 0}
+                />
+                <Button
+                  icon={<ArrowDownOutlined />}
+                  onClick={() => moveDraft(i, "down", drafts)}
+                  disabled={i === drafts.length - 1}
+                />
+                <Popconfirm
+                  title="Hapus baris ini?"
+                  okText="Ya"
+                  cancelText="Batal"
+                  onConfirm={() => removeDraft(d.id)}
+                >
+                  <Button danger icon={<DeleteOutlined />} />
+                </Popconfirm>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+          <Button icon={<PlusOutlined />} onClick={addDraft}>
+            {T.reqAdd}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // EDIT MODE
+  const visibleItems = items.filter((x) => !x._deleted);
+  return (
+    <div style={styles.reqBlock}>
+      <div style={styles.reqHeader}>
+        <div style={styles.reqTitle}>{T.reqTitleEdit}</div>
+      </div>
+
+      <Spin spinning={loading}>
+        {visibleItems.length === 0 ? (
+          <div style={styles.reqEmpty}>Belum ada requirement.</div>
+        ) : (
+          <div style={{ display: "grid", gap: 8 }}>
+            {visibleItems.map((it, i) => (
+              <div key={it.id} style={styles.reqRow}>
+                <div style={styles.reqSort}>{i + 1}</div>
+                <Input.TextArea
+                  autoSize={{ minRows: 1, maxRows: 4 }}
+                  placeholder={T.reqPlaceholder}
+                  value={it.text || ""}
+                  onChange={(e) =>
+                    setItems((prev) => {
+                      const next = [...prev];
+                      const idx = next.findIndex((x) => x.id === it.id);
+                      if (idx >= 0)
+                        next[idx] = {
+                          ...next[idx],
+                          text: e.target.value,
+                          _dirty: true,
+                        };
+                      return next;
+                    })
+                  }
+                />
+                <div style={styles.reqBtns}>
+                  <Button
+                    icon={<ArrowUpOutlined />}
+                    onClick={() =>
+                      moveServer(
+                        items.findIndex((x) => x.id === it.id),
+                        "up"
+                      )
+                    }
+                    disabled={i === 0}
+                  />
+                  <Button
+                    icon={<ArrowDownOutlined />}
+                    onClick={() =>
+                      moveServer(
+                        items.findIndex((x) => x.id === it.id),
+                        "down"
+                      )
+                    }
+                    disabled={i === visibleItems.length - 1}
+                  />
+                  <Popconfirm
+                    title="Hapus baris ini?"
+                    okText="Ya"
+                    cancelText="Batal"
+                    onConfirm={() =>
+                      markDelete(items.findIndex((x) => x.id === it.id))
+                    }
+                  >
+                    <Button danger icon={<DeleteOutlined />} />
+                  </Popconfirm>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+          <Button icon={<PlusOutlined />} onClick={addNewItem}>
+            {T.reqAdd}
+          </Button>
+        </div>
+      </Spin>
+    </div>
+  );
+});
+
+/* ==================== PAGE ==================== */
 export default function CollegeAContent(props) {
-  // gunakan VM yang dipassing dari page; fallback buat sendiri jika tidak ada
   const vm =
     props && Object.prototype.hasOwnProperty.call(props, "colleges")
       ? props
       : useCollegeAViewModel({ locale: props?.locale || "id" });
 
-  // ----- notification (top-right)
+  // notif
   const [notify, contextHolder] = notification.useNotification();
   const ok = useCallback(
     (message, description) =>
@@ -135,7 +520,7 @@ export default function CollegeAContent(props) {
     [notify]
   );
 
-  // ----- UI state
+  // UI state
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
@@ -147,32 +532,38 @@ export default function CollegeAContent(props) {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailData, setDetailData] = useState(null);
 
+  // refs imperative editor
+  const reqCreateRef = useRef(null);
+  const reqEditRef = useRef(null);
+
   // cleanup objectURL
-  useEffect(() => {
-    return () => {
+  useEffect(
+    () => () => {
       if (logoPrevCreate) URL.revokeObjectURL(logoPrevCreate);
       if (logoPrevEdit) URL.revokeObjectURL(logoPrevEdit);
-    };
-  }, [logoPrevCreate, logoPrevEdit]);
+    },
+    [logoPrevCreate, logoPrevEdit]
+  );
 
-  // Ukuran gambar untuk lebar modal view dinamis
   const [viewImgMeta, setViewImgMeta] = useState({ w: 0, h: 0 });
   const viewModalWidth =
     (viewImgMeta.h || 0) >= (viewImgMeta.w || 0) ? 560 : 900;
 
   const rows = useMemo(() => vm.colleges || [], [vm.colleges]);
 
-  // === Fallback filter client-side: hanya nama + negara ===
+  // search/filter client-side kecil
   const [searchValue, setSearchValue] = useState(vm.q || "");
   useEffect(() => setSearchValue(vm.q || ""), [vm.q]);
   const filteredRows = useMemo(() => {
     const s = (searchValue || "").trim().toLowerCase();
+    const jf = (vm.jenjang || "").trim().toLowerCase();
     return rows.filter((r) => {
       const okName = !s || (r?.name || "").toLowerCase().includes(s);
       const okCountry = !vm.country || (r?.country || "") === vm.country;
-      return okName && okCountry;
+      const okJenjang = !jf || (r?.jenjang || "").toLowerCase().includes(jf);
+      return okName && okCountry && okJenjang;
     });
-  }, [rows, searchValue, vm.country]);
+  }, [rows, searchValue, vm.country, vm.jenjang]);
 
   const normList = (e) => (Array.isArray(e) ? e : e?.fileList || []);
   const beforeLogoCreate = (file) => {
@@ -194,7 +585,7 @@ export default function CollegeAContent(props) {
     return false;
   };
 
-  // ===== create
+  // ===== CREATE =====
   const onCreate = async () => {
     const v = await formCreate.validateFields().catch(() => null);
     if (!v) return;
@@ -216,6 +607,7 @@ export default function CollegeAContent(props) {
       contact_name: v.contact || "",
       no_telp: v.phone || "",
       email: v.email || "",
+      jenjang: (v.jenjang || "").trim() || null,
       autoTranslate: true,
     });
 
@@ -223,14 +615,26 @@ export default function CollegeAContent(props) {
       err("Gagal membuat kampus", out.error || "Gagal menyimpan");
       return;
     }
-    ok("Berhasil", `Kampus “${v.name}” berhasil dibuat.`);
+
+    const newId =
+      safeGetId(out) ||
+      safeGetId(out?.data) ||
+      out?.data?.data?.id ||
+      out?.data?.id;
+    if (newId) {
+      await reqCreateRef.current?.applyChanges(String(newId));
+      ok("Berhasil", `Kampus “${v.name}” berhasil dibuat beserta requirement.`);
+    } else {
+      ok("Berhasil", `Kampus “${v.name}” berhasil dibuat.`);
+    }
+
     setCreateOpen(false);
     formCreate.resetFields();
     if (logoPrevCreate) URL.revokeObjectURL(logoPrevCreate);
     setLogoPrevCreate("");
   };
 
-  // ===== edit (load)
+  // ===== EDIT (load) =====
   const openEdit = async (row) => {
     setActiveRow(row);
     setEditOpen(true);
@@ -245,6 +649,7 @@ export default function CollegeAContent(props) {
     }
     const d = data || row;
     setDetailData(d);
+    // ⬇️ isi angka murni (bukan string yang diformat)
     formEdit.setFieldsValue({
       name: d.name || "",
       description: d.description || "",
@@ -254,22 +659,18 @@ export default function CollegeAContent(props) {
       postal: d.postal_code || "",
       website: d.website || "",
       address: d.address || "",
-      tuition_min:
-        d.tuition_min != null ? numFormatter(String(d.tuition_min)) : "",
-      tuition_max:
-        d.tuition_max != null ? numFormatter(String(d.tuition_max)) : "",
-      living:
-        d.living_cost_estimate != null
-          ? numFormatter(String(d.living_cost_estimate))
-          : "",
+      tuition_min: d.tuition_min ?? null,
+      tuition_max: d.tuition_max ?? null,
+      living: d.living_cost_estimate ?? null,
       contact: d.contact_name || "",
       phone: d.no_telp || "",
       email: d.email || "",
+      jenjang: d.jenjang || "",
     });
     setLogoPrevEdit(d.logo_url || "");
   };
 
-  // ===== edit (submit)
+  // ===== EDIT (submit) =====
   const onEditSubmit = async () => {
     if (!activeRow) return;
     const v = await formEdit.validateFields().catch(() => null);
@@ -292,6 +693,7 @@ export default function CollegeAContent(props) {
       contact_name: v.contact || "",
       no_telp: v.phone || "",
       email: v.email || "",
+      jenjang: (v.jenjang || "").trim(),
       autoTranslate: false,
     });
 
@@ -299,6 +701,9 @@ export default function CollegeAContent(props) {
       err("Gagal menyimpan perubahan", res.error || "Gagal menyimpan");
       return;
     }
+
+    await reqEditRef.current?.applyChanges(activeRow.id);
+
     ok(
       "Perubahan tersimpan",
       `Data kampus “${v.name || activeRow.name}” diperbarui.`
@@ -318,21 +723,27 @@ export default function CollegeAContent(props) {
     ok("Terhapus", "Kampus berhasil dihapus.");
   };
 
-  // ===== Search (nama) & Filter (negara) =====
-  // kirim ke backend (debounce 400ms)
+  // Search & Filter debounce kecil
   useEffect(() => {
     const v = (searchValue || "").trim();
     const t = setTimeout(() => {
-      vm.setQ?.(v); // di VM: ?name=/q_name=
+      vm.setQ?.(v);
       vm.setPage?.(1);
     }, 400);
     return () => clearTimeout(t);
   }, [searchValue]); // eslint-disable-line
 
   const { shellW, maxW, blue, text } = TOKENS;
-
-  // required rules ONLY for Create
   const req = (msg) => [{ required: true, message: msg }];
+
+  const jenjangOptions = useMemo(() => {
+    const uniq = Array.from(
+      new Set(
+        (rows || []).map((r) => (r?.jenjang || "").trim()).filter(Boolean)
+      )
+    );
+    return uniq.map((v) => ({ value: v, label: v }));
+  }, [rows]);
 
   return (
     <ConfigProvider
@@ -352,7 +763,6 @@ export default function CollegeAContent(props) {
     >
       {contextHolder}
 
-      {/* paksa rasio 9:16 untuk Upload */}
       <style jsx global>{`
         .portrait-uploader.ant-upload.ant-upload-select-picture-card {
           width: 180px !important;
@@ -397,7 +807,7 @@ export default function CollegeAContent(props) {
             zIndex: 1,
           }}
         >
-          {/* ===== Header Card ===== */}
+          {/* Header */}
           <div style={styles.cardOuter}>
             <div style={styles.cardHeaderBar} />
             <div style={styles.cardInner}>
@@ -411,7 +821,7 @@ export default function CollegeAContent(props) {
             </div>
           </div>
 
-          {/* ===== Data Card ===== */}
+          {/* Data */}
           <div style={{ ...styles.cardOuter, marginTop: 12 }}>
             <div style={{ ...styles.cardInner, paddingTop: 14 }}>
               <div style={styles.sectionHeader}>
@@ -425,7 +835,7 @@ export default function CollegeAContent(props) {
                 </Button>
               </div>
 
-              {/* Filters (tanpa tombol) */}
+              {/* Filters */}
               <div style={styles.filtersRow}>
                 <Input
                   allowClear
@@ -452,9 +862,26 @@ export default function CollegeAContent(props) {
                   ).map((c) => ({ value: c, label: c }))}
                   style={styles.filterSelect}
                 />
+                <Select
+                  allowClear
+                  showSearch
+                  placeholder="Filter jenjang"
+                  value={vm.jenjang || undefined}
+                  onChange={(v) => {
+                    vm.setJenjang?.(v || "");
+                    vm.setPage?.(1);
+                  }}
+                  options={jenjangOptions}
+                  style={styles.filterSelect}
+                  filterOption={(input, option) =>
+                    (option?.label || "")
+                      .toLowerCase()
+                      .includes(input.toLowerCase())
+                  }
+                />
               </div>
 
-              {/* Table header */}
+              {/* Table */}
               <div style={{ overflowX: "auto" }}>
                 <div style={styles.tableHeader}>
                   <div style={{ ...styles.thLeft, paddingLeft: 8 }}>
@@ -462,11 +889,11 @@ export default function CollegeAContent(props) {
                   </div>
                   <div style={styles.thCenter}>{T.priceCol}</div>
                   <div style={styles.thCenter}>{T.livingCol}</div>
+                  <div style={styles.thCenter}>{T.jenjangCol}</div>
                   <div style={styles.thCenter}>{T.countryCol}</div>
                   <div style={styles.thCenter}>{T.action}</div>
                 </div>
 
-                {/* Rows */}
                 <div style={{ display: "grid", gap: 8, marginTop: 4 }}>
                   {vm.loading ? (
                     <div style={{ padding: "8px 4px" }}>
@@ -497,7 +924,6 @@ export default function CollegeAContent(props) {
                         priceMin && priceMax
                           ? `${priceMin} - ${priceMax}`
                           : priceMin || priceMax || "—";
-
                       const living =
                         r.living_cost_estimate != null
                           ? vm.money(
@@ -529,11 +955,10 @@ export default function CollegeAContent(props) {
                               </div>
                             </div>
                           </div>
-
                           <div style={styles.colCenter}>{price}</div>
                           <div style={styles.colCenter}>{living}</div>
+                          <div style={styles.colCenter}>{r.jenjang || "—"}</div>
                           <div style={styles.colCenter}>{r.country || "-"}</div>
-
                           <div style={styles.colActionsCenter}>
                             <Tooltip title={T.view}>
                               <Button
@@ -628,7 +1053,7 @@ export default function CollegeAContent(props) {
           formCreate.resetFields();
         }}
         footer={null}
-        width={860}
+        width={920}
         destroyOnClose
         title={null}
       >
@@ -670,7 +1095,6 @@ export default function CollegeAContent(props) {
             >
               <Input placeholder="Contoh: Skyline College" />
             </Form.Item>
-
             <Form.Item
               label={T.desc}
               name="description"
@@ -732,7 +1156,6 @@ export default function CollegeAContent(props) {
             >
               <Input placeholder="https://example.edu" />
             </Form.Item>
-
             <Form.Item
               label={T.address}
               name="address"
@@ -781,6 +1204,10 @@ export default function CollegeAContent(props) {
               />
             </Form.Item>
 
+            <Form.Item label={T.jenjang} name="jenjang">
+              <Input placeholder="cth: Universitas / Politeknik / Institut" />
+            </Form.Item>
+
             <div
               style={{
                 display: "grid",
@@ -803,6 +1230,15 @@ export default function CollegeAContent(props) {
             >
               <Input type="email" />
             </Form.Item>
+
+            {/* Requirements — Create */}
+            <RequirementsEditor
+              ref={reqCreateRef}
+              mode="create"
+              vm={vm}
+              notifyOk={(m, d) => ok(m, d)}
+              notifyErr={(m, d) => err(m, d)}
+            />
 
             <div style={styles.modalFooter}>
               <Button
@@ -828,7 +1264,7 @@ export default function CollegeAContent(props) {
           formEdit.resetFields();
         }}
         footer={null}
-        width={900}
+        width={960}
         destroyOnClose
         title={null}
       >
@@ -864,11 +1300,9 @@ export default function CollegeAContent(props) {
                 </Form.Item>
               </div>
 
-              {/* Edit tidak required */}
               <Form.Item label={T.name} name="name">
                 <Input placeholder="Nama kampus" />
               </Form.Item>
-
               <Form.Item label={T.desc} name="description">
                 <Input.TextArea rows={3} placeholder="Deskripsi" />
               </Form.Item>
@@ -906,7 +1340,6 @@ export default function CollegeAContent(props) {
               <Form.Item label={T.website} name="website">
                 <Input />
               </Form.Item>
-
               <Form.Item label={T.address} name="address">
                 <Input.TextArea rows={2} />
               </Form.Item>
@@ -948,6 +1381,10 @@ export default function CollegeAContent(props) {
                 />
               </Form.Item>
 
+              <Form.Item label={T.jenjang} name="jenjang">
+                <Input placeholder="cth: Universitas / Politeknik / Institut" />
+              </Form.Item>
+
               <div
                 style={{
                   display: "grid",
@@ -971,6 +1408,18 @@ export default function CollegeAContent(props) {
                 <Input type="email" />
               </Form.Item>
 
+              {/* Requirements — Edit */}
+              {activeRow?.id && (
+                <RequirementsEditor
+                  ref={reqEditRef}
+                  mode="edit"
+                  vm={vm}
+                  collegeId={activeRow.id}
+                  notifyOk={(m, d) => ok(m, d)}
+                  notifyErr={(m, d) => err(m, d)}
+                />
+              )}
+
               <div style={styles.modalFooter}>
                 <Button
                   type="primary"
@@ -986,7 +1435,7 @@ export default function CollegeAContent(props) {
         </div>
       </Modal>
 
-      {/* ===== View Modal (lengkap) ===== */}
+      {/* ===== View Modal ===== */}
       <Modal
         open={viewOpen}
         onCancel={() => {
@@ -1030,7 +1479,6 @@ export default function CollegeAContent(props) {
                   {detailData?.name || activeRow?.name || "-"}
                 </div>
               </div>
-
               <div>
                 <div style={styles.label}>{T.desc}</div>
                 <div style={{ ...styles.value, whiteSpace: "pre-wrap" }}>
@@ -1139,6 +1587,11 @@ export default function CollegeAContent(props) {
                 </div>
               </div>
 
+              <div>
+                <div style={styles.label}>{T.jenjang}</div>
+                <div style={styles.value}>{detailData?.jenjang || "—"}</div>
+              </div>
+
               <div
                 style={{
                   display: "grid",
@@ -1224,7 +1677,7 @@ const styles = {
 
   filtersRow: {
     display: "grid",
-    gridTemplateColumns: "1fr 220px",
+    gridTemplateColumns: "1fr 220px 220px",
     gap: 8,
     marginBottom: 10,
     alignItems: "center",
@@ -1234,20 +1687,20 @@ const styles = {
 
   tableHeader: {
     display: "grid",
-    gridTemplateColumns: "2.2fr 1fr 1.1fr .8fr .7fr",
+    gridTemplateColumns: "2.2fr 1fr 1.1fr 1fr .8fr .7fr",
     gap: 8,
     marginBottom: 4,
     color: "#0b3e91",
     fontWeight: 700,
     alignItems: "center",
-    minWidth: 880,
+    minWidth: 1020,
   },
   thLeft: { display: "flex", justifyContent: "flex-start", width: "100%" },
   thCenter: { display: "flex", justifyContent: "center", width: "100%" },
 
   row: {
     display: "grid",
-    gridTemplateColumns: "2.2fr 1fr 1.1fr .8fr .7fr",
+    gridTemplateColumns: "2.2fr 1fr 1.1fr 1fr .8fr .7fr",
     gap: 8,
     alignItems: "center",
     background: "#f5f8ff",
@@ -1255,7 +1708,7 @@ const styles = {
     border: "1px solid #e8eeff",
     padding: "8px 10px",
     boxShadow: "0 6px 12px rgba(11, 86, 201, 0.05)",
-    minWidth: 880,
+    minWidth: 1020,
   },
 
   colName: {
@@ -1291,7 +1744,6 @@ const styles = {
   subDate: { fontSize: 11.5, color: "#6b7280" },
 
   colCenter: { textAlign: "center", color: "#0f172a", fontWeight: 600 },
-
   colActionsCenter: { display: "flex", justifyContent: "center", gap: 6 },
   iconBtn: { borderRadius: 8 },
 
@@ -1324,7 +1776,6 @@ const styles = {
     padding: "14px 14px 8px",
     boxShadow: "0 10px 36px rgba(11,86,201,0.08)",
   },
-
   coverWrap: {
     display: "grid",
     justifyContent: "center",
@@ -1332,7 +1783,6 @@ const styles = {
     marginTop: 6,
     marginBottom: 10,
   },
-
   coverBox: {
     width: "100%",
     height: "100%",
@@ -1365,4 +1815,50 @@ const styles = {
 
   modalFooter: { marginTop: 8, display: "grid", placeItems: "center" },
   saveBtn: { minWidth: 200, height: 40, borderRadius: 12 },
+
+  /* requirements */
+  reqBlock: {
+    marginTop: 16,
+    padding: 12,
+    border: "1px solid #e6eeff",
+    borderRadius: 14,
+    background: "#f8fbff",
+  },
+  reqHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  reqTitle: { fontWeight: 800, color: "#0b3e91" },
+  reqEmpty: {
+    padding: "16px 12px",
+    border: "1px dashed #c8d7fd",
+    borderRadius: 12,
+    background: "#fff",
+    color: "#0b3e91",
+    textAlign: "center",
+  },
+  reqRow: {
+    display: "grid",
+    gridTemplateColumns: "40px 1fr 150px",
+    gap: 8,
+    alignItems: "center",
+    background: "#fff",
+    border: "1px solid #e6eeff",
+    borderRadius: 12,
+    padding: 8,
+  },
+  reqSort: {
+    fontWeight: 800,
+    color: "#0b56c9",
+    display: "grid",
+    placeItems: "center",
+  },
+  reqBtns: {
+    display: "grid",
+    gridAutoFlow: "column",
+    gap: 6,
+    justifyContent: "end",
+  },
 };

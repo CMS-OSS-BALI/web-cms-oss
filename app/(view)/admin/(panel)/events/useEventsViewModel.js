@@ -51,6 +51,29 @@ function useEventsViewModel() {
 
   const abortRef = useRef(null);
 
+  /** ===================== NEW: Year ensure helpers ===================== */
+  // pastikan tahun ada di yearOptions (unik + sort desc, limit opsional)
+  const ensureYearOption = useCallback((y) => {
+    if (!Number.isFinite(y)) return;
+    setYearOptions((prev) => {
+      const next = Array.from(new Set([y, ...prev])).sort((a, b) => b - a);
+      return next.slice(0, 15); // batasi kalau mau
+    });
+  }, []);
+
+  // ambil tahun dari FormData("start_at") lalu masukkan ke yearOptions
+  const ensureYearOptionFromFD = useCallback(
+    (fd) => {
+      const sa = fd?.get?.("start_at");
+      if (!sa) return;
+      const d = new Date(String(sa));
+      const y = d.getUTCFullYear?.() ?? d.getFullYear?.();
+      if (Number.isFinite(y)) ensureYearOption(y);
+    },
+    [ensureYearOption]
+  );
+  /** ==================================================================== */
+
   const buildQuery = useCallback(() => {
     const p = new URLSearchParams();
     p.set("include_category", "1");
@@ -121,10 +144,11 @@ function useEventsViewModel() {
       setTotal(js?.meta?.total ?? rows.length ?? 0);
       setTotalPages(js?.meta?.totalPages ?? 1);
 
-      // dynamic year options (ambil dari start_ts / start_at)
+      // === NEW: dynamic year options dari rows yang baru di-load
       const years = new Set(
         rows
           .map((r) => {
+            // dukung start_ts (ms) / start_at (ISO)
             const d = r?.start_ts
               ? new Date(r.start_ts)
               : r?.start_at
@@ -135,11 +159,13 @@ function useEventsViewModel() {
           .filter(Boolean)
       );
       const arr = Array.from(years).sort((a, b) => b - a);
+
+      // merge dengan yearOptions existing
       setYearOptions((prev) => {
-        const merged = Array.from(new Set([...prev, ...arr])).sort(
+        const merged = Array.from(new Set([...arr, ...prev])).sort(
           (a, b) => b - a
         );
-        return merged.slice(0, 8);
+        return merged.slice(0, 15);
       });
 
       // metrics derived from events
@@ -325,6 +351,10 @@ function useEventsViewModel() {
             ok: false,
             error: j?.error?.message || "Gagal membuat event",
           };
+
+        // NEW: inject tahun dari start_at ke opsi filter
+        ensureYearOptionFromFD(fd);
+
         await refresh();
         return { ok: true, data: j?.data };
       } catch (e) {
@@ -333,7 +363,7 @@ function useEventsViewModel() {
         setOpLoading(false);
       }
     },
-    [refresh]
+    [refresh, ensureYearOptionFromFD]
   );
 
   const updateEvent = useCallback(
@@ -350,6 +380,10 @@ function useEventsViewModel() {
             ok: false,
             error: j?.error?.message || "Gagal memperbarui event",
           };
+
+        // NEW: inject tahun dari start_at ke opsi filter (kalau diubah ke 2026, muncul langsung)
+        ensureYearOptionFromFD(fd);
+
         await refresh();
         return { ok: true, data: j?.data };
       } catch (e) {
@@ -358,7 +392,7 @@ function useEventsViewModel() {
         setOpLoading(false);
       }
     },
-    [refresh]
+    [refresh, ensureYearOptionFromFD]
   );
 
   /** ===== NEW: CSV download (untuk tombol di UI) ===== */
@@ -473,6 +507,9 @@ function useEventsViewModel() {
     // CRUD helpers
     createEvent,
     updateEvent,
+
+    // (opsional) expose kalau suatu saat mau dipakai di UI
+    // ensureYearOption,
   };
 }
 

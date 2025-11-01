@@ -227,7 +227,12 @@ const PopularItem = React.memo(function PopularItem({
       >
         <Title
           level={4}
-          style={{ margin: "0 0 6px", fontWeight: 800, lineHeight: 1.3 }}
+          style={{
+            margin: "0 0 6px",
+            fontWeight: 800,
+            lineHeight: 1.3,
+            fontSize: "clamp(16px, 2.6vw, 20px)",
+          }}
         >
           {it.name || "-"}
         </Title>
@@ -235,7 +240,12 @@ const PopularItem = React.memo(function PopularItem({
 
       <Paragraph
         type="secondary"
-        style={{ marginBottom: 16, flex: 1, fontSize: 14, lineHeight: 1.7 }}
+        style={{
+          marginBottom: 16,
+          flex: 1,
+          fontSize: "clamp(13px, 2.4vw, 14px)",
+          lineHeight: 1.7,
+        }}
       >
         {it.excerpt || ""}
       </Paragraph>
@@ -330,7 +340,7 @@ const SUI = {
     cursor: "pointer",
     userSelect: "none",
   },
-  ddWrap: { position: "relative" },
+  ddWrap: { position: "relative", flex: "0 0 auto" },
   dd: {
     position: "absolute",
     top: "calc(100% + 8px)",
@@ -342,6 +352,8 @@ const SUI = {
     boxShadow: "0 16px 36px rgba(8,42,116,.14)",
     zIndex: 30,
     padding: 8,
+    maxHeight: 360,
+    overflow: "auto",
   },
   ddItem: {
     width: "100%",
@@ -356,6 +368,20 @@ const SUI = {
   },
 };
 
+/* ------------ media hooks ------------ */
+function useIsNarrow(breakpoint = 768) {
+  const [isNarrow, setIsNarrow] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mql = window.matchMedia(`(max-width:${breakpoint}px)`);
+    const apply = () => setIsNarrow(mql.matches);
+    apply();
+    mql.addEventListener?.("change", apply);
+    return () => mql.removeEventListener?.("change", apply);
+  }, [breakpoint]);
+  return isNarrow;
+}
+
 function SearchAndFilter({ locale = "id", onApplied }) {
   const t = useMemo(() => tOf(locale), [locale]);
   const router = useRouter();
@@ -365,6 +391,7 @@ function SearchAndFilter({ locale = "id", onApplied }) {
   const [catName, setCatName] = useState("");
   const [open, setOpen] = useState(false);
   const boxRef = useRef(null);
+  const isNarrow = useIsNarrow(768);
 
   // init from URL
   useEffect(() => {
@@ -469,10 +496,48 @@ function SearchAndFilter({ locale = "id", onApplied }) {
     apply({ categoryId: "", categorySlug: "" });
   }, [apply]);
 
+  /* === one-line in mobile: keep row, no wrap, shrink heights/widths === */
+  const wrapStyle = {
+    ...SUI.wrap,
+    flexWrap: "nowrap",
+    ...(isNarrow
+      ? { gap: 8, alignItems: "stretch" } // tetap satu baris
+      : null),
+  };
+  const shellStyle = {
+    ...SUI.shell,
+    flex: "1 1 0%",
+    minWidth: 0,
+    ...(isNarrow
+      ? {
+          height: 44,
+          border: "2px solid #0b3e91",
+          gridTemplateColumns: "40px 1fr 12px", // kolom ikon lebih kecil
+        }
+      : null),
+  };
+  const filterBtnStyle = {
+    ...SUI.filterBtn,
+    ...(isNarrow
+      ? {
+          height: 44,
+          minWidth: 100, // diperkecil agar muat di 360px
+          padding: "0 14px",
+          justifyContent: "center",
+        }
+      : null),
+  };
+  const ddStyle = {
+    ...SUI.dd,
+    ...(isNarrow
+      ? { width: "min(420px, 96vw)", right: "auto", left: 0 }
+      : null),
+  };
+
   return (
-    <div style={SUI.wrap} ref={boxRef}>
+    <div style={wrapStyle} ref={boxRef}>
       {/* Search pill */}
-      <div style={SUI.shell}>
+      <div style={shellStyle}>
         <button
           type="button"
           aria-label={t("searchPlaceholder")}
@@ -506,7 +571,7 @@ function SearchAndFilter({ locale = "id", onApplied }) {
       <div style={SUI.ddWrap}>
         <button
           type="button"
-          style={SUI.filterBtn}
+          style={filterBtnStyle}
           onClick={() => setOpen((v) => !v)}
           aria-haspopup="listbox"
           aria-expanded={open}
@@ -521,13 +586,14 @@ function SearchAndFilter({ locale = "id", onApplied }) {
             fill="none"
             stroke="#fff"
             strokeWidth="2"
+            style={{ marginLeft: 8 }}
           >
             <path d="M6 9l6 6 6-6" />
           </svg>
         </button>
 
         {open && (
-          <div role="listbox" style={SUI.dd}>
+          <div role="listbox" style={ddStyle}>
             <button
               style={{ ...SUI.ddItem, color: "#0f172a" }}
               onClick={clearCategory}
@@ -567,11 +633,12 @@ const RailNumber = React.memo(function RailNumber({ n }) {
     <div
       style={{
         fontWeight: 900,
-        fontSize: 28,
+        fontSize: "clamp(18px, 3.5vw, 28px)",
         color: "#cbd7f0",
         width: 48,
         textAlign: "right",
         lineHeight: 1,
+        flexShrink: 0,
       }}
     >
       {n}
@@ -611,14 +678,13 @@ const TopLikeItem = React.memo(function TopLikeItem({
           <Text type="secondary" style={{ fontSize: 12 }}>
             {it.time_ago || "-"}
           </Text>
-          <span style={{ marginLeft: "auto" }}>
-            <LikeButton
-              liked={liked}
-              count={it.likes_count ?? 0}
-              onClick={() => onLike?.(it.id)}
-              labels={{ like: t("like"), alreadyLiked: t("alreadyLiked") }}
-            />
-          </span>
+          <span style={{ marginLeft: "auto" }} />
+          <LikeButton
+            liked={liked}
+            count={it.likes_count ?? 0}
+            onClick={() => onLike?.(it.id)}
+            labels={{ like: t("like"), alreadyLiked: t("alreadyLiked") }}
+          />
         </Space>
       </div>
     </div>
@@ -674,6 +740,7 @@ export default function BlogUContent({ locale = "id" }) {
   const t = useMemo(() => tOf(locale), [locale]);
   const router = useRouter();
   const isLg = useIsLg();
+  const isNarrow = useIsNarrow(768);
 
   const [q, setQ] = useState("");
   const [categoryId, setCategoryId] = useState("");
@@ -735,8 +802,8 @@ export default function BlogUContent({ locale = "id" }) {
           margin: "0 auto",
           textAlign: "center",
           padding: "28px 0 16px",
-          marginBottom: "10px",
-          marginTop: "-50px",
+          marginBottom: 10,
+          marginTop: isLg ? -50 : 0,
         }}
       >
         <Title
@@ -745,13 +812,20 @@ export default function BlogUContent({ locale = "id" }) {
             margin: 0,
             marginBottom: 6,
             fontWeight: 900,
-            fontSize: 32,
+            fontSize: "clamp(22px, 4.6vw, 32px)",
             lineHeight: 1.2,
           }}
         >
           {t("heroTitle")}
         </Title>
-        <Paragraph style={{ marginTop: 4, marginBottom: 0, color: "#334155" }}>
+        <Paragraph
+          style={{
+            marginTop: 4,
+            marginBottom: 0,
+            color: "#334155",
+            fontSize: "clamp(13px, 2.8vw, 15px)",
+          }}
+        >
           {t("heroSubtitle")}
         </Paragraph>
       </section>
@@ -764,12 +838,19 @@ export default function BlogUContent({ locale = "id" }) {
         <Row gutter={[16, 16]}>
           {/* Popular */}
           <Col xs={24} lg={18}>
-            <Title level={3} style={{ margin: "0 0 8px", fontWeight: 900 }}>
+            <Title
+              level={3}
+              style={{
+                margin: "0 0 8px",
+                fontWeight: 900,
+                fontSize: "clamp(18px, 4.4vw, 24px)",
+              }}
+            >
               {t("mainSection")}
             </Title>
             <div
               style={{
-                width: 180,
+                width: isNarrow ? 140 : 180,
                 height: 3,
                 background:
                   "linear-gradient(90deg, #0b3e91 0%, #5aa6ff 60%, transparent 100%)",
@@ -836,12 +917,19 @@ export default function BlogUContent({ locale = "id" }) {
               }}
               styles={{ body: { padding: 16 } }}
             >
-              <Title level={4} style={{ margin: 0, fontWeight: 800 }}>
+              <Title
+                level={4}
+                style={{
+                  margin: 0,
+                  fontWeight: 800,
+                  fontSize: "clamp(16px, 3.8vw, 20px)",
+                }}
+              >
                 {t("mostLiked")}
               </Title>
               <div
                 style={{
-                  width: 150,
+                  width: isNarrow ? 120 : 150,
                   height: 3,
                   background:
                     "linear-gradient(90deg, #0b3e91 0%, #5aa6ff 60%, transparent 100%)",
@@ -882,12 +970,19 @@ export default function BlogUContent({ locale = "id" }) {
               }}
               styles={{ body: { padding: 16 } }}
             >
-              <Title level={4} style={{ margin: 0, fontWeight: 800 }}>
+              <Title
+                level={4}
+                style={{
+                  margin: 0,
+                  fontWeight: 800,
+                  fontSize: "clamp(16px, 3.8vw, 20px)",
+                }}
+              >
                 {t("mostRecent")}
               </Title>
               <div
                 style={{
-                  width: 120,
+                  width: isNarrow ? 100 : 120,
                   height: 3,
                   background:
                     "linear-gradient(90deg, #0b3e91 0%, #5aa6ff 60%, transparent 100%)",

@@ -532,6 +532,10 @@ model referral {
   kecamatan         String?             @db.VarChar(64)
   city              String?             @db.VarChar(64)
   province          String?             @db.VarChar(64)
+
+  /// ⬇️ FIELD BARU
+  pekerjaan         String?             @db.VarChar(100)
+
   whatsapp          String              @db.VarChar(32)
   whatsapp_e164     String?             @db.VarChar(20)
   status            verification_status @default(PENDING)
@@ -670,7 +674,10 @@ model college {
   address              String?             @db.Text
   city                 String?             @db.VarChar(100)
   country              String              @db.VarChar(128)
-  type                 college_type        @default(FOREIGN)
+
+  // === FINAL ===
+  jenjang              String              @db.Text  // jadikan required jika kebijakan datamu wajib
+
   website              String              @db.VarChar(512)
   contact_name         String?
   no_telp              String?             @db.VarChar(32)
@@ -875,10 +882,6 @@ enum verification_status {
   PENDING
   REJECTED
   VERIFIED
-}
-
-enum college_type {
-  FOREIGN
 }
 
 enum services_program_type {

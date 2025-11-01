@@ -9,8 +9,10 @@ export const runtime = "nodejs";
 
 const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
 
+/** Pastikan Date -> ISO string supaya tanggal konsisten di client */
 function sanitize(v) {
   if (v == null) return v;
+  if (v instanceof Date) return v.toISOString();
   if (typeof v === "bigint") return v.toString();
   if (Array.isArray(v)) return v.map(sanitize);
   if (typeof v === "object") {
@@ -128,7 +130,7 @@ export async function PATCH(req, { params }) {
   try {
     await assertAdmin(req);
     const id = params?.id;
-    const body = await readBodyFlexible(req); // <<< form-data/json ok
+    const body = await readBodyFlexible(req); // form-data/json OK
 
     const current = await prisma.vouchers.findUnique({
       where: { id },
@@ -199,7 +201,7 @@ export async function PATCH(req, { params }) {
       data.event_id = ev || null;
     }
 
-    // validate kombinasi akhir
+    // validasi kombinasi akhir
     const t = data.type || current.type;
     const v = "value" in data ? data.value : current.value;
     const md =

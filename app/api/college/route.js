@@ -1,4 +1,3 @@
-// app/api/college/route.js
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
@@ -16,8 +15,9 @@ const BUCKET = process.env.SUPABASE_BUCKET;
 const SUPA_URL =
   process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
 const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || ""; // set in .env for Postman
-const ALWAYS_TYPE = "FOREIGN"; // 🔒 always FOREIGN
-const ALWAYS_CURRENCY = "IDR"; // 🔒 always IDR
+
+// ⚠️ type (enum) sudah dihapus. Currency tetap dikunci IDR.
+const ALWAYS_CURRENCY = "IDR";
 
 function slugify(s) {
   return String(s || "")
@@ -102,7 +102,7 @@ async function readBodyAndFile(req) {
     const body = {};
     let file = null;
 
-    const tryKeys = ["logo", "file", "logo_file", "logo_url"]; // ⬅️ fleksibel
+    const tryKeys = ["logo", "file", "logo_file", "logo_url"];
     for (const k of tryKeys) {
       const f = form.get(k);
       if (f && typeof File !== "undefined" && f instanceof File) {
@@ -152,6 +152,7 @@ async function uploadCollegeLogo(file) {
   return objectPath; // store this into DB (path)
 }
 
+/** mapper: gunakan jenjang (TEXT) */
 function mapCollege(row, locale, fallback) {
   const t = pickTrans(row.college_translate || [], locale, fallback);
   return {
@@ -159,10 +160,10 @@ function mapCollege(row, locale, fallback) {
     admin_user_id: row.admin_user_id,
     slug: row.slug,
     country: row.country,
-    type: row.type,
+    jenjang: row.jenjang ?? null, // <- ganti dari type
     website: row.website,
     mou_url: row.mou_url,
-    logo_url: toPublicUrl(row.logo_url), // ⬅️ public URL keluar
+    logo_url: toPublicUrl(row.logo_url),
     address: row.address,
     city: row.city,
     state: row.state,
@@ -193,13 +194,19 @@ export async function GET(req) {
     );
     const q = (searchParams.get("q") || "").trim();
     const country = searchParams.get("country") || undefined;
+    const jenjangFilter = (
+      searchParams.get("jenjang") ||
+      searchParams.get("type") ||
+      ""
+    ).trim(); // alias 'type' utk backward-compat
     const locale = normalizeLocale(searchParams.get("locale"));
     const fallback = normalizeLocale(
       searchParams.get("fallback") || DEFAULT_LOCALE
     );
     const locales = locale === fallback ? [locale] : [locale, fallback];
 
-    const where = { deleted_at: null, type: ALWAYS_TYPE };
+    // Hapus filter 'type: ALWAYS_TYPE'
+    const where = { deleted_at: null };
     if (country) where.country = country;
 
     const and = [];
@@ -223,7 +230,12 @@ export async function GET(req) {
         ],
       });
     }
+    if (jenjangFilter) {
+      and.push({ jenjang: { contains: jenjangFilter, mode: "insensitive" } });
+    }
     if (and.length) where.AND = and;
+
+    // tetap hanya yang punya terjemahan sesuai locales
     where.college_translate = { some: { locale: { in: locales } } };
 
     const rows = await prisma.college.findMany({
@@ -236,7 +248,7 @@ export async function GET(req) {
         admin_user_id: true,
         slug: true,
         country: true,
-        type: true,
+        jenjang: true, // <- ganti dari type
         website: true,
         mou_url: true,
         logo_url: true,
@@ -288,7 +300,14 @@ export async function POST(req) {
 
     const slug = body.slug ? slugify(body.slug) : await ensureUniqueSlug(name);
 
-    const normType = ALWAYS_TYPE;
+    // ⚠️ HAPUS normType. Gunakan jenjang text dari body (atau dari legacy 'type')
+    const jenjangRaw =
+      body.jenjang !== undefined
+        ? body.jenjang
+        : body.type !== undefined
+        ? body.type
+        : null;
+
     const currency = ALWAYS_CURRENCY;
 
     let logo_url = null;
@@ -337,7 +356,7 @@ export async function POST(req) {
           admin_user_id: ownerId,
           slug,
           country: body.country ?? null,
-          type: normType,
+          jenjang: jenjangRaw ?? null, // <- ganti dari type
           website: body.website ?? null,
           mou_url: body.mou_url ?? null,
           logo_url,
@@ -408,7 +427,7 @@ export async function POST(req) {
         data: {
           id: created.id,
           slug: created.slug,
-          logo_url: toPublicUrl(logo_url), // ⬅️ public URL di response
+          logo_url: toPublicUrl(logo_url),
         },
       },
       { status: 201 }

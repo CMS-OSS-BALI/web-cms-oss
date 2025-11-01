@@ -68,8 +68,11 @@ export default function useCollegeViewModel({
       const moneyText =
         min && max ? `${min} - ${max}` : min ? `${min}` : max ? `${max}` : "";
 
+      // >>> Ganti type -> jenjang (ditampilkan dengan ikon 'cap')
+      const jenjangText = (r?.jenjang || "").toString().trim();
+
       const bullets = [
-        ...(r?.type ? [{ icon: "cap", text: r.type }] : []),
+        ...(jenjangText ? [{ icon: "cap", text: jenjangText }] : []),
         ...(locText ? [{ icon: "pin", text: locText }] : []),
         ...(moneyText ? [{ icon: "money", text: moneyText }] : []),
       ];
@@ -127,13 +130,13 @@ export default function useCollegeViewModel({
           icon: "/tataboga.svg",
         },
       ],
+      // voiceHint dihapus karena microphone dihilangkan
       search: {
         label: t("Pencarian", "Search"),
         placeholder: t(
           "Cari program atau universitas (mis. IT, di Kanada)",
           "Search for program or university (e.g., IT, in Canada)"
         ),
-        voiceHint: t("Ucapkan untuk mencari", "Tap to speak"),
         onSearchHref: "/user/layanan?menu=layanan",
       },
       recommendedUniversity: {
@@ -146,7 +149,6 @@ export default function useCollegeViewModel({
       },
       universities,
 
-      // ====== NEW: scholarship CTA content (fallback) ======
       scholarshipCTA: {
         title: t(
           "TEMUKAN KESEMPATAN BEASISWAMU",

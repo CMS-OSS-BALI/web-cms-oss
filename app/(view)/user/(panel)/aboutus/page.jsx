@@ -1,42 +1,50 @@
 "use client";
 
-import dynamic from "next/dynamic";
-import { useMemo, useEffect } from "react";
+import { Suspense, lazy, useMemo, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
+import Loading from "@/app/components/loading/LoadingImage";
 import useAboutUsViewModel from "./useAboutUsViewModel";
 
-const AboutUsContent = dynamic(() => import("./AboutUsContent"), {
-  ssr: false,
-  loading: () => <div style={{ padding: 24 }}>Loading…</div>,
-});
+const AboutUsContentLazy = lazy(() => import("./AboutUsContent"));
 
-const SUPPORTED = ["id", "en"];
-const DEFAULT_LOCALE = "id";
-
-function normalizeLocale(input) {
-  const v = (input || "").toLowerCase().slice(0, 2);
-  return SUPPORTED.includes(v) ? v : DEFAULT_LOCALE;
+function pickLocale(q, ls) {
+  const v = (q || ls || "id").slice(0, 2).toLowerCase();
+  return v === "en" ? "en" : "id";
 }
 
 export default function AboutUsPage() {
   const search = useSearchParams();
 
+  // Prefer ?lang= from URL, fallback to localStorage
   const locale = useMemo(() => {
-    const q = search?.get("lang");
+    const q = search?.get("lang") || "";
     const ls =
-      typeof window !== "undefined" ? localStorage.getItem("oss.lang") : "";
-    const nav =
-      typeof navigator !== "undefined" ? navigator.language : DEFAULT_LOCALE;
-    return normalizeLocale(q || ls || nav);
+      typeof window !== "undefined"
+        ? localStorage.getItem("oss.lang") || ""
+        : "";
+    return pickLocale(q, ls);
   }, [search]);
 
+  // Persist selected locale for cross-page consistency
   useEffect(() => {
     if (typeof window !== "undefined") {
       localStorage.setItem("oss.lang", locale);
     }
   }, [locale]);
 
+  // Keep existing VM usage; pass props into lazy component
   const vm = useAboutUsViewModel({ locale });
 
-  return <AboutUsContent key={locale} {...vm} />;
+  return (
+    <Suspense
+      fallback={
+        <div className="page-wrap">
+          <Loading />
+        </div>
+      }
+    >
+      {/* key forces remount when ?lang= changes */}
+      <AboutUsContentLazy key={locale} {...vm} />
+    </Suspense>
+  );
 }

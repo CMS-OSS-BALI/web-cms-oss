@@ -1,3 +1,4 @@
+// CareerContent.jsx
 "use client";
 
 import React, { useCallback } from "react";
@@ -7,56 +8,70 @@ import { useRouter } from "next/navigation";
 
 const { Title, Paragraph, Text } = Typography;
 
-const styles = {
-  wrap: { width: "100vw", marginLeft: "calc(50% - 50vw)" },
+/* ===== media hook ===== */
+function useIsNarrow(breakpoint = 900) {
+  const [n, setN] = React.useState(false);
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia(`(max-width:${breakpoint}px)`);
+    const apply = () => setN(mq.matches);
+    apply();
+    mq.addEventListener?.("change", apply);
+    return () => mq.removeEventListener?.("change", apply);
+  }, [breakpoint]);
+  return n;
+}
 
+/* ===== constants ===== */
+const HEADER_H = "clamp(48px, 8vw, 84px)"; // tinggi header global
+
+/* ===== styles ===== */
+const styles = {
   // HERO
   hero: {
-    marginTop: "calc(-1 * clamp(48px, 8vw, 84px))",
+    marginTop: `calc(-1 * ${HEADER_H})`,
     background: "#fff",
   },
-  heroBleed: {
-    width: "100vw",
-    marginLeft: "calc(50% - 50vw)",
-  },
+  heroBleed: { width: "100vw", marginLeft: "calc(50% - 50vw)" },
   heroImgFrame: {
     position: "relative",
     width: "100vw",
-    height: "clamp(630px, 90vh, 1050px)",
+    height: "clamp(520px, 78vh, 920px)",
     background: "#e8f0ff",
     overflow: "hidden",
   },
-  heroContentFloating: {
+
+  heroTextTopCenter: {
     position: "absolute",
-    right: "max(24px, 6vw)",
-    top: "52%",
-    transform: "translateY(-50%)",
-    maxWidth: 560,
-    textAlign: "right",
+    left: "50%",
+    transform: "translateX(-50%)",
+    top: "clamp(28px, 8vw, 80px)",
+    width: "min(1100px, 92%)",
+    textAlign: "center",
+    zIndex: 2,
+    pointerEvents: "none",
   },
-  heroTitle: {
-    fontWeight: 800,
-    fontSize: "clamp(28px, 3.8vw, 52px)",
-    letterSpacing: 0.6,
-    color: "#0b3a77",
+  heroH1: {
     margin: 0,
-    textShadow: "0 2px 10px rgba(0,0,0,0.15)",
+    textTransform: "uppercase",
+    fontWeight: 900,
+    letterSpacing: ".06em",
+    color: "#0B56B8",
+    fontSize: "clamp(26px, 4.6vw, 56px)",
+    lineHeight: 1.1,
+    textShadow: "0 1px 8px rgba(0,0,0,.10)",
   },
-  heroQuote: {
-    color: "#0b2a53",
-    opacity: 0.95,
-    marginTop: 10,
-    fontStyle: "italic",
-    fontSize: "clamp(14px, 1.6vw, 18px)",
-    lineHeight: 1.45,
-    textShadow: "0 1px 6px rgba(0,0,0,0.12)",
+  heroSub: {
+    marginTop: 6,
+    color: "#1E56B7",
+    fontWeight: 700,
+    fontSize: "clamp(12px, 2.6vw, 18px)",
+    lineHeight: 1.35,
+    textShadow: "0 1px 6px rgba(0,0,0,.10)",
   },
 
   // SECTIONS
-  section: {
-    width: "min(1180px, 92%)",
-    margin: "84px auto 108px",
-  },
+  section: { width: "min(1180px, 92%)", margin: "84px auto 108px" },
   sectionTitle: {
     textAlign: "center",
     fontWeight: 900,
@@ -73,7 +88,7 @@ const styles = {
     margin: "12px auto 36px",
   },
 
-  // BENEFITS
+  // BENEFITS (desktop defaults; mobile diatur via CSS di bawah)
   benefitRow: { marginTop: 6 },
   benefitCard: {
     background: "#fff",
@@ -83,13 +98,7 @@ const styles = {
     height: "100%",
   },
   benefitBody: { padding: 24 },
-  benefitIconCol: { width: 120 },
-  benefitIconBox: {
-    width: 104,
-    height: 104,
-    display: "grid",
-    placeItems: "center",
-  },
+  benefitIconBox: { width: 104, height: 104, display: "grid", placeItems: "center" },
   benefitIcon: { width: 88, height: 88, display: "block" },
   benefitTitle: {
     fontWeight: 900,
@@ -110,21 +119,15 @@ const styles = {
     fontSize: "clamp(12px, 1.4vw, 14px)",
   },
 
-  // CORPORATE CULTURE
+  // CULTURE
   cultureGrid: { marginTop: 8 },
-
-  // Left (big image)
   cultureLeftWrap: {
     position: "relative",
     borderRadius: 16,
     overflow: "hidden",
     boxShadow: "0 18px 42px rgba(15,23,42,0.18)",
   },
-  cultureLeftImg: {
-    width: "100%",
-    height: "auto",
-    display: "block",
-  },
+  cultureLeftImg: { width: "100%", height: "auto", display: "block" },
   cultureLeftFade: {
     position: "absolute",
     left: 0,
@@ -153,13 +156,8 @@ const styles = {
     textTransform: "uppercase",
     fontSize: "clamp(16px, 2vw, 22px)",
   },
-  cultureLeftDesc: {
-    color: "#111827",
-    marginTop: 6,
-    lineHeight: 1.7,
-  },
+  cultureLeftDesc: { color: "#111827", marginTop: 6, lineHeight: 1.7 },
 
-  // Right (three rows)
   cultureRow: { marginBottom: 18 },
   cultureThumbWrap: {
     position: "relative",
@@ -168,12 +166,7 @@ const styles = {
     height: 150,
     boxShadow: "0 10px 26px rgba(15,23,42,0.12)",
   },
-  cultureThumbImg: {
-    width: "100%",
-    height: "100%",
-    objectFit: "cover",
-    display: "block",
-  },
+  cultureThumbImg: { width: "100%", height: "100%", objectFit: "cover", display: "block" },
   cultureThumbFade: {
     position: "absolute",
     left: 0,
@@ -221,7 +214,7 @@ const styles = {
     letterSpacing: 0.6,
     marginBottom: 10,
     textTransform: "uppercase",
-    fontSize: "clamp(22px, 3.2vw, 32px)", // title size
+    fontSize: "clamp(22px, 3.2vw, 32px)",
   },
   ctaSubtitle: {
     textAlign: "center",
@@ -231,11 +224,11 @@ const styles = {
     lineHeight: 1.5,
     fontWeight: 800,
     fontStyle: "italic",
-    fontSize: "clamp(22px, 3.2vw, 32px)", // same size as title
+    fontSize: "clamp(18px, 3.2vw, 28px)",
   },
   ctaButtonsRow: {
     display: "flex",
-    gap: 28,
+    gap: 16,
     justifyContent: "center",
     flexWrap: "wrap",
     marginTop: 12,
@@ -245,13 +238,13 @@ const styles = {
     background: "#0B56B8",
     border: "none",
     color: "#fff",
-    height: 64,
-    minWidth: 280,
-    padding: "0 34px",
+    height: "clamp(48px, 7vw, 64px)",
+    minWidth: "clamp(140px, 42vw, 280px)",
+    padding: "0 clamp(18px, 3.2vw, 34px)",
     borderRadius: 9999,
     fontWeight: 900,
     letterSpacing: 0.6,
-    fontSize: 18,
+    fontSize: "clamp(14px, 2.2vw, 18px)",
     textTransform: "uppercase",
     boxShadow: "0 12px 20px rgba(11,86,184,0.28)",
   },
@@ -259,20 +252,19 @@ const styles = {
     background: "#0B56B8",
     border: "none",
     color: "#fff",
-    height: 64,
-    minWidth: 280,
-    padding: "0 34px",
+    height: "clamp(48px, 7vw, 64px)",
+    minWidth: "clamp(140px, 42vw, 280px)",
+    padding: "0 clamp(18px, 3.2vw, 34px)",
     borderRadius: 9999,
     fontWeight: 900,
     letterSpacing: 0.6,
-    fontSize: 18,
+    fontSize: "clamp(14px, 2.2vw, 18px)",
     textTransform: "uppercase",
     boxShadow: "0 12px 20px rgba(11,86,184,0.28)",
   },
   ctaVisual: {
     position: "relative",
-    width: 420,
-    maxWidth: "78vw",
+    width: "clamp(220px, 68vw, 420px)",
     aspectRatio: "1/1",
     margin: "36px auto 0",
   },
@@ -293,63 +285,66 @@ const styles = {
   },
 };
 
-export default function CareerContent(props) {
-  const {
-    hero,
-    benefits,
-    culture,
-    testimonials,
-    onCTATeam,
-    onCTAReferral,
-    ctaImage,
-  } = props;
-
+export default function CareerContent({
+  hero,
+  benefits,
+  culture,
+  testimonials,
+  onCTATeam,
+  onCTAReferral,
+  ctaImage,
+}) {
   const router = useRouter();
+  const isNarrow = useIsNarrow(900);
 
-  // Default handlers (use provided props if any)
   const handleTeam = useCallback(() => {
     if (onCTATeam) return onCTATeam();
-    // no-op fallback (or route somewhere if you want):
-    // router.push("/user/career?menu=about#open-positions");
   }, [onCTATeam]);
 
   const handleReferral = useCallback(() => {
     if (onCTAReferral) return onCTAReferral();
-    // Keep About Us active in header
     router.push("/user/referral?menu=about");
   }, [onCTAReferral, router]);
 
   const ctaImg = ctaImage || "/cta-girl.svg";
+
+  const heroFrameStyle = {
+    ...styles.heroImgFrame,
+    height: isNarrow
+      ? "clamp(380px, 66vh, 680px)"
+      : `calc(100vh + ${HEADER_H} + 1px)`,
+    background: isNarrow ? "transparent" : styles.heroImgFrame.background,
+  };
 
   return (
     <div>
       {/* HERO */}
       <section style={styles.hero}>
         <div style={styles.heroBleed}>
-          <div style={styles.heroImgFrame}>
+          <div style={heroFrameStyle}>
             <Image
               src={hero.image}
               alt="Career hero"
               fill
               priority
               sizes="100vw"
-              style={{
-                objectFit: "cover",
-                objectPosition: hero.objectPosition || "45% 42%",
-              }}
+              style={{ objectFit: "cover", objectPosition: hero.objectPosition || "50% 45%" }}
             />
-            <div style={styles.heroContentFloating}>
-              <Title level={1} style={styles.heroTitle}>
-                {hero.title}
-              </Title>
-              <Paragraph style={styles.heroQuote}>{hero.quote}</Paragraph>
+            <div style={styles.heroTextTopCenter}>
+              <h1 style={styles.heroH1}>{hero.title}</h1>
+              {hero.quote ? <div style={styles.heroSub}>&quot;{hero.quote}&quot;</div> : null}
             </div>
           </div>
         </div>
       </section>
 
       {/* BENEFITS */}
-      <section style={styles.section}>
+      <section
+        style={{
+          ...styles.section,
+          margin: isNarrow ? "48px auto 72px" : styles.section.margin,
+        }}
+      >
         <Title level={2} style={styles.sectionTitle}>
           BENEFIT JOIN WITH US
         </Title>
@@ -357,37 +352,129 @@ export default function CareerContent(props) {
 
         <Row gutter={[24, 24]} style={styles.benefitRow}>
           {benefits.map((b) => (
-            <Col key={b.key} xs={24} md={12}>
-              <Card style={styles.benefitCard} bodyStyle={styles.benefitBody}>
-                <Row gutter={14} align="middle" wrap={false}>
-                  <Col flex="120px" style={styles.benefitIconCol}>
-                    <div style={styles.benefitIconBox}>
-                      <Image
-                        src={b.icon}
-                        alt={b.title}
-                        width={88}
-                        height={88}
-                        style={styles.benefitIcon}
-                      />
-                    </div>
-                  </Col>
-                  <Col flex="auto">
-                    <Text style={styles.benefitTitle}>{b.title}</Text>
-                    <ul style={styles.benefitList}>
+            <Col key={b.key} xs={24} md={12} style={{ display: "flex" }}>
+              <Card
+                className="benefit-card"
+                style={styles.benefitCard}
+                bodyStyle={{ ...styles.benefitBody, width: "100%" }}
+              >
+                {/* grid khusus responsive agar mirip desain */}
+                <div className="benefit-grid">
+                  <div className="benefit-icon-box">
+                    <Image
+                      src={b.icon}
+                      alt={b.title}
+                      width={88}
+                      height={88}
+                      className="benefit-icon"
+                      style={styles.benefitIcon}
+                    />
+                  </div>
+                  <div className="benefit-content">
+                    <Text className="benefit-title" style={styles.benefitTitle}>
+                      {b.title}
+                    </Text>
+                    <ul className="benefit-list" style={styles.benefitList}>
                       {b.points.map((p, i) => (
                         <li key={i}>{p}</li>
                       ))}
                     </ul>
-                  </Col>
-                </Row>
+                  </div>
+                </div>
               </Card>
             </Col>
           ))}
         </Row>
+
+        {/* ==== CSS responsive untuk section Benefit ==== */}
+        <style jsx global>{`
+          /* Grid layout agar ikon di kiri & konten di kanan saat mobile */
+          .benefit-grid {
+            display: grid;
+            grid-template-columns: 104px 1fr;
+            align-items: start;
+            gap: 14px;
+          }
+          .benefit-icon-box {
+            width: 104px;
+            height: 104px;
+            display: grid;
+            place-items: center;
+          }
+          .benefit-title {
+            display: block;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            font-weight: 900;
+            letter-spacing: 0.6px;
+          }
+          .benefit-list {
+            margin: 6px 0 0;
+            padding-left: 18px;
+            list-style: disc;
+            text-transform: uppercase;
+            letter-spacing: 0.2px;
+            line-height: 1.9;
+          }
+          /* warna peluru sesuai brand */
+          .benefit-list li::marker {
+            color: #0b56b8;
+          }
+
+          /* ====== Responsive (<= 900px) agar mirip desain mobile ====== */
+          @media (max-width: 900px) {
+            .benefit-card {
+              border-radius: 16px !important;
+              box-shadow: 0 10px 26px rgba(13, 28, 62, 0.08) !important;
+              min-height: 210px; /* tinggi konsisten per kartu */
+            }
+            .benefit-grid {
+              grid-template-columns: 72px 1fr; /* ikon lebih kecil */
+              gap: 12px;
+            }
+            .benefit-icon-box {
+              width: 72px;
+              height: 72px;
+            }
+            .benefit-icon {
+              width: 60px !important;
+              height: 60px !important;
+            }
+            .benefit-title {
+              font-size: 15px !important;
+              margin-bottom: 8px;
+            }
+            .benefit-list {
+              font-size: 13.5px !important;
+              line-height: 1.85;
+              padding-left: 16px;
+            }
+          }
+
+          /* ====== Tablet Landscape up to small desktop (901–1200px) ====== */
+          @media (min-width: 901px) and (max-width: 1200px) {
+            .benefit-grid {
+              grid-template-columns: 88px 1fr;
+            }
+            .benefit-icon-box {
+              width: 88px;
+              height: 88px;
+            }
+            .benefit-icon {
+              width: 72px !important;
+              height: 72px !important;
+            }
+          }
+        `}</style>
       </section>
 
       {/* CORPORATE CULTURE */}
-      <section style={styles.section}>
+      <section
+        style={{
+          ...styles.section,
+          margin: isNarrow ? "48px auto 72px" : styles.section.margin,
+        }}
+      >
         <Title level={2} style={styles.sectionTitle}>
           CORPORATE CULTURE
         </Title>
@@ -408,9 +495,7 @@ export default function CareerContent(props) {
               <div style={styles.cultureLeftBadge}>WEEKLY MEETING</div>
             </div>
 
-            <div style={styles.cultureLeftHeading}>
-              KOMUNIKASI TERBUKA DAN TRANSARAN
-            </div>
+            <div style={styles.cultureLeftHeading}>KOMUNIKASI TERBUKA DAN TRANSARAN</div>
             <Paragraph style={styles.cultureLeftDesc}>
               Transparansi bukan hanya nilai, tapi cara kami bekerja. Bersama,
               kita ciptakan ruang kerja yang inspiratif dan inklusif.
@@ -420,33 +505,23 @@ export default function CareerContent(props) {
           {/* Right rows */}
           <Col xs={24} lg={11}>
             {culture.items.map((c) => (
-              <Row
-                gutter={16}
-                key={c.key}
-                style={styles.cultureRow}
-                wrap={false}
-              >
-                <Col flex="220px">
-                  <div style={styles.cultureThumbWrap}>
-                    <Image
-                      src={c.image}
-                      alt={c.title}
-                      width={400}
-                      height={260}
-                      style={styles.cultureThumbImg}
-                    />
+              <Row gutter={16} key={c.key} style={styles.cultureRow} wrap={isNarrow}>
+                <Col flex={isNarrow ? "100%" : "220px"}>
+                  <div
+                    style={{
+                      ...styles.cultureThumbWrap,
+                      ...(isNarrow ? { height: 180, marginBottom: 8 } : null),
+                    }}
+                  >
+                    <Image src={c.image} alt={c.title} width={400} height={260} style={styles.cultureThumbImg} />
                     <div style={styles.cultureThumbFade} />
-                    <span style={styles.cultureThumbLabel}>
-                      {c.label || c.title}
-                    </span>
+                    <span style={styles.cultureThumbLabel}>{c.label || c.title}</span>
                   </div>
                 </Col>
                 <Col flex="auto">
                   <div>
                     <div style={styles.cultureRightTitle}>{c.title}</div>
-                    <Paragraph style={styles.cultureRightText}>
-                      {c.body}
-                    </Paragraph>
+                    <Paragraph style={styles.cultureRightText}>{c.body}</Paragraph>
                   </div>
                 </Col>
               </Row>
@@ -456,7 +531,12 @@ export default function CareerContent(props) {
       </section>
 
       {/* TESTIMONIALS */}
-      <section style={styles.section}>
+      <section
+        style={{
+          ...styles.section,
+          margin: isNarrow ? "48px auto 72px" : styles.section.margin,
+        }}
+      >
         <Title level={3} style={styles.sectionTitle}>
           YOUR SUCCESS STORY BEGINS WITH US
         </Title>
@@ -468,21 +548,19 @@ export default function CareerContent(props) {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "56px 1fr",
+                    gridTemplateColumns: isNarrow ? "48px 1fr" : "56px 1fr",
                     gap: 12,
                     alignItems: "center",
                     maxWidth: 820,
                     margin: "0 auto",
                   }}
                 >
-                  <Avatar size={56} src={t.avatar} />
+                  <Avatar size={isNarrow ? 48 : 56} src={t.avatar} />
                   <div>
                     <Text strong>
                       {t.name} <Text type="secondary">— {t.role}</Text>
                     </Text>
-                    <Paragraph style={{ marginTop: 6, color: "#334155" }}>
-                      {t.quote}
-                    </Paragraph>
+                    <Paragraph style={{ marginTop: 6, color: "#334155" }}>{t.quote}</Paragraph>
                   </div>
                 </div>
               </div>
@@ -492,7 +570,13 @@ export default function CareerContent(props) {
       </section>
 
       {/* CTA */}
-      <section style={{ ...styles.section, paddingBottom: 40 }}>
+      <section
+        style={{
+          ...styles.section,
+          paddingBottom: 40,
+          margin: isNarrow ? "48px auto 72px" : styles.section.margin,
+        }}
+      >
         <Title level={3} style={styles.ctaSectionTitle}>
           CAREER WITH US
         </Title>
@@ -512,11 +596,7 @@ export default function CareerContent(props) {
           <Button size="large" style={styles.ctaBtn} onClick={handleTeam}>
             TEAM MEMBER
           </Button>
-          <Button
-            size="large"
-            style={styles.ctaBtnGhost}
-            onClick={handleReferral}
-          >
+          <Button size="large" style={styles.ctaBtnGhost} onClick={handleReferral}>
             REFERRAL
           </Button>
         </div>
