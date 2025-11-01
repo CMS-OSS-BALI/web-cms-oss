@@ -28,7 +28,7 @@ export default function FormRepContent({ locale = "id" }) {
     locale === "en"
       ? {
           heroTitle: "BOOKING BOOTH",
-          heroSub: "Fill your data and book your booth now",
+          heroSub: "Fill your data, then choose payment method in Snap popup",
           step1: { t: "Booth Booking", s: "Representative data" },
           step2: { t: "Booth Booking Detail", s: "Booth payment details" },
           formTitle: "REPRESENTATIVE BOOKING FORM",
@@ -60,6 +60,7 @@ export default function FormRepContent({ locale = "id" }) {
             status: "Payment Status",
             time: "Payment Time",
             total: "Total Payment",
+            channel: "Payment Channel",
           },
           receipt: "Get PDF Receipt",
           done: "Done",
@@ -72,7 +73,8 @@ export default function FormRepContent({ locale = "id" }) {
         }
       : {
           heroTitle: "BOOKING BOOTH",
-          heroSub: "isi data anda lalu booking booth anda segera",
+          heroSub:
+            "Isi data Anda, lalu pilih metode pembayaran langsung di popup Snap",
           step1: { t: "Booking Booth", s: "Data representative" },
           step2: { t: "Detail Booking Booth", s: "Booth payment details" },
           formTitle: "FORM BOOKING REPRESENTATIVE",
@@ -103,6 +105,7 @@ export default function FormRepContent({ locale = "id" }) {
             status: "Payment Status",
             time: "Payment Time",
             total: "Total Payment",
+            channel: "Metode Pembayaran",
           },
           receipt: "Get PDF Receipt",
           done: "Selesai",
@@ -274,6 +277,11 @@ export default function FormRepContent({ locale = "id" }) {
                         ? vm?.ui?.nowText
                         : "—"}
                     </div>
+                  </div>
+
+                  <div className="pay-row">
+                    <div className="k">{T.lbl.channel}</div>
+                    <div className="v">{vm?.ui?.channelLabel || "—"}</div>
                   </div>
 
                   <div className="pay-row total">

@@ -1,8 +1,13 @@
-// app/api/payments/webhook/route.js
+// /app/api/payments/webhook/route.js
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { verifySignature, mapStatus } from "@/lib/midtrans";
 import { sendBoothInvoiceEmail } from "@/lib/mailer";
+import {
+  isPassthroughEnabled,
+  detectChannelFromWebhook,
+  grossUp,
+} from "@/lib/pgfees";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -35,9 +40,8 @@ export async function POST(req) {
     const transaction_status = String(
       body?.transaction_status || ""
     ).toLowerCase();
-    const gross_amount_raw = String(body?.gross_amount ?? "").trim(); // gunakan RAW string dari Midtrans
+    const gross_amount_raw = String(body?.gross_amount ?? "").trim();
 
-    // logging ringkas (matikan jika tidak perlu)
     console.log("[MIDTRANS:WEBHOOK] HIT", {
       order_id,
       transaction_status,
@@ -52,7 +56,6 @@ export async function POST(req) {
       );
     }
 
-    // Verifikasi signature Midtrans (order_id + status_code + gross_amount + serverKey)
     const signatureOk = verifySignature({
       order_id,
       status_code,
@@ -71,7 +74,6 @@ export async function POST(req) {
       );
     }
 
-    // Ambil booking + email (untuk email invoice)
     const booking = await prisma.event_booth_bookings.findFirst({
       where: { order_id },
       select: {
@@ -81,6 +83,7 @@ export async function POST(req) {
         voucher_code: true,
         amount: true,
         email: true,
+        event: { select: { booth_quota: true, booth_sold_count: true } },
       },
     });
 
@@ -95,14 +98,22 @@ export async function POST(req) {
     const grossAmount = Number.isFinite(Number(gross_amount_raw))
       ? Number(gross_amount_raw)
       : 0;
-    const amountMatch = bookingAmount === grossAmount;
 
-    // Simpan/Update payments log (idempoten by unique order_id)
+    // === Amount match logic ===
+    let expected = bookingAmount;
+    let detectedChannel = detectChannelFromWebhook(body);
+    if (isPassthroughEnabled() && detectedChannel) {
+      expected = grossUp(bookingAmount, detectedChannel).gross;
+    }
+    const diff = Math.abs(Number(expected) - Number(grossAmount));
+    const amountMatch = diff <= 2; // toleransi pembulatan 1-2 IDR
+
+    // Upsert payments log
     await prisma.payments.upsert({
       where: { order_id },
       update: {
         status: String(transaction_status || "").toUpperCase(),
-        channel: body?.payment_type || body?.channel || null,
+        channel: detectedChannel || body?.payment_type || null,
         gross_amount: grossAmount || bookingAmount,
         raw: body,
         updated_at: new Date(),
@@ -111,7 +122,7 @@ export async function POST(req) {
         order_id,
         booking_id: booking.id,
         status: String(transaction_status || "").toUpperCase(),
-        channel: body?.payment_type || body?.channel || null,
+        channel: detectedChannel || body?.payment_type || null,
         gross_amount: grossAmount || bookingAmount,
         raw: body,
       },
@@ -122,7 +133,7 @@ export async function POST(req) {
 
     if (mapped === "paid") {
       await prisma.$transaction(async (tx) => {
-        // Jumlah tidak cocok → REVIEW
+        // Jika jumlah tidak cocok → REVIEW
         if (!amountMatch) {
           await tx.event_booth_bookings.updateMany({
             where: { id: booking.id, NOT: { status: "PAID" } },
@@ -131,13 +142,8 @@ export async function POST(req) {
           return;
         }
 
-        // Cek kuota booth
-        const ev = await tx.events.findUnique({
-          where: { id: booking.event_id },
-          select: { booth_quota: true, booth_sold_count: true },
-        });
-        const quota = ev?.booth_quota ?? null;
-        const sold = Number(ev?.booth_sold_count || 0);
+        const quota = booking.event?.booth_quota ?? null;
+        const sold = Number(booking.event?.booth_sold_count || 0);
 
         if (quota != null && sold >= quota) {
           await tx.event_booth_bookings.updateMany({
@@ -147,7 +153,6 @@ export async function POST(req) {
           return;
         }
 
-        // Update booking → PAID (idempoten)
         const updated = await tx.event_booth_bookings.updateMany({
           where: { id: booking.id, NOT: { status: "PAID" } },
           data: { status: "PAID", paid_at: new Date(), updated_at: new Date() },
@@ -156,7 +161,6 @@ export async function POST(req) {
         if (updated.count > 0) {
           becamePaid = true;
 
-          // Increment sold_count jika masih dalam kuota
           if (quota == null || sold < quota) {
             await tx.events.update({
               where: { id: booking.event_id },
@@ -166,7 +170,6 @@ export async function POST(req) {
               },
             });
           } else {
-            // Safety fallback
             await tx.event_booth_bookings.update({
               where: { id: booking.id },
               data: { status: "REVIEW", updated_at: new Date() },
@@ -174,7 +177,6 @@ export async function POST(req) {
             becamePaid = false;
           }
 
-          // Increment voucher usage (jika ada & valid)
           if (booking.voucher_code) {
             await tx.$executeRaw`
               UPDATE vouchers
@@ -187,7 +189,6 @@ export async function POST(req) {
         }
       });
 
-      // Kirim invoice hanya saat transisi baru ke PAID & punya email
       if (becamePaid && booking.email) {
         try {
           await sendBoothInvoiceEmail({
@@ -196,7 +197,7 @@ export async function POST(req) {
             amount: bookingAmount,
             status: "PAID",
             paid_at: new Date(),
-            channel: body?.payment_type || body?.channel || null,
+            channel: detectedChannel || body?.payment_type || null,
             event: booking.event || {},
             support_email: process.env.SUPPORT_EMAIL || process.env.MAIL_FROM,
           });

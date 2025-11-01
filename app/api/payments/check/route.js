@@ -1,7 +1,12 @@
-// app/api/payments/check/route.js
+// /app/api/payments/check/route.js
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { fetchStatus, mapStatus } from "@/lib/midtrans";
+import {
+  isPassthroughEnabled,
+  detectChannelFromMidtrans,
+  grossUp,
+} from "@/lib/pgfees";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -62,7 +67,6 @@ export async function GET(req) {
     });
     if (!booking) return notFound();
 
-    // Cek status real-time ke Midtrans Core API
     const mid = await fetchStatus(order_id).catch((e) => ({
       error: true,
       message: e?.message || "Midtrans status error",
@@ -70,11 +74,23 @@ export async function GET(req) {
     }));
 
     let mid_summary = null;
+    let expected_gross = Number(booking.amount || 0);
+    let amount_match = null;
+
     if (!mid?.error) {
-      const mapped = mapStatus(mid); // paid/pending/expired/failed/review/cancelled
+      const mapped = mapStatus(mid);
       const gross = Number.isFinite(Number(mid?.gross_amount))
         ? Number(mid.gross_amount)
         : null;
+      const ch = detectChannelFromMidtrans(mid);
+
+      if (isPassthroughEnabled() && ch) {
+        expected_gross = grossUp(booking.amount, ch).gross;
+      }
+
+      amount_match =
+        gross == null ? null : Math.abs(expected_gross - gross) <= 2;
+
       mid_summary = {
         transaction_status: mid?.transaction_status || null,
         fraud_status: mid?.fraud_status || null,
@@ -109,6 +125,8 @@ export async function GET(req) {
         midtrans: mid?.error
           ? { error: mid.message, info: mid.info }
           : mid_summary,
+        expected_gross,
+        amount_match,
         advice,
       },
     });

@@ -1,10 +1,15 @@
-// app/api/payments/reconcile/route.js
+// /app/api/payments/reconcile/route.js
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { fetchStatus, mapStatus } from "@/lib/midtrans";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { sendBoothInvoiceEmail } from "@/lib/mailer";
+import {
+  isPassthroughEnabled,
+  detectChannelFromMidtrans,
+  grossUp,
+} from "@/lib/pgfees";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -39,8 +44,6 @@ function toInt(v, d = null) {
   const n = Number(String(v).replace(/\./g, "").replace(/,/g, ""));
   return Number.isFinite(n) ? Math.trunc(n) : d;
 }
-
-// Reader fleksibel
 async function readBodyFlexible(req) {
   const ct = (req.headers.get("content-type") || "").toLowerCase();
   const isMultipart = ct.startsWith("multipart/form-data");
@@ -53,8 +56,6 @@ async function readBodyFlexible(req) {
   }
   return (await req.json().catch(() => ({}))) ?? {};
 }
-
-// Admin/cron guard (bulk)
 async function assertAdminOrCron(req) {
   const key = req.headers.get("x-admin-key");
   if (key && ADMIN_TEST_KEY && key === ADMIN_TEST_KEY) return true;
@@ -84,6 +85,7 @@ async function reconcileOne(order_id) {
       event_id: true,
       voucher_code: true,
       email: true,
+      event: { select: { booth_quota: true, booth_sold_count: true } },
     },
   });
 
@@ -96,11 +98,22 @@ async function reconcileOne(order_id) {
     ? Number(mid.gross_amount)
     : null;
 
+  // Expected gross if passthrough
+  let expected = Number(booking.amount || 0);
+  const ch = detectChannelFromMidtrans(mid);
+  if (isPassthroughEnabled() && ch) {
+    expected = grossUp(booking.amount, ch).gross;
+  }
+  const amountMatch =
+    gross_amount == null
+      ? true
+      : Math.abs(Number(expected) - Number(gross_amount)) <= 2;
+
   await prisma.payments.upsert({
     where: { order_id },
     update: {
       status: String(mid?.transaction_status || "").toUpperCase(),
-      channel: payment_type,
+      channel: ch || payment_type,
       gross_amount: gross_amount ?? booking.amount,
       raw: mid,
       updated_at: new Date(),
@@ -109,17 +122,13 @@ async function reconcileOne(order_id) {
       order_id,
       booking_id: booking.id,
       status: String(mid?.transaction_status || "").toUpperCase(),
-      channel: payment_type,
+      channel: ch || payment_type,
       gross_amount: gross_amount ?? booking.amount,
       raw: mid,
     },
   });
 
   if (mapped === "paid") {
-    const amountMatch =
-      gross_amount == null
-        ? true
-        : Number(booking.amount || 0) === gross_amount;
     let becamePaid = false;
 
     await prisma.$transaction(
@@ -132,12 +141,8 @@ async function reconcileOne(order_id) {
           return;
         }
 
-        const ev = await tx.events.findUnique({
-          where: { id: booking.event_id },
-          select: { booth_quota: true, booth_sold_count: true },
-        });
-        const quota = ev?.booth_quota ?? null;
-        const sold = Number(ev?.booth_sold_count || 0);
+        const quota = booking.event?.booth_quota ?? null;
+        const sold = Number(booking.event?.booth_sold_count || 0);
 
         if (quota != null && sold >= quota) {
           await tx.event_booth_bookings.updateMany({
@@ -193,7 +198,7 @@ async function reconcileOne(order_id) {
           amount: Number(booking.amount || 0),
           status: "PAID",
           paid_at: new Date(),
-          channel: payment_type,
+          channel: ch || payment_type,
           event: booking.event || {},
           support_email: process.env.SUPPORT_EMAIL || process.env.MAIL_FROM,
         });
@@ -226,7 +231,6 @@ export async function POST(req) {
     const order_id =
       typeof body?.order_id === "string" ? body.order_id.trim() : "";
 
-    // PUBLIC QUICK RECONCILE (aman karena server cek langsung ke Midtrans).
     if (isPublicHeader && ALLOW_PUBLIC_RECONCILE) {
       if (!order_id) return bad("order_id wajib diisi", "order_id");
       const res = await reconcileOne(order_id);
@@ -238,7 +242,6 @@ export async function POST(req) {
       return json({ message: "OK", data: res }, { status });
     }
 
-    // Admin/Cron mode (bulk)
     await assertAdminOrCron(req);
 
     if (order_id) {

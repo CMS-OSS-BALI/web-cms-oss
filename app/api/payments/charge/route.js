@@ -1,4 +1,4 @@
-// app/api/payments/charge/route.js
+// /app/api/payments/charge/route.js
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import {
@@ -7,6 +7,13 @@ import {
   ensureIntegerIDR,
   normalizeEnabledPayments,
 } from "@/lib/midtrans";
+
+import {
+  isPassthroughEnabled,
+  mapEnabledToChannel,
+  withFeeItem,
+  channelLabel,
+} from "@/lib/pgfees";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -26,9 +33,9 @@ function sanitize(v) {
 function json(data, init) {
   return NextResponse.json(sanitize(data), init);
 }
-function badRequest(message, field) {
+function badRequest(message, field, code = "BAD_REQUEST") {
   return json(
-    { error: { code: "BAD_REQUEST", message, ...(field ? { field } : {}) } },
+    { error: { code, message, ...(field ? { field } : {}) } },
     { status: 400 }
   );
 }
@@ -40,8 +47,6 @@ function toInt(v, d = null) {
   const n = Number(String(v).replace(/\./g, "").replace(/,/g, ""));
   return Number.isFinite(n) ? Math.trunc(n) : d;
 }
-
-// Body reader fleksibel (JSON / form-data / x-www-form-urlencoded)
 async function readBodyFlexible(req) {
   const ct = (req.headers.get("content-type") || "").toLowerCase();
   const isMultipart = ct.startsWith("multipart/form-data");
@@ -55,17 +60,55 @@ async function readBodyFlexible(req) {
   return (await req.json().catch(() => ({}))) ?? {};
 }
 
-/** Env config
- * Default "all": TIDAK mengirim enabled_payments → Snap tampilkan semua channel aktif
- */
+// ENV
 const ENABLED_PAYMENTS_RAW = process.env.MIDTRANS_ENABLED_PAYMENTS || "all";
 const EXPIRY_MINUTES = toInt(process.env.MIDTRANS_EXPIRY_MINUTES, 30);
 
-/**
- * POST /api/payments/charge
- * Body: { booking_id?: string, order_id?: string, enabled_payments?: string|string[] } (opsional override)
- * Return: { token, redirect_url, order_id, amount }
+/** ===== Worst-case gross-up bila channel dipilih di Snap =====
+ * normalizedEnabled:
+ *  - null    → "all" (tak ada batasan)
+ *  - string[] (kode midtrans: 'qris','gopay',...) → subset
+ * Mekanisme: coba semua kandidat channel, hitung withFeeItem, ambil gross terbesar.
  */
+function computeWorstCaseFee(itemsBase, baseAmount, normalizedEnabled) {
+  // Kandidat "enabled_payments" (midtrans codes) → map ke channel internal
+  let candidates;
+  if (normalizedEnabled === null) {
+    // semua channel umum yang kita dukung fee-nya
+    candidates = [
+      "qris",
+      "gopay",
+      "shopeepay",
+      "dana",
+      "bank_transfer", // VA
+      "credit_card",
+      "alfamart",
+      "indomaret",
+    ];
+  } else {
+    candidates = Array.isArray(normalizedEnabled) ? normalizedEnabled : [];
+  }
+
+  const channels = candidates
+    .map((c) => mapEnabledToChannel(c))
+    .filter(Boolean);
+
+  let best = {
+    gross: baseAmount,
+    items: itemsBase,
+    channel: null,
+  };
+
+  for (const ch of channels) {
+    const res = withFeeItem([...itemsBase], baseAmount, ch);
+    if (Number(res.gross) > Number(best.gross)) {
+      best = { gross: res.gross, items: res.items, channel: ch };
+    }
+  }
+
+  return best; // jika tidak ada kandidat valid → kembali ke base (no fee)
+}
+
 export async function POST(req) {
   try {
     const body = await readBodyFlexible(req);
@@ -141,24 +184,87 @@ export async function POST(req) {
       );
     }
 
-    const amount = ensureIntegerIDR(booking.amount, booking.amount);
+    const baseAmount = ensureIntegerIDR(booking.amount, booking.amount);
 
-    // Idempoten SNAP token reuse
+    // ---- Enabled payments (prioritas body → ENV) ----
+    const enabledFromBody =
+      body?.enabled_payments != null ? body.enabled_payments : undefined;
+    const normalizedEnabled = normalizeEnabledPayments(
+      enabledFromBody ?? ENABLED_PAYMENTS_RAW
+    );
+    // normalizedEnabled === null → "all" (bebaskan Snap tampilkan semua kanal yang aktif)
+
+    // ---- Idempotent reuse SNAP token (hanya jika gross sama) ----
     const existingPay = await prisma.payments.findUnique({
       where: { order_id: booking.order_id },
-      select: { id: true, status: true, raw: true },
+      select: { id: true, status: true, raw: true, gross_amount: true },
     });
+
+    // Build base item
+    let items = [
+      {
+        id: "booth",
+        name: `Booth - ${ev.location || "Event"}`,
+        price: baseAmount,
+        quantity: 1,
+        category: "event_booth",
+      },
+    ];
+
+    // ==== Hitung finalAmount (passthrough / merchant absorb) ====
+    let finalAmount = baseAmount;
+    let selectedChannel = null; // diketahui hanya jika client memaksa single channel
+    let passthroughMode = "off";
+    let worstCaseInfo = null;
+
+    if (isPassthroughEnabled()) {
+      // CASE A: client kirim tepat 1 channel → gross-up spesifik
+      if (Array.isArray(normalizedEnabled) && normalizedEnabled.length === 1) {
+        const ch = mapEnabledToChannel(normalizedEnabled[0]);
+        if (!ch) {
+          return badRequest("Channel tidak dikenal.", "enabled_payments");
+        }
+        const res = withFeeItem(items, baseAmount, ch);
+        items = res.items;
+        finalAmount = res.gross;
+        selectedChannel = ch;
+        passthroughMode = "single";
+      } else {
+        // CASE B: Snap menampilkan banyak opsi (atau "all") → gross-up worst-case
+        const best = computeWorstCaseFee(items, baseAmount, normalizedEnabled);
+        items = best.items;
+        finalAmount = best.gross;
+        selectedChannel = null; // kanal nyata baru diketahui saat selesai bayar
+        passthroughMode = "worst_case";
+        worstCaseInfo = {
+          candidate_count:
+            normalizedEnabled === null
+              ? "all"
+              : (normalizedEnabled || []).length,
+          worst_channel: best.channel,
+          worst_channel_label: channelLabel(best.channel),
+        };
+      }
+    } else {
+      // merchant absorb
+      passthroughMode = "off";
+    }
+
+    // ==== Reuse token bila gross sama dan belum final ====
     if (existingPay?.raw?.redirect_url && existingPay?.raw?.token) {
       const statusUpper = String(existingPay.status || "").toUpperCase();
       const finalStates = new Set(["SETTLEMENT", "CAPTURE", "SUCCESS", "PAID"]);
-      if (!finalStates.has(statusUpper)) {
+      if (
+        !finalStates.has(statusUpper) &&
+        Number(existingPay.gross_amount) === Number(finalAmount)
+      ) {
         return json({
           message: "SNAP token sudah ada (idempotent).",
           data: {
             token: existingPay.raw.token,
             redirect_url: existingPay.raw.redirect_url,
             order_id: booking.order_id,
-            amount,
+            amount: finalAmount,
           },
         });
       }
@@ -171,36 +277,26 @@ export async function POST(req) {
       phone: booking.whatsapp || undefined,
     };
 
-    // Tentukan enabled_payments final:
-    // - Prioritas: body.enabled_payments (boleh string/array)
-    // - Fallback: ENV MIDTRANS_ENABLED_PAYMENTS (default "all")
-    const enabledFromBody =
-      body?.enabled_payments != null ? body.enabled_payments : undefined;
-    const normalizedEnabled = normalizeEnabledPayments(
-      enabledFromBody ?? ENABLED_PAYMENTS_RAW
-    );
-
+    // ==== Build Snap payload (JANGAN memaksa single channel kalau mau pilih di Snap) ====
     let snapRes;
     try {
       snapRes = await snapCreate({
         order_id: booking.order_id,
-        amount,
+        amount: finalAmount,
         customer,
-        // Jika normalizedEnabled === null → JANGAN kirim field ini (Snap tampilkan semua channel aktif)
-        enabled_payments: normalizedEnabled ?? null,
+        enabled_payments: normalizedEnabled ?? null, // null = all (biarkan Snap)
         expiry: {
           unit: "minutes",
           duration: Math.max(5, Math.min(1440, EXPIRY_MINUTES)),
         },
-        items: [
-          {
-            id: "booth",
-            name: `Booth - ${ev.location || "Event"}`,
-            price: amount,
-            quantity: 1,
-            category: "event_booth",
-          },
-        ],
+        items,
+        metadata: {
+          selected_channel: selectedChannel || null, // saat "single"
+          base_amount: baseAmount,
+          passthrough: isPassthroughEnabled() ? 1 : 0,
+          passthrough_mode: passthroughMode, // 'single' | 'worst_case' | 'off'
+          ...(worstCaseInfo ? { worst_case: worstCaseInfo } : {}),
+        },
         custom_field1: booking.id,
       });
     } catch (e) {
@@ -221,7 +317,7 @@ export async function POST(req) {
                   message:
                     "Transaksi dengan order_id ini sedang pending di Midtrans.",
                 },
-                data: { order_id: booking.order_id, amount },
+                data: { order_id: booking.order_id, amount: finalAmount },
               },
               { status: 409 }
             );
@@ -280,8 +376,8 @@ export async function POST(req) {
       where: { order_id: booking.order_id },
       update: {
         status: "PENDING",
-        channel: null,
-        gross_amount: amount,
+        channel: selectedChannel, // null pada worst_case (kanal asli diketahui saat webhook/check)
+        gross_amount: finalAmount,
         raw: {
           ...(existingPay?.raw && typeof existingPay.raw === "object"
             ? existingPay.raw
@@ -289,6 +385,7 @@ export async function POST(req) {
           token: snapRes.token,
           redirect_url: snapRes.redirect_url,
           created_via: "charge_endpoint",
+          items,
         },
         updated_at: new Date(),
       },
@@ -296,12 +393,13 @@ export async function POST(req) {
         order_id: booking.order_id,
         booking_id: booking.id,
         status: "PENDING",
-        channel: null,
-        gross_amount: amount,
+        channel: selectedChannel,
+        gross_amount: finalAmount,
         raw: {
           token: snapRes.token,
           redirect_url: snapRes.redirect_url,
           created_via: "charge_endpoint",
+          items,
         },
       },
       select: { id: true },
@@ -313,7 +411,12 @@ export async function POST(req) {
         token: snapRes.token,
         redirect_url: snapRes.redirect_url,
         order_id: booking.order_id,
-        amount,
+        amount: finalAmount,
+        fee_mode: isPassthroughEnabled()
+          ? `passthrough (${passthroughMode}${
+              selectedChannel ? ` • ${channelLabel(selectedChannel)}` : ""
+            })`
+          : "merchant_absorb",
       },
     });
   } catch (err) {

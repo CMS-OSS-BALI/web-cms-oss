@@ -2,6 +2,31 @@
 
 import { useRef, useState } from "react";
 
+/** ===== helper label dari payment_type Midtrans (summary) ===== */
+function labelForPaymentType(pt) {
+  const s = String(pt || "").toLowerCase();
+  switch (s) {
+    case "qris":
+      return "QRIS";
+    case "gopay":
+      return "GoPay";
+    case "shopeepay":
+      return "ShopeePay";
+    case "dana":
+      return "DANA";
+    case "credit_card":
+      return "Kartu Kredit/Debit";
+    case "bank_transfer":
+      return "Virtual Account";
+    case "cstore":
+      return "Convenience Store";
+    default:
+      return s
+        ? s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+        : "";
+  }
+}
+
 export default function useFormRepViewModel({ locale = "id", eventId = "" }) {
   /* =========================
      FORM STATE
@@ -33,6 +58,9 @@ export default function useFormRepViewModel({ locale = "id", eventId = "" }) {
     nowText: new Date().toLocaleString("id-ID"),
     paidAtText: "",
     amountText: "",
+    channelLabel: "", // diisi setelah cek status
+    error: "",
+    submitting: false,
   });
 
   /* =========================
@@ -103,7 +131,6 @@ export default function useFormRepViewModel({ locale = "id", eventId = "" }) {
   /* =========================
      HELPERS
   ========================= */
-  // Normalize to integer IDR number
   function toIDRNumber(v) {
     if (v == null) return null;
     const n = Number(String(v).replace(/[^\d.-]/g, ""));
@@ -115,7 +142,6 @@ export default function useFormRepViewModel({ locale = "id", eventId = "" }) {
       ? "IDR —"
       : n.toLocaleString("id-ID", { style: "currency", currency: "IDR" });
   }
-  // Best-available amount across sources to avoid stale state
   function bestAmount(prefer) {
     return (
       toIDRNumber(prefer) ??
@@ -131,7 +157,6 @@ export default function useFormRepViewModel({ locale = "id", eventId = "" }) {
     setModel((m) => ({ ...m, [name]: value }));
   }
 
-  // Permissive phone validation (+, space, dot, (), dash), 6–15 digits
   function isLooseIntlPhone(raw) {
     if (!raw) return false;
     const s = String(raw).trim();
@@ -243,25 +268,30 @@ export default function useFormRepViewModel({ locale = "id", eventId = "" }) {
   }
 
   /* =========================
-     SNAP PAYMENT
+     SNAP PAYMENT (tanpa pilih channel di UI)
   ========================= */
   async function startSnapPayment({ booking_id, order_id }) {
     try {
       setPayment((p) => ({ ...p, starting: true, error: "" }));
+      setUi((u) => ({ ...u, error: "" }));
 
-      // 1) request Snap token
+      // 1) request Snap token — TIDAK mengirim enabled_payments
+      const payload = booking_id ? { booking_id } : { order_id };
+
       const res = await fetch("/api/payments/charge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         cache: "no-store",
-        body: JSON.stringify(booking_id ? { booking_id } : { order_id }),
+        body: JSON.stringify(payload),
       });
       const j = await res.json().catch(() => ({}));
+
       if (!res.ok) {
         throw new Error(
           j?.error?.message || j?.message || "Gagal membuat transaksi Midtrans."
         );
       }
+
       const token = j?.data?.token || "";
       const redirect_url = j?.data?.redirect_url || "";
       const oid = j?.data?.order_id || order_id;
@@ -316,7 +346,7 @@ export default function useFormRepViewModel({ locale = "id", eventId = "" }) {
           });
         });
       } else {
-        // fallback redirect (rare)
+        // fallback redirect (jarang terjadi)
         window.location.href = redirect_url;
         return null;
       }
@@ -325,21 +355,22 @@ export default function useFormRepViewModel({ locale = "id", eventId = "" }) {
     }
   }
 
-  // Mark UI paid + goto step 2 — accept args to avoid stale state
+  // Mark UI paid + goto step 2
   async function finishPaid({ orderId, amount } = {}) {
     const order_id =
       orderId || payment.orderId || state.booking?.order_id || "";
     const amountFinal = bestAmount(amount);
 
     const paidAt = new Date();
-    setUi({
+    setUi((u) => ({
+      ...u,
       step: 1,
       paid: true,
       paidAt,
       paidAtText: paidAt.toLocaleString("id-ID"),
       nowText: new Date().toLocaleString("id-ID"),
       amountText: fmtIDR(amountFinal),
-    });
+    }));
 
     try {
       const res = await fetch(
@@ -347,7 +378,14 @@ export default function useFormRepViewModel({ locale = "id", eventId = "" }) {
         { cache: "no-store" }
       );
       const j = await res.json().catch(() => ({}));
+      const mid = j?.data?.midtrans;
       setPayment((p) => ({ ...p, check: j?.data || j }));
+      if (mid?.payment_type) {
+        setUi((u) => ({
+          ...u,
+          channelLabel: labelForPaymentType(mid.payment_type),
+        }));
+      }
     } catch {}
   }
 
@@ -376,13 +414,20 @@ export default function useFormRepViewModel({ locale = "id", eventId = "" }) {
       if (j?.data?.midtrans?.mapped === "paid") {
         await finishPaid({ orderId: order_id });
       }
+      const mid = j?.data?.midtrans;
+      if (mid?.payment_type) {
+        setUi((u) => ({
+          ...u,
+          channelLabel: labelForPaymentType(mid.payment_type),
+        }));
+      }
       setPayment((p) => ({ ...p, checking: false, check: j?.data || j }));
     } catch {
       setPayment((p) => ({ ...p, checking: false }));
     }
   }
 
-  // Submit booking → SNAP (no payment-type field)
+  // Submit booking → create booking → SNAP
   async function onSubmit(e) {
     e.preventDefault();
     const v = validate(model);
@@ -390,6 +435,7 @@ export default function useFormRepViewModel({ locale = "id", eventId = "" }) {
     if (Object.keys(v).length > 0) return;
 
     setState((s) => ({ ...s, loading: true, error: "" }));
+    setUi((u) => ({ ...u, error: "", submitting: true }));
 
     try {
       const body = {
@@ -427,7 +473,6 @@ export default function useFormRepViewModel({ locale = "id", eventId = "" }) {
         amount: amtNum,
       }));
 
-      // always online via Snap
       await startSnapPayment({
         booking_id: booking?.id,
         order_id: booking?.order_id,
@@ -438,6 +483,9 @@ export default function useFormRepViewModel({ locale = "id", eventId = "" }) {
         loading: false,
         error: err?.message || "Gagal membuat booking",
       }));
+      setUi((u) => ({ ...u, submitting: false }));
+    } finally {
+      setUi((u) => ({ ...u, submitting: false }));
     }
   }
 
@@ -459,6 +507,7 @@ export default function useFormRepViewModel({ locale = "id", eventId = "" }) {
       ["Status", ui.paid ? "Success" : "Pending"],
       ["Payment Time", ui.paidAtText || new Date().toLocaleString("id-ID")],
       ["Total Payment", fmtIDR(amount)],
+      ["Channel", ui.channelLabel || "-"],
     ];
     let y = y0;
     for (const [k, v] of lines) {
