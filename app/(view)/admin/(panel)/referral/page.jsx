@@ -1,3 +1,4 @@
+// app/(view)/admin/referral/page.jsx
 "use client";
 
 import { Suspense, lazy, useEffect } from "react";
@@ -9,7 +10,7 @@ const ReferralContentLazy = lazy(() => import("./ReferralContent"));
 export default function ReferralPage({ searchParams }) {
   const vm = useReferralViewModel();
 
-  // optional: seed search from URL (?q= & status=)
+  // Seed filter dari URL (jika ada)
   useEffect(() => {
     if (searchParams?.q) vm.setQ(String(searchParams.q));
     if (searchParams?.status)

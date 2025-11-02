@@ -1,26 +1,14 @@
+// app/(view)/admin/testimonials/page.jsx
 "use client";
 
-import { Suspense, lazy, useEffect } from "react";
+import { Suspense, lazy } from "react";
 import Loading from "@/app/components/loading/LoadingImage";
 import useTestimonialsViewModel from "./useTestimonialsViewModel";
 
 const TestimonialsContentLazy = lazy(() => import("./TestimonialsContent"));
 
-const pickLocale = (v) => {
-  const s = String(v || "id")
-    .trim()
-    .toLowerCase();
-  return s.startsWith("en") ? "en" : "id";
-};
-
-export default function TestimonialsPage({ searchParams }) {
+export default function TestimonialsPage() {
   const vm = useTestimonialsViewModel();
-  const initialLocale = pickLocale(searchParams?.lang);
-
-  useEffect(() => {
-    vm.setLocale(initialLocale);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialLocale]);
 
   return (
     <Suspense

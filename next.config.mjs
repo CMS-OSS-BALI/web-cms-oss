@@ -7,20 +7,16 @@ const nextConfig = {
     },
   },
 
-  async rewrites() {
+  // Gunakan redirect permanen agar hanya "/" yang terindeks
+  async redirects() {
     return [
-      // URL tetap "/" tapi konten diambil dari /user/landing-page
-      { source: "/", destination: "/user/landing-page" },
+      {
+        source: "/user/landing-page",
+        destination: "/",
+        permanent: true, // 308 (SEO setara 301)
+      },
     ];
   },
-
-  // (Opsional) Biar canonical ke root: akses /user/landing-page diarahkan ke "/"
-  // Hapus blok ini jika kamu masih ingin path /user/landing-page bisa dibuka langsung.
-  // async redirects() {
-  //   return [
-  //     { source: "/user/landing-page", destination: "/", permanent: false },
-  //   ];
-  // },
 };
 
 export default nextConfig;

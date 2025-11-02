@@ -52,6 +52,7 @@ export default function useLeadsViewModel() {
       const params = new URLSearchParams();
       params.set("page", String(page));
       params.set("perPage", String(perPage));
+      params.set("summary", "1"); // <<— minta ringkasan sekalian
       if (q) params.set("q", q);
       if (education) params.set("education", education);
 
@@ -71,6 +72,7 @@ export default function useLeadsViewModel() {
       const json = await res.json();
       const raw = json?.data || [];
       const meta = json?.meta || {};
+      const summary = json?.summary || null;
 
       // normalisasi created_ts di client (ms)
       const data = raw.map((r) => ({
@@ -81,6 +83,13 @@ export default function useLeadsViewModel() {
 
       setLeads(data);
       setTotal(meta?.total || data.length || 0);
+
+      // isi counter global bila tersedia
+      if (summary) {
+        setTotalLeads(summary.total ?? 0);
+        setAssignedCount(summary.assigned ?? 0);
+        setUnassignedCount(summary.unassigned ?? 0);
+      }
 
       // refresh consultant names map untuk halaman ini
       refreshConsultantNamesForPage(data);
@@ -102,41 +111,24 @@ export default function useLeadsViewModel() {
   /* ========== REFRESH COUNTERS (total, assigned, unassigned) ========== */
   const refreshCounters = useCallback(async () => {
     try {
-      // pakai filter education (kalau ada). Query minimal (perPage=1) agar cepat.
-      const base = new URLSearchParams();
-      base.set("perPage", "1");
-      if (education) base.set("education", education);
+      const p = new URLSearchParams();
+      p.set("perPage", "1"); // biar cepat
+      p.set("summary", "1"); // <<— cukup 1 request
+      if (education) p.set("education", education);
 
-      const pTotal = new URLSearchParams(base);
-      pTotal.set("include_assigned", "1"); // semua
+      const res = await fetch(`/api/leads?${p.toString()}`, {
+        cache: "no-store",
+        credentials: "include",
+      });
+      if (!res.ok) return;
 
-      const pAssigned = new URLSearchParams(base);
-      pAssigned.set("only_assigned", "1"); // hanya assigned
-
-      const [allRes, assignedRes, unassignedRes] = await Promise.all([
-        fetch(`/api/leads?${pTotal.toString()}`, {
-          cache: "no-store",
-          credentials: "include",
-        }),
-        fetch(`/api/leads?${pAssigned.toString()}`, {
-          cache: "no-store",
-          credentials: "include",
-        }),
-        fetch(`/api/leads?${base.toString()}`, {
-          cache: "no-store",
-          credentials: "include",
-        }),
-      ]);
-
-      const [all, asg, unasg] = await Promise.all([
-        allRes.json(),
-        assignedRes.json(),
-        unassignedRes.json(),
-      ]);
-
-      setTotalLeads(all?.meta?.total ?? 0);
-      setAssignedCount(asg?.meta?.total ?? 0);
-      setUnassignedCount(unasg?.meta?.total ?? 0);
+      const j = await res.json();
+      const s = j?.summary;
+      if (s) {
+        setTotalLeads(s.total ?? 0);
+        setAssignedCount(s.assigned ?? 0);
+        setUnassignedCount(s.unassigned ?? 0);
+      }
     } catch {
       // diamkan; UI tetap jalan
     }

@@ -106,6 +106,7 @@ export async function GET(req) {
   const assignedToRaw = searchParams.get("assigned_to");
   const onlyAssigned = searchParams.get("only_assigned") === "1";
   const includeAssigned = searchParams.get("include_assigned") === "1";
+  const wantSummary = searchParams.get("summary") === "1"; // <<— NEW
   const assignedTo = parseId(assignedToRaw);
   if (assignedToRaw && assignedTo === null) {
     return json(
@@ -138,7 +139,8 @@ export async function GET(req) {
   );
   const orderBy = parseSort(searchParams.get("sort"));
 
-  const where = {
+  // ---------- baseWhere untuk SUMMARY (tanpa filter status assigned) ----------
+  const baseWhere = {
     ...(q && {
       OR: [
         { full_name: { contains: q } },
@@ -161,6 +163,13 @@ export async function GET(req) {
       : withDeleted
       ? {}
       : { deleted_at: null }),
+    ...(referralId !== null ? { referral_id: referralId } : {}),
+    ...(referralCode ? { referral: { code: referralCode } } : {}),
+  };
+
+  // ---------- listWhere untuk LIST (menghormati filter assigned) ----------
+  const listWhere = {
+    ...baseWhere,
     ...(assignedTo !== null
       ? { assigned_to: assignedTo }
       : onlyAssigned
@@ -168,14 +177,13 @@ export async function GET(req) {
       : includeAssigned
       ? {}
       : { assigned_to: null }),
-    ...(referralId !== null ? { referral_id: referralId } : {}),
-    ...(referralCode ? { referral: { code: referralCode } } : {}),
   };
 
-  const [total, rows] = await Promise.all([
-    prisma.leads.count({ where }),
+  // ---------- query paralel ----------
+  const tasks = [
+    prisma.leads.count({ where: listWhere }),
     prisma.leads.findMany({
-      where,
+      where: listWhere,
       orderBy,
       skip: (page - 1) * perPage,
       take: perPage,
@@ -207,15 +215,41 @@ export async function GET(req) {
           : {}),
       },
     }),
-  ]);
+  ];
 
-  // tambahkan *_ts agar konsisten di client
+  if (wantSummary) {
+    tasks.push(
+      prisma.leads.count({ where: baseWhere }),
+      prisma.leads.count({
+        where: { ...baseWhere, NOT: { assigned_to: null } },
+      }),
+      prisma.leads.count({ where: { ...baseWhere, assigned_to: null } })
+    );
+  }
+
+  const results = await Promise.all(tasks);
+
+  const total = results[0];
+  const rows = results[1];
   const data = rows.map(withTs);
+
+  let summary;
+  if (wantSummary) {
+    const totalLeads = results[2] || 0;
+    const assignedCount = results[3] || 0;
+    const unassignedCount = results[4] || 0;
+    summary = {
+      total: totalLeads,
+      assigned: assignedCount,
+      unassigned: unassignedCount,
+    };
+  }
 
   return json({
     message: "OK",
     data,
     meta: { page, perPage, total },
+    ...(summary ? { summary } : {}),
   });
 }
 

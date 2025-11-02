@@ -1,3 +1,4 @@
+// app/(view)/admin/programs/page.jsx
 "use client";
 
 import { Suspense, lazy } from "react";
@@ -8,6 +9,7 @@ const ProgramsContentLazy = lazy(() => import("./ProgramsContent"));
 
 export default function ProgramsPage() {
   const vm = useProgramsViewModel();
+
   return (
     <Suspense
       fallback={
@@ -16,6 +18,7 @@ export default function ProgramsPage() {
         </div>
       }
     >
+      {/* ProgramsContent mengharapkan props flatten dari VM */}
       <ProgramsContentLazy {...vm} />
     </Suspense>
   );

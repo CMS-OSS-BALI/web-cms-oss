@@ -1,7 +1,13 @@
-// ReferralContent.jsx
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+  useCallback,
+  useContext,
+  createContext,
+} from "react";
 import {
   ConfigProvider,
   Button,
@@ -29,8 +35,26 @@ import {
   CloseCircleOutlined,
 } from "@ant-design/icons";
 
+export const ReferralVMContext = createContext(null);
+
 export default function ReferralContent({ vm }) {
-  const viewModel = vm ?? require("./useReferralViewModel").default();
+  const ctxVM = useContext(ReferralVMContext);
+  const viewModel = vm || ctxVM;
+
+  if (!viewModel) {
+    if (process.env.NODE_ENV !== "production") {
+      // eslint-disable-next-line no-console
+      console.warn(
+        "ReferralContent: 'vm' tidak disediakan. Bungkus dengan <ReferralVMContext.Provider value={vm}> atau kirim prop vm."
+      );
+    }
+    return (
+      <div style={{ padding: 16 }}>
+        VM tidak tersedia. Inisialisasi useReferralViewModel di page dan
+        teruskan ke konten.
+      </div>
+    );
+  }
 
   const TOKENS = {
     shellW: "94%",
@@ -109,8 +133,7 @@ export default function ReferralContent({ vm }) {
       viewModel.setPage?.(1);
     }, 400);
     return () => clearTimeout(t);
-    // eslint-disable-next-line
-  }, [searchValue]);
+  }, [searchValue]); // eslint-disable-line
 
   // status filter
   const onChangeStatus = (v) => {
@@ -124,7 +147,6 @@ export default function ReferralContent({ vm }) {
     setDetailOpen(true);
     setDetailLoading(true);
     setDetailData(null);
-    // preload consultant names so label bisa tampil di detail
     await loadConsultants("");
     const { ok, data, previews, error } = await viewModel.getReferral(row.id);
     setDetailLoading(false);
@@ -158,7 +180,6 @@ export default function ReferralContent({ vm }) {
       pic_consultant_id: data.pic_consultant_id || undefined,
     });
 
-    // Load options dan pastikan current PIC punya label
     await loadConsultants("");
     if (data.pic_consultant_id) {
       setConsultantOptions((prev) => {
@@ -178,7 +199,7 @@ export default function ReferralContent({ vm }) {
     const res = await viewModel.updateReferral(activeRow.id, {
       status: v.status,
       notes: v.notes || null,
-      pic_consultant_id: v.pic_consultant_id || null, // ⬅️ admin dapat edit/clear PIC
+      pic_consultant_id: v.pic_consultant_id || null,
     });
     if (!res.ok) return toast.err("Gagal menyimpan", res.error);
     toast.ok("Tersimpan", "Perubahan berhasil disimpan.");

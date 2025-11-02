@@ -1,38 +1,87 @@
+// app/(view)/user/header/useHeaderUViewModel.js
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
+
+const LANG_COOKIE = "oss.lang";
+const LANG_COOKIE_MAX_AGE = 60 * 60 * 24 * 180; // 180 hari
 
 /* ======================= Helpers ======================= */
+const normalizeLang = (value, fallback = "id") => {
+  const base = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (base.startsWith("en")) return "en";
+  if (base.startsWith("id")) return "id";
+  return fallback === "en" ? "en" : "id";
+};
+
+const readLangCookie = () => {
+  if (typeof document === "undefined") return "";
+  const match = document.cookie.match(/(?:^|;\s*)oss\.lang=(en|id)/);
+  return match ? match[1] : "";
+};
+
+const writeLangCookie = (lang) => {
+  if (typeof document === "undefined") return;
+  const normalized = normalizeLang(lang);
+  const secure =
+    typeof window !== "undefined" && window.location.protocol === "https:"
+      ? "; Secure"
+      : "";
+  document.cookie = `${LANG_COOKIE}=${normalized}; path=/; max-age=${LANG_COOKIE_MAX_AGE}; SameSite=Lax${secure}`;
+};
+
 const cleanPath = (s) =>
   !s ? "/" : s.length > 1 && s.endsWith("/") ? s.slice(0, -1) : s;
 
-const isPathMatch = (pathname, base) => {
-  if (!pathname || !base) return false;
-  const p = cleanPath(pathname);
-  const b = cleanPath(base);
-  if (b === "/") return p === "/";
-  return p === b || p.startsWith(b + "/");
+const stripMenuParamFromCurrentUrl = () => {
+  if (typeof window === "undefined") return;
+  try {
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("menu")) {
+      url.searchParams.delete("menu");
+      window.history.replaceState({}, "", url.toString());
+    }
+  } catch {}
 };
 
+/** 🔧 Baru: urutan prioritas = URL > Cookie > localStorage > <html lang> > default */
 const getInitialLangClient = () => {
-  // Call this ONLY on client (after mount)
-  const url = new URL(window.location.href);
-  const q = (url.searchParams.get("lang") || "").toLowerCase();
-  const ls = (localStorage.getItem("oss.lang") || "").toLowerCase();
-  const cand = q || ls || "id";
-  return cand.startsWith("en") ? "en" : "id";
-};
+  try {
+    const url = new URL(window.location.href);
+    const q = (url.searchParams.get("lang") || "").toLowerCase();
+    const ck = (readLangCookie() || "").toLowerCase();
+    const ls = (localStorage.getItem(LANG_COOKIE) || "").toLowerCase();
+    const htmlLang = (
+      document.documentElement.getAttribute("lang") || ""
+    ).toLowerCase();
 
-const setHtmlLang = (l) => {
-  if (typeof document !== "undefined")
-    document.documentElement.setAttribute("lang", l);
+    const cand = q || ck || ls || htmlLang || "id";
+    return normalizeLang(cand);
+  } catch {
+    const ck = (readLangCookie() || "").toLowerCase();
+    const ls = (
+      typeof localStorage !== "undefined"
+        ? localStorage.getItem(LANG_COOKIE)
+        : ""
+    )?.toLowerCase();
+    return normalizeLang(ck || ls || "id");
+  }
 };
 
 const replaceUrlLang = (l) => {
   if (typeof window === "undefined") return;
   const url = new URL(window.location.href);
-  url.searchParams.set("lang", l);
+  // keep URL clean
+  url.searchParams.delete("menu");
+  // ID is default (no ?lang), EN uses ?lang=en
+  if (l === "en") {
+    url.searchParams.set("lang", "en");
+  } else {
+    url.searchParams.delete("lang");
+  }
   window.history.replaceState({}, "", url.toString());
 };
 
@@ -42,8 +91,8 @@ const NAV_ID = [
   {
     id: "home",
     label: "Beranda",
-    href: "/user/landing-page",
-    matchers: ["/user/landing-page", "/user"],
+    href: "/",
+    matchers: ["/", "/user", "/user/landing-page"],
     isDefault: true,
   },
   {
@@ -63,7 +112,7 @@ const NAV_ID = [
   {
     id: "event",
     label: "Event",
-    href: "/user/events?menu=events",
+    href: "/user/events",
     matchers: [
       "/user/events",
       "/user/leads",
@@ -74,11 +123,11 @@ const NAV_ID = [
   {
     id: "partners",
     label: "Mitra Dalam Negeri",
-    href: "/user/mitra-dalam-negeri?menu=partners",
+    href: "/user/mitra-dalam-negeri",
     matchers: [
-      "/user/mitra-dalam-negeri", // NEW primary route
-      "/user/partners", // legacy support
-      "/user/form-mitra", // alias support if ever used
+      "/user/mitra-dalam-negeri",
+      "/user/partners",
+      "/user/form-mitra",
       "/user/leads",
     ],
   },
@@ -91,19 +140,19 @@ const NAV_ID = [
   {
     id: "blog",
     label: "Berita",
-    href: "/user/blog?menu=blog",
+    href: "/user/blog",
     matchers: ["/user/blog", "/user/leads"],
   },
   {
     id: "about",
     label: "Tentang Kami",
-    href: "/user/aboutus?menu=about",
+    href: "/user/aboutus",
     matchers: ["/user/aboutus", "/user/leads"],
   },
   {
     id: "career",
     label: "Karier Bersama Kami",
-    href: "/user/career?menu=career",
+    href: "/user/career",
     matchers: ["/user/career", "/user/leads"],
   },
 ];
@@ -113,8 +162,8 @@ const NAV_EN = [
   {
     id: "home",
     label: "Home",
-    href: "/user/landing-page",
-    matchers: ["/user/landing-page", "/user"],
+    href: "/",
+    matchers: ["/", "/user", "/user/landing-page"],
     isDefault: true,
   },
   {
@@ -134,7 +183,7 @@ const NAV_EN = [
   {
     id: "event",
     label: "Events",
-    href: "/user/events?menu=events",
+    href: "/user/events",
     matchers: [
       "/user/events",
       "/user/leads",
@@ -145,11 +194,11 @@ const NAV_EN = [
   {
     id: "partners",
     label: "Partners",
-    href: "/user/mitra-dalam-negeri?menu=partners",
+    href: "/user/mitra-dalam-negeri",
     matchers: [
-      "/user/mitra-dalam-negeri", // NEW primary route
-      "/user/partners", // legacy support
-      "/user/form-mitra", // alias support
+      "/user/mitra-dalam-negeri",
+      "/user/partners",
+      "/user/form-mitra",
       "/user/leads",
     ],
   },
@@ -162,19 +211,19 @@ const NAV_EN = [
   {
     id: "blog",
     label: "News",
-    href: "/user/blog?menu=blog",
+    href: "/user/blog",
     matchers: ["/user/blog", "/user/leads"],
   },
   {
     id: "about",
     label: "About Us",
-    href: "/user/aboutus?menu=about",
+    href: "/user/aboutus",
     matchers: ["/user/aboutus", "/user/leads"],
   },
   {
     id: "career",
     label: "Career With Us",
-    href: "/user/career?menu=career",
+    href: "/user/career",
     matchers: ["/user/career", "/user/leads"],
   },
 ];
@@ -184,46 +233,40 @@ const LANG_OPTIONS = [
   { value: "en", label: "English", flag: "/images/inggris.png" },
 ];
 
-const normalizeMenuId = (m) => {
-  const x = String(m || "").toLowerCase();
-  if (x === "majors" || x === "jurusan") return "college";
-  // Map various partner aliases to the same nav id
-  if (["partners", "partner", "mitra", "mitra-dalam-negeri"].includes(x))
-    return "partners";
-  return x;
-};
-
 /* ======================= Hook ======================= */
 export function useHeaderUViewModel() {
   const pathname = usePathname();
-  const search = useSearchParams();
 
   const [isMenuOpen, setMenuOpen] = useState(false);
-
-  // IMPORTANT: match server render first -> default "id"
   const [lang, setLang] = useState("id");
   const [mounted, setMounted] = useState(false);
 
-  // After mount, read real lang from URL/localStorage and update.
   useEffect(() => {
     setMounted(true);
     try {
+      stripMenuParamFromCurrentUrl();
+
       const initial = getInitialLangClient();
       setLang(initial);
-      setHtmlLang(initial);
+
+      // Sync ke <html lang> & URL & cookie & localStorage
+      document.documentElement.setAttribute("lang", initial);
       replaceUrlLang(initial);
-      localStorage.setItem("oss.lang", initial);
+      writeLangCookie(initial);
+      localStorage.setItem(LANG_COOKIE, initial);
     } catch {}
   }, []);
 
-  // Persist + reflect when user changes language (only after mounted)
   useEffect(() => {
     if (!mounted) return;
-    localStorage.setItem("oss.lang", lang);
-    setHtmlLang(lang);
+    // hanya sync jika sudah mount
+    localStorage.setItem(LANG_COOKIE, lang);
+    writeLangCookie(lang);
+    document.documentElement.setAttribute("lang", lang);
     replaceUrlLang(lang);
   }, [lang, mounted]);
 
+  // close mobile menu on route change
   useEffect(() => setMenuOpen(false), [pathname]);
 
   const changeLang = useCallback(
@@ -240,29 +283,22 @@ export function useHeaderUViewModel() {
 
     for (const item of NAV_SRC) {
       for (const m of item.matchers || []) {
-        if (isPathMatch(pathname, m) && m.length > bestLen) {
+        const p = cleanPath(pathname);
+        const b = cleanPath(m);
+        const matched =
+          b === "/" ? p === "/" : p === b || p.startsWith(b + "/");
+        if (matched && m.length > bestLen) {
           activeId = item.id;
           bestLen = m.length;
         }
       }
     }
 
-    const forcedRaw = search?.get("menu");
-    const forced = normalizeMenuId(forcedRaw);
-    if (forced) {
-      const found = NAV_SRC.find((i) => i.id === forced);
-      if (found) activeId = found.id;
-    }
-
     return NAV_SRC.map((item) => ({ ...item, isActive: item.id === activeId }));
-  }, [pathname, search, NAV_SRC]);
+  }, [pathname, NAV_SRC]);
 
   return {
-    logo: {
-      src: "/images/loading.png",
-      alt: "OSS Bali",
-      href: "/user/landing-page",
-    },
+    logo: { src: "/images/loading.png", alt: "OSS Bali", href: "/" },
     navItems,
     isMenuOpen,
     toggleMenu: () => setMenuOpen((s) => !s),

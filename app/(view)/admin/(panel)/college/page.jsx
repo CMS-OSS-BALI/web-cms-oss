@@ -1,24 +1,24 @@
 // app/(view)/admin/college/page.jsx
-import dynamic from "next/dynamic";
+"use client";
+
+import { Suspense, lazy } from "react";
 import Loading from "@/app/components/loading/LoadingImage";
+import useCollegeAViewModel from "./useCollegeAViewModel";
 
-const CollegeAContent = dynamic(() => import("./CollegeAContent"), {
-  ssr: false,
-  loading: () => (
-    <div className="page-wrap">
-      <Loading />
-    </div>
-  ),
-});
+const CollegeAContentLazy = lazy(() => import("./CollegeAContent"));
 
-const pickLocale = (v) => {
-  const s = String(v || "id")
-    .trim()
-    .toLowerCase();
-  return s.startsWith("en") ? "en" : "id";
-};
+export default function CollegePage() {
+  const vm = useCollegeAViewModel();
 
-export default function CollegePage({ searchParams }) {
-  const initialLocale = pickLocale(searchParams?.lang);
-  return <CollegeAContent initialLocale={initialLocale} />;
+  return (
+    <Suspense
+      fallback={
+        <div className="page-wrap">
+          <Loading />
+        </div>
+      }
+    >
+      <CollegeAContentLazy vm={vm} />
+    </Suspense>
+  );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState, useEffect } from "react";
+import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import dayjs from "dayjs";
 
 /* ========= Helpers ========= */
@@ -12,6 +12,52 @@ function cleanDigits(str = "") {
 }
 function nonEmpty(v) {
   return typeof v === "string" && v.trim().length > 0;
+}
+
+/** Normalisasi struktur ringkasan (flexibel terhadap bentuk respons) */
+function normalizeReferralSummary(obj) {
+  if (!obj) return null;
+  const src =
+    obj?.summary ||
+    obj?.counts ||
+    obj?.data?.summary ||
+    obj?.data?.counts ||
+    obj?.data ||
+    obj;
+
+  if (!src || typeof src !== "object") return null;
+
+  const lower = {};
+  for (const [k, v] of Object.entries(src)) {
+    lower[String(k).toLowerCase()] = Number(v);
+  }
+
+  const pending =
+    lower.pending ??
+    lower.submitted ??
+    (Number.isFinite(lower["pending"]) ? lower["pending"] : undefined);
+
+  const verified =
+    lower.verified ??
+    lower.approved ??
+    (Number.isFinite(lower["verified"]) ? lower["verified"] : undefined);
+
+  const rejected =
+    lower.rejected ??
+    lower.declined ??
+    (Number.isFinite(lower["rejected"]) ? lower["rejected"] : undefined);
+
+  const anyDefined = [pending, verified, rejected].some((x) =>
+    Number.isFinite(x)
+  );
+
+  return anyDefined
+    ? {
+        pending: Number.isFinite(pending) ? pending : null,
+        verified: Number.isFinite(verified) ? verified : null,
+        rejected: Number.isFinite(rejected) ? rejected : null,
+      }
+    : null;
 }
 
 export function useReferralViewModel() {
@@ -36,7 +82,7 @@ export function useReferralViewModel() {
     whatsapp: "",
     email: "",
     // relasi
-    pic_consultant_id: "", // ⬅️ OPSIONAL (tidak wajib)
+    pic_consultant_id: "", // opsional
     // lainnya
     consent_agreed: false,
     document: { front_file: null, front_preview: "" },
@@ -45,6 +91,73 @@ export function useReferralViewModel() {
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState(null);
+
+  // ======== OPTIONAL: ringkasan referral (1x request) ========
+  const [summary, setSummary] = useState({
+    pending: null,
+    verified: null,
+    rejected: null,
+  });
+  const sumAbort = useRef(null);
+
+  const loadSummary = useCallback(async () => {
+    sumAbort.current?.abort?.();
+    const ac = new AbortController();
+    sumAbort.current = ac;
+
+    // 1) Coba endpoint summary
+    try {
+      const res = await fetch("/api/referral/summary", {
+        cache: "no-store",
+        signal: ac.signal,
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error?.message || "Failed summary");
+      const s = normalizeReferralSummary(json);
+      if (!s) throw new Error("Summary missing counts");
+      setSummary(s);
+      return { ok: true, data: s };
+    } catch {
+      // lanjut fallback
+    }
+
+    // 2) Fallback terakhir: 3 panggilan status (minim perPage=1)
+    try {
+      const ask = async (st) => {
+        const u = new URL("/api/referral", window.location.origin);
+        u.searchParams.set("page", "1");
+        u.searchParams.set("perPage", "1"); // ambil meta.total saja
+        u.searchParams.set("status", st);
+        const r = await fetch(u.toString(), {
+          cache: "no-store",
+          signal: ac.signal,
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j?.error?.message || "Failed");
+        return j?.meta?.total ?? 0;
+      };
+
+      const [p, v, rj] = await Promise.all([
+        ask("PENDING"),
+        ask("VERIFIED"),
+        ask("REJECTED"),
+      ]);
+      const s = { pending: p, verified: v, rejected: rj };
+      setSummary(s);
+      return { ok: true, data: s };
+    } catch (e) {
+      if (e?.name !== "AbortError") {
+        setSummary({ pending: null, verified: null, rejected: null });
+      }
+      return { ok: false, error: e?.message || "Failed to load summary" };
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      sumAbort.current?.abort?.();
+    };
+  }, []);
 
   // Data dropdown konsultan
   const [consultants, setConsultants] = useState([]);
@@ -141,7 +254,6 @@ export function useReferralViewModel() {
     if (!EMAIL_RE.test(String(v.email || "").trim()))
       e.email = "Email tidak valid.";
 
-    // PIC tidak wajib -> tidak ada error
     if (!(v.document.front_file || v.document.front_preview))
       e.front = "Foto Kartu Identitas wajib diunggah.";
     if (!v.consent_agreed) e.consent_agreed = "Wajib menyetujui syarat.";
@@ -211,7 +323,7 @@ export function useReferralViewModel() {
         "province",
         "postal_code",
         "domicile",
-        "pekerjaan", // ⬅️ wajib => dipastikan terkirim
+        "pekerjaan",
       ].forEach((k) => {
         const v = values[k];
         if (v != null && String(v).trim() !== "")
@@ -221,7 +333,6 @@ export function useReferralViewModel() {
       fd.append("whatsapp", values.whatsapp.trim());
       fd.append("email", values.email.trim());
 
-      // PIC opsional: kirim hanya jika ada
       if (values.pic_consultant_id) {
         fd.append("pic_consultant_id", String(values.pic_consultant_id));
       }
@@ -270,20 +381,25 @@ export function useReferralViewModel() {
         province: "",
         postal_code: "",
         domicile: "",
-        pekerjaan: "", // reset
+        pekerjaan: "",
         whatsapp: "",
         email: "",
-        pic_consultant_id: "", // reset (opsional)
+        pic_consultant_id: "",
         consent_agreed: false,
         document: { front_file: null, front_preview: "" },
       });
       setErrors({});
+
+      // OPTIONAL: refresh summary setelah submit sukses bila halaman admin butuh
+      try {
+        await loadSummary();
+      } catch {}
     } catch {
       setMsg({ type: "error", text: "Terjadi kesalahan jaringan. Coba lagi." });
     } finally {
       setLoading(false);
     }
-  }, [values, buildErrors]);
+  }, [values, buildErrors, loadSummary]);
 
   return {
     values,
@@ -294,8 +410,14 @@ export function useReferralViewModel() {
     canSubmit,
     loading,
     msg,
+
+    // dropdown konsultan
     consultants,
     consultantsLoading,
     loadConsultants,
+
+    // OPTIONAL summary (admin bisa konsumsi ini)
+    summary, // { pending, verified, rejected }
+    loadSummary, // panggil manual saat perlu
   };
 }

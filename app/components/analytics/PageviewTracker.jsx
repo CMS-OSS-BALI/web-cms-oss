@@ -29,7 +29,7 @@ export default function PageviewTracker({ ignoreAdmin = false }) {
 
   useEffect(() => {
     if (!pathname) return;
-    if (ignoreAdmin && pathname.startsWith("/admin")) return; // opsional: jangan track halaman admin
+    if (ignoreAdmin && pathname.startsWith("/admin")) return;
 
     const { vid, sid } = ensureIds();
     const payload = {

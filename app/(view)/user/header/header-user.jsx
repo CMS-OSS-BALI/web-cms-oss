@@ -23,6 +23,13 @@ function FlagDropdown({ lang, langs, onChange, variant = "desktop" }) {
 
   const current = langs.find((l) => l.value === lang) || langs[0];
 
+  // Alt text deskriptif untuk SEO & aksesibilitas
+  const flagAlt = (code) => {
+    if (code === "id") return "Bendera Indonesia";
+    if (code === "en") return "Bendera Inggris";
+    return "Bendera";
+  };
+
   return (
     <div
       ref={ref}
@@ -38,10 +45,16 @@ function FlagDropdown({ lang, langs, onChange, variant = "desktop" }) {
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen((s) => !s)}
-        title="Change language"
+        title="Ganti bahasa"
       >
         <span className="flagdd__left">
-          <img className="flagdd__img" src={current.flag} alt="" />
+          <img
+            className="flagdd__img"
+            src={current.flag}
+            alt={flagAlt(current.value)}
+            width={20}
+            height={14}
+          />
           {variant === "mobile" && (
             <span className="flagdd__current">{current.label}</span>
           )}
@@ -65,7 +78,14 @@ function FlagDropdown({ lang, langs, onChange, variant = "desktop" }) {
                   setOpen(false);
                 }}
               >
-                <img className="flagdd__img" src={opt.flag} alt="" />
+                <img
+                  className="flagdd__img"
+                  src={opt.flag}
+                  alt={flagAlt(opt.value)}
+                  width={20}
+                  height={14}
+                  loading="lazy"
+                />
                 <span className="flagdd__label">{opt.label}</span>
               </button>
             </li>
@@ -100,7 +120,6 @@ export default function HeaderUser() {
           id="user-header-nav"
           className={`user-header__nav${isMenuOpen ? " is-open" : ""}`}
           aria-label="Navigasi utama"
-          // If some text still differs at hydration (rare), ignore warning:
           suppressHydrationWarning
         >
           <ul className="user-header__nav-list">

@@ -1,12 +1,38 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ConfigProvider,
+  Button,
+  Modal,
+  Form,
+  Input,
+  Upload,
+  Empty,
+  Skeleton,
+  Popconfirm,
+  Tooltip,
+  Spin,
+  Select,
+  notification,
+} from "antd";
+import {
+  PlusCircleOutlined,
+  EyeOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  LeftOutlined,
+  RightOutlined,
+  SearchOutlined,
+} from "@ant-design/icons";
 
+/* ===================== Constants ===================== */
 const DEFAULT_SORT = "created_at:desc";
 const DEFAULT_LOCALE = "id";
 const fallbackFor = (loc) =>
   String(loc || "").toLowerCase() === "id" ? "en" : "id";
 
+/* ===================== Utils ===================== */
 function buildKey({
   page,
   perPage,
@@ -36,6 +62,54 @@ const csvSafe = (v) => {
   const s = String(v ?? "");
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
+
+/** Normalisasi struktur counts dari berbagai bentuk respons */
+function normalizeCounts(obj) {
+  if (!obj) return null;
+
+  // Ambil kemungkinan lokasi angka ringkasan
+  const src =
+    obj?.meta?.counts ||
+    obj?.data?.counts ||
+    obj?.summary ||
+    obj?.counts ||
+    obj?.data ||
+    obj;
+
+  if (!src || typeof src !== "object") return null;
+
+  const lower = {};
+  for (const [k, v] of Object.entries(src)) {
+    lower[String(k).toLowerCase()] = Number(v);
+  }
+
+  const pending =
+    lower.pending ??
+    lower.awaiting ??
+    (Number.isFinite(lower["pending"]) ? lower["pending"] : undefined);
+
+  const approved =
+    lower.approved ??
+    lower.accepted ??
+    (Number.isFinite(lower["approved"]) ? lower["approved"] : undefined);
+
+  const declined =
+    lower.declined ??
+    lower.rejected ??
+    (Number.isFinite(lower["declined"]) ? lower["declined"] : undefined);
+
+  const anyDefined = [pending, approved, declined].some((x) =>
+    Number.isFinite(x)
+  );
+
+  return anyDefined
+    ? {
+        pending: Number.isFinite(pending) ? pending : null,
+        approved: Number.isFinite(approved) ? approved : null,
+        declined: Number.isFinite(declined) ? declined : null,
+      }
+    : null;
+}
 
 export default function useMerchantsViewModel() {
   /* ========== list state ========== */
@@ -67,14 +141,104 @@ export default function useMerchantsViewModel() {
       typeof fnOrArr === "function" ? fnOrArr(prev) : fnOrArr
     );
 
-  /* ========== status summary ========== */
+  /* ========== status summary (single-call first) ========== */
   const [statusCounts, setStatusCounts] = useState({
     pending: null,
     approved: null,
     declined: null,
   });
 
-  /* ========== reload list ========== */
+  /** Panggil endpoint summary (1x request) */
+  const fetchSummaryOnce = useCallback(async (signal) => {
+    const res = await fetch(`/api/mitra-dalam-negeri/summary`, {
+      cache: "no-store",
+      signal,
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(json?.error?.message || "Failed summary");
+    }
+    const counts = normalizeCounts(json);
+    if (!counts) throw new Error("Summary missing counts");
+    return counts;
+  }, []);
+
+  /** Fallback lama: 3 panggilan (PENDING/APPROVED/DECLINED) */
+  const fetchCountByStatus = useCallback(
+    async (st, signal) => {
+      const params = new URLSearchParams();
+      params.set("page", "1");
+      params.set("perPage", "1"); // hanya butuh meta.total
+      params.set("sort", DEFAULT_SORT);
+      params.set("locale", locale);
+      params.set("fallback", fallbackFor(locale));
+      params.set("status", st);
+
+      const res = await fetch(`/api/mitra-dalam-negeri?${params.toString()}`, {
+        cache: "no-store",
+        signal,
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j?.error?.message || "Failed count");
+      return j?.meta?.total ?? 0;
+    },
+    [locale]
+  );
+
+  /** Refresh summary dengan strategi: summary endpoint → meta.counts → fallback 3 panggilan */
+  const refreshStatusCounts = useCallback(async () => {
+    countAbort.current?.abort?.();
+    const ac = new AbortController();
+    countAbort.current = ac;
+
+    try {
+      // 1) Coba endpoint /summary
+      const counts = await fetchSummaryOnce(ac.signal);
+      setStatusCounts(counts);
+      return;
+    } catch {
+      // lanjut ke fallback
+    }
+
+    try {
+      // 2) Coba ambil dari list (perPage=1) yang mungkin sudah menyertakan meta.counts
+      const url = buildKey({
+        page: 1,
+        perPage: 1,
+        q: "",
+        sort: DEFAULT_SORT,
+        locale,
+        fallback: fallbackFor(locale),
+        status: "",
+        categoryId: "",
+      });
+      const probe = await fetch(url, { cache: "no-store", signal: ac.signal });
+      const probeJson = await probe.json().catch(() => ({}));
+      const maybe = normalizeCounts(probeJson);
+      if (maybe) {
+        setStatusCounts(maybe);
+        return;
+      }
+    } catch {
+      // lanjut ke fallback 3x
+    }
+
+    try {
+      // 3) Fallback terakhir: 3 panggilan lama
+      const [p, a, d] = await Promise.all([
+        fetchCountByStatus("PENDING", ac.signal),
+        fetchCountByStatus("APPROVED", ac.signal),
+        fetchCountByStatus("DECLINED", ac.signal),
+      ]);
+      setStatusCounts({ pending: p, approved: a, declined: d });
+    } catch (e) {
+      if (e?.name !== "AbortError") {
+        setStatusCounts({ pending: null, approved: null, declined: null });
+      }
+    }
+  }, [locale, fetchSummaryOnce, fetchCountByStatus]);
+
+  /* ========== reload list (sekalian baca counts kalau disediakan) ========== */
   const reload = useCallback(async () => {
     setLoading(true);
     listAbort.current?.abort?.();
@@ -101,13 +265,18 @@ export default function useMerchantsViewModel() {
       const meta = json?.meta || {};
       const nextTotal = meta.total ?? rows.length ?? 0;
 
-      // Avoid ?? and || precedence issues by splitting:
       const defaultPages = Math.ceil(nextTotal / (perPage || 10)) || 1;
       const nextTotalPages = Math.max(1, meta.totalPages ?? defaultPages);
 
       setMerchants(rows);
       setTotal(nextTotal);
       setTotalPages(nextTotalPages);
+
+      // Jika server sudah kirim counts, pakai langsung (tanpa panggilan tambahan)
+      const maybeCounts = normalizeCounts(json);
+      if (maybeCounts) {
+        setStatusCounts((prev) => ({ ...prev, ...maybeCounts }));
+      }
     } catch (e) {
       if (e?.name !== "AbortError") {
         setMerchants([]);
@@ -126,46 +295,6 @@ export default function useMerchantsViewModel() {
     };
   }, [reload]);
 
-  /* ========== fetch total per status (global) ========== */
-  const fetchCountByStatus = useCallback(
-    async (st, signal) => {
-      const params = new URLSearchParams();
-      params.set("page", "1");
-      params.set("perPage", "1"); // just need meta.total
-      params.set("sort", DEFAULT_SORT);
-      params.set("locale", locale);
-      params.set("fallback", fallbackFor(locale));
-      params.set("status", st);
-
-      const res = await fetch(`/api/mitra-dalam-negeri?${params.toString()}`, {
-        cache: "no-store",
-        signal,
-      });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j?.error?.message || "Failed count");
-      return j?.meta?.total ?? 0;
-    },
-    [locale]
-  );
-
-  const refreshStatusCounts = useCallback(async () => {
-    countAbort.current?.abort?.();
-    const ac = new AbortController();
-    countAbort.current = ac;
-    try {
-      const [p, a, d] = await Promise.all([
-        fetchCountByStatus("PENDING", ac.signal),
-        fetchCountByStatus("APPROVED", ac.signal),
-        fetchCountByStatus("DECLINED", ac.signal),
-      ]);
-      setStatusCounts({ pending: p, approved: a, declined: d });
-    } catch (e) {
-      if (e?.name !== "AbortError") {
-        setStatusCounts({ pending: null, approved: null, declined: null });
-      }
-    }
-  }, [fetchCountByStatus]);
-
   useEffect(() => {
     refreshStatusCounts();
     return () => {
@@ -173,7 +302,7 @@ export default function useMerchantsViewModel() {
     };
   }, [refreshStatusCounts]);
 
-  /* ========== detail ========== */
+  /* ========== detail / update / delete ========== */
   const getMerchant = useCallback(
     async (id) => {
       try {
@@ -196,7 +325,6 @@ export default function useMerchantsViewModel() {
     [locale]
   );
 
-  /* ========== update ========== */
   const updateMerchant = useCallback(
     async (id, payload) => {
       setOpLoading(true);
@@ -206,24 +334,20 @@ export default function useMerchantsViewModel() {
           body = payload;
         } else {
           const fd = new FormData();
-          // single image
           if (payload.file) {
             fd.set("image", payload.file);
             delete payload.file;
           }
-          // new attachments
           if (Array.isArray(payload.attachments_new)) {
             payload.attachments_new.forEach((f) => fd.append("attachments", f));
             delete payload.attachments_new;
           }
-          // attachments to delete (ids)
           if (Array.isArray(payload.attachments_to_delete)) {
             payload.attachments_to_delete.forEach((x) =>
               fd.append("attachments_to_delete", String(x))
             );
             delete payload.attachments_to_delete;
           }
-          // other fields
           Object.entries(payload || {}).forEach(([k, v]) => {
             if (v !== undefined && v !== null) fd.set(k, String(v));
           });
@@ -250,7 +374,6 @@ export default function useMerchantsViewModel() {
     [locale, reload, refreshStatusCounts]
   );
 
-  /* ========== delete ========== */
   const deleteMerchant = useCallback(
     async (id) => {
       setOpLoading(true);
@@ -426,10 +549,12 @@ export default function useMerchantsViewModel() {
     getMerchant,
     updateMerchant,
     deleteMerchant,
-    statusCounts,
-    exportCSV,
 
-    // util
+    // summary counts (already minimized requests)
+    statusCounts,
     reload,
+
+    // export
+    exportCSV,
   };
 }

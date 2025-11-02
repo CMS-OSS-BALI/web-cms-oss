@@ -1,18 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+  useContext,
+  createContext,
+} from "react";
 import {
-  ConfigProvider,
   Button,
   Modal,
   Form,
   Input,
+  Select,
   Empty,
   Skeleton,
   Popconfirm,
   Tooltip,
-  Spin,
-  Select,
   notification,
 } from "antd";
 import {
@@ -24,16 +28,32 @@ import {
   RightOutlined,
   SearchOutlined,
 } from "@ant-design/icons";
+import AdminShell from "@/app/components/admin/AdminShell";
+import useAdminTokens from "@/app/components/admin/useAdminTokens";
+
+export const MasterDataVMContext = createContext(null);
 
 export default function MasterDataContent({ vm }) {
-  const viewModel = vm ?? require("./useMasterDataViewModel").default();
+  const ctxVM = useContext(MasterDataVMContext);
+  const viewModel = vm || ctxVM;
 
-  const TOKENS = {
-    shellW: "94%",
-    maxW: 1140,
-    blue: "#0b56c9",
-    text: "#0f172a",
-  };
+  if (!viewModel) {
+    if (process.env.NODE_ENV !== "production") {
+      // eslint-disable-next-line no-console
+      console.warn(
+        "MasterDataContent: 'vm' tidak disediakan. Bungkus dengan <MasterDataVMContext.Provider value={vm}> atau kirim prop vm."
+      );
+    }
+    return (
+      <div style={{ padding: 16 }}>
+        VM tidak tersedia. Inisialisasi useMasterDataViewModel di page, lalu
+        teruskan ke konten.
+      </div>
+    );
+  }
+
+  const { styles: S } = useAdminTokens();
+
   const T = {
     title: "Manajemen Master Data",
     listTitle: "Daftar Kategori",
@@ -139,208 +159,202 @@ export default function MasterDataContent({ vm }) {
         : viewModel.page + 1
     );
 
-  const { shellW, maxW, blue, text } = TOKENS;
+  // ===== local styles (hanya grid spesifik halaman) =====
+  const L = {
+    filtersRow: {
+      display: "grid",
+      gridTemplateColumns: "1fr 240px",
+      gap: 8,
+      marginBottom: 10,
+      alignItems: "center",
+    },
+    searchInput: { height: 36, borderRadius: 10 },
+    filterSelect: { width: "100%" },
+    tableHeader: {
+      display: "grid",
+      gridTemplateColumns: "1.4fr .6fr",
+      gap: 8,
+      marginBottom: 4,
+      color: "#0b3e91",
+      fontWeight: 700,
+      alignItems: "center",
+    },
+    thLeft: { display: "flex", justifyContent: "flex-start", width: "100%" },
+    thCenter: { display: "flex", justifyContent: "center", width: "100%" },
+    row: {
+      display: "grid",
+      gridTemplateColumns: "1.4fr .6fr",
+      gap: 8,
+      alignItems: "center",
+      background: "#f5f8ff",
+      borderRadius: 10,
+      border: "1px solid #e8eeff",
+      padding: "8px 10px",
+      boxShadow: "0 6px 12px rgba(11, 86, 201, 0.05)",
+    },
+    colName: {
+      background: "#ffffff",
+      borderRadius: 10,
+      border: "1px solid #eef3ff",
+      padding: "6px 10px",
+      display: "flex",
+      alignItems: "center",
+      gap: 10,
+      minWidth: 0,
+    },
+    nameWrap: { display: "grid", gap: 2, minWidth: 0 },
+    nameText: {
+      fontWeight: 600,
+      color: "#111827",
+      whiteSpace: "nowrap",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+    },
+    colActionsCenter: { display: "flex", justifyContent: "center", gap: 6 },
+  };
+
+  const totalLabel =
+    viewModel.typeOptions?.find((o) => o.value === viewModel.type)?.label ||
+    "Total";
 
   return (
-    <ConfigProvider
-      componentSize="middle"
-      theme={{
-        token: {
-          colorPrimary: blue,
-          colorText: text,
-          fontFamily:
-            '"Poppins", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
-          borderRadius: 12,
-          fontSize: 13,
-          controlHeight: 36,
-        },
-        components: { Button: { borderRadius: 10 } },
-      }}
+    <AdminShell
+      title={T.title}
+      totalLabel={totalLabel}
+      totalValue={viewModel.total ?? rows.length ?? "—"}
     >
       {contextHolder}
-      <section
-        style={{
-          width: "100%",
-          position: "relative",
-          minHeight: "100dvh",
-          display: "flex",
-          alignItems: "flex-start",
-          padding: "56px 0",
-          overflowX: "hidden",
-        }}
-      >
-        <div
-          aria-hidden
-          style={{
-            position: "absolute",
-            inset: 0,
-            background:
-              "linear-gradient(180deg, #f8fbff 0%, #eef5ff 40%, #ffffff 100%)",
-            zIndex: 0,
-          }}
-        />
-        <div
-          style={{
-            width: shellW,
-            maxWidth: maxW,
-            margin: "0 auto",
-            paddingTop: 12,
-            position: "relative",
-            zIndex: 1,
-          }}
-        >
-          {/* Header */}
-          <div style={styles.cardOuter}>
-            <div style={styles.cardHeaderBar} />
-            <div style={styles.cardInner}>
-              <div style={styles.cardTitle}>{T.title}</div>
-              <div style={styles.totalBadgeWrap}>
-                <div style={styles.totalBadgeLabel}>
-                  {
-                    viewModel.typeOptions.find(
-                      (o) => o.value === viewModel.type
-                    )?.label
-                  }
-                </div>
-                <div style={styles.totalBadgeValue}>
-                  {viewModel.total ?? rows.length ?? "—"}
-                </div>
-              </div>
-            </div>
+
+      {/* Data Card */}
+      <div style={{ ...S.cardOuter, marginTop: 12 }}>
+        <div style={{ ...S.cardInner, paddingTop: 14 }}>
+          <div style={S.sectionHeader}>
+            <div style={S.sectionTitle}>{T.listTitle}</div>
+            <Button
+              type="primary"
+              icon={<PlusCircleOutlined />}
+              onClick={openCreate}
+            >
+              {T.addNew}
+            </Button>
           </div>
 
-          {/* Data Card */}
-          <div style={{ ...styles.cardOuter, marginTop: 12 }}>
-            <div style={{ ...styles.cardInner, paddingTop: 14 }}>
-              <div style={styles.sectionHeader}>
-                <div style={styles.sectionTitle}>{T.listTitle}</div>
-                <Button
-                  type="primary"
-                  icon={<PlusCircleOutlined />}
-                  onClick={openCreate}
-                >
-                  {T.addNew}
-                </Button>
-              </div>
+          {/* Filters */}
+          <div style={L.filtersRow}>
+            <Input
+              allowClear
+              value={searchValue}
+              onChange={(e) => setSearchValue(e.target.value)}
+              onPressEnter={() => {
+                viewModel.setQ((searchValue || "").trim());
+                viewModel.setPage(1);
+              }}
+              placeholder={T.searchPh}
+              prefix={<SearchOutlined />}
+              style={L.searchInput}
+            />
+            <Select
+              value={viewModel.type}
+              onChange={(t) => viewModel.setType(t)}
+              options={viewModel.typeOptions}
+              style={L.filterSelect}
+            />
+          </div>
 
-              {/* Filters */}
-              <div style={styles.filtersRow}>
-                <Input
-                  allowClear
-                  value={searchValue}
-                  onChange={(e) => setSearchValue(e.target.value)}
-                  onPressEnter={() => {
-                    viewModel.setQ((searchValue || "").trim());
-                    viewModel.setPage(1);
-                  }}
-                  placeholder={T.searchPh}
-                  prefix={<SearchOutlined />}
-                  style={styles.searchInput}
-                />
-                <Select
-                  value={viewModel.type}
-                  onChange={(t) => viewModel.setType(t)}
-                  options={viewModel.typeOptions}
-                  style={styles.filterSelect}
-                />
-              </div>
+          {/* Table header */}
+          <div style={L.tableHeader}>
+            <div style={{ ...L.thLeft, paddingLeft: 8 }}>Nama</div>
+            <div style={L.thCenter}>{T.action}</div>
+          </div>
 
-              {/* Table header */}
-              <div style={styles.tableHeader}>
-                <div style={{ ...styles.thLeft, paddingLeft: 8 }}>Nama</div>
-                <div style={styles.thCenter}>{T.action}</div>
+          {/* Rows */}
+          <div style={{ display: "grid", gap: 8, marginTop: 4 }}>
+            {viewModel.loading ? (
+              <div style={{ padding: "8px 4px" }}>
+                <Skeleton active paragraph={{ rows: 2 }} />
               </div>
-
-              {/* Rows */}
-              <div style={{ display: "grid", gap: 8, marginTop: 4 }}>
-                {viewModel.loading ? (
-                  <div style={{ padding: "8px 4px" }}>
-                    <Skeleton active paragraph={{ rows: 2 }} />
-                  </div>
-                ) : rows.length === 0 ? (
-                  <div
-                    style={{
-                      display: "grid",
-                      placeItems: "center",
-                      padding: "20px 0",
-                    }}
-                  >
-                    <Empty description="Belum ada data" />
-                  </div>
-                ) : (
-                  rows.map((r) => (
-                    <div key={r.id} style={styles.row}>
-                      <div style={styles.colName}>
-                        <div style={styles.nameWrap}>
-                          <div style={styles.nameText}>{r.name || "-"}</div>
-                        </div>
-                      </div>
-                      <div style={styles.colActionsCenter}>
-                        <Tooltip title="Lihat">
-                          <Button
-                            size="small"
-                            icon={<EyeOutlined />}
-                            onClick={() => openView(r)}
-                            style={styles.iconBtn}
-                          />
-                        </Tooltip>
-                        <Tooltip title="Edit">
-                          <Button
-                            size="small"
-                            icon={<EditOutlined />}
-                            onClick={() => openEdit(r)}
-                            style={styles.iconBtn}
-                            disabled={viewModel.opLoading}
-                          />
-                        </Tooltip>
-                        <Tooltip title="Hapus">
-                          <Popconfirm
-                            title="Hapus kategori ini?"
-                            okText="Ya"
-                            cancelText="Batal"
-                            onConfirm={() => onDelete(r)}
-                          >
-                            <Button
-                              size="small"
-                              danger
-                              icon={<DeleteOutlined />}
-                              style={styles.iconBtn}
-                              disabled={viewModel.opLoading}
-                            />
-                          </Popconfirm>
-                        </Tooltip>
-                      </div>
+            ) : rows.length === 0 ? (
+              <div
+                style={{
+                  display: "grid",
+                  placeItems: "center",
+                  padding: "20px 0",
+                }}
+              >
+                <Empty description="Belum ada data" />
+              </div>
+            ) : (
+              rows.map((r) => (
+                <div key={r.id} style={L.row}>
+                  <div style={L.colName}>
+                    <div style={L.nameWrap}>
+                      <div style={L.nameText}>{r.name || "-"}</div>
                     </div>
-                  ))
-                )}
-              </div>
-
-              {/* Pagination */}
-              <div style={styles.pagination}>
-                <Button
-                  icon={<LeftOutlined />}
-                  onClick={goPrev}
-                  disabled={viewModel.page <= 1 || viewModel.loading}
-                />
-                <div style={styles.pageText}>
-                  Page {viewModel.page}
-                  {viewModel.totalPages ? ` of ${viewModel.totalPages}` : ""}
+                  </div>
+                  <div style={L.colActionsCenter}>
+                    <Tooltip title="Lihat">
+                      <Button
+                        size="small"
+                        icon={<EyeOutlined />}
+                        onClick={() => openView(r)}
+                        style={S.iconBtn}
+                      />
+                    </Tooltip>
+                    <Tooltip title="Edit">
+                      <Button
+                        size="small"
+                        icon={<EditOutlined />}
+                        onClick={() => openEdit(r)}
+                        style={S.iconBtn}
+                        disabled={viewModel.opLoading}
+                      />
+                    </Tooltip>
+                    <Tooltip title="Hapus">
+                      <Popconfirm
+                        title="Hapus kategori ini?"
+                        okText="Ya"
+                        cancelText="Batal"
+                        onConfirm={() => onDelete(r)}
+                      >
+                        <Button
+                          size="small"
+                          danger
+                          icon={<DeleteOutlined />}
+                          style={S.iconBtn}
+                          disabled={viewModel.opLoading}
+                        />
+                      </Popconfirm>
+                    </Tooltip>
+                  </div>
                 </div>
-                <Button
-                  icon={<RightOutlined />}
-                  onClick={goNext}
-                  disabled={
-                    viewModel.loading ||
-                    (viewModel.totalPages
-                      ? viewModel.page >= viewModel.totalPages
-                      : rows.length < (viewModel.perPage || 10))
-                  }
-                />
-              </div>
+              ))
+            )}
+          </div>
+
+          {/* Pagination */}
+          <div style={S.pagination}>
+            <Button
+              icon={<LeftOutlined />}
+              onClick={goPrev}
+              disabled={viewModel.page <= 1 || viewModel.loading}
+            />
+            <div style={S.pageText}>
+              Page {viewModel.page}
+              {viewModel.totalPages ? ` of ${viewModel.totalPages}` : ""}
             </div>
+            <Button
+              icon={<RightOutlined />}
+              onClick={goNext}
+              disabled={
+                viewModel.loading ||
+                (viewModel.totalPages
+                  ? viewModel.page >= viewModel.totalPages
+                  : rows.length < (viewModel.perPage || 10))
+              }
+            />
           </div>
         </div>
-      </section>
+      </div>
 
       {/* View Modal */}
       <Modal
@@ -354,17 +368,17 @@ export default function MasterDataContent({ vm }) {
         destroyOnClose
         title={null}
       >
-        <div style={styles.modalShell}>
-          <Spin spinning={detailLoading}>
+        <div style={S.modalShell}>
+          <Skeleton loading={detailLoading} active paragraph={{ rows: 2 }}>
             {!detailData ? null : (
               <div style={{ display: "grid", gap: 10 }}>
                 <div>
-                  <div style={styles.label}>Nama Kategori</div>
-                  <div style={styles.value}>{detailData.name || "-"}</div>
+                  <div style={S.label}>Nama Kategori</div>
+                  <div style={S.value}>{detailData.name || "-"}</div>
                 </div>
               </div>
             )}
-          </Spin>
+          </Skeleton>
         </div>
       </Modal>
 
@@ -377,7 +391,7 @@ export default function MasterDataContent({ vm }) {
         destroyOnClose
         title={null}
       >
-        <div style={styles.modalShell}>
+        <div style={S.modalShell}>
           <Form layout="vertical" form={formCreate}>
             <Form.Item
               label="Nama Kategori"
@@ -412,8 +426,8 @@ export default function MasterDataContent({ vm }) {
         destroyOnClose
         title={null}
       >
-        <div style={styles.modalShell}>
-          <Spin spinning={detailLoading}>
+        <div style={S.modalShell}>
+          <Skeleton loading={detailLoading} active paragraph={{ rows: 3 }}>
             <Form layout="vertical" form={formEdit}>
               <Form.Item
                 label="Nama Kategori"
@@ -436,143 +450,9 @@ export default function MasterDataContent({ vm }) {
                 </Button>
               </div>
             </Form>
-          </Spin>
+          </Skeleton>
         </div>
       </Modal>
-    </ConfigProvider>
+    </AdminShell>
   );
 }
-
-/* ===== styles ===== */
-const styles = {
-  cardOuter: {
-    background: "#ffffff",
-    borderRadius: 16,
-    border: "1px solid #e6eeff",
-    boxShadow:
-      "0 10px 40px rgba(11, 86, 201, 0.07), 0 3px 12px rgba(11,86,201,0.05)",
-    overflow: "hidden",
-  },
-  cardHeaderBar: {
-    height: 20,
-    background:
-      "linear-gradient(90deg, #0b56c9 0%, #0b56c9 65%, rgba(11,86,201,0.35) 100%)",
-  },
-  cardInner: { padding: "12px 14px 14px", position: "relative" },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: 800,
-    color: "#0b3e91",
-    margin: "8px 0",
-  },
-  totalBadgeWrap: {
-    position: "absolute",
-    right: 14,
-    top: 8,
-    display: "grid",
-    gap: 4,
-    justifyItems: "end",
-    background: "#fff",
-    border: "1px solid #e6eeff",
-    borderRadius: 12,
-    padding: "6px 12px",
-    boxShadow: "0 6px 18px rgba(11,86,201,0.08)",
-  },
-  totalBadgeLabel: { fontSize: 12, color: "#0b3e91", fontWeight: 600 },
-  totalBadgeValue: {
-    fontSize: 16,
-    color: "#0b56c9",
-    fontWeight: 800,
-    lineHeight: 1,
-  },
-
-  sectionHeader: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 8,
-  },
-  sectionTitle: { fontSize: 18, fontWeight: 800, color: "#0b3e91" },
-  filtersRow: {
-    display: "grid",
-    gridTemplateColumns: "1fr 240px",
-    gap: 8,
-    marginBottom: 10,
-    alignItems: "center",
-  },
-  searchInput: { height: 36, borderRadius: 10 },
-  filterSelect: { width: "100%" },
-
-  tableHeader: {
-    display: "grid",
-    gridTemplateColumns: "1.4fr .6fr",
-    gap: 8,
-    marginBottom: 4,
-    color: "#0b3e91",
-    fontWeight: 700,
-    alignItems: "center",
-  },
-  thLeft: { display: "flex", justifyContent: "flex-start", width: "100%" },
-  thCenter: { display: "flex", justifyContent: "center", width: "100%" },
-
-  row: {
-    display: "grid",
-    gridTemplateColumns: "1.4fr .6fr",
-    gap: 8,
-    alignItems: "center",
-    background: "#f5f8ff",
-    borderRadius: 10,
-    border: "1px solid #e8eeff",
-    padding: "8px 10px",
-    boxShadow: "0 6px 12px rgba(11, 86, 201, 0.05)",
-  },
-  colName: {
-    background: "#ffffff",
-    borderRadius: 10,
-    border: "1px solid #eef3ff",
-    padding: "6px 10px",
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    minWidth: 0,
-  },
-  nameWrap: { display: "grid", gap: 2, minWidth: 0 },
-  nameText: {
-    fontWeight: 600,
-    color: "#111827",
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-  },
-  colActionsCenter: { display: "flex", justifyContent: "center", gap: 6 },
-  iconBtn: { borderRadius: 8 },
-
-  pagination: {
-    marginTop: 12,
-    display: "grid",
-    gridTemplateColumns: "36px 1fr 36px",
-    alignItems: "center",
-    justifyItems: "center",
-    gap: 8,
-  },
-  pageText: { fontSize: 12, color: "#475569" },
-
-  label: { fontSize: 11.5, color: "#64748b" },
-  value: {
-    fontWeight: 600,
-    color: "#0f172a",
-    background: "#f8fafc",
-    border: "1px solid #e8eeff",
-    borderRadius: 10,
-    padding: "8px 10px",
-    boxShadow: "inset 0 2px 6px rgba(11,86,201,0.05)",
-    wordBreak: "break-word",
-  },
-  modalShell: {
-    position: "relative",
-    background: "#fff",
-    borderRadius: 16,
-    padding: "14px 14px 8px",
-    boxShadow: "0 10px 36px rgba(11,86,201,0.08)",
-  },
-};

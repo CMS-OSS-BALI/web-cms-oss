@@ -3,21 +3,19 @@
 import { useMemo, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useSession, signOut } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import useSWR from "swr";
+import { fetcher, swrDefaults } from "@/lib/swr/fetcher";
+import useAuthChannel from "@/app/hooks/useAuthChannel";
 import { HomeOutlined } from "@ant-design/icons";
 import { MENU, findPathByHref } from "../sidebar/useSidebarViewModel";
-
-const fetcher = (url) =>
-  fetch(url, { cache: "no-store", credentials: "include" }).then((r) =>
-    r.json()
-  );
 
 export default function useHeaderViewModel() {
   const pathname = usePathname() || "/admin/dashboard";
   const { data: session } = useSession();
+  const { onLogout } = useAuthChannel({ callbackUrl: "/admin/login-page" });
 
-  // chain aktif untuk breadcrumbs (Kampus → Jurusan → Prodi)
+  // chain aktif untuk breadcrumbs
   const activeChain = useMemo(() => findPathByHref(pathname, MENU), [pathname]);
 
   const breadcrumbs = useMemo(() => {
@@ -69,15 +67,10 @@ export default function useHeaderViewModel() {
   const { data: me, mutate } = useSWR(
     email ? "/api/auth/profile" : null,
     fetcher,
-    {
-      revalidateOnFocus: false,
-      revalidateOnReconnect: false,
-      refreshInterval: 0,
-      dedupingInterval: 5 * 60 * 1000,
-      keepPreviousData: true,
-    }
+    swrDefaults
   );
 
+  // dengarkan update profil dari tab lain
   useEffect(() => {
     let ch;
     try {
@@ -87,15 +80,15 @@ export default function useHeaderViewModel() {
     return () => ch?.close?.();
   }, [mutate]);
 
+  // AUTO-LOGOUT bila JWT callback menandai forceReauth (password diganti)
+  useEffect(() => {
+    if (session?.forceReauth) {
+      onLogout();
+    }
+  }, [session?.forceReauth, onLogout]);
+
   const image =
     me?.image_public_url || me?.profile_photo || session?.user?.image || "";
-
-  function onLogout() {
-    try {
-      new BroadcastChannel("auth").postMessage("logout");
-    } catch {}
-    return signOut({ redirect: true, callbackUrl: "/admin/login-page" });
-  }
 
   const user = { name, email, image, initials };
   return { breadcrumbs, user, onLogout };

@@ -1,26 +1,14 @@
+// app/(view)/admin/master-data/page.jsx
 "use client";
 
-import { Suspense, lazy, useEffect } from "react";
+import { Suspense, lazy } from "react";
 import Loading from "@/app/components/loading/LoadingImage";
 import useMasterDataViewModel from "./useMasterDataViewModel";
 
 const MasterDataContentLazy = lazy(() => import("./MasterDataContent"));
 
-const pickLocale = (v) => {
-  const s = String(v || "id")
-    .trim()
-    .toLowerCase();
-  return s.startsWith("en") ? "en" : "id";
-};
-
-export default function MasterDataPage({ searchParams }) {
+export default function MasterDataPage() {
   const vm = useMasterDataViewModel();
-  const initialLocale = pickLocale(searchParams?.lang);
-
-  useEffect(() => {
-    vm.setLocale(initialLocale);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialLocale]);
 
   return (
     <Suspense

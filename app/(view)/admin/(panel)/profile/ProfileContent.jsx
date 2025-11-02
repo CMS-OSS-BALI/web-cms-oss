@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import {
   ConfigProvider,
   Form,
@@ -8,12 +9,14 @@ import {
   Button,
   Upload,
   Skeleton,
-  notification, // ← pakai notification
+  notification,
 } from "antd";
 
 export default function ProfileContent({ vm }) {
   const { T, tokens, api, rules } = vm;
   const { shellW, blue, text, headerH } = tokens;
+
+  const { update: updateSession } = useSession();
 
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(true);
@@ -27,6 +30,16 @@ export default function ProfileContent({ vm }) {
     notifyApi.error({ message, description, placement: "topRight" });
   const notifySuccess = (message, description) =>
     notifyApi.success({ message, description, placement: "topRight" });
+
+  // cleanup blob URL saat preview berubah/komponen unmount
+  useEffect(() => {
+    return () => {
+      try {
+        if (preview && preview.startsWith("blob:"))
+          URL.revokeObjectURL(preview);
+      } catch {}
+    };
+  }, [preview]);
 
   useEffect(() => {
     let alive = true;
@@ -69,8 +82,13 @@ export default function ProfileContent({ vm }) {
       notifyError("Ukuran gambar terlalu besar", "Maksimal 2MB");
       return Upload.LIST_IGNORE;
     }
-    setFile(f);
-    setPreview(URL.createObjectURL(f));
+    try {
+      const blobUrl = URL.createObjectURL(f);
+      setFile(f);
+      setPreview(blobUrl);
+    } catch {
+      setFile(f);
+    }
     return false; // prevent auto-upload
   };
 
@@ -84,7 +102,7 @@ export default function ProfileContent({ vm }) {
       if (file) fd.append("avatar", file);
 
       const res = await fetch(api.update, { method: "PATCH", body: fd });
-      const out = await res.json();
+      const out = await res.json().catch(() => ({}));
 
       if (!res.ok) {
         notifyError("Gagal menyimpan profil", out?.error?.message);
@@ -96,14 +114,26 @@ export default function ProfileContent({ vm }) {
         email: out?.email ?? values.email,
         no_whatsapp: out?.no_whatsapp ?? values.no_whatsapp,
       });
+
+      // ganti preview ke URL publik dari server (revoke blob lama jika ada)
+      try {
+        if (preview && preview.startsWith("blob:"))
+          URL.revokeObjectURL(preview);
+      } catch {}
       setPreview(out?.profile_photo || preview);
       setFile(null);
 
       notifySuccess(T.success);
 
-      // refresh agar header/avatar ikut update (fallback sederhana)
+      // ---- HINDARI FULL RELOAD ----
+      // 1) Broadcast ke channel "profile" agar header (useHeaderViewModel) melakukan mutate()
       try {
-        if ("reload" in window.location) window.location.reload();
+        new BroadcastChannel("profile").postMessage("updated");
+      } catch {}
+
+      // 2) Trigger session.update() → callback jwt(trigger:"update") akan refresh token.picture dari DB
+      try {
+        await updateSession?.({});
       } catch {}
     } catch {
       notifyError("Terjadi kesalahan saat menyimpan");
@@ -114,6 +144,7 @@ export default function ProfileContent({ vm }) {
 
   const onReset = () => {
     form.resetFields();
+    // reset preview ke server value terakhir (tanpa reload)
     setFile(null);
   };
 

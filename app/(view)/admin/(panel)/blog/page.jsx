@@ -1,24 +1,24 @@
 // app/(view)/admin/blog/page.jsx
-import dynamic from "next/dynamic";
+"use client";
+
+import { Suspense, lazy } from "react";
 import Loading from "@/app/components/loading/LoadingImage";
+import useBlogViewModel from "./useBlogViewModel";
 
-const BlogContent = dynamic(() => import("./BlogContent"), {
-  ssr: false,
-  loading: () => (
-    <div className="page-wrap">
-      <Loading />
-    </div>
-  ),
-});
+const BlogContentLazy = lazy(() => import("./BlogContent"));
 
-const pickLocale = (v) => {
-  const s = String(v || "id")
-    .trim()
-    .toLowerCase();
-  return s.startsWith("en") ? "en" : "id";
-};
+export default function BlogPage() {
+  const vm = useBlogViewModel();
 
-export default function BlogPage({ searchParams }) {
-  const initialLocale = pickLocale(searchParams?.lang);
-  return <BlogContent initialLocale={initialLocale} />;
+  return (
+    <Suspense
+      fallback={
+        <div className="page-wrap">
+          <Loading />
+        </div>
+      }
+    >
+      <BlogContentLazy vm={vm} />
+    </Suspense>
+  );
 }

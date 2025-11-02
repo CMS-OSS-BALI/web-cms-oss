@@ -37,10 +37,10 @@ model admin_users {
   services              services[]
   testimonials          testimonials[]
   checkin_logs          ticket_checkin_logs[]
+  fcm_tokens            fcm_tokens[]
 
   @@map("admin_users")
 }
-
 
 model reset_password_tokens {
   id            String      @id @default(uuid()) @db.VarChar(36)
@@ -462,6 +462,7 @@ model consultants {
   consultants_translate        consultants_translate[]
   leads                        leads[]
   referrals                    referral[]
+  fcm_tokens                   fcm_tokens[]
 
   @@index([email], map: "idx_consultants_email")
   @@index([whatsapp], map: "idx_consultants_whatsapp")
@@ -553,6 +554,7 @@ model referral {
   pic_consultant_id String?             @db.VarChar(36)
   leads             leads[]             @relation("referral_to_leads")
   pic_consultant    consultants?        @relation(fields: [pic_consultant_id], references: [id], map: "fk_referral_pic_consultant")
+  fcm_tokens        fcm_tokens[]
 
   @@index([status, created_at], map: "idx_referral_status_created_at")
   @@index([full_name], map: "idx_referral_full_name")
@@ -834,6 +836,66 @@ model aktivitas_translate {
 }
 
 /// =========================
+///    NEW: Firebase Cloud Messaging
+///    =========================
+model fcm_tokens {
+  id            String        @id @default(uuid()) @db.VarChar(36)
+  token         String        @unique(map: "uq_fcm_token") @db.VarChar(512)
+  platform      fcm_platform  @default(WEB)
+  user_agent    String?       @db.VarChar(255)
+  device_id     String?       @db.VarChar(128)
+  locale        String?       @db.Char(5)
+  is_active     Boolean       @default(true)
+  last_seen     DateTime      @default(now()) @db.DateTime(6)
+  created_at    DateTime      @default(now()) @db.DateTime(6)
+  updated_at    DateTime      @updatedAt @db.DateTime(6)
+
+  // Optional linkage ke entitas
+  admin_user_id String?       @db.VarChar(36)
+  consultant_id String?       @db.VarChar(36)
+  referral_id   String?       @db.VarChar(36)
+
+  admin_user    admin_users?  @relation(fields: [admin_user_id], references: [id], onDelete: SetNull, map: "fk_fcm_admin_user")
+  consultant    consultants?  @relation(fields: [consultant_id], references: [id], onDelete: SetNull, map: "fk_fcm_consultant")
+  referral      referral?     @relation(fields: [referral_id], references: [id], onDelete: SetNull, map: "fk_fcm_referral")
+
+  subscriptions fcm_topic_subscriptions[]
+
+  @@index([admin_user_id], map: "idx_fcm_admin_user")
+  @@index([consultant_id], map: "idx_fcm_consultant")
+  @@index([referral_id], map: "idx_fcm_referral")
+  @@index([platform], map: "idx_fcm_platform")
+  @@index([is_active, updated_at], map: "idx_fcm_active_updated")
+  @@map("fcm_tokens")
+}
+
+model fcm_topics {
+  id            String                     @id @default(uuid()) @db.VarChar(36)
+  name          String                     @unique(map: "uq_fcm_topic_name") @db.VarChar(64)
+  description   String?                    @db.VarChar(255)
+  created_at    DateTime                   @default(now()) @db.DateTime(6)
+  updated_at    DateTime                   @updatedAt @db.DateTime(6)
+  subscriptions fcm_topic_subscriptions[]
+
+  @@map("fcm_topics")
+}
+
+model fcm_topic_subscriptions {
+  id         String     @id @default(uuid()) @db.VarChar(36)
+  token_id   String     @db.VarChar(36)
+  topic_id   String     @db.VarChar(36)
+  created_at DateTime   @default(now()) @db.DateTime(6)
+
+  token      fcm_tokens @relation(fields: [token_id], references: [id], onDelete: Cascade, map: "fk_fcm_sub_token")
+  topic      fcm_topics @relation(fields: [topic_id], references: [id], onDelete: Cascade, map: "fk_fcm_sub_topic")
+
+  @@unique([token_id, topic_id], map: "uniq_fcm_token_topic")
+  @@index([topic_id], map: "idx_fcm_topic_id")
+  @@index([token_id], map: "idx_fcm_token_id")
+  @@map("fcm_topic_subscriptions")
+}
+
+/// =========================
 ///    NEW: Booth Booking & Payments
 ///    =========================
 enum booth_booking_status {
@@ -892,4 +954,10 @@ enum services_program_type {
 enum voucher_type {
   FIXED
   PERCENT
+}
+
+enum fcm_platform {
+  WEB
+  ANDROID
+  IOS
 }

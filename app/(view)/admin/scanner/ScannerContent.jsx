@@ -24,7 +24,7 @@ import {
   RefreshCw,
   ArrowLeft,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const { Text, Paragraph } = Typography;
 
@@ -99,12 +99,38 @@ export default function ScannerContent(props) {
     }
   };
 
+  /* ===================== anti-spam notifications ===================== */
+  const gateRef = useRef(new Map());
+  const notifyWithGate = useCallback((key, fn, cooldownMs = 6000) => {
+    const now = Date.now();
+    const last = gateRef.current.get(key) || 0;
+    if (now - last < cooldownMs) return;
+    gateRef.current.set(key, now);
+    fn();
+  }, []);
+
+  // Jangan spam: tampilkan error maksimal setiap 6 detik per pesan unik
   useEffect(() => {
-    if (scanning) info("Kamera aktif");
-  }, [scanning]);
-  useEffect(() => {
-    if (error) err("Kesalahan Kamera", error);
-  }, [error]);
+    if (!error) return;
+    notifyWithGate(`err:${error}`, () => err("Kesalahan Kamera", error), 6000);
+  }, [error, notifyWithGate]);
+
+  // ⛔️ Dihapus: info("Kamera aktif") saat scanning berubah (penyebab spam)
+  // useEffect(() => {
+  //   if (scanning) info("Kamera aktif");
+  // }, [scanning]);
+
+  // Tampilkan info "Kamera aktif" SEKALI saja saat Start ditekan sukses
+  const startedOnceRef = useRef(false);
+  const handleStart = useCallback(async () => {
+    await start();
+    ok("Mulai Scan");
+    if (!startedOnceRef.current) {
+      startedOnceRef.current = true;
+      info("Kamera aktif");
+    }
+  }, [start]);
+  /* =================================================================== */
 
   const scanBorder = (() => {
     if (checkStatus?.kind === "success") return "2px solid rgba(34,197,94,0.9)";
@@ -241,7 +267,7 @@ export default function ScannerContent(props) {
           </div>
         </div>
 
-        {/* ===== Camera Card (Start/Stop dipindah ke bawah video & full width) ===== */}
+        {/* ===== Camera Card ===== */}
         <div style={{ ...styles.cardOuter, marginTop: 12 }}>
           <div style={{ ...styles.cardInner, paddingTop: 14 }}>
             <div
@@ -348,7 +374,7 @@ export default function ScannerContent(props) {
                     type="primary"
                     size="large"
                     loading={loading}
-                    onClick={() => start().then(() => ok("Mulai Scan"))}
+                    onClick={handleStart}
                     icon={<Camera size={18} />}
                     style={styles.ctaBtn}
                   >

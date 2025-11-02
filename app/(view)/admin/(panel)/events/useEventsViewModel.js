@@ -24,7 +24,7 @@ function useEventsViewModel() {
   // Debounce search
   const [qDebounced, setQDebounced] = useState("");
   useEffect(() => {
-    const t = setTimeout(() => setQDebounced((q || "").trim()), 300);
+    const t = setTimeout(() => setQDebounced((q || "").trim()), 350);
     return () => clearTimeout(t);
   }, [q]);
 
@@ -51,17 +51,15 @@ function useEventsViewModel() {
 
   const abortRef = useRef(null);
 
-  /** ===================== NEW: Year ensure helpers ===================== */
-  // pastikan tahun ada di yearOptions (unik + sort desc, limit opsional)
+  /** ===================== Year helpers ===================== */
   const ensureYearOption = useCallback((y) => {
     if (!Number.isFinite(y)) return;
     setYearOptions((prev) => {
       const next = Array.from(new Set([y, ...prev])).sort((a, b) => b - a);
-      return next.slice(0, 15); // batasi kalau mau
+      return next.slice(0, 15);
     });
   }, []);
 
-  // ambil tahun dari FormData("start_at") lalu masukkan ke yearOptions
   const ensureYearOptionFromFD = useCallback(
     (fd) => {
       const sa = fd?.get?.("start_at");
@@ -72,21 +70,17 @@ function useEventsViewModel() {
     },
     [ensureYearOption]
   );
-  /** ==================================================================== */
+  /** ======================================================== */
 
+  /** Build query string for server-side filtering & pagination */
   const buildQuery = useCallback(() => {
     const p = new URLSearchParams();
     p.set("include_category", "1");
-
-    // Saat mencari, ambil data lebih banyak + paksa page=1
-    const perForQuery = qDebounced ? Math.max(200, perPage) : perPage;
-    const pageForQuery = qDebounced ? 1 : page;
-
-    p.set("perPage", String(perForQuery));
-    p.set("page", String(pageForQuery));
+    p.set("perPage", String(perPage || 10));
+    p.set("page", String(page || 1));
 
     if (qDebounced) p.set("q", qDebounced);
-    if (categoryId) p.set("category_id", categoryId);
+    if (categoryId) p.set("category_id", String(categoryId));
     if (year) {
       p.set("from", toISODate(year, 1, 1));
       p.set("to", toISODate(year, 12, 31));
@@ -95,6 +89,7 @@ function useEventsViewModel() {
     return "/api/events?" + p.toString();
   }, [qDebounced, page, perPage, categoryId, year]);
 
+  /** Load supporting lookups */
   const loadCategories = useCallback(async () => {
     try {
       const res = await fetch(
@@ -114,130 +109,106 @@ function useEventsViewModel() {
     }
   }, []);
 
-  const loadEvents = useCallback(async () => {
-    abortRef.current?.abort?.();
-    abortRef.current = new AbortController();
-    const { signal } = abortRef.current;
-    setLoading(true);
+  // Optional: distinct years endpoint (jika tersedia)
+  const loadDistinctYears = useCallback(async () => {
     try {
-      const url = buildQuery();
-      const res = await fetch(url, { signal, cache: "no-store" });
-      const js = await res.json();
-      let rows = js?.data || [];
-
-      // Fallback filter bila backend belum dukung ?q=
-      const ql = (qDebounced || "").toLowerCase();
-      if (ql) {
-        rows = rows.filter((r) => {
-          const t = String(
-            r?.title ?? r?.title_id ?? r?.title_en ?? ""
-          ).toLowerCase();
-          const c = String(
-            r?.category_name || r?.category_slug || ""
-          ).toLowerCase();
-          const loc = String(r?.location || "").toLowerCase();
-          return t.includes(ql) || c.includes(ql) || loc.includes(ql);
-        });
-      }
-
-      setEvents(rows);
-      setTotal(js?.meta?.total ?? rows.length ?? 0);
-      setTotalPages(js?.meta?.totalPages ?? 1);
-
-      // === NEW: dynamic year options dari rows yang baru di-load
-      const years = new Set(
-        rows
-          .map((r) => {
-            // dukung start_ts (ms) / start_at (ISO)
-            const d = r?.start_ts
-              ? new Date(r.start_ts)
-              : r?.start_at
-              ? new Date(r.start_at)
-              : null;
-            return d ? d.getUTCFullYear?.() || d.getFullYear?.() : null;
-          })
-          .filter(Boolean)
-      );
-      const arr = Array.from(years).sort((a, b) => b - a);
-
-      // merge dengan yearOptions existing
-      setYearOptions((prev) => {
-        const merged = Array.from(new Set([...arr, ...prev])).sort(
-          (a, b) => b - a
-        );
-        return merged.slice(0, 15);
+      const res = await fetch("/api/events/years?distinct=1&_=" + Date.now(), {
+        cache: "no-store",
       });
-
-      // metrics derived from events
-      const reps = rows.reduce(
-        (acc, r) => acc + Number(r?.booth_sold_count || 0),
-        0
-      );
-      setTotalReps(reps);
-      const revenueEst = rows.reduce(
-        (acc, r) =>
-          acc +
-          Number(r?.booth_sold_count || 0) *
-            Math.max(0, Number(r?.booth_price || 0)),
-        0
-      );
-      setTotalRevenue(revenueEst);
-
-      // charts (rep)
-      const top = rows.slice(0, 8);
-      const maxRep = Math.max(
-        1,
-        ...top.map((r) => Number(r?.booth_sold_count || 0))
-      );
-      setChartRep(
-        top.map((r) => {
-          const label = r.title || r.title_id || "Event";
-          const short =
-            label.length > 10 ? label.slice(0, 9).trim() + "…" : label;
-          const v = Number(r?.booth_sold_count || 0);
-          return {
-            id: r.id,
-            label,
-            short,
-            value: v,
-            percent: (v / maxRep) * 100,
-          };
-        })
-      );
-
-      await loadStudentCounts(top);
-    } catch (e) {
-      if (e?.name !== "AbortError") console.error("[Events] load error:", e);
-    } finally {
-      if (!signal.aborted) setLoading(false);
-    }
-  }, [buildQuery, qDebounced]);
-
-  const loadTotalStudents = useCallback(async () => {
-    setTotalStudentsLoading(true);
-    try {
-      const res = await fetch(
-        "/api/tickets?status=CONFIRMED&perPage=1&_=" + Date.now(),
-        { cache: "no-store" }
-      );
+      if (!res.ok) return;
       const js = await res.json();
-      setTotalStudents(js?.total ?? null);
+      const years = (js?.data || [])
+        .filter((y) => Number.isFinite(Number(y)))
+        .map(Number);
+      if (years?.length) {
+        setYearOptions(
+          Array.from(new Set(years))
+            .sort((a, b) => b - a)
+            .slice(0, 15)
+        );
+      }
     } catch {
-      setTotalStudents(null);
-    } finally {
-      setTotalStudentsLoading(false);
+      // fallback handled by rows inference
     }
   }, []);
 
+  /** Try aggregated charts endpoint (if your backend provides it) */
+  const loadChartsAggregated = useCallback(async () => {
+    setChartLoading(true);
+    try {
+      const p = new URLSearchParams();
+      if (qDebounced) p.set("q", qDebounced);
+      if (categoryId) p.set("category_id", String(categoryId));
+      if (year) {
+        p.set("from", toISODate(year, 1, 1));
+        p.set("to", toISODate(year, 12, 31));
+      }
+      p.set("limit", "8");
+      p.set("_", String(Date.now()));
+
+      // Example endpoints (ubah sesuai backend kamu)
+      const [repRes, stuRes] = await Promise.all([
+        fetch(`/api/events/summary/booth?` + p.toString(), {
+          cache: "no-store",
+        }),
+        fetch(`/api/events/summary/students?` + p.toString(), {
+          cache: "no-store",
+        }),
+      ]);
+
+      if (!repRes.ok || !stuRes.ok)
+        throw new Error("summary endpoint not available");
+
+      const repJs = await repRes.json();
+      const stuJs = await stuRes.json();
+
+      const repItems = (repJs?.data || []).slice(0, 8);
+      const maxRep = Math.max(1, ...repItems.map((i) => Number(i.value || 0)));
+      setChartRep(
+        repItems.map((it) => ({
+          id: it.id,
+          label: it.label,
+          short:
+            it.label?.length > 10
+              ? it.label.slice(0, 9).trim() + "…"
+              : it.label,
+          value: Number(it.value || 0),
+          percent: (Number(it.value || 0) / maxRep) * 100,
+        }))
+      );
+
+      const stuItems = (stuJs?.data || []).slice(0, 8);
+      const maxStu = Math.max(1, ...stuItems.map((i) => Number(i.value || 0)));
+      setChartStudent(
+        stuItems.map((it) => ({
+          id: it.id,
+          label: it.label,
+          short:
+            it.label?.length > 10
+              ? it.label.slice(0, 9).trim() + "…"
+              : it.label,
+          value: Number(it.value || 0),
+          percent: (Number(it.value || 0) / maxStu) * 100,
+        }))
+      );
+    } finally {
+      setChartLoading(false);
+    }
+  }, [qDebounced, categoryId, year]);
+
+  /** Fallback: hitung student chart per event (hanya untuk subset/top) */
   const loadStudentCounts = useCallback(async (eventRows) => {
     setChartLoading(true);
     try {
       const promises = (eventRows || []).map(async (ev) => {
-        const url =
-          `/api/tickets?event_id=${encodeURIComponent(
-            ev.id
-          )}&status=CONFIRMED&perPage=1&_=` + Date.now();
-        const r = await fetch(url, { cache: "no-store" });
+        const p = new URLSearchParams();
+        p.set("event_id", String(ev.id));
+        p.set("status", "CONFIRMED");
+        p.set("perPage", "1");
+        p.set("_", String(Date.now()));
+        const r = await fetch(`/api/tickets?` + p.toString(), {
+          cache: "no-store",
+        });
         const j = await r.json();
         return {
           id: ev.id,
@@ -265,7 +236,114 @@ function useEventsViewModel() {
     }
   }, []);
 
+  /** Core loader — server-side filtering + pagination */
+  const loadEvents = useCallback(async () => {
+    abortRef.current?.abort?.();
+    abortRef.current = new AbortController();
+    const { signal } = abortRef.current;
+    setLoading(true);
+    try {
+      const url = buildQuery();
+      const res = await fetch(url, { signal, cache: "no-store" });
+      const js = await res.json().catch(() => ({}));
+
+      const rows = js?.data || [];
+      setEvents(rows);
+      setTotal(js?.meta?.total ?? js?.total ?? rows.length ?? 0);
+      setTotalPages(js?.meta?.totalPages ?? js?.totalPages ?? 1);
+
+      // derive metrics from current page (or rely on summary endpoint below)
+      const reps = rows.reduce(
+        (acc, r) => acc + Number(r?.booth_sold_count || 0),
+        0
+      );
+      setTotalReps(reps);
+      const revenueEst = rows.reduce(
+        (acc, r) =>
+          acc +
+          Number(r?.booth_sold_count || 0) *
+            Math.max(0, Number(r?.booth_price || 0)),
+        0
+      );
+      setTotalRevenue(revenueEst);
+
+      // Infer year options from current page if distinct endpoint unavailable
+      const years = new Set(
+        rows
+          .map((r) => {
+            const d = r?.start_ts
+              ? new Date(r.start_ts)
+              : r?.start_at
+              ? new Date(r.start_at)
+              : null;
+            return d ? d.getUTCFullYear?.() || d.getFullYear?.() : null;
+          })
+          .filter(Boolean)
+      );
+      if (years.size) {
+        setYearOptions((prev) => {
+          const merged = Array.from(
+            new Set([...Array.from(years), ...prev])
+          ).sort((a, b) => b - a);
+          return merged.slice(0, 15);
+        });
+      }
+
+      // Charts: try aggregated endpoint first (better for big data)
+      await loadChartsAggregated().catch(async () => {
+        // Fallback: compute from this page only (cheap)
+        const top = rows.slice(0, 8);
+        const maxRep = Math.max(
+          1,
+          ...top.map((r) => Number(r?.booth_sold_count || 0))
+        );
+        setChartRep(
+          top.map((r) => {
+            const label = r.title || r.title_id || "Event";
+            const short =
+              label.length > 10 ? label.slice(0, 9).trim() + "…" : label;
+            const v = Number(r?.booth_sold_count || 0);
+            return {
+              id: r.id,
+              label,
+              short,
+              value: v,
+              percent: (v / maxRep) * 100,
+            };
+          })
+        );
+        await loadStudentCounts(top);
+      });
+    } catch (e) {
+      if (e?.name !== "AbortError") console.error("[Events] load error:", e);
+    } finally {
+      if (!signal.aborted) setLoading(false);
+    }
+  }, [buildQuery, loadChartsAggregated, loadStudentCounts]);
+
+  const loadTotalStudents = useCallback(async () => {
+    setTotalStudentsLoading(true);
+    try {
+      // Prefer endpoint count khusus jika tersedia
+      // const res = await fetch("/api/tickets/count?status=CONFIRMED&_=" + Date.now(), { cache: "no-store" });
+      // const js = await res.json();
+      // setTotalStudents(js?.data?.count ?? js?.count ?? null);
+
+      const res = await fetch(
+        "/api/tickets?status=CONFIRMED&perPage=1&_=" + Date.now(),
+        { cache: "no-store" }
+      );
+      const js = await res.json();
+      setTotalStudents(js?.total ?? null);
+    } catch {
+      setTotalStudents(null);
+    } finally {
+      setTotalStudentsLoading(false);
+    }
+  }, []);
+
   const loadRevenue = useCallback(async () => {
+    // Opsional: sediakan endpoint agregasi total revenue global
     return;
   }, []);
 
@@ -273,16 +351,17 @@ function useEventsViewModel() {
     await Promise.all([loadEvents(), loadTotalStudents(), loadRevenue()]);
   }, [loadEvents, loadTotalStudents, loadRevenue]);
 
-  // refetch saat filter berubah
+  // refetch saat filter berubah (server akan handle pagination & filter)
   useEffect(() => {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qDebounced, page, perPage, categoryId, year]);
 
-  // initial: categories
+  // initial lookups
   useEffect(() => {
     loadCategories();
-  }, [loadCategories]);
+    loadDistinctYears(); // opsional, enrich dropdown tahun
+  }, [loadCategories, loadDistinctYears]);
 
   // Revalidate on focus/visibility
   useEffect(() => {
@@ -318,7 +397,6 @@ function useEventsViewModel() {
     [loadEvents]
   );
 
-  // (masih disediakan jika suatu saat ingin navigate)
   const goCreate = useCallback(() => {
     router.push("/admin/events/new");
   }, [router]);
@@ -336,7 +414,7 @@ function useEventsViewModel() {
 
   const toggleCharts = useCallback(() => setShowCharts((v) => !v), []);
 
-  /** ===== CREATE & UPDATE helper (dipakai oleh UI) ===== */
+  /** ===== CREATE & UPDATE helper ===== */
   const createEvent = useCallback(
     async (fd) => {
       setOpLoading(true);
@@ -352,9 +430,7 @@ function useEventsViewModel() {
             error: j?.error?.message || "Gagal membuat event",
           };
 
-        // NEW: inject tahun dari start_at ke opsi filter
-        ensureYearOptionFromFD(fd);
-
+        ensureYearOptionFromFD(fd); // inject tahun baru bila perlu
         await refresh();
         return { ok: true, data: j?.data };
       } catch (e) {
@@ -381,9 +457,7 @@ function useEventsViewModel() {
             error: j?.error?.message || "Gagal memperbarui event",
           };
 
-        // NEW: inject tahun dari start_at ke opsi filter (kalau diubah ke 2026, muncul langsung)
-        ensureYearOptionFromFD(fd);
-
+        ensureYearOptionFromFD(fd); // update tahun filter jika berubah
         await refresh();
         return { ok: true, data: j?.data };
       } catch (e) {
@@ -395,9 +469,38 @@ function useEventsViewModel() {
     [refresh, ensureYearOptionFromFD]
   );
 
-  /** ===== NEW: CSV download (untuk tombol di UI) ===== */
-  const downloadCSV = useCallback(() => {
+  /** ===== CSV download ===== */
+  const downloadCSV = useCallback(async () => {
     try {
+      // 1) Coba server-side export
+      const p = new URLSearchParams();
+      p.set("perPage", String(perPage || 10));
+      p.set("page", String(page || 1));
+      if (qDebounced) p.set("q", qDebounced);
+      if (categoryId) p.set("category_id", String(categoryId));
+      if (year) {
+        p.set("from", toISODate(year, 1, 1));
+        p.set("to", toISODate(year, 12, 31));
+      }
+      p.set("format", "csv");
+      p.set("_", String(Date.now()));
+
+      const resp = await fetch("/api/events/export?" + p.toString(), {
+        cache: "no-store",
+      });
+
+      if (resp.ok) {
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `events-${Date.now()}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        return;
+      }
+
+      // 2) Fallback: generate dari rows saat ini (terbatas pada page aktif)
       const headers = [
         "Event ID",
         "Judul",
@@ -458,7 +561,7 @@ function useEventsViewModel() {
       console.error("downloadCSV error:", e);
       throw e;
     }
-  }, [events]);
+  }, [events, page, perPage, qDebounced, categoryId, year]);
 
   /** ===== expose ===== */
   return {
@@ -507,9 +610,6 @@ function useEventsViewModel() {
     // CRUD helpers
     createEvent,
     updateEvent,
-
-    // (opsional) expose kalau suatu saat mau dipakai di UI
-    // ensureYearOption,
   };
 }
 

@@ -1,19 +1,24 @@
-﻿"use client";
+﻿// app/(view)/admin/consultants/page.jsx
+"use client";
 
-import dynamic from "next/dynamic";
+import { Suspense, lazy } from "react";
 import Loading from "@/app/components/loading/LoadingImage";
 import useConsultantsViewModel from "./useConsultantsViewModel";
 
-const ConsultantsContent = dynamic(() => import("./ConsultantsContent"), {
-  ssr: false,
-  loading: () => (
-    <div>
-      <Loading />
-    </div>
-  ),
-});
+const ConsultantsContentLazy = lazy(() => import("./ConsultantsContent"));
 
-export default function Page() {
+export default function ConsultantsPage() {
   const vm = useConsultantsViewModel();
-  return <ConsultantsContent vm={vm} />;
+
+  return (
+    <Suspense
+      fallback={
+        <div className="page-wrap">
+          <Loading />
+        </div>
+      }
+    >
+      <ConsultantsContentLazy vm={vm} />
+    </Suspense>
+  );
 }

@@ -10,7 +10,7 @@ const PUBLIC_ADMIN = new Set([
 ]);
 
 export async function middleware(req) {
-  const pathname = req.nextUrl.pathname;
+  const { pathname, searchParams } = req.nextUrl;
   const search = req.nextUrl.search || "";
 
   const isAdminPage = pathname.startsWith("/admin");
@@ -23,6 +23,12 @@ export async function middleware(req) {
     if (!token) {
       return NextResponse.json(
         { ok: false, error: "unauthorized" },
+        { status: 401 }
+      );
+    }
+    if (token.forceReauth) {
+      return NextResponse.json(
+        { ok: false, error: "relogin_required" },
         { status: 401 }
       );
     }
@@ -41,25 +47,15 @@ export async function middleware(req) {
       return NextResponse.redirect(url);
     }
 
-    // Opsional: paksa re-login jika password berubah
-    try {
-      const base = process.env.NEXTAUTH_URL ?? req.nextUrl.origin;
-      const res = await fetch(`${base}/api/auth/pca`, {
-        headers: { cookie: req.headers.get("cookie") ?? "" },
-        cache: "no-store",
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const pcaDb = data?.pca ? Date.parse(data.pca) : 0;
-        const pcaTok = token?.pca ? Date.parse(token.pca) : 0;
-        if (pcaDb > pcaTok) {
-          const relogin = new URL("/admin/login-page", req.url);
-          relogin.searchParams.set("reason", "relogin");
-          return NextResponse.redirect(relogin);
-        }
-      }
-    } catch {
-      // ignore
+    // TANPA fetch ke /api/auth/pca:
+    // Jika token mengandung flag forceReauth (di-set oleh JWT callback), paksa login ulang
+    if (token.forceReauth) {
+      const relogin = new URL("/admin/login-page", req.url);
+      relogin.searchParams.set("reason", "relogin");
+      // optional: bawa kembali halaman semula
+      const next = searchParams.get("next") || pathname + search;
+      if (next) relogin.searchParams.set("next", next);
+      return NextResponse.redirect(relogin);
     }
 
     return NextResponse.next();

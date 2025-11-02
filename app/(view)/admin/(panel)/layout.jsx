@@ -5,6 +5,11 @@ import Sidebar from "../sidebar/sidebar";
 import Header from "../header/header";
 import Footer from "../footer/footer";
 
+/**
+ * Catatan:
+ * - className "is-collapsed" di root container tetap dipertahankan (opsional),
+ *   tapi Sidebar juga menerima prop collapsed sehingga sinkron.
+ */
 export default function PanelLayout({ children }) {
   const [collapsed, setCollapsed] = useState(false);
 
@@ -17,7 +22,8 @@ export default function PanelLayout({ children }) {
         width: "100%",
       }}
     >
-      <Sidebar collapsed={collapsed} /> {/* toggle-nya di header */}
+      <Sidebar collapsed={collapsed} />
+
       <main
         className="admin-content bg-app"
         style={{
@@ -32,14 +38,13 @@ export default function PanelLayout({ children }) {
           onToggleSidebar={() => setCollapsed((v) => !v)}
         />
 
-        {/* area utama: column, page-scroll = fleksibel (scroll), footer = shrink 0 */}
         <div
           className="admin-main"
           style={{
             flex: "1 1 auto",
             display: "flex",
             flexDirection: "column",
-            minHeight: 0, // penting agar child flex bisa overflow
+            minHeight: 0,
           }}
         >
           <div
@@ -47,21 +52,13 @@ export default function PanelLayout({ children }) {
             style={{
               flex: "1 1 auto",
               minHeight: 0,
-              overflow: "auto", // konten scroll di sini
-              // optional padding jika butuh: padding: "0 clamp(16px, 4vw, 32px)",
+              overflow: "auto",
             }}
           >
             {children}
           </div>
 
-          {/* Footer diletakkan di luar area scroll supaya selalu di bawah */}
-          <Footer
-          // optional links:
-          // links={[
-          //   { href: "/terms", label: "S&K" },
-          //   { href: "/privacy", label: "Privasi" },
-          // ]}
-          />
+          <Footer />
         </div>
       </main>
     </div>
