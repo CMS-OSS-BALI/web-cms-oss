@@ -23,7 +23,6 @@ function FlagDropdown({ lang, langs, onChange, variant = "desktop" }) {
 
   const current = langs.find((l) => l.value === lang) || langs[0];
 
-  // Alt text deskriptif untuk SEO & aksesibilitas
   const flagAlt = (code) => {
     if (code === "id") return "Bendera Indonesia";
     if (code === "en") return "Bendera Inggris";
@@ -96,7 +95,7 @@ function FlagDropdown({ lang, langs, onChange, variant = "desktop" }) {
   );
 }
 
-export default function HeaderUser() {
+export default function HeaderUser({ initialLang = "id" }) {
   const {
     logo,
     navItems,
@@ -107,7 +106,7 @@ export default function HeaderUser() {
     langs,
     changeLang,
     langLabel,
-  } = useHeaderUViewModel();
+  } = useHeaderUViewModel({ initialLang });
 
   return (
     <header className="user-header">

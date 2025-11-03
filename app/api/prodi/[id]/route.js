@@ -1,93 +1,25 @@
 // app/api/prodi/[id]/route.js
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
 import { translate } from "@/app/utils/geminiTranslator";
+import {
+  json,
+  badRequest,
+  unauthorized,
+  forbidden,
+  notFound,
+  assertAdmin,
+  readBodyFlexible,
+  normalizeLocale,
+  pickTrans,
+  toTs,
+  DEFAULT_LOCALE,
+  EN_LOCALE,
+} from "@/app/api/prodi/_utils";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-/* -------------------- utils -------------------- */
-const DEFAULT_LOCALE = "id";
-const EN_LOCALE = "en";
-const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
-
-// --- NEW: safe date → timestamp (ms)
-function toTs(v) {
-  if (!v) return null;
-  const t = new Date(String(v)).getTime();
-  return Number.isFinite(t) ? t : null;
-}
-
-function normalizeLocale(v, fallback = DEFAULT_LOCALE) {
-  return (v || fallback).toLowerCase().slice(0, 5);
-}
-function pickTrans(
-  list = [],
-  primary = DEFAULT_LOCALE,
-  fallback = DEFAULT_LOCALE
-) {
-  const by = (loc) => list.find((t) => t.locale === loc);
-  return by(primary) || by(fallback) || null;
-}
-function sanitize(v) {
-  if (v === null || v === undefined) return v;
-  if (typeof v === "bigint") return v.toString();
-  if (Array.isArray(v)) return v.map(sanitize);
-  if (typeof v === "object") {
-    const o = {};
-    for (const [k, val] of Object.entries(v)) o[k] = sanitize(val);
-    return o;
-  }
-  return v;
-}
-function json(data, init) {
-  return NextResponse.json(sanitize(data), init);
-}
-function badRequest(message) {
-  return NextResponse.json({ message }, { status: 400 });
-}
-function notFound() {
-  return NextResponse.json({ message: "Not found" }, { status: 404 });
-}
-async function assertAdmin(req) {
-  const key = req.headers.get("x-admin-key");
-  if (key && ADMIN_TEST_KEY && key === ADMIN_TEST_KEY) {
-    const anyAdmin = await prisma.admin_users.findFirst({
-      select: { id: true },
-    });
-    if (!anyAdmin) throw new Response("Forbidden", { status: 403 });
-    return { adminId: anyAdmin.id, via: "header" };
-  }
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email)
-    throw new Response("Unauthorized", { status: 401 });
-  const admin = await prisma.admin_users.findUnique({
-    where: { email: session.user.email },
-    select: { id: true },
-  });
-  if (!admin) throw new Response("Forbidden", { status: 403 });
-  return { adminId: admin.id, via: "session" };
-}
-async function readBody(req) {
-  const ct = (req.headers.get("content-type") || "").toLowerCase();
-  if (
-    ct.startsWith("multipart/form-data") ||
-    ct.startsWith("application/x-www-form-urlencoded")
-  ) {
-    const form = await req.formData();
-    const body = {};
-    for (const [k, v] of form.entries()) {
-      if (v instanceof File) continue;
-      body[k] = v;
-    }
-    return body;
-  }
-  return (await req.json().catch(() => ({}))) ?? {};
-}
-
-/** map DB row → API shape (with created_ts/updated_ts) */
+/* map DB row → API shape */
 function mapProdi(row, locale, fallback) {
   const t = pickTrans(row.prodi_translate || [], locale, fallback);
   const created_ts = toTs(row.created_at) ?? toTs(row.updated_at) ?? null;
@@ -107,10 +39,12 @@ function mapProdi(row, locale, fallback) {
   };
 }
 
-/* -------------------- GET (detail) -------------------- */
+/* ===================== GET (detail) ===================== */
 export async function GET(req, { params }) {
   try {
-    const id = params?.id;
+    const id = String(params?.id || "");
+    if (!id) return badRequest("id is required", "id");
+
     const url = new URL(req.url);
     const locale = normalizeLocale(url.searchParams.get("locale"));
     const fallback = normalizeLocale(
@@ -133,30 +67,82 @@ export async function GET(req, { params }) {
         },
       },
     });
-    if (!row) return notFound();
-    return json({ data: mapProdi(row, locale, fallback) });
+    if (!row) return notFound("Prodi tidak ditemukan.");
+    return json({ message: "OK", data: mapProdi(row, locale, fallback) });
   } catch (err) {
     console.error(`GET /api/prodi/${params?.id} error:`, err);
-    return NextResponse.json(
-      { message: "Failed to fetch prodi" },
+    return json(
+      {
+        error: { code: "SERVER_ERROR", message: "Gagal memuat detail prodi." },
+      },
       { status: 500 }
     );
   }
 }
 
-/* -------------------- PUT/PATCH (update) -------------------- */
+/* ===================== PUT/PATCH (update) ===================== */
 export async function PUT(req, ctx) {
   return PATCH(req, ctx);
 }
 export async function PATCH(req, { params }) {
   try {
     await assertAdmin(req);
-    const id = params?.id;
-    if (!id) return badRequest("id is required");
+  } catch (err) {
+    const status = err?.status || 401;
+    if (status === 401) return unauthorized();
+    if (status === 403) return forbidden();
+    return unauthorized();
+  }
 
-    const body = await readBody(req);
+  try {
+    const id = String(params?.id || "");
+    if (!id) return badRequest("id is required", "id");
+
+    const body = await readBodyFlexible(req);
     const locale = normalizeLocale(body.locale);
 
+    const ops = [];
+
+    // If jurusan_id changes, also re-derive college_id
+    if (Object.prototype.hasOwnProperty.call(body, "jurusan_id")) {
+      const newJurId = String(body.jurusan_id || "").trim();
+      if (!newJurId)
+        return badRequest("jurusan_id cannot be empty", "jurusan_id");
+      const jur = await prisma.jurusan.findUnique({
+        where: { id: newJurId },
+        select: { id: true, college_id: true },
+      });
+      if (!jur) {
+        return json(
+          {
+            error: {
+              code: "FK_INVALID",
+              field: "jurusan_id",
+              message: "jurusan_id invalid (not found)",
+            },
+          },
+          { status: 400 }
+        );
+      }
+      ops.push(
+        prisma.prodi.update({
+          where: { id },
+          data: {
+            jurusan_id: newJurId,
+            college_id: jur.college_id ?? null,
+            updated_at: new Date(),
+          },
+        })
+      );
+    } else {
+      const exists = await prisma.prodi.findUnique({
+        where: { id },
+        select: { id: true },
+      });
+      if (!exists) return notFound("Prodi tidak ditemukan.");
+    }
+
+    // Update translation if provided
     const hasName = Object.prototype.hasOwnProperty.call(body, "name");
     const hasDesc = Object.prototype.hasOwnProperty.call(body, "description");
     const name = hasName ? String(body.name || "").trim() : undefined;
@@ -165,42 +151,13 @@ export async function PATCH(req, { params }) {
         ? String(body.description)
         : null
       : undefined;
+
     const autoTranslate =
       String(body.autoTranslate ?? "true").toLowerCase() !== "false";
 
-    await prisma.$transaction(async (tx) => {
-      // If jurusan_id changes, also re-derive college_id
-      if (body.jurusan_id !== undefined) {
-        const newJurId = String(body.jurusan_id || "").trim();
-        if (!newJurId)
-          throw new Response("jurusan_id cannot be empty", { status: 400 });
-        const jur = await tx.jurusan.findUnique({
-          where: { id: newJurId },
-          select: { id: true, college_id: true },
-        });
-        if (!jur)
-          throw new Response("jurusan_id invalid (not found)", { status: 400 });
-
-        await tx.prodi.update({
-          where: { id },
-          data: {
-            jurusan_id: newJurId,
-            college_id: jur.college_id ?? null,
-            updated_at: new Date(),
-          },
-        });
-      } else {
-        // touch row if no parent change but ensure it exists
-        const exists = await tx.prodi.findUnique({
-          where: { id },
-          select: { id: true },
-        });
-        if (!exists) throw new Response("Not found", { status: 404 });
-      }
-
-      // Upsert translation if provided
-      if (hasName || hasDesc) {
-        await tx.prodi_translate.upsert({
+    if (hasName || hasDesc) {
+      ops.push(
+        prisma.prodi_translate.upsert({
           where: { id_prodi_locale: { id_prodi: id, locale } },
           update: {
             ...(hasName ? { name } : {}),
@@ -212,19 +169,21 @@ export async function PATCH(req, { params }) {
             name: hasName ? name : "(no title)",
             description: hasDesc ? description : null,
           },
-        });
+        })
+      );
 
-        if (autoTranslate && locale !== EN_LOCALE) {
-          const [nameEn, descEn] = await Promise.all([
-            hasName && name
-              ? translate(name, locale, EN_LOCALE)
-              : Promise.resolve(undefined),
-            hasDesc && typeof description === "string"
-              ? translate(description, locale, EN_LOCALE)
-              : Promise.resolve(undefined),
-          ]);
+      if (autoTranslate && locale !== EN_LOCALE) {
+        const [nameEn, descEn] = await Promise.all([
+          hasName && name
+            ? translate(name, locale, EN_LOCALE)
+            : Promise.resolve(undefined),
+          hasDesc && typeof description === "string"
+            ? translate(description, locale, EN_LOCALE)
+            : Promise.resolve(undefined),
+        ]);
 
-          await tx.prodi_translate.upsert({
+        ops.push(
+          prisma.prodi_translate.upsert({
             where: { id_prodi_locale: { id_prodi: id, locale: EN_LOCALE } },
             update: {
               ...(nameEn !== undefined ? { name: nameEn } : {}),
@@ -236,12 +195,14 @@ export async function PATCH(req, { params }) {
               name: nameEn ?? (hasName ? name : "(no title)"),
               description: descEn ?? (hasDesc ? description : null),
             },
-          });
-        }
+          })
+        );
       }
-    });
+    }
 
-    // --- NEW: return latest detail (with created_ts/updated_ts)
+    if (ops.length) await prisma.$transaction(ops);
+
+    // return latest detail
     const locales = [locale, DEFAULT_LOCALE];
     const updated = await prisma.prodi.findUnique({
       where: { id },
@@ -258,43 +219,73 @@ export async function PATCH(req, { params }) {
         },
       },
     });
-    if (!updated) return notFound();
-    return json({ data: mapProdi(updated, locale, DEFAULT_LOCALE) });
+    if (!updated) return notFound("Prodi tidak ditemukan.");
+    return json({
+      message: "Prodi berhasil diperbarui.",
+      data: mapProdi(updated, locale, DEFAULT_LOCALE),
+    });
   } catch (err) {
-    if (err instanceof Response) return err;
     if (err?.code === "P2003") {
-      return NextResponse.json(
-        { message: "jurusan_id invalid (FK failed)" },
+      return json(
+        {
+          error: {
+            code: "FK_INVALID",
+            field: "jurusan_id",
+            message: "jurusan_id invalid (FK failed)",
+          },
+        },
         { status: 400 }
       );
     }
-    if (err?.code === "P2025") return notFound();
+    if (err?.code === "P2025") return notFound("Prodi tidak ditemukan.");
     console.error(`PATCH /api/prodi/${params?.id} error:`, err);
-    return NextResponse.json(
-      { message: "Failed to update prodi" },
+    return json(
+      {
+        error: {
+          code: "SERVER_ERROR",
+          message: "Terjadi kesalahan saat memperbarui prodi.",
+        },
+      },
       { status: 500 }
     );
   }
 }
 
-/* -------------------- DELETE (soft delete) -------------------- */
-export async function DELETE(_req, { params }) {
+/* ===================== DELETE (soft) ===================== */
+export async function DELETE(req, { params }) {
   try {
-    await assertAdmin(_req);
-    const id = params?.id;
-    if (!id) return badRequest("id is required");
+    await assertAdmin(req);
+  } catch (err) {
+    const status = err?.status || 401;
+    if (status === 401) return unauthorized();
+    if (status === 403) return forbidden();
+    return unauthorized();
+  }
+
+  try {
+    const id = String(params?.id || "");
+    if (!id) return badRequest("id is required", "id");
 
     const deleted = await prisma.prodi.update({
       where: { id },
       data: { deleted_at: new Date(), updated_at: new Date() },
+      select: { id: true, deleted_at: true },
     });
 
-    return json({ data: deleted });
+    return json({
+      message: "Prodi berhasil dihapus (soft delete).",
+      data: deleted,
+    });
   } catch (err) {
-    if (err?.code === "P2025") return notFound();
+    if (err?.code === "P2025") return notFound("Prodi tidak ditemukan.");
     console.error(`DELETE /api/prodi/${params?.id} error:`, err);
-    return NextResponse.json(
-      { message: "Failed to delete prodi" },
+    return json(
+      {
+        error: {
+          code: "SERVER_ERROR",
+          message: "Terjadi kesalahan saat menghapus prodi.",
+        },
+      },
       { status: 500 }
     );
   }

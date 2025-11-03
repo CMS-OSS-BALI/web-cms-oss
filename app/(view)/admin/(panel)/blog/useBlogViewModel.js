@@ -193,7 +193,11 @@ export default function useBlogViewModel() {
         const info = await res.json().catch(() => null);
         throw new Error(info?.message || "Gagal menambah blog");
       }
+
+      // Penting: artikel baru biasanya ada di page 1 (sort desc)
+      setPage(1);
       await refresh();
+
       return { ok: true };
     } catch (err) {
       return { ok: false, error: err?.message || "Gagal menambah blog" };
@@ -221,6 +225,8 @@ export default function useBlogViewModel() {
         const info = await res.json().catch(() => null);
         throw new Error(info?.message || "Gagal memperbarui blog");
       }
+
+      // Tidak perlu ubah page; cukup revalidate
       await refresh();
       return { ok: true };
     } catch (err) {
@@ -240,6 +246,15 @@ export default function useBlogViewModel() {
         const info = await res.json().catch(() => null);
         throw new Error(info?.message || "Gagal menghapus blog");
       }
+
+      // Clamp page agar tidak tersisa halaman kosong
+      const newTotal = Math.max(0, (total ?? 0) - 1);
+      const totalPagesAfterDelete = Math.max(
+        1,
+        Math.ceil(newTotal / Math.max(1, perPage))
+      );
+      setPage((p) => Math.min(p, totalPagesAfterDelete));
+
       await refresh();
       return { ok: true };
     } catch (err) {

@@ -67,7 +67,6 @@ const csvSafe = (v) => {
 function normalizeCounts(obj) {
   if (!obj) return null;
 
-  // Ambil kemungkinan lokasi angka ringkasan
   const src =
     obj?.meta?.counts ||
     obj?.data?.counts ||
@@ -168,7 +167,7 @@ export default function useMerchantsViewModel() {
     async (st, signal) => {
       const params = new URLSearchParams();
       params.set("page", "1");
-      params.set("perPage", "1"); // hanya butuh meta.total
+      params.set("perPage", "1");
       params.set("sort", DEFAULT_SORT);
       params.set("locale", locale);
       params.set("fallback", fallbackFor(locale));
@@ -185,23 +184,19 @@ export default function useMerchantsViewModel() {
     [locale]
   );
 
-  /** Refresh summary dengan strategi: summary endpoint → meta.counts → fallback 3 panggilan */
+  /** Refresh summary */
   const refreshStatusCounts = useCallback(async () => {
     countAbort.current?.abort?.();
     const ac = new AbortController();
     countAbort.current = ac;
 
     try {
-      // 1) Coba endpoint /summary
       const counts = await fetchSummaryOnce(ac.signal);
       setStatusCounts(counts);
       return;
-    } catch {
-      // lanjut ke fallback
-    }
+    } catch {}
 
     try {
-      // 2) Coba ambil dari list (perPage=1) yang mungkin sudah menyertakan meta.counts
       const url = buildKey({
         page: 1,
         perPage: 1,
@@ -219,12 +214,9 @@ export default function useMerchantsViewModel() {
         setStatusCounts(maybe);
         return;
       }
-    } catch {
-      // lanjut ke fallback 3x
-    }
+    } catch {}
 
     try {
-      // 3) Fallback terakhir: 3 panggilan lama
       const [p, a, d] = await Promise.all([
         fetchCountByStatus("PENDING", ac.signal),
         fetchCountByStatus("APPROVED", ac.signal),
@@ -238,55 +230,64 @@ export default function useMerchantsViewModel() {
     }
   }, [locale, fetchSummaryOnce, fetchCountByStatus]);
 
-  /* ========== reload list (sekalian baca counts kalau disediakan) ========== */
-  const reload = useCallback(async () => {
-    setLoading(true);
-    listAbort.current?.abort?.();
-    const ac = new AbortController();
-    listAbort.current = ac;
+  /* ========== reload list (mendukung override page/perPage) ========== */
+  const reload = useCallback(
+    async (opts = {}) => {
+      const effPage = opts.page ?? page;
+      const effPerPage = opts.perPage ?? perPage;
 
-    try {
-      const url = buildKey({
-        page,
-        perPage,
-        q,
-        sort: DEFAULT_SORT,
-        locale,
-        fallback: fallbackFor(locale),
-        status,
-        categoryId,
-      });
+      setLoading(true);
+      listAbort.current?.abort?.();
+      const ac = new AbortController();
+      listAbort.current = ac;
 
-      const res = await fetch(url, { cache: "no-store", signal: ac.signal });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error?.message || "Load failed");
+      try {
+        const url = buildKey({
+          page: effPage,
+          perPage: effPerPage,
+          q,
+          sort: DEFAULT_SORT,
+          locale,
+          fallback: fallbackFor(locale),
+          status,
+          categoryId,
+        });
 
-      const rows = json?.data || [];
-      const meta = json?.meta || {};
-      const nextTotal = meta.total ?? rows.length ?? 0;
+        const res = await fetch(url, { cache: "no-store", signal: ac.signal });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json?.error?.message || "Load failed");
 
-      const defaultPages = Math.ceil(nextTotal / (perPage || 10)) || 1;
-      const nextTotalPages = Math.max(1, meta.totalPages ?? defaultPages);
+        const rows = json?.data || [];
+        const meta = json?.meta || {};
+        const nextTotal = meta.total ?? rows.length ?? 0;
 
-      setMerchants(rows);
-      setTotal(nextTotal);
-      setTotalPages(nextTotalPages);
+        const defaultPages = Math.ceil(nextTotal / (effPerPage || 10)) || 1;
+        const nextTotalPages = Math.max(1, meta.totalPages ?? defaultPages);
 
-      // Jika server sudah kirim counts, pakai langsung (tanpa panggilan tambahan)
-      const maybeCounts = normalizeCounts(json);
-      if (maybeCounts) {
-        setStatusCounts((prev) => ({ ...prev, ...maybeCounts }));
+        setMerchants(rows);
+        setTotal(nextTotal);
+        setTotalPages(nextTotalPages);
+
+        const maybeCounts = normalizeCounts(json);
+        if (maybeCounts) {
+          setStatusCounts((prev) => ({ ...prev, ...maybeCounts }));
+        }
+
+        if (effPage > nextTotalPages) {
+          setPage(nextTotalPages);
+        }
+      } catch (e) {
+        if (e?.name !== "AbortError") {
+          setMerchants([]);
+          setTotal(0);
+          setTotalPages(1);
+        }
+      } finally {
+        setLoading(false);
       }
-    } catch (e) {
-      if (e?.name !== "AbortError") {
-        setMerchants([]);
-        setTotal(0);
-        setTotalPages(1);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [page, perPage, q, status, categoryId, locale]);
+    },
+    [page, perPage, q, status, categoryId, locale]
+  );
 
   useEffect(() => {
     reload();
@@ -331,26 +332,50 @@ export default function useMerchantsViewModel() {
       try {
         let body;
         if (payload instanceof FormData) {
+          // langsung pakai, tanpa memodifikasi argumen
           body = payload;
         } else {
+          // SUSUN FormData TANPA mengubah payload caller
           const fd = new FormData();
-          if (payload.file) {
-            fd.set("image", payload.file);
-            delete payload.file;
+
+          // 1) file utama (image)
+          const file = payload?.file;
+          if (file) {
+            fd.set("image", file);
           }
-          if (Array.isArray(payload.attachments_new)) {
-            payload.attachments_new.forEach((f) => fd.append("attachments", f));
-            delete payload.attachments_new;
-          }
-          if (Array.isArray(payload.attachments_to_delete)) {
-            payload.attachments_to_delete.forEach((x) =>
-              fd.append("attachments_to_delete", String(x))
-            );
-            delete payload.attachments_to_delete;
-          }
+
+          // 2) lampiran baru (array file)
+          const attachmentsNew = Array.isArray(payload?.attachments_new)
+            ? payload.attachments_new
+            : [];
+          attachmentsNew.forEach((f) => fd.append("attachments", f));
+
+          // 3) daftar lampiran yang akan dihapus (array id/string)
+          const attachmentsToDelete = Array.isArray(
+            payload?.attachments_to_delete
+          )
+            ? payload.attachments_to_delete
+            : [];
+          attachmentsToDelete.forEach((x) =>
+            fd.append("attachments_to_delete", String(x))
+          );
+
+          // 4) field lain (skip key khusus agar tidak dobel)
+          const SKIP = new Set([
+            "file",
+            "attachments_new",
+            "attachments_to_delete",
+          ]);
           Object.entries(payload || {}).forEach(([k, v]) => {
-            if (v !== undefined && v !== null) fd.set(k, String(v));
+            if (SKIP.has(k)) return;
+            if (v === undefined || v === null) return;
+            if (typeof v === "boolean") {
+              fd.set(k, v ? "true" : "false");
+            } else {
+              fd.set(k, String(v));
+            }
           });
+
           fd.set("locale", locale);
           body = fd;
         }
@@ -385,7 +410,20 @@ export default function useMerchantsViewModel() {
         if (!res.ok)
           return { ok: false, error: j?.error?.message || "Gagal menghapus" };
 
-        await Promise.all([reload(), refreshStatusCounts()]);
+        // Clamp page → halaman valid terdekat
+        const newTotal = Math.max(0, (total || 0) - 1);
+        const nextTotalPages = Math.max(
+          1,
+          Math.ceil(newTotal / Math.max(1, perPage))
+        );
+        const targetPage = Math.min(page, nextTotalPages);
+        if (targetPage !== page) setPage(targetPage);
+
+        await Promise.all([
+          reload({ page: targetPage }),
+          refreshStatusCounts(),
+        ]);
+
         return { ok: true };
       } catch (e) {
         return { ok: false, error: e?.message || "Gagal menghapus" };
@@ -393,7 +431,7 @@ export default function useMerchantsViewModel() {
         setOpLoading(false);
       }
     },
-    [reload, refreshStatusCounts]
+    [page, perPage, total, reload, refreshStatusCounts]
   );
 
   /* ========== kategori options (remote) ========== */
@@ -435,8 +473,38 @@ export default function useMerchantsViewModel() {
 
   /* ========== CSV export ========== */
   const exportCSV = useCallback(async () => {
+    // 1) Try a backend export endpoint first (fastest + truly streams server-side)
     try {
-      // discover total first
+      const params = new URLSearchParams();
+      params.set("format", "csv");
+      params.set("locale", locale);
+      params.set("fallback", fallbackFor(locale));
+      if (q && q.trim()) params.set("q", q.trim());
+      if (status && String(status).trim())
+        params.set("status", String(status).trim().toUpperCase());
+      if (categoryId && String(categoryId).trim())
+        params.set("category_id", String(categoryId).trim());
+
+      const resp = await fetch(
+        `/api/mitra-dalam-negeri/export?${params.toString()}`,
+        { cache: "no-store" }
+      );
+
+      if (resp.ok) {
+        const ct = (resp.headers.get("content-type") || "").toLowerCase();
+        if (ct.includes("text/csv") || ct.includes("octet-stream")) {
+          // server already gives us the CSV — just return it
+          return await resp.blob();
+        }
+        // if server returns JSON instead of CSV, fall through to client batching
+      }
+    } catch {
+      // ignore and fall back to client-side batching
+    }
+
+    // 2) Client-side parallelised export (batched Promise.all with concurrency limit)
+    try {
+      // First get the total count quickly
       const headUrl = buildKey({
         page: 1,
         perPage: 1,
@@ -452,7 +520,7 @@ export default function useMerchantsViewModel() {
       );
       const allTotal = head?.meta?.total ?? 0;
 
-      const headers = [
+      const HEADERS = [
         "id",
         "merchant_name",
         "status",
@@ -466,18 +534,29 @@ export default function useMerchantsViewModel() {
       ];
 
       if (!allTotal) {
-        return new Blob([headers.join(",")], {
+        return new Blob([HEADERS.join(",")], {
           type: "text/csv;charset=utf-8",
         });
       }
 
-      const per = 100;
-      const pages = Math.max(1, Math.ceil(allTotal / per));
-      const all = [];
-      for (let p = 1; p <= pages; p += 1) {
+      // Tune these to your API/server
+      const PER = 250; // larger page = fewer roundtrips
+      const pages = Math.max(1, Math.ceil(allTotal / PER));
+
+      // Concurrency cap to avoid hammering the API (use hardware hint if available)
+      const MAX_CONCURRENCY =
+        typeof navigator !== "undefined" && navigator.hardwareConcurrency
+          ? Math.min(
+              8,
+              Math.max(2, Math.floor(navigator.hardwareConcurrency / 2))
+            )
+          : 6;
+
+      // Helper: fetch one page
+      const fetchPage = async (p) => {
         const url = buildKey({
           page: p,
-          perPage: per,
+          perPage: PER,
           q,
           sort: DEFAULT_SORT,
           locale,
@@ -485,29 +564,66 @@ export default function useMerchantsViewModel() {
           status,
           categoryId,
         });
-        const { data } = await fetch(url, { cache: "no-store" }).then((r) =>
+        const json = await fetch(url, { cache: "no-store" }).then((r) =>
           r.json()
         );
-        all.push(...(data || []));
+        return Array.isArray(json?.data) ? json.data : [];
+      };
+
+      // Prepare an array to hold CSV chunk per page (to keep order)
+      const pageChunks = new Array(pages);
+
+      // Convert rows → CSV chunk (string)
+      const rowsToCsvLines = (rows) =>
+        rows
+          .map((r) =>
+            [
+              r.id,
+              csvSafe(r.merchant_name),
+              csvSafe(r.status),
+              csvSafe(r?.category?.name || ""),
+              csvSafe(r.email || ""),
+              csvSafe(r.phone || ""),
+              csvSafe(r.website || ""),
+              csvSafe(r.city || ""),
+              csvSafe(r.province || ""),
+              r.created_at ? new Date(r.created_at).toISOString() : "",
+            ].join(",")
+          )
+          .join("\n");
+
+      // Worker pool with concurrency limit
+      let cursor = 1;
+      const worker = async () => {
+        while (true) {
+          const myPage = cursor;
+          cursor += 1;
+          if (myPage > pages) break;
+
+          const rows = await fetchPage(myPage);
+          pageChunks[myPage - 1] = rowsToCsvLines(rows);
+
+          // Yield to the browser a bit on big exports
+          // (prevents long single-task blocking on the main thread)
+          // eslint-disable-next-line no-await-in-loop
+          await new Promise((r) => setTimeout(r, 0));
+        }
+      };
+
+      const workers = Array.from({ length: MAX_CONCURRENCY }, () => worker());
+      await Promise.all(workers);
+
+      // Assemble Blob parts without building one huge string at once
+      const parts = [];
+      parts.push(HEADERS.join(","), "\n");
+      for (let i = 0; i < pageChunks.length; i += 1) {
+        if (pageChunks[i]) {
+          parts.push(pageChunks[i]);
+          if (i !== pageChunks.length - 1) parts.push("\n");
+        }
       }
 
-      const rows = all.map((r) => [
-        r.id,
-        csvSafe(r.merchant_name),
-        csvSafe(r.status),
-        csvSafe(r?.category?.name || ""),
-        csvSafe(r.email || ""),
-        csvSafe(r.phone || ""),
-        csvSafe(r.website || ""),
-        csvSafe(r.city || ""),
-        csvSafe(r.province || ""),
-        r.created_at ? new Date(r.created_at).toISOString() : "",
-      ]);
-
-      const lines = [headers.join(","), ...rows.map((a) => a.join(","))].join(
-        "\n"
-      );
-      return new Blob([lines], { type: "text/csv;charset=utf-8" });
+      return new Blob(parts, { type: "text/csv;charset=utf-8" });
     } catch (e) {
       console.error("exportCSV error:", e);
       return null;

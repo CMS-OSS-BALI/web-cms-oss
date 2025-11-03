@@ -1,99 +1,28 @@
 // app/api/prodi/route.js
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
 import { translate } from "@/app/utils/geminiTranslator";
 import { randomUUID } from "crypto";
+import {
+  json,
+  badRequest,
+  unauthorized,
+  forbidden,
+  notFound,
+  assertAdmin,
+  asInt,
+  readQuery,
+  readBodyFlexible,
+  normalizeLocale,
+  pickTrans,
+  toTs,
+  DEFAULT_LOCALE,
+  EN_LOCALE,
+} from "@/app/api/prodi/_utils";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-/* -------------------- utils -------------------- */
-const DEFAULT_LOCALE = "id";
-const EN_LOCALE = "en";
-const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
-
-// --- NEW: safe date → timestamp (ms)
-function toTs(v) {
-  if (!v) return null;
-  const t = new Date(String(v)).getTime();
-  return Number.isFinite(t) ? t : null;
-}
-
-function normalizeLocale(v, fallback = DEFAULT_LOCALE) {
-  return (v || fallback).toLowerCase().slice(0, 5);
-}
-function pickTrans(
-  list = [],
-  primary = DEFAULT_LOCALE,
-  fallback = DEFAULT_LOCALE
-) {
-  const by = (loc) => list.find((t) => t.locale === loc);
-  return by(primary) || by(fallback) || null;
-}
-function sanitize(v) {
-  if (v === null || v === undefined) return v;
-  if (typeof v === "bigint") return v.toString();
-  if (Array.isArray(v)) return v.map(sanitize);
-  if (typeof v === "object") {
-    const o = {};
-    for (const [k, val] of Object.entries(v)) o[k] = sanitize(val);
-    return o;
-  }
-  return v;
-}
-function json(data, init) {
-  return NextResponse.json(sanitize(data), init);
-}
-function badRequest(message) {
-  return NextResponse.json({ message }, { status: 400 });
-}
-function asInt(v, dflt) {
-  const n = parseInt(v, 10);
-  return Number.isFinite(n) ? n : dflt;
-}
-
-/** Accept NextAuth session OR x-admin-key header (for Postman) */
-async function assertAdmin(req) {
-  const key = req.headers.get("x-admin-key");
-  if (key && ADMIN_TEST_KEY && key === ADMIN_TEST_KEY) {
-    const anyAdmin = await prisma.admin_users.findFirst({
-      select: { id: true },
-    });
-    if (!anyAdmin) throw new Response("Forbidden", { status: 403 });
-    return { adminId: anyAdmin.id, via: "header" };
-  }
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email)
-    throw new Response("Unauthorized", { status: 401 });
-  const admin = await prisma.admin_users.findUnique({
-    where: { email: session.user.email },
-    select: { id: true },
-  });
-  if (!admin) throw new Response("Forbidden", { status: 403 });
-  return { adminId: admin.id, via: "session" };
-}
-
-/** Read form-data or JSON body (ignore Files) */
-async function readBody(req) {
-  const ct = (req.headers.get("content-type") || "").toLowerCase();
-  if (
-    ct.startsWith("multipart/form-data") ||
-    ct.startsWith("application/x-www-form-urlencoded")
-  ) {
-    const form = await req.formData();
-    const body = {};
-    for (const [k, v] of form.entries()) {
-      if (typeof File !== "undefined" && v instanceof File) continue;
-      body[k] = v;
-    }
-    return body;
-  }
-  return (await req.json().catch(() => ({}))) ?? {};
-}
-
-/** map DB row → API shape (with created_ts/updated_ts) */
+/* map DB row → API shape */
 function mapProdi(row, locale, fallback) {
   const t = pickTrans(row.prodi_translate || [], locale, fallback);
   const created_ts = toTs(row.created_at) ?? toTs(row.updated_at) ?? null;
@@ -113,39 +42,33 @@ function mapProdi(row, locale, fallback) {
   };
 }
 
-/* -------------------- GET (list) -------------------- */
+/* ===================== GET (list) ===================== */
 export async function GET(req) {
   try {
-    const { searchParams } = new URL(req.url);
-    const page = Math.max(1, asInt(searchParams.get("page"), 1));
-    const perPage = Math.min(
-      100,
-      Math.max(1, asInt(searchParams.get("perPage"), 12))
-    );
-    const q = (searchParams.get("q") || "").trim();
-    const jurusan_id =
-      (searchParams.get("jurusan_id") || "").trim() || undefined;
-    const sort = String(searchParams.get("sort") || "created_at:desc");
+    const sp = readQuery(req);
+    const page = Math.max(1, asInt(sp.get("page"), 1));
+    const perPage = Math.min(100, Math.max(1, asInt(sp.get("perPage"), 12)));
+    const q = (sp.get("q") || "").trim();
+    const jurusan_id = (sp.get("jurusan_id") || "").trim() || undefined;
+
+    const sort = String(sp.get("sort") || "created_at:desc");
     const [sortFieldRaw = "created_at", sortDirRaw = "desc"] = sort.split(":");
     const sortField = sortFieldRaw.toLowerCase();
     const sortDir = sortDirRaw.toLowerCase() === "asc" ? "asc" : "desc";
 
-    const locale = normalizeLocale(searchParams.get("locale"));
-    const fallback = normalizeLocale(
-      searchParams.get("fallback") || DEFAULT_LOCALE
-    );
+    const locale = normalizeLocale(sp.get("locale"));
+    const fallback = normalizeLocale(sp.get("fallback") || DEFAULT_LOCALE);
     const locales = locale === fallback ? [locale] : [locale, fallback];
 
-    const withDeleted = searchParams.get("with_deleted") === "1";
-    const onlyDeleted = searchParams.get("only_deleted") === "1";
+    const withDeleted = sp.get("with_deleted") === "1";
+    const onlyDeleted = sp.get("only_deleted") === "1";
     const deletedFilter = onlyDeleted
       ? { NOT: { deleted_at: null } }
       : withDeleted
       ? {}
       : { deleted_at: null };
 
-    // ⬇️ FIX: Hapus `mode: 'insensitive'` (tidak didukung di MySQL Prisma).
-    // Jika kolom Anda memakai collation *_ci (case-insensitive), `contains` sudah tidak peka huruf besar/kecil.
+    // MySQL: tanpa mode: 'insensitive'; gunakan collation *_ci untuk case-insensitive
     const where = {
       ...deletedFilter,
       ...(jurusan_id ? { jurusan_id } : {}),
@@ -164,11 +87,11 @@ export async function GET(req) {
         : {}),
     };
 
-    // Sort by name → ambil semua lalu sort in-memory (agar pakai terjemahan yg dipilih)
+    // Sort by name → in-memory agar sesuai terjemahan yang dipakai
     if (sortField === "name") {
       const rowsAll = await prisma.prodi.findMany({
         where,
-        orderBy: { created_at: "desc" },
+        orderBy: { created_at: "desc" }, // stable fallback
         select: {
           id: true,
           jurusan_id: true,
@@ -195,16 +118,22 @@ export async function GET(req) {
       const total = dataAll.length;
       const start = (page - 1) * perPage;
       const data = dataAll.slice(start, start + perPage);
+
       return json({
-        page,
-        perPage,
-        total,
-        totalPages: Math.max(1, Math.ceil(total / perPage)),
+        message: "OK",
         data,
+        meta: {
+          page,
+          perPage,
+          total,
+          totalPages: Math.max(1, Math.ceil(total / perPage)),
+          locale,
+          fallback,
+        },
       });
     }
 
-    // Sort by created_at / updated_at (DB-side)
+    // DB-side sort for created_at / updated_at
     const [total, rows] = await Promise.all([
       prisma.prodi.count({ where }),
       prisma.prodi.findMany({
@@ -232,33 +161,48 @@ export async function GET(req) {
 
     const data = rows.map((r) => mapProdi(r, locale, fallback));
     return json({
-      page,
-      perPage,
-      total,
-      totalPages: Math.max(1, Math.ceil(total / perPage)),
+      message: "OK",
       data,
+      meta: {
+        page,
+        perPage,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / perPage)),
+        locale,
+        fallback,
+      },
     });
   } catch (err) {
     console.error("GET /api/prodi error:", err);
-    return NextResponse.json(
-      { message: "Failed to fetch prodi list" },
+    return json(
+      {
+        error: { code: "SERVER_ERROR", message: "Gagal memuat daftar prodi." },
+      },
       { status: 500 }
     );
   }
 }
 
-/* -------------------- POST (create) -------------------- */
+/* ===================== POST (create) ===================== */
 export async function POST(req) {
   try {
     await assertAdmin(req);
-    const body = await readBody(req);
+  } catch (err) {
+    const status = err?.status || 401;
+    if (status === 401) return unauthorized();
+    if (status === 403) return forbidden();
+    return unauthorized();
+  }
+
+  try {
+    const body = await readBodyFlexible(req);
 
     const jurusan_id = String(body?.jurusan_id || "").trim();
-    if (!jurusan_id) return badRequest("jurusan_id is required");
+    if (!jurusan_id) return badRequest("jurusan_id is required", "jurusan_id");
 
     const locale = normalizeLocale(body.locale);
     const name = String(body?.name || "").trim();
-    if (!name) return badRequest("name is required");
+    if (!name) return badRequest("name is required", "name");
 
     const description =
       body.description !== undefined && body.description !== null
@@ -276,7 +220,10 @@ export async function POST(req) {
         select: { id: true, college_id: true },
       });
       if (!jur)
-        throw new Response("jurusan_id invalid (not found)", { status: 400 });
+        throw Object.assign(new Error("FK_INVALID"), {
+          code: "P2003",
+          field: "jurusan_id",
+        });
 
       const parent = await tx.prodi.create({
         data: {
@@ -324,18 +271,31 @@ export async function POST(req) {
       return parent;
     });
 
-    return json({ data: { id: created.id } }, { status: 201 });
+    return json(
+      { message: "Prodi berhasil dibuat.", data: { id: created.id } },
+      { status: 201 }
+    );
   } catch (err) {
-    if (err instanceof Response) return err;
-    if (err?.code === "P2003") {
-      return NextResponse.json(
-        { message: "jurusan_id invalid (FK failed)" },
+    if (err?.code === "P2003" || err?.message === "FK_INVALID") {
+      return json(
+        {
+          error: {
+            code: "FK_INVALID",
+            field: "jurusan_id",
+            message: "jurusan_id invalid (FK failed)",
+          },
+        },
         { status: 400 }
       );
     }
     console.error("POST /api/prodi error:", err);
-    return NextResponse.json(
-      { message: "Failed to create prodi" },
+    return json(
+      {
+        error: {
+          code: "SERVER_ERROR",
+          message: "Terjadi kesalahan saat membuat prodi.",
+        },
+      },
       { status: 500 }
     );
   }

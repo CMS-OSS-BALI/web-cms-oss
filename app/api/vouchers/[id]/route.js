@@ -1,100 +1,35 @@
 // app/api/vouchers/[id]/route.js
-import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import {
+  json,
+  badRequest,
+  unauthorized,
+  forbidden,
+  notFound,
+  assertAdmin,
+  readBodyFlexible,
+  sanitizeCode,
+  toInt,
+  toDate,
+  toBool,
+  toTs,
+} from "../_utils";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
-
-/** Pastikan Date -> ISO string supaya tanggal konsisten di client */
-function sanitize(v) {
-  if (v == null) return v;
-  if (v instanceof Date) return v.toISOString();
-  if (typeof v === "bigint") return v.toString();
-  if (Array.isArray(v)) return v.map(sanitize);
-  if (typeof v === "object") {
-    const o = {};
-    for (const [k, val] of Object.entries(v)) o[k] = sanitize(val);
-    return o;
-  }
-  return v;
-}
-function json(d, i) {
-  return NextResponse.json(sanitize(d), i);
-}
-function bad(m, f) {
-  return json(
-    { error: { code: "BAD_REQUEST", message: m, ...(f ? { field: f } : {}) } },
-    { status: 400 }
-  );
-}
-function notFound() {
-  return json(
-    { error: { code: "NOT_FOUND", message: "Voucher tidak ditemukan." } },
-    { status: 404 }
-  );
-}
-function toInt(v, d = null) {
-  if (v === "" || v == null || v === undefined) return d;
-  const n = Number(String(v).replace(/\./g, "").replace(/,/g, ""));
-  return Number.isFinite(n) ? Math.trunc(n) : d;
-}
-function toDate(v) {
-  if (!v && v !== 0) return null;
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-function toBool(v) {
-  if (v === undefined || v === null || v === "") return undefined;
-  const s = String(v).toLowerCase();
-  if (s === "1" || s === "true") return true;
-  if (s === "0" || s === "false") return false;
-  return undefined;
-}
-function sanitizeCode(s) {
-  return String(s || "")
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9_-]/g, "")
-    .slice(0, 64);
-}
-async function readBodyFlexible(req) {
-  const ct = (req.headers.get("content-type") || "").toLowerCase();
-  const isMultipart = ct.startsWith("multipart/form-data");
-  const isUrlEncoded = ct.startsWith("application/x-www-form-urlencoded");
-  if (isMultipart || isUrlEncoded) {
-    const form = await req.formData();
-    const body = {};
-    for (const [k, v] of form.entries()) {
-      if (v instanceof File) continue;
-      body[k] = v;
-    }
-    return body;
-  }
-  return (await req.json().catch(() => ({}))) ?? {};
-}
-
-async function assertAdmin(req) {
-  const key = req.headers.get("x-admin-key");
-  if (key && ADMIN_TEST_KEY && key === ADMIN_TEST_KEY) {
-    const any = await prisma.admin_users.findFirst({ select: { id: true } });
-    if (!any) throw new Response("Forbidden", { status: 403 });
-    return any;
-  }
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
-  if (!email) throw new Response("Unauthorized", { status: 401 });
-  const admin = await prisma.admin_users.findUnique({ where: { email } });
-  if (!admin) throw new Response("Forbidden", { status: 403 });
-  return admin;
-}
-
+/* ===== GET detail (admin) ===== */
 export async function GET(req, { params }) {
   try {
     await assertAdmin(req);
+  } catch (err) {
+    const status = err?.status || 401;
+    if (status === 401) return unauthorized();
+    if (status === 403) return forbidden();
+    return unauthorized();
+  }
+
+  try {
     const v = await prisma.vouchers.findUnique({
       where: { id: params?.id },
       select: {
@@ -114,10 +49,18 @@ export async function GET(req, { params }) {
       },
     });
     if (!v) return notFound();
-    return json({ message: "OK", data: v });
+
+    return json({
+      message: "OK",
+      data: {
+        ...v,
+        created_ts: toTs(v.created_at),
+        updated_ts: toTs(v.updated_at),
+        valid_from_ts: toTs(v.valid_from),
+        valid_to_ts: toTs(v.valid_to),
+      },
+    });
   } catch (err) {
-    const status = err?.status || 500;
-    if (status === 401 || status === 403) return err;
     console.error(`GET /api/vouchers/${params?.id} error:`, err);
     return json(
       { error: { code: "SERVER_ERROR", message: "Gagal memuat voucher." } },
@@ -126,11 +69,20 @@ export async function GET(req, { params }) {
   }
 }
 
+/* ===== PATCH update (admin) ===== */
 export async function PATCH(req, { params }) {
   try {
     await assertAdmin(req);
+  } catch (err) {
+    const status = err?.status || 401;
+    if (status === 401) return unauthorized();
+    if (status === 403) return forbidden();
+    return unauthorized();
+  }
+
+  try {
     const id = params?.id;
-    const body = await readBodyFlexible(req); // form-data/json OK
+    const body = await readBodyFlexible(req);
 
     const current = await prisma.vouchers.findUnique({
       where: { id },
@@ -148,7 +100,7 @@ export async function PATCH(req, { params }) {
 
     if ("code" in body) {
       const code = sanitizeCode(body.code);
-      if (!code) return bad("code tidak boleh kosong", "code");
+      if (!code) return badRequest("code tidak boleh kosong", "code");
       data.code = code;
     }
     if ("type" in body) {
@@ -157,13 +109,13 @@ export async function PATCH(req, { params }) {
     }
     if ("value" in body) {
       const v = toInt(body.value, null);
-      if (v == null) return bad("value wajib diisi", "value");
+      if (v == null) return badRequest("value wajib diisi", "value");
       data.value = v;
     }
     if ("max_discount" in body) {
       const md = toInt(body.max_discount, null);
       if (md != null && md < 0)
-        return bad("max_discount harus >= 0 atau null", "max_discount");
+        return badRequest("max_discount harus >= 0 atau null", "max_discount");
       data.max_discount = md;
     }
     if ("is_active" in body) {
@@ -173,7 +125,7 @@ export async function PATCH(req, { params }) {
     if ("max_uses" in body) {
       const mu = toInt(body.max_uses, null);
       if (mu != null && mu < 0)
-        return bad("max_uses harus >= 0 atau null", "max_uses");
+        return badRequest("max_uses harus >= 0 atau null", "max_uses");
       data.max_uses = mu;
     }
     if ("valid_from" in body || "valid_to" in body) {
@@ -191,29 +143,31 @@ export async function PATCH(req, { params }) {
           : undefined;
       if (vf !== undefined) data.valid_from = vf;
       if (vt !== undefined) data.valid_to = vt;
+
       const fromC = vf !== undefined ? vf : current.valid_from ?? null;
       const toC = vt !== undefined ? vt : current.valid_to ?? null;
       if (fromC && toC && toC < fromC)
-        return bad("valid_to harus >= valid_from", "valid_to");
+        return badRequest("valid_to harus >= valid_from", "valid_to");
     }
     if ("event_id" in body) {
-      const ev = String(body.event_id || "").trim();
-      data.event_id = ev || null;
+      const evId = String(body.event_id || "").trim();
+      data.event_id = evId || null;
     }
 
-    // validasi kombinasi akhir
+    // kombinasi akhir
     const t = data.type || current.type;
     const v = "value" in data ? data.value : current.value;
     const md =
       "max_discount" in data ? data.max_discount : current.max_discount;
 
     if (t === "FIXED") {
-      if (v < 0) return bad("value (FIXED) harus >= 0", "value");
+      if (v < 0) return badRequest("value (FIXED) harus >= 0", "value");
       data.max_discount = null;
     } else {
-      if (v < 1 || v > 100) return bad("value (PERCENT) harus 1..100", "value");
+      if (v < 1 || v > 100)
+        return badRequest("value (PERCENT) harus 1..100", "value");
       if (md != null && md < 0)
-        return bad("max_discount harus >= 0 atau null", "max_discount");
+        return badRequest("max_discount harus >= 0 atau null", "max_discount");
     }
 
     if (Object.keys(data).length === 0) {
@@ -238,10 +192,21 @@ export async function PATCH(req, { params }) {
         valid_from: true,
         valid_to: true,
         event_id: true,
+        created_at: true,
         updated_at: true,
       },
     });
-    return json({ message: "Voucher diperbarui.", data: updated });
+
+    return json({
+      message: "Voucher diperbarui.",
+      data: {
+        ...updated,
+        created_ts: toTs(updated.created_at),
+        updated_ts: toTs(updated.updated_at),
+        valid_from_ts: toTs(updated.valid_from),
+        valid_to_ts: toTs(updated.valid_to),
+      },
+    });
   } catch (err) {
     if (
       err?.code === "P2002" &&
@@ -252,8 +217,6 @@ export async function PATCH(req, { params }) {
         { status: 409 }
       );
     }
-    const status = err?.status || 500;
-    if (status === 401 || status === 403) return err;
     if (err?.code === "P2025") return notFound();
     console.error(`PATCH /api/vouchers/${params?.id} error:`, err);
     return json(
@@ -265,18 +228,28 @@ export async function PATCH(req, { params }) {
   }
 }
 
+/* ===== DELETE → nonaktifkan (soft) ===== */
 export async function DELETE(req, { params }) {
   try {
     await assertAdmin(req);
+  } catch (err) {
+    const status = err?.status || 401;
+    if (status === 401) return unauthorized();
+    if (status === 403) return forbidden();
+    return unauthorized();
+  }
+
+  try {
     const up = await prisma.vouchers.update({
       where: { id: params?.id },
       data: { is_active: false, updated_at: new Date() },
-      select: { id: true, is_active: true },
+      select: { id: true, is_active: true, updated_at: true },
     });
-    return json({ message: "Voucher dinonaktifkan.", data: up });
+    return json({
+      message: "Voucher dinonaktifkan.",
+      data: { ...up, updated_ts: toTs(up.updated_at) },
+    });
   } catch (err) {
-    const status = err?.status || 500;
-    if (status === 401 || status === 403) return err;
     if (err?.code === "P2025") return notFound();
     console.error(`DELETE /api/vouchers/${params?.id} error:`, err);
     return json(

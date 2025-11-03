@@ -1,78 +1,23 @@
 // app/api/leads/[id]/route.js
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
+import {
+  json,
+  badRequest,
+  unauthorized,
+  forbidden,
+  notFound,
+  parseDate,
+  parseId,
+  readBodyFlexible,
+  assertAdmin,
+  withTs,
+} from "@/app/api/leads/_utils";
 import { sendWhatsAppMessage, formatPhoneNumber } from "@/app/utils/watzap";
 
-/* ---------- helpers: JSON / BigInt-safe ---------- */
-function sanitize(value) {
-  if (value === null || value === undefined) return value;
-  if (typeof value === "bigint") return value.toString();
-  if (Array.isArray(value)) return value.map(sanitize);
-  if (typeof value === "object") {
-    const out = {};
-    for (const [k, v] of Object.entries(value)) out[k] = sanitize(v);
-    return out;
-  }
-  return value;
-}
-function json(data, init) {
-  return NextResponse.json(sanitize(data), init);
-}
-async function assertAdmin() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id && !session?.user?.email) {
-    throw new Error("UNAUTHORIZED");
-  }
-  return session.user;
-}
-function parseDate(value) {
-  if (!value) return null;
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-const parseId = (v) => {
-  if (v === null || v === undefined) return null;
-  const s = String(v).trim();
-  return s.length ? s : null;
-};
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
-const toMs = (d) => {
-  if (!d) return null;
-  try {
-    const t = d instanceof Date ? d.getTime() : new Date(d).getTime();
-    return Number.isFinite(t) ? t : null;
-  } catch {
-    return null;
-  }
-};
-const withTs = (row) => ({
-  ...row,
-  created_ts: toMs(row.created_at),
-  updated_ts: toMs(row.updated_at),
-  assigned_at_ts: toMs(row.assigned_at),
-  deleted_at_ts: toMs(row.deleted_at),
-});
-
-// accept form-data / urlencoded / json
-async function readBody(req) {
-  const ct = (req.headers.get("content-type") || "").toLowerCase();
-  if (
-    ct.startsWith("multipart/form-data") ||
-    ct.startsWith("application/x-www-form-urlencoded")
-  ) {
-    const form = await req.formData();
-    const body = {};
-    for (const [k, v] of form.entries()) {
-      body[k] = typeof v === "string" ? v : v?.name ?? "";
-    }
-    return body;
-  }
-  return (await req.json().catch(() => ({}))) ?? {};
-}
-
-/* ---------- whatsapp notify ---------- */
+/* ===== whatsapp helpers ===== */
 function normalizePhone(value) {
   if (!value) return "";
   try {
@@ -116,34 +61,19 @@ async function sendAssignmentWA(lead, consultant) {
 /* ========== GET detail ========== */
 export async function GET(req, { params }) {
   try {
-    await assertAdmin();
-  } catch {
-    return json(
-      {
-        error: {
-          code: "UNAUTHORIZED",
-          message: "Akses ditolak. Silakan login terlebih dahulu.",
-        },
-      },
-      { status: 401 }
-    );
+    await assertAdmin(req);
+  } catch (err) {
+    const status = err?.status || 401;
+    if (status === 401)
+      return unauthorized("Akses ditolak. Silakan login terlebih dahulu.");
+    if (status === 403) return forbidden("Anda tidak memiliki akses.");
+    return unauthorized();
   }
 
-  const includeReferral =
-    new URL(req.url).searchParams.get("include_referral") === "1";
+  const sp = new URL(req.url).searchParams;
+  const includeReferral = sp.get("include_referral") === "1";
   const id = String(params.id || "").trim();
-  if (!id) {
-    return json(
-      {
-        error: {
-          code: "BAD_REQUEST",
-          message: "Parameter id wajib diisi.",
-          field: "id",
-        },
-      },
-      { status: 400 }
-    );
-  }
+  if (!id) return badRequest("Parameter id wajib diisi.", "id");
 
   const item = await prisma.leads.findUnique({
     where: { id },
@@ -170,46 +100,26 @@ export async function GET(req, { params }) {
     },
   });
 
-  if (!item) {
-    return json(
-      { error: { code: "NOT_FOUND", message: "Data lead tidak ditemukan." } },
-      { status: 404 }
-    );
-  }
+  if (!item) return notFound("Data lead tidak ditemukan.");
   return json({ message: "OK", data: withTs(item) });
 }
 
 /* ========== PATCH update ========== */
 export async function PATCH(req, { params }) {
   try {
-    await assertAdmin();
-  } catch {
-    return json(
-      {
-        error: {
-          code: "UNAUTHORIZED",
-          message: "Akses ditolak. Silakan login terlebih dahulu.",
-        },
-      },
-      { status: 401 }
-    );
+    await assertAdmin(req);
+  } catch (err) {
+    const status = err?.status || 401;
+    if (status === 401)
+      return unauthorized("Akses ditolak. Silakan login terlebih dahulu.");
+    if (status === 403) return forbidden("Anda tidak memiliki akses.");
+    return unauthorized();
   }
 
   const id = String(params.id || "").trim();
-  if (!id) {
-    return json(
-      {
-        error: {
-          code: "BAD_REQUEST",
-          message: "Parameter id wajib diisi.",
-          field: "id",
-        },
-      },
-      { status: 400 }
-    );
-  }
+  if (!id) return badRequest("Parameter id wajib diisi.", "id");
 
-  const body = await readBody(req);
+  const body = await readBodyFlexible(req);
   const data = {};
 
   const existing = await prisma.leads.findUnique({
@@ -226,13 +136,9 @@ export async function PATCH(req, { params }) {
       referral_id: true,
     },
   });
-  if (!existing) {
-    return json(
-      { error: { code: "NOT_FOUND", message: "Data lead tidak ditemukan." } },
-      { status: 404 }
-    );
-  }
+  if (!existing) return notFound("Data lead tidak ditemukan.");
 
+  // full_name
   if (Object.prototype.hasOwnProperty.call(body, "full_name")) {
     if (
       typeof body.full_name !== "string" ||
@@ -252,6 +158,7 @@ export async function PATCH(req, { params }) {
     data.full_name = body.full_name.trim();
   }
 
+  // optional scalar fields
   for (const key of ["domicile", "whatsapp", "email", "education_last"]) {
     if (Object.prototype.hasOwnProperty.call(body, key)) data[key] = body[key];
   }
@@ -272,7 +179,7 @@ export async function PATCH(req, { params }) {
         { status: 422 }
       );
     }
-    data.assigned_to = assignedToValue;
+    data.assigned_to = assignedToValue; // can be null
     assignedToChanged =
       (existing.assigned_to ?? null) !== (assignedToValue ?? null);
   }
@@ -295,6 +202,7 @@ export async function PATCH(req, { params }) {
     data.assigned_at = assignedAtValue;
   }
 
+  // if assigned_to set (non-null) and no assigned_at provided, auto set now
   if (assignedToChanged && data.assigned_to && !data.assigned_at) {
     data.assigned_at = new Date();
   }
@@ -329,7 +237,7 @@ export async function PATCH(req, { params }) {
       }
       newReferralId = found.id;
     }
-    data.referral_id = newReferralId; // boleh null
+    data.referral_id = newReferralId; // may be null
     referralChange = (existing.referral_id ?? null) !== (newReferralId ?? null);
   }
 
@@ -389,11 +297,11 @@ export async function PATCH(req, { params }) {
       return upd;
     });
 
-    // notify WA jika konsultan berubah
+    // notify consultant if assignment changed
     if (assignedToChanged && updated.assigned_to) {
       const consultant = await prisma.consultants.findUnique({
         where: { id: updated.assigned_to },
-        select: { id: true, whatsapp: true }, // name tidak ada di schema base
+        select: { id: true, whatsapp: true },
       });
       if (consultant) await sendAssignmentWA(updated, consultant);
     }
@@ -408,7 +316,7 @@ export async function PATCH(req, { params }) {
       {
         error: {
           code: "SERVER_ERROR",
-          message: "Terjadi kesalahan di sisi server. Silakan coba lagi nanti.",
+          message: "Terjadi kesalahan di sisi server.",
         },
       },
       { status: 500 }
@@ -417,34 +325,19 @@ export async function PATCH(req, { params }) {
 }
 
 /* ========== DELETE (soft) ========== */
-export async function DELETE(_req, { params }) {
+export async function DELETE(req, { params }) {
   try {
-    await assertAdmin();
-  } catch {
-    return json(
-      {
-        error: {
-          code: "UNAUTHORIZED",
-          message: "Akses ditolak. Silakan login terlebih dahulu.",
-        },
-      },
-      { status: 401 }
-    );
+    await assertAdmin(req);
+  } catch (err) {
+    const status = err?.status || 401;
+    if (status === 401)
+      return unauthorized("Akses ditolak. Silakan login terlebih dahulu.");
+    if (status === 403) return forbidden("Anda tidak memiliki akses.");
+    return unauthorized();
   }
 
   const id = String(params.id || "").trim();
-  if (!id) {
-    return json(
-      {
-        error: {
-          code: "BAD_REQUEST",
-          message: "Parameter id wajib diisi.",
-          field: "id",
-        },
-      },
-      { status: 400 }
-    );
-  }
+  if (!id) return badRequest("Parameter id wajib diisi.", "id");
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -469,25 +362,20 @@ export async function DELETE(_req, { params }) {
         }
       }
     });
-    // balas 200 + message agar mudah dipakai UI/automation
+
     return json(
       { message: "Lead berhasil dihapus (soft delete)." },
       { status: 200 }
     );
   } catch (e) {
     const status = e?.status || 500;
-    if (status === 404) {
-      return json(
-        { error: { code: "NOT_FOUND", message: "Data lead tidak ditemukan." } },
-        { status: 404 }
-      );
-    }
+    if (status === 404) return notFound("Data lead tidak ditemukan.");
     console.error("[DELETE /api/leads/:id] error:", e?.message || e);
     return json(
       {
         error: {
           code: "SERVER_ERROR",
-          message: "Terjadi kesalahan di sisi server. Silakan coba lagi nanti.",
+          message: "Terjadi kesalahan di sisi server.",
         },
       },
       { status: 500 }

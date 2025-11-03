@@ -1,113 +1,49 @@
 // app/api/leads/route.js
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
+import {
+  json,
+  badRequest,
+  unauthorized,
+  forbidden,
+  parseDate,
+  parseId,
+  trimStr,
+  parseSort,
+  readQuery,
+  readBodyFlexible,
+  assertAdmin,
+  withTs,
+} from "@/app/api/leads/_utils";
 
-/* ---- utils ---- */
-function sanitize(value) {
-  if (value === null || value === undefined) return value;
-  if (typeof value === "bigint") return value.toString();
-  if (Array.isArray(value)) return value.map(sanitize);
-  if (typeof value === "object") {
-    const out = {};
-    for (const [k, v] of Object.entries(value)) out[k] = sanitize(v);
-    return out;
-  }
-  return value;
-}
-function json(data, init) {
-  return NextResponse.json(sanitize(data), init);
-}
-async function assertAdmin() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id && !session?.user?.email) {
-    throw new Error("UNAUTHORIZED");
-  }
-  return session.user;
-}
-function parseSort(sort) {
-  if (!sort) return { created_at: "desc" };
-  const [field, dir] = String(sort).split(":");
-  const direction = (dir || "").toLowerCase() === "asc" ? "asc" : "desc";
-  const allowed = new Set(["created_at", "full_name", "email"]);
-  return allowed.has(field) ? { [field]: direction } : { created_at: "desc" };
-}
-function parseDate(value) {
-  if (!value) return null;
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-const trimStr = (v, m = 191) =>
-  typeof v === "string" ? v.trim().slice(0, m) : null;
-const parseId = (v) => {
-  if (v === null || v === undefined) return null;
-  const s = String(v).trim();
-  return s.length ? s : null;
-};
-
-const toMs = (d) => {
-  if (!d) return null;
-  try {
-    const t = d instanceof Date ? d.getTime() : new Date(d).getTime();
-    return Number.isFinite(t) ? t : null;
-  } catch {
-    return null;
-  }
-};
-const withTs = (row) => ({
-  ...row,
-  created_ts: toMs(row.created_at),
-  updated_ts: toMs(row.updated_at),
-  assigned_at_ts: toMs(row.assigned_at),
-  deleted_at_ts: toMs(row.deleted_at),
-});
-
-// accept form-data / urlencoded / json
-async function readBody(req) {
-  const ct = (req.headers.get("content-type") || "").toLowerCase();
-  if (
-    ct.startsWith("multipart/form-data") ||
-    ct.startsWith("application/x-www-form-urlencoded")
-  ) {
-    const form = await req.formData();
-    const body = {};
-    for (const [k, v] of form.entries()) {
-      // Leads endpoint tidak menerima file; kalau ada, treat as filename string
-      body[k] = typeof v === "string" ? v : v?.name ?? "";
-    }
-    return body;
-  }
-  return (await req.json().catch(() => ({}))) ?? {};
-}
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 /* =========================
-   GET /api/leads  (admin)
+   GET /api/leads  (ADMIN)
    ========================= */
 export async function GET(req) {
+  // auth: session or x-admin-key
   try {
-    await assertAdmin();
-  } catch {
-    return json(
-      {
-        error: {
-          code: "UNAUTHORIZED",
-          message: "Akses ditolak. Silakan login terlebih dahulu.",
-        },
-      },
-      { status: 401 }
-    );
+    await assertAdmin(req);
+  } catch (err) {
+    const status = err?.status || 401;
+    if (status === 401)
+      return unauthorized("Akses ditolak. Silakan login terlebih dahulu.");
+    if (status === 403) return forbidden("Anda tidak memiliki akses.");
+    return unauthorized();
   }
 
-  const { searchParams } = new URL(req.url);
-  const q = (searchParams.get("q") || "").trim();
-  const education = searchParams.get("education") || undefined;
+  const sp = readQuery(req);
+  const q = (sp.get("q") || "").trim();
+  const education = sp.get("education") || undefined;
 
-  const assignedToRaw = searchParams.get("assigned_to");
-  const onlyAssigned = searchParams.get("only_assigned") === "1";
-  const includeAssigned = searchParams.get("include_assigned") === "1";
-  const wantSummary = searchParams.get("summary") === "1"; // <<— NEW
+  // assignment filters
+  const assignedToRaw = sp.get("assigned_to");
   const assignedTo = parseId(assignedToRaw);
+  const onlyAssigned = sp.get("only_assigned") === "1";
+  const includeAssigned = sp.get("include_assigned") === "1";
+  const wantSummary = sp.get("summary") === "1";
+
   if (assignedToRaw && assignedTo === null) {
     return json(
       {
@@ -122,24 +58,28 @@ export async function GET(req) {
     );
   }
 
-  // filter referral
-  const referralId = parseId(searchParams.get("referral_id"));
-  const referralCode =
-    (searchParams.get("referral_code") || "").trim() || undefined;
-  const includeReferral = searchParams.get("include_referral") === "1";
+  // referral filters
+  const referralId = parseId(sp.get("referral_id"));
+  const referralCode = (sp.get("referral_code") || "").trim() || undefined;
+  const includeReferral = sp.get("include_referral") === "1";
 
-  const from = searchParams.get("from");
-  const to = searchParams.get("to");
-  const withDeleted = searchParams.get("with_deleted") === "1";
-  const onlyDeleted = searchParams.get("only_deleted") === "1";
-  const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
+  // date filters
+  const from = sp.get("from");
+  const to = sp.get("to");
+
+  // soft delete flags
+  const withDeleted = sp.get("with_deleted") === "1";
+  const onlyDeleted = sp.get("only_deleted") === "1";
+
+  // pagination & sort
+  const page = Math.max(1, parseInt(sp.get("page") || "1", 10));
   const perPage = Math.min(
     100,
-    Math.max(1, parseInt(searchParams.get("perPage") || "10", 10))
+    Math.max(1, parseInt(sp.get("perPage") || "10", 10))
   );
-  const orderBy = parseSort(searchParams.get("sort"));
+  const orderBy = parseSort(sp.get("sort"));
 
-  // ---------- baseWhere untuk SUMMARY (tanpa filter status assigned) ----------
+  // base where (dipakai summary)
   const baseWhere = {
     ...(q && {
       OR: [
@@ -149,15 +89,13 @@ export async function GET(req) {
         { domicile: { contains: q } },
       ],
     }),
-    ...(education && { education_last: education }),
-    ...(from || to
-      ? {
-          created_at: {
-            ...(from ? { gte: parseDate(from) } : {}),
-            ...(to ? { lte: new Date(`${to}T23:59:59.999Z`) } : {}),
-          },
-        }
-      : {}),
+    ...(education ? { education_last: education } : {}),
+    ...((from || to) && {
+      created_at: {
+        ...(from ? { gte: parseDate(from) } : {}),
+        ...(to ? { lte: new Date(`${to}T23:59:59.999Z`) } : {}),
+      },
+    }),
     ...(onlyDeleted
       ? { NOT: { deleted_at: null } }
       : withDeleted
@@ -167,7 +105,7 @@ export async function GET(req) {
     ...(referralCode ? { referral: { code: referralCode } } : {}),
   };
 
-  // ---------- listWhere untuk LIST (menghormati filter assigned) ----------
+  // list where (hormati filter assignment)
   const listWhere = {
     ...baseWhere,
     ...(assignedTo !== null
@@ -179,7 +117,7 @@ export async function GET(req) {
       : { assigned_to: null }),
   };
 
-  // ---------- query paralel ----------
+  // parallel queries
   const tasks = [
     prisma.leads.count({ where: listWhere }),
     prisma.leads.findMany({
@@ -228,20 +166,16 @@ export async function GET(req) {
   }
 
   const results = await Promise.all(tasks);
-
   const total = results[0];
   const rows = results[1];
   const data = rows.map(withTs);
 
   let summary;
   if (wantSummary) {
-    const totalLeads = results[2] || 0;
-    const assignedCount = results[3] || 0;
-    const unassignedCount = results[4] || 0;
     summary = {
-      total: totalLeads,
-      assigned: assignedCount,
-      unassigned: unassignedCount,
+      total: results[2] || 0,
+      assigned: results[3] || 0,
+      unassigned: results[4] || 0,
     };
   }
 
@@ -257,7 +191,8 @@ export async function GET(req) {
    POST /api/leads (PUBLIC)
    ========================= */
 export async function POST(req) {
-  const body = await readBody(req);
+  const body = await readBodyFlexible(req);
+
   const {
     full_name,
     domicile = null,
@@ -270,6 +205,7 @@ export async function POST(req) {
     referral_code: rawReferralCode = null,
   } = body || {};
 
+  // validations
   if (
     !full_name ||
     typeof full_name !== "string" ||
@@ -335,7 +271,7 @@ export async function POST(req) {
 
   try {
     const created = await prisma.$transaction(async (tx) => {
-      // resolve referral by code if id not provided
+      // resolve code → id bila id kosong
       if (!referralId && referralCode) {
         const ref = await tx.referral.findFirst({
           where: { code: referralCode, deleted_at: null },
@@ -349,7 +285,7 @@ export async function POST(req) {
         referralId = ref.id;
       }
 
-      const createdLead = await tx.leads.create({
+      const lead = await tx.leads.create({
         data: {
           full_name: trimStr(full_name, 150),
           domicile: trimStr(domicile, 150),
@@ -384,7 +320,7 @@ export async function POST(req) {
         });
       }
 
-      return createdLead;
+      return lead;
     });
 
     return json(
@@ -392,7 +328,7 @@ export async function POST(req) {
       { status: 201 }
     );
   } catch (e) {
-    if (e?.status === 422 && e.message === "INVALID_REFERRAL_CODE") {
+    if (e?.status === 422 && e?.message === "INVALID_REFERRAL_CODE") {
       return json(
         {
           error: {
@@ -409,7 +345,7 @@ export async function POST(req) {
       {
         error: {
           code: "SERVER_ERROR",
-          message: "Terjadi kesalahan di sisi server. Silakan coba lagi nanti.",
+          message: "Terjadi kesalahan di sisi server.",
         },
       },
       { status: 500 }

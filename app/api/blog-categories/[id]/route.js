@@ -1,91 +1,22 @@
 // app/api/blog-categories/[id]/route.js
-import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import {
+  json,
+  badRequest,
+  notFound,
+  pickLocale,
+  DEFAULT_LOCALE,
+  EN_LOCALE,
+  assertAdmin,
+  readBody,
+  slugify,
+  isValidSlug,
+  pickTrans,
+} from "@/app/api/blog-categories/_utils";
 import { translate } from "@/app/utils/geminiTranslator";
 
-/* ========= Helpers ========= */
-function sanitize(v) {
-  if (v === null || v === undefined) return v;
-  if (typeof v === "bigint") return v.toString();
-  if (Array.isArray(v)) return v.map(sanitize);
-  if (typeof v === "object") {
-    const o = {};
-    for (const [k, val] of Object.entries(v)) o[k] = sanitize(val);
-    return o;
-  }
-  return v;
-}
-function json(data, init) {
-  return NextResponse.json(sanitize(data), init);
-}
-function pickLocale(req, key = "locale", dflt = "id") {
-  try {
-    const { searchParams } = new URL(req.url);
-    return (searchParams.get(key) || dflt).slice(0, 5).toLowerCase();
-  } catch {
-    return dflt;
-  }
-}
-function badRequest(message, field, hint) {
-  return json(
-    {
-      error: {
-        code: "BAD_REQUEST",
-        message,
-        ...(field ? { field } : {}),
-        ...(hint ? { hint } : {}),
-      },
-    },
-    { status: 400 }
-  );
-}
-function notFound() {
-  return json(
-    { error: { code: "NOT_FOUND", message: "Kategori blog tidak ditemukan." } },
-    { status: 404 }
-  );
-}
-function pickTrans(list, primary, fallback) {
-  const by = (loc) => list?.find((t) => t.locale === loc);
-  return by(primary) || by(fallback) || null;
-}
-async function assertAdmin() {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
-  if (!email) throw Object.assign(new Error("UNAUTHORIZED"), { status: 401 });
-  const admin = await prisma.admin_users.findUnique({ where: { email } });
-  if (!admin) throw Object.assign(new Error("FORBIDDEN"), { status: 403 });
-  return admin;
-}
-function slugify(input) {
-  return String(input || "")
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 100);
-}
-function isValidSlug(s) {
-  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(s) && s.length <= 100;
-}
-// accept form-data / urlencoded / json
-async function readBody(req) {
-  const ct = (req.headers.get("content-type") || "").toLowerCase();
-  if (
-    ct.startsWith("multipart/form-data") ||
-    ct.startsWith("application/x-www-form-urlencoded")
-  ) {
-    const form = await req.formData();
-    const body = {};
-    for (const [k, v] of form.entries())
-      body[k] = typeof v === "string" ? v : v?.name ?? "";
-    return body;
-  }
-  return (await req.json().catch(() => ({}))) ?? {};
-}
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 /* ========= GET /api/blog-categories/:id ========= */
 export async function GET(req, { params }) {
@@ -93,8 +24,8 @@ export async function GET(req, { params }) {
     const id = String(params?.id || "");
     if (!id) return badRequest("Parameter id wajib disertakan.", "id");
 
-    const locale = pickLocale(req, "locale", "id");
-    const fallback = pickLocale(req, "fallback", "id");
+    const locale = pickLocale(req, "locale", DEFAULT_LOCALE);
+    const fallback = pickLocale(req, "fallback", DEFAULT_LOCALE);
 
     const item = await prisma.blog_categories.findFirst({
       where: { id, deleted_at: null },
@@ -157,7 +88,7 @@ export async function PUT(req, ctx) {
 
 export async function PATCH(req, { params }) {
   try {
-    await assertAdmin();
+    await assertAdmin(req);
 
     const id = String(params?.id || "");
     if (!id) return badRequest("Parameter id wajib disertakan.", "id");
@@ -167,19 +98,19 @@ export async function PATCH(req, { params }) {
     const data = {};
     const ops = [];
     let name_id_new, desc_id_new;
-    let autoTranslate = String(body.autoTranslate ?? "false") === "true";
+    const autoTranslate = String(body.autoTranslate ?? "false") === "true";
 
     if (body.slug !== undefined) {
       const s = String(body.slug || "").trim();
       if (!s) return badRequest("Slug tidak boleh kosong.", "slug");
-      if (!isValidSlug(s)) {
+      if (!isValidSlug(s))
         return badRequest(
           "Slug tidak valid. Gunakan huruf kecil, angka, dan strip (-). Maksimal 100 karakter.",
           "slug"
         );
-      }
       data.slug = s;
     }
+
     if (body.sort !== undefined) {
       const v = parseInt(body.sort, 10);
       if (!Number.isFinite(v) || v < 0)
@@ -187,7 +118,7 @@ export async function PATCH(req, { params }) {
       data.sort = v;
     }
 
-    // translations (ID)
+    // ID translation changes
     if (body.name_id !== undefined || body.description_id !== undefined) {
       name_id_new =
         body.name_id !== undefined ? String(body.name_id) : undefined;
@@ -198,7 +129,9 @@ export async function PATCH(req, { params }) {
 
       ops.push(
         prisma.blog_categories_translate.upsert({
-          where: { category_id_locale: { category_id: id, locale: "id" } },
+          where: {
+            category_id_locale: { category_id: id, locale: DEFAULT_LOCALE },
+          },
           update: {
             ...(name_id_new !== undefined
               ? { name: (name_id_new || "(no title)").slice(0, 191) }
@@ -209,7 +142,7 @@ export async function PATCH(req, { params }) {
           },
           create: {
             category_id: id,
-            locale: "id",
+            locale: DEFAULT_LOCALE,
             name: (name_id_new || "(no title)").slice(0, 191),
             description: desc_id_new || null,
           },
@@ -217,27 +150,27 @@ export async function PATCH(req, { params }) {
       );
     }
 
-    // translations (EN) explicit
+    // explicit EN inputs
     if (body.name_en !== undefined || body.description_en !== undefined) {
       const name_en =
-        body.name_en !== undefined ? String(body.name_en) : undefined;
+        body.name_en !== undefined
+          ? String(body.name_en || "(no title)")
+          : undefined;
       const desc_en =
         body.description_en !== undefined
-          ? String(body.description_en)
+          ? String(body.description_en || "")
           : undefined;
 
       ops.push(
         prisma.blog_categories_translate.upsert({
-          where: { category_id_locale: { category_id: id, locale: "en" } },
+          where: { category_id_locale: { category_id: id, locale: EN_LOCALE } },
           update: {
-            ...(name_en !== undefined
-              ? { name: (name_en || "(no title)").slice(0, 191) }
-              : {}),
+            ...(name_en !== undefined ? { name: name_en.slice(0, 191) } : {}),
             ...(desc_en !== undefined ? { description: desc_en || null } : {}),
           },
           create: {
             category_id: id,
-            locale: "en",
+            locale: EN_LOCALE,
             name: (name_en || "(no title)").slice(0, 191),
             description: desc_en || null,
           },
@@ -245,43 +178,45 @@ export async function PATCH(req, { params }) {
       );
     }
 
-    // apply main update (if any)
+    // apply main update or ensure exists
     if (Object.keys(data).length) {
       data.updated_at = new Date();
       await prisma.blog_categories.update({ where: { id }, data });
     } else {
-      // ensure exists
       const exists = await prisma.blog_categories.findUnique({ where: { id } });
       if (!exists) return notFound();
     }
 
-    // auto-translate from ID to EN
+    // auto-translate ID -> EN if requested
     if (
       autoTranslate &&
       (name_id_new !== undefined || desc_id_new !== undefined)
     ) {
-      const name_en_auto = name_id_new
-        ? await translate(String(name_id_new), "id", "en")
-        : undefined;
-      const desc_en_auto =
+      const [name_en_auto, desc_en_auto] = await Promise.all([
+        name_id_new !== undefined
+          ? translate(String(name_id_new || ""), DEFAULT_LOCALE, EN_LOCALE)
+          : Promise.resolve(undefined),
         desc_id_new !== undefined
-          ? await translate(String(desc_id_new || ""), "id", "en")
-          : undefined;
+          ? translate(String(desc_id_new || ""), DEFAULT_LOCALE, EN_LOCALE)
+          : Promise.resolve(undefined),
+      ]);
 
       ops.push(
         prisma.blog_categories_translate.upsert({
-          where: { category_id_locale: { category_id: id, locale: "en" } },
+          where: { category_id_locale: { category_id: id, locale: EN_LOCALE } },
           update: {
-            ...(name_en_auto ? { name: name_en_auto.slice(0, 191) } : {}),
+            ...(name_en_auto
+              ? { name: String(name_en_auto).slice(0, 191) }
+              : {}),
             ...(desc_en_auto !== undefined
-              ? { description: desc_en_auto ?? null }
+              ? { description: String(desc_en_auto || "") || null }
               : {}),
           },
           create: {
             category_id: id,
-            locale: "en",
-            name: (name_en_auto || "(no title)").slice(0, 191),
-            description: desc_en_auto ?? null,
+            locale: EN_LOCALE,
+            name: String(name_en_auto || "(no title)").slice(0, 191),
+            description: String(desc_en_auto || "") || null,
           },
         })
       );
@@ -295,7 +230,7 @@ export async function PATCH(req, { params }) {
     });
   } catch (err) {
     const status = err?.status || 500;
-    if (status === 401) {
+    if (status === 401)
       return json(
         {
           error: {
@@ -303,10 +238,9 @@ export async function PATCH(req, { params }) {
             message: "Akses ditolak. Silakan login sebagai admin.",
           },
         },
-        { status: 401 }
+        { status }
       );
-    }
-    if (status === 403) {
+    if (status === 403)
       return json(
         {
           error: {
@@ -314,11 +248,9 @@ export async function PATCH(req, { params }) {
             message: "Anda tidak memiliki akses ke resource ini.",
           },
         },
-        { status: 403 }
+        { status }
       );
-    }
     if (err?.code === "P2002") {
-      // unique constraint (slug)
       return json(
         {
           error: {
@@ -345,9 +277,9 @@ export async function PATCH(req, { params }) {
 }
 
 /* ========= DELETE /api/blog-categories/:id (soft) ========= */
-export async function DELETE(_req, { params }) {
+export async function DELETE(req, { params }) {
   try {
-    await assertAdmin();
+    await assertAdmin(req);
 
     const id = String(params?.id || "");
     if (!id) return badRequest("Parameter id wajib disertakan.", "id");
@@ -355,6 +287,7 @@ export async function DELETE(_req, { params }) {
     const deleted = await prisma.blog_categories.update({
       where: { id },
       data: { deleted_at: new Date(), updated_at: new Date() },
+      select: { id: true },
     });
 
     return json({
@@ -363,7 +296,7 @@ export async function DELETE(_req, { params }) {
     });
   } catch (err) {
     const status = err?.status || 500;
-    if (status === 401) {
+    if (status === 401)
       return json(
         {
           error: {
@@ -371,10 +304,9 @@ export async function DELETE(_req, { params }) {
             message: "Akses ditolak. Silakan login sebagai admin.",
           },
         },
-        { status: 401 }
+        { status }
       );
-    }
-    if (status === 403) {
+    if (status === 403)
       return json(
         {
           error: {
@@ -382,9 +314,8 @@ export async function DELETE(_req, { params }) {
             message: "Anda tidak memiliki akses ke resource ini.",
           },
         },
-        { status: 403 }
+        { status }
       );
-    }
     if (err?.code === "P2025") return notFound();
     console.error(`DELETE /api/blog-categories/${params?.id} error:`, err);
     return json(

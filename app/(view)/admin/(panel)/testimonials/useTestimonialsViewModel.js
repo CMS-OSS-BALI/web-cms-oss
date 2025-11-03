@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /** util: GET JSON (with credentials) */
-async function getJson(url) {
-  const res = await fetch(url, { credentials: "include" });
+async function getJson(url, init = {}) {
+  const res = await fetch(url, { credentials: "include", ...init });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const msg = data?.error?.message || data?.message || res.statusText;
@@ -38,7 +38,37 @@ async function send(url, { method = "POST", json, form }) {
 }
 
 const DEFAULT_PER_PAGE = 10;
-const MAX_FETCH = 200;
+
+function buildListUrl({
+  locale,
+  page,
+  perPage,
+  q,
+  categoryId,
+  rating,
+  signal,
+}) {
+  const p = new URLSearchParams();
+  p.set("locale", locale || "id");
+  p.set("page", String(page || 1));
+  p.set("perPage", String(perPage || DEFAULT_PER_PAGE));
+  if (q && q.trim()) p.set("q", q.trim());
+  if (categoryId) p.set("category_id", String(categoryId));
+  if (rating !== "" && rating != null) p.set("rating", String(rating));
+  const url = `/api/testimonials?${p.toString()}`;
+  return { url, init: { signal } };
+}
+
+function matchesFilters(item, { q, categoryId, rating }) {
+  const s = (q || "").trim().toLowerCase();
+  const okQ =
+    !s ||
+    (item?.name || "").toLowerCase().includes(s) ||
+    (item?.message || "").toLowerCase().includes(s);
+  const okCat = !categoryId || (item?.category?.id || "") === categoryId;
+  const okStar = rating === "" || Number(item?.star ?? 0) === Number(rating);
+  return okQ && okCat && okStar;
+}
 
 export default function useTestimonialsViewModel({
   locale: initialLocale = "id",
@@ -50,7 +80,7 @@ export default function useTestimonialsViewModel({
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
 
-  // filters & pagination
+  // filters & pagination (SERVER-SIDE)
   const [q, setQ] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [rating, setRating] = useState(""); // number | ""
@@ -64,31 +94,53 @@ export default function useTestimonialsViewModel({
 
   const abortRef = useRef(null);
 
-  const refresh = useCallback(async () => {
-    if (abortRef.current) abortRef.current.abort();
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil((total || 0) / (perPage || DEFAULT_PER_PAGE))),
+    [total, perPage]
+  );
+
+  /** Fetch current page from server (no page reset) */
+  const fetchList = useCallback(async () => {
+    abortRef.current?.abort?.();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
 
     setLoading(true);
     try {
-      const url = `/api/testimonials?locale=${encodeURIComponent(
-        locale
-      )}&limit=${MAX_FETCH}`;
-      const { data } = await getJson(url);
-      const list = Array.isArray(data) ? data : [];
+      const { url, init } = buildListUrl({
+        locale,
+        page,
+        perPage,
+        q,
+        categoryId,
+        rating,
+        signal: ctrl.signal,
+      });
+      const json = await getJson(url, init);
+      const list = Array.isArray(json?.data) ? json.data : [];
+      const metaTotal =
+        json?.meta?.total ??
+        json?.total ??
+        (Array.isArray(json?.data) ? json.data.length : 0);
+
       setRows(list);
-      setTotal(list.length);
-      setPage(1);
-    } catch (e) {
-      console.error("fetch testimonials failed:", e);
+      setTotal(Number(metaTotal) || 0);
+
+      // clamp page if server shrank dataset
+      const nextTotalPages = Math.max(
+        1,
+        Math.ceil((Number(metaTotal) || 0) / Math.max(1, perPage))
+      );
+      if (page > nextTotalPages) setPage(nextTotalPages);
     } finally {
       setLoading(false);
     }
-  }, [locale]);
+  }, [locale, page, perPage, q, categoryId, rating]);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    fetchList();
+    return () => abortRef.current?.abort?.();
+  }, [fetchList]);
 
   // categories: fetch semua, set default options
   const fetchCategories = useCallback(async () => {
@@ -105,8 +157,7 @@ export default function useTestimonialsViewModel({
           label: c.name || c.slug || "(no name)",
         }))
       );
-    } catch (e) {
-      console.error("fetch categories failed:", e);
+    } catch {
       setAllCategories([]);
       setCategoryOptions([]);
     } finally {
@@ -118,7 +169,7 @@ export default function useTestimonialsViewModel({
     fetchCategories();
   }, [fetchCategories]);
 
-  // exposed: live search (client-side) that also updates options state
+  // remote options filtered locally for dropdown UX
   const searchCategories = useCallback(
     (keyword = "") => {
       const s = String(keyword || "")
@@ -138,34 +189,7 @@ export default function useTestimonialsViewModel({
     [allCategories]
   );
 
-  // client-side filtered & paginated
-  const filtered = useMemo(() => {
-    const s = (q || "").trim().toLowerCase();
-    return (rows || []).filter((r) => {
-      const okQ =
-        !s ||
-        (r?.name || "").toLowerCase().includes(s) ||
-        (r?.message || "").toLowerCase().includes(s);
-      const okCat = !categoryId || (r?.category?.id || "") === categoryId;
-      const okStar = !rating || Number(r?.star ?? 0) === Number(rating);
-      return okQ && okCat && okStar;
-    });
-  }, [rows, q, categoryId, rating]);
-
-  const totalPages = useMemo(
-    () =>
-      Math.max(1, Math.ceil(filtered.length / (perPage || DEFAULT_PER_PAGE))),
-    [filtered.length, perPage]
-  );
-
-  const pageItems = useMemo(() => {
-    const p = Math.min(Math.max(1, page), totalPages);
-    const start = (p - 1) * (perPage || DEFAULT_PER_PAGE);
-    const end = start + (perPage || DEFAULT_PER_PAGE);
-    return filtered.slice(start, end);
-  }, [filtered, page, perPage, totalPages]);
-
-  // ========== CRUD (wrapped with {ok, data|error}) ==========
+  // ========== CRUD (with optimistic updates) ==========
   const getTestimonial = useCallback(
     async (id) => {
       try {
@@ -221,13 +245,24 @@ export default function useTestimonialsViewModel({
           method: "POST",
           ...body,
         });
-        await refresh();
+
+        // optimistic: bump total; if new item matches filter and we are on page 1, prepend
+        setTotal((t) => (Number.isFinite(t) ? t + 1 : 1));
+        const item = data;
+        if (page === 1 && matchesFilters(item, { q, categoryId, rating })) {
+          setRows((prev) => {
+            const next = [item, ...prev];
+            // maintain page size
+            return next.slice(0, perPage);
+          });
+        }
+        // otherwise, keep current page intact; new item appears when user goes to page 1
         return { ok: true, data };
       } catch (e) {
         return { ok: false, error: e?.message || "Failed to create" };
       }
     },
-    [locale, refresh]
+    [locale, page, perPage, q, categoryId, rating]
   );
 
   const updateTestimonial = useCallback(
@@ -274,26 +309,99 @@ export default function useTestimonialsViewModel({
           method: "PUT",
           ...body,
         });
-        await refresh();
+
+        // optimistic merge on current page
+        setRows((prev) => {
+          const idx = prev.findIndex((r) => r.id === id);
+          if (idx === -1) return prev;
+          const merged = { ...prev[idx], ...data };
+          // if it no longer matches filters, drop it and (optionally) backfill by refetching this page
+          if (!matchesFilters(merged, { q, categoryId, rating })) {
+            const clipped = [...prev.slice(0, idx), ...prev.slice(idx + 1)];
+            // backfill one item to keep page full
+            (async () => {
+              try {
+                const { url, init } = buildListUrl({
+                  locale,
+                  page,
+                  perPage,
+                  q,
+                  categoryId,
+                  rating,
+                });
+                const json = await getJson(url, init);
+                const list = Array.isArray(json?.data) ? json.data : [];
+                setRows(list);
+                const metaTotal =
+                  json?.meta?.total ?? json?.total ?? list.length ?? 0;
+                setTotal(Number(metaTotal) || 0);
+              } catch {
+                // ignore; clipped page is acceptable briefly
+              }
+            })();
+            return clipped;
+          }
+          const next = [...prev];
+          next[idx] = merged;
+          return next;
+        });
+
         return { ok: true, data };
       } catch (e) {
         return { ok: false, error: e?.message || "Failed to update" };
       }
     },
-    [locale, refresh]
+    [locale, page, perPage, q, categoryId, rating]
   );
 
   const deleteTestimonial = useCallback(
     async (id) => {
       try {
         await send(`/api/testimonials/${id}`, { method: "DELETE" });
-        await refresh();
+
+        // optimistic: remove from current page and decrement total
+        let removed = false;
+        setRows((prev) => {
+          const idx = prev.findIndex((r) => r.id === id);
+          if (idx === -1) return prev;
+          removed = true;
+          const next = [...prev.slice(0, idx), ...prev.slice(idx + 1)];
+          return next;
+        });
+        setTotal((t) => Math.max(0, (t || 0) - 1));
+
+        // compute next valid page after deletion
+        const nextTotalPages = Math.max(
+          1,
+          Math.ceil(Math.max(0, (total || 0) - 1) / Math.max(1, perPage))
+        );
+        const targetPage = Math.min(page, nextTotalPages);
+        if (targetPage !== page) setPage(targetPage);
+
+        // backfill to keep page filled (single request, not full reload)
+        if (removed) {
+          const { url, init } = buildListUrl({
+            locale,
+            page: targetPage,
+            perPage,
+            q,
+            categoryId,
+            rating,
+          });
+          const json = await getJson(url, init);
+          const list = Array.isArray(json?.data) ? json.data : [];
+          setRows(list);
+          const metaTotal =
+            json?.meta?.total ?? json?.total ?? list.length ?? 0;
+          setTotal(Number(metaTotal) || 0);
+        }
+
         return { ok: true };
       } catch (e) {
         return { ok: false, error: e?.message || "Failed to delete" };
       }
     },
-    [refresh]
+    [locale, page, perPage, q, categoryId, rating, total]
   );
 
   return {
@@ -302,8 +410,9 @@ export default function useTestimonialsViewModel({
     setLocale,
     loading,
     total,
+    totalPages,
 
-    // filters & pagination
+    // filters & pagination (server-side)
     q,
     setQ,
     categoryId,
@@ -314,10 +423,9 @@ export default function useTestimonialsViewModel({
     setPage,
     perPage,
     setPerPage,
-    totalPages,
 
-    // derived/list
-    testimonials: pageItems,
+    // derived/list (already paginated by server)
+    testimonials: rows,
 
     // categories
     catLoading,
@@ -325,7 +433,7 @@ export default function useTestimonialsViewModel({
     searchCategories,
 
     // ops
-    refresh,
+    refresh: fetchList, // fetch current page with current filters
     getTestimonial,
     createTestimonial,
     updateTestimonial,

@@ -1,119 +1,36 @@
 // app/api/jurusan/[id]/route.js
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
 import { translate } from "@/app/utils/geminiTranslator";
+import {
+  json,
+  badRequest,
+  notFound,
+  readBodyFlexible,
+  normalizeLocale,
+  mapJurusan,
+  assertAdmin,
+} from "@/app/api/jurusan/_utils";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-/* -------------------- utils -------------------- */
 const DEFAULT_LOCALE = "id";
 const EN_LOCALE = "en";
-const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
 
-function normalizeLocale(v, fallback = DEFAULT_LOCALE) {
-  return (v || fallback).toLowerCase().slice(0, 5);
-}
-function pickTrans(
-  list = [],
-  primary = DEFAULT_LOCALE,
-  fallback = DEFAULT_LOCALE
-) {
-  const by = (loc) => list.find((t) => t.locale === loc);
-  return by(primary) || by(fallback) || null;
-}
-function sanitize(v) {
-  if (v === null || v === undefined) return v;
-  if (typeof v === "bigint") return v.toString();
-  if (Array.isArray(v)) return v.map(sanitize);
-  if (typeof v === "object") {
-    const o = {};
-    for (const [k, val] of Object.entries(v)) o[k] = sanitize(val);
-    return o;
-  }
-  return v;
-}
-function json(data, init) {
-  return NextResponse.json(sanitize(data), init);
-}
-function badRequest(message) {
-  return NextResponse.json({ message }, { status: 400 });
-}
-function notFound() {
-  return NextResponse.json({ message: "Not found" }, { status: 404 });
-}
-async function assertAdmin(req) {
-  const key = req.headers.get("x-admin-key");
-  if (key && ADMIN_TEST_KEY && key === ADMIN_TEST_KEY) {
-    const anyAdmin = await prisma.admin_users.findFirst({
-      select: { id: true },
-    });
-    if (!anyAdmin) throw new Response("Forbidden", { status: 403 });
-    return { adminId: anyAdmin.id, via: "header" };
-  }
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email)
-    throw new Response("Unauthorized", { status: 401 });
-  const admin = await prisma.admin_users.findUnique({
-    where: { email: session.user.email },
-    select: { id: true },
-  });
-  if (!admin) throw new Response("Forbidden", { status: 403 });
-  return { adminId: admin.id, via: "session" };
-}
-async function readBody(req) {
-  const ct = (req.headers.get("content-type") || "").toLowerCase();
-  if (
-    ct.startsWith("multipart/form-data") ||
-    ct.startsWith("application/x-www-form-urlencoded")
-  ) {
-    const form = await req.formData();
-    const body = {};
-    for (const [k, v] of form.entries()) {
-      if (v instanceof File) continue;
-      body[k] = v;
-    }
-    return body;
-  }
-  return (await req.json().catch(() => ({}))) ?? {};
-}
-
-/** -- NEW: date → timestamp (ms), with guard */
-function toTs(v) {
-  if (!v) return null;
-  const t = new Date(String(v)).getTime();
-  return Number.isFinite(t) ? t : null;
-}
-
-/** map DB row → API shape (with created_ts/updated_ts) */
-function mapJurusan(row, locale, fallback) {
-  const t = pickTrans(row.jurusan_translate || [], locale, fallback);
-  const created_ts = toTs(row.created_at) ?? toTs(row.updated_at) ?? null;
-  const updated_ts = toTs(row.updated_at) ?? null;
-  return {
-    id: row.id,
-    college_id: row.college_id,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-    deleted_at: row.deleted_at,
-    created_ts,
-    updated_ts,
-    locale_used: t?.locale || null,
-    name: t?.name || null,
-    description: t?.description || null,
-  };
-}
-
-/* -------------------- GET (detail) -------------------- */
+/* ================= GET (detail) ================= */
 export async function GET(req, { params }) {
   try {
     const id = params?.id;
+    if (!id) return badRequest("id is required", "id");
+
     const url = new URL(req.url);
-    const locale = normalizeLocale(url.searchParams.get("locale"));
+    const locale = normalizeLocale(
+      url.searchParams.get("locale"),
+      DEFAULT_LOCALE
+    );
     const fallback = normalizeLocale(
-      url.searchParams.get("fallback") || DEFAULT_LOCALE
+      url.searchParams.get("fallback") || DEFAULT_LOCALE,
+      DEFAULT_LOCALE
     );
     const locales = locale === fallback ? [locale] : [locale, fallback];
 
@@ -132,17 +49,18 @@ export async function GET(req, { params }) {
       },
     });
     if (!row) return notFound();
-    return json({ data: mapJurusan(row, locale, fallback) });
+
+    return json({ message: "OK", data: mapJurusan(row, locale, fallback) });
   } catch (err) {
     console.error(`GET /api/jurusan/${params?.id} error:`, err);
-    return NextResponse.json(
-      { message: "Failed to fetch jurusan" },
+    return json(
+      { error: { code: "SERVER_ERROR", message: "Failed to fetch jurusan" } },
       { status: 500 }
     );
   }
 }
 
-/* -------------------- PUT/PATCH (update) -------------------- */
+/* ================= PUT/PATCH (update) ================= */
 export async function PUT(req, ctx) {
   return PATCH(req, ctx);
 }
@@ -150,23 +68,31 @@ export async function PATCH(req, { params }) {
   try {
     await assertAdmin(req);
     const id = params?.id;
-    if (!id) return badRequest("id is required");
+    if (!id) return badRequest("id is required", "id");
 
-    const body = await readBody(req);
-    const locale = normalizeLocale(body.locale);
+    const body = await readBodyFlexible(req);
+    const locale = normalizeLocale(body.locale, DEFAULT_LOCALE);
 
     const ops = [];
 
-    // Update parent if needed
-    const parentData = {};
+    // parent update (optional)
     if (body.college_id !== undefined) {
       const college_id = String(body.college_id || "").trim();
-      if (!college_id) return badRequest("college_id cannot be empty");
-      parentData.college_id = college_id;
-    }
-    if (Object.keys(parentData).length) {
-      parentData.updated_at = new Date();
-      ops.push(prisma.jurusan.update({ where: { id }, data: parentData }));
+      if (!college_id)
+        return badRequest("college_id cannot be empty", "college_id");
+      // pre-check FK
+      const college = await prisma.college.findUnique({
+        where: { id: college_id },
+        select: { id: true },
+      });
+      if (!college)
+        return badRequest("college_id invalid (not found)", "college_id");
+      ops.push(
+        prisma.jurusan.update({
+          where: { id },
+          data: { college_id, updated_at: new Date() },
+        })
+      );
     } else {
       const exists = await prisma.jurusan.findUnique({
         where: { id },
@@ -175,7 +101,7 @@ export async function PATCH(req, { params }) {
       if (!exists) return notFound();
     }
 
-    // Update translation if name/description provided
+    // translation update (optional)
     const hasName = Object.prototype.hasOwnProperty.call(body, "name");
     const hasDesc = Object.prototype.hasOwnProperty.call(body, "description");
     const name = hasName ? String(body.name || "").trim() : undefined;
@@ -189,13 +115,14 @@ export async function PATCH(req, { params }) {
       String(body.autoTranslate ?? "true").toLowerCase() !== "false";
 
     if (hasName || hasDesc) {
+      const update = {};
+      if (hasName) update.name = name;
+      if (hasDesc) update.description = description;
+
       ops.push(
         prisma.jurusan_translate.upsert({
           where: { id_jurusan_locale: { id_jurusan: id, locale } },
-          update: {
-            ...(hasName ? { name } : {}),
-            ...(hasDesc ? { description } : {}),
-          },
+          update,
           create: {
             id_jurusan: id,
             locale,
@@ -210,23 +137,25 @@ export async function PATCH(req, { params }) {
           hasName && name
             ? translate(name, locale, EN_LOCALE)
             : Promise.resolve(undefined),
-          hasDesc && description
+          hasDesc && typeof description === "string"
             ? translate(description, locale, EN_LOCALE)
             : Promise.resolve(undefined),
         ]);
 
+        const enUpdate = {};
+        if (nameEn !== undefined) enUpdate.name = nameEn;
+        if (descEn !== undefined) enUpdate.description = descEn ?? null;
+
         ops.push(
           prisma.jurusan_translate.upsert({
             where: { id_jurusan_locale: { id_jurusan: id, locale: EN_LOCALE } },
-            update: {
-              ...(nameEn !== undefined ? { name: nameEn } : {}),
-              ...(descEn !== undefined ? { description: descEn ?? null } : {}),
-            },
+            update: enUpdate,
             create: {
               id_jurusan: id,
               locale: EN_LOCALE,
-              name: nameEn ?? (hasName ? name : "(no title)"),
-              description: descEn ?? (hasDesc ? description : null),
+              name: enUpdate.name ?? (hasName ? name : "(no title)"),
+              description:
+                enUpdate.description ?? (hasDesc ? description : null),
             },
           })
         );
@@ -235,7 +164,7 @@ export async function PATCH(req, { params }) {
 
     if (ops.length) await prisma.$transaction(ops);
 
-    // -- NEW: return latest shape with created_ts
+    // return latest minimal
     const locales = [locale, DEFAULT_LOCALE];
     const updated = await prisma.jurusan.findUnique({
       where: { id },
@@ -252,41 +181,64 @@ export async function PATCH(req, { params }) {
       },
     });
     if (!updated) return notFound();
-    return json({ data: mapJurusan(updated, locale, DEFAULT_LOCALE) });
+
+    return json({
+      message: "Updated",
+      data: mapJurusan(updated, locale, DEFAULT_LOCALE),
+    });
   } catch (err) {
-    if (err?.code === "P2003") {
-      return NextResponse.json(
-        { message: "college_id invalid (FK failed)" },
-        { status: 400 }
-      );
-    }
+    if (err?.code === "P2003")
+      return badRequest("college_id invalid (FK failed)", "college_id");
     if (err?.code === "P2025") return notFound();
+    const status = err?.status || 500;
+    if (status === 401)
+      return json(
+        { error: { code: "UNAUTHORIZED", message: "Access denied" } },
+        { status: 401 }
+      );
+    if (status === 403)
+      return json(
+        { error: { code: "FORBIDDEN", message: "Not allowed" } },
+        { status: 403 }
+      );
     console.error(`PATCH /api/jurusan/${params?.id} error:`, err);
-    return NextResponse.json(
-      { message: "Failed to update jurusan" },
+    return json(
+      { error: { code: "SERVER_ERROR", message: "Failed to update jurusan" } },
       { status: 500 }
     );
   }
 }
 
-/* -------------------- DELETE (soft delete) -------------------- */
-export async function DELETE(_req, { params }) {
+/* ================= DELETE (soft) ================= */
+export async function DELETE(req, { params }) {
   try {
-    await assertAdmin(_req);
+    await assertAdmin(req);
     const id = params?.id;
-    if (!id) return badRequest("id is required");
+    if (!id) return badRequest("id is required", "id");
 
     const deleted = await prisma.jurusan.update({
       where: { id },
       data: { deleted_at: new Date(), updated_at: new Date() },
+      select: { id: true },
     });
 
-    return json({ data: deleted });
+    return json({ message: "Deleted", data: { id: deleted.id } });
   } catch (err) {
     if (err?.code === "P2025") return notFound();
+    const status = err?.status || 500;
+    if (status === 401)
+      return json(
+        { error: { code: "UNAUTHORIZED", message: "Access denied" } },
+        { status: 401 }
+      );
+    if (status === 403)
+      return json(
+        { error: { code: "FORBIDDEN", message: "Not allowed" } },
+        { status: 403 }
+      );
     console.error(`DELETE /api/jurusan/${params?.id} error:`, err);
-    return NextResponse.json(
-      { message: "Failed to delete jurusan" },
+    return json(
+      { error: { code: "SERVER_ERROR", message: "Failed to delete jurusan" } },
       { status: 500 }
     );
   }

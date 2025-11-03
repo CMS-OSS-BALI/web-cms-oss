@@ -1,11 +1,9 @@
-﻿// FooterUser.jsx
-"use client";
+﻿"use client";
 import React from "react";
 import Link from "next/link";
 import "./footer-user.css";
 import useFooterUViewModel from "./useFooterUViewModel";
 
-/* ---------- Icons ---------- */
 function Icon({ name }) {
   switch (name) {
     case "location":
@@ -49,7 +47,6 @@ function Icon({ name }) {
   }
 }
 
-/* ---------- Smart Link (pakai <Link> untuk internal) ---------- */
 function SmartLink({ href, children, className, ariaLabel }) {
   const isInternal = href && href.startsWith("/");
   if (isInternal) {
@@ -72,15 +69,13 @@ function SmartLink({ href, children, className, ariaLabel }) {
   );
 }
 
-/* ---------- Footer Component ---------- */
-export default function FooterUser() {
+export default function FooterUser({ initialLang = "id" }) {
   const { logo, contacts, navSections, socials, copyright } =
-    useFooterUViewModel();
+    useFooterUViewModel({ initialLang });
 
   return (
     <footer className="oss-footer">
       <div className="oss-footer__top container">
-        {/* Brand + Contacts */}
         <div className="oss-footer__col">
           <div className="oss-footer__brand">
             <img src={logo.src} alt={logo.alt} />
@@ -98,7 +93,6 @@ export default function FooterUser() {
           </ul>
         </div>
 
-        {/* Dynamic Sections */}
         {navSections.map((sec) => (
           <div className="oss-footer__col" key={sec.title}>
             <h4>{sec.title}</h4>
@@ -113,7 +107,6 @@ export default function FooterUser() {
         ))}
       </div>
 
-      {/* Bottom */}
       <div className="oss-footer__bottom">
         <div className="container oss-footer__bottom-inner">
           <div className="oss-footer__copy">{copyright}</div>

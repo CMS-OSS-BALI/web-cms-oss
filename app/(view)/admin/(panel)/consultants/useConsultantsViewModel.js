@@ -79,6 +79,65 @@ function toFormData(payload = {}) {
 const SSR_INIT = { headers: { "x-ssr": "1" }, credentials: "include" };
 const fetcherWithInit = ([url, init]) => fetch(url, init).then((r) => r.json());
 
+/* ---------- unified error extraction ---------- */
+async function readJsonIfAny(res) {
+  if (!res) return null;
+  if (res.status === 204) return null;
+  const ct = res.headers?.get?.("content-type") || "";
+  if (!ct.includes("application/json")) return null;
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+function extractFieldErrors(json) {
+  const fields = {};
+
+  // Laravel style: { errors: { field: [msg1, msg2] } }
+  if (json?.errors && typeof json.errors === "object") {
+    for (const [k, v] of Object.entries(json.errors)) {
+      if (Array.isArray(v)) fields[k] = v.join("\n");
+      else if (v) fields[k] = String(v);
+    }
+  }
+
+  // { error: { fields: { field: msg | [msg] } } }
+  const candidate = json?.error?.fields || json?.fieldErrors || json?.fields;
+  if (candidate && typeof candidate === "object") {
+    for (const [k, v] of Object.entries(candidate)) {
+      if (Array.isArray(v)) fields[k] = v.join("\n");
+      else if (v) fields[k] = String(v);
+    }
+  }
+
+  // generic details array (e.g. Joi/Zod): [{ path: ['a','b'], message }]
+  const details = json?.error?.details || json?.details;
+  if (Array.isArray(details)) {
+    for (const d of details) {
+      const key = Array.isArray(d?.path) ? d.path.join(".") : d?.path || "form";
+      const msg = d?.message || d?.msg || d?.error || "Invalid";
+      fields[key] = fields[key] ? `${fields[key]}\n${msg}` : msg;
+    }
+  }
+
+  return fields;
+}
+
+function buildErrorResult(res, jsonFallback, defaultMessage) {
+  const json = jsonFallback || {};
+  const message =
+    json?.error?.message ||
+    json?.message ||
+    json?.msg ||
+    defaultMessage ||
+    "Terjadi kesalahan";
+  const fields = extractFieldErrors(json);
+  const code = json?.error?.code || json?.code || res?.status;
+  return { ok: false, error: message, fields, code, raw: json };
+}
+
 export default function useConsultantsViewModel() {
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
@@ -136,9 +195,7 @@ export default function useConsultantsViewModel() {
       const res = await fetch(url.toString(), { method: "GET", ...SSR_INIT });
       const info = await res.json().catch(() => null);
       if (!res.ok) {
-        throw new Error(
-          info?.error?.message || info?.message || "Gagal memuat detail"
-        );
+        return buildErrorResult(res, info, "Gagal memuat detail");
       }
       const d = info?.data ?? {};
       return { ok: true, data: { ...d, phone: d.whatsapp ?? null } };
@@ -157,13 +214,15 @@ export default function useConsultantsViewModel() {
         body: fd,
         credentials: "include",
       });
-      const info = await res.json().catch(() => null);
+      const info = await readJsonIfAny(res);
       if (!res.ok) {
-        throw new Error(
-          info?.error?.message || info?.message || "Gagal menambah konsultan"
-        );
+        return buildErrorResult(res, info, "Gagal menambah konsultan");
       }
+
+      // Reset ke halaman 1 agar item baru (sort desc) langsung terlihat
+      setPage(1);
       await refresh();
+
       return { ok: true, data: info?.data };
     } catch (err) {
       return { ok: false, error: err?.message || "Gagal menambah konsultan" };
@@ -182,12 +241,12 @@ export default function useConsultantsViewModel() {
         body: fd,
         credentials: "include",
       });
-      const info = await res.json().catch(() => null);
+      const info = await readJsonIfAny(res);
       if (!res.ok) {
-        throw new Error(
-          info?.error?.message || info?.message || "Gagal memperbarui konsultan"
-        );
+        return buildErrorResult(res, info, "Gagal memperbarui konsultan");
       }
+
+      // Tetap di halaman saat ini
       await refresh();
       return { ok: true, data: info?.data };
     } catch (err) {
@@ -208,12 +267,18 @@ export default function useConsultantsViewModel() {
         method: "DELETE",
         credentials: "include",
       });
+
       if (!res.ok && res.status !== 204) {
-        const info = await res.json().catch(() => null);
-        throw new Error(
-          info?.error?.message || info?.message || "Gagal menghapus konsultan"
-        );
+        const info = await readJsonIfAny(res);
+        return buildErrorResult(res, info, "Gagal menghapus konsultan");
       }
+
+      // Clamp page: jika item terakhir terhapus, jangan biarkan halaman kosong
+      const denom = metaPerPage ?? perPage ?? 1;
+      const newTotal = Math.max(0, (total ?? 0) - 1);
+      const after = Math.max(1, Math.ceil(newTotal / denom));
+      setPage((p) => Math.min(p, after));
+
       await refresh();
       return { ok: true };
     } catch (err) {
@@ -233,8 +298,8 @@ export default function useConsultantsViewModel() {
         { method: "DELETE", credentials: "include" }
       );
       if (!res.ok && res.status !== 204) {
-        const info = await res.json().catch(() => null);
-        throw new Error(info?.error?.message || "Gagal menghapus foto");
+        const info = await readJsonIfAny(res);
+        return buildErrorResult(res, info, "Gagal menghapus foto");
       }
       return { ok: true };
     } catch (e) {

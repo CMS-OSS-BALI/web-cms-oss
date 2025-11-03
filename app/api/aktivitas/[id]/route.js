@@ -1,162 +1,23 @@
-// app/api/aktivitas/[id]/route.js
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+// /app/api/aktivitas/[id]/route.js
 import prisma from "@/lib/prisma";
 import { translate } from "@/app/utils/geminiTranslator";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import {
+  DEFAULT_LOCALE,
+  EN_LOCALE,
+  json,
+  toBool,
+  asInt,
+  normalizeLocale,
+  pickTrans,
+  toPublicUrl,
+  toMs,
+  assertAdmin,
+  readBodyAndFile,
+  uploadAktivitasImage,
+} from "@/app/api/aktivitas/_utils";
 
-/* -------------------- config & constants -------------------- */
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-
-const DEFAULT_LOCALE = "id";
-const EN_LOCALE = "en";
-const BUCKET = process.env.SUPABASE_BUCKET;
-const SUPA_URL =
-  process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
-const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
-
-/* -------------------- utils -------------------- */
-function sanitize(v) {
-  if (v === null || v === undefined) return v;
-  if (typeof v === "bigint") return v.toString();
-  if (Array.isArray(v)) return v.map(sanitize);
-  if (typeof v === "object") {
-    const o = {};
-    for (const [k, val] of Object.entries(v)) o[k] = sanitize(val);
-    return o;
-  }
-  return v;
-}
-function json(data, init) {
-  return NextResponse.json(sanitize(data), init);
-}
-function toBool(v, dflt = null) {
-  if (v === null || v === undefined || v === "") return dflt;
-  if (typeof v === "boolean") return v;
-  const s = String(v).trim().toLowerCase();
-  if (["1", "true", "yes", "y", "on"].includes(s)) return true;
-  if (["0", "false", "no", "n", "off"].includes(s)) return false;
-  return dflt;
-}
-function asInt(v, dflt) {
-  const n = parseInt(v, 10);
-  return Number.isFinite(n) ? n : dflt;
-}
-function normalizeLocale(value, fallback = DEFAULT_LOCALE) {
-  return (value || fallback).toLowerCase().slice(0, 5);
-}
-function pickTrans(
-  list = [],
-  primary = DEFAULT_LOCALE,
-  fallback = DEFAULT_LOCALE
-) {
-  const by = (loc) => list.find((t) => t.locale === loc);
-  return by(primary) || by(fallback) || null;
-}
-/** path → public URL */
-function toPublicUrl(path) {
-  if (!path) return "";
-  if (/^https?:\/\//i.test(path)) return path;
-  if (!SUPA_URL || !BUCKET) return path;
-  return `${SUPA_URL}/storage/v1/object/public/${BUCKET}/${path}`;
-}
-/** ms helper */
-const toMs = (d) => {
-  if (!d) return null;
-  try {
-    const t = d instanceof Date ? d.getTime() : new Date(d).getTime();
-    return Number.isFinite(t) ? t : null;
-  } catch {
-    return null;
-  }
-};
-
-/** Accept NextAuth session OR x-admin-key header (for Postman) */
-async function assertAdmin(req) {
-  const key = req.headers.get("x-admin-key");
-  if (key && ADMIN_TEST_KEY && key === ADMIN_TEST_KEY) {
-    const anyAdmin = await prisma.admin_users.findFirst({
-      select: { id: true },
-    });
-    if (!anyAdmin) throw new Response("Forbidden", { status: 403 });
-    return { adminId: anyAdmin.id, via: "header" };
-  }
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email)
-    throw new Response("Unauthorized", { status: 401 });
-  const admin = await prisma.admin_users.findUnique({
-    where: { email: session.user.email },
-    select: { id: true },
-  });
-  if (!admin) throw new Response("Forbidden", { status: 403 });
-  return { adminId: admin.id, via: "session" };
-}
-
-/** Read JSON atau multipart form-data (returns { body, file }) */
-async function readBodyAndFile(req) {
-  const contentType = (req.headers.get("content-type") || "").toLowerCase();
-  const isMultipart = contentType.startsWith("multipart/form-data");
-  const isUrlEncoded = contentType.startsWith(
-    "application/x-www-form-urlencoded"
-  );
-
-  if (isMultipart || isUrlEncoded) {
-    const form = await req.formData();
-    const body = {};
-    let file = null;
-
-    // TERIMA file di key: image / file / image_file / image_url
-    const tryKeys = ["image", "file", "image_file", "image_url"];
-    for (const k of tryKeys) {
-      const f = form.get(k);
-      if (f && typeof File !== "undefined" && f instanceof File) {
-        file = f;
-        break;
-      }
-    }
-    for (const [k, v] of form.entries()) {
-      if (v instanceof File) continue;
-      body[k] = v;
-    }
-    return { body, file };
-  }
-
-  const body = (await req.json().catch(() => ({}))) ?? {};
-  return { body, file: null };
-}
-
-/** Upload image ke Supabase Storage (opsional) */
-async function uploadAktivitasImage(file) {
-  if (!file) return null;
-  if (!BUCKET) throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
-
-  const size = file.size || 0;
-  const type = file.type || "";
-  const allowed = ["image/jpeg", "image/png", "image/webp"];
-  if (size > 10 * 1024 * 1024) throw new Error("PAYLOAD_TOO_LARGE");
-  if (type && !allowed.includes(type)) throw new Error("UNSUPPORTED_TYPE");
-
-  const ext = (file.name?.split(".").pop() || "").toLowerCase();
-  const safe = `${Date.now()}-${Math.random().toString(36).slice(2)}${
-    ext ? "." + ext : ""
-  }`;
-  const objectPath = `aktivitas/${new Date()
-    .toISOString()
-    .slice(0, 10)}/${safe}`;
-  const bytes = new Uint8Array(await file.arrayBuffer());
-
-  const { error } = await supabaseAdmin.storage
-    .from(BUCKET)
-    .upload(objectPath, bytes, {
-      contentType: type || "application/octet-stream",
-      upsert: false,
-    });
-  if (error) throw new Error(error.message);
-
-  return objectPath;
-}
 
 /* -------------------- GET (detail) -------------------- */
 export async function GET(req, { params }) {
@@ -171,31 +32,27 @@ export async function GET(req, { params }) {
     const fallback = normalizeLocale(
       url.searchParams.get("fallback") || DEFAULT_LOCALE
     );
+    const locales = Array.from(new Set([locale, fallback].filter(Boolean)));
 
-    const row = await prisma.aktivitas.findUnique({
-      where: { id },
-      include: {
+    const row = await prisma.aktivitas.findFirst({
+      where: { id, deleted_at: null },
+      select: {
+        id: true,
+        image_url: true,
+        sort: true,
+        is_published: true,
+        created_at: true,
+        updated_at: true,
+        deleted_at: true,
         translate: {
-          where: { locale: { in: [locale, fallback] } },
+          where: { locale: { in: locales } },
           select: { locale: true, name: true, description: true },
         },
       },
     });
-
-    if (!row || row.deleted_at)
-      return json({ message: "Not found" }, { status: 404 });
+    if (!row) return json({ message: "Not found" }, { status: 404 });
 
     const t = pickTrans(row.translate, locale, fallback);
-    const created_ts = row?.created_at
-      ? new Date(row.created_at).getTime()
-      : null;
-    const updated_ts = row?.updated_at
-      ? new Date(row.updated_at).getTime()
-      : null;
-    const deleted_at_ts = row?.deleted_at
-      ? new Date(row.deleted_at).getTime()
-      : null;
-
     return json({
       message: "OK",
       data: {
@@ -206,9 +63,9 @@ export async function GET(req, { params }) {
         created_at: row.created_at,
         updated_at: row.updated_at,
         deleted_at: row.deleted_at,
-        created_ts,
-        updated_ts,
-        deleted_at_ts,
+        created_ts: toMs(row.created_at),
+        updated_ts: toMs(row.updated_at),
+        deleted_at_ts: toMs(row.deleted_at),
         name: t?.name ?? null,
         description: t?.description ?? null,
         locale_used: t?.locale ?? null,
@@ -231,7 +88,7 @@ export async function PATCH(req, { params }) {
 
     const { body, file } = await readBodyAndFile(req);
 
-    // file upload wins, else use image_url if provided
+    // file upload wins, else image_url if present
     let image_url = undefined;
     if (file) {
       try {
@@ -274,7 +131,7 @@ export async function PATCH(req, { params }) {
     const autoTranslate =
       String(body?.autoTranslate ?? "true").toLowerCase() !== "false";
 
-    // Ambil existing translate agar bisa infer auto-translate dua arah
+    // Fetch existing to support bi-directional auto-translate
     const existing = await prisma.aktivitas_translate.findMany({
       where: { id_aktivitas: id, locale: { in: [DEFAULT_LOCALE, EN_LOCALE] } },
       select: { locale: true, name: true, description: true },
@@ -282,7 +139,7 @@ export async function PATCH(req, { params }) {
     const cur = (lc) => existing.find((x) => x.locale === lc) || null;
 
     if (autoTranslate) {
-      // ID-only update → isi EN
+      // ID-only changes -> fill EN
       if (
         (name_id !== undefined || description_id !== undefined) &&
         name_en === undefined &&
@@ -300,7 +157,7 @@ export async function PATCH(req, { params }) {
           description_en = await translate(srcDesc, "id", "en");
         }
       }
-      // EN-only update → isi ID
+      // EN-only changes -> fill ID
       if (
         (name_en !== undefined || description_en !== undefined) &&
         name_id === undefined &&
@@ -320,81 +177,90 @@ export async function PATCH(req, { params }) {
       }
     }
 
-    const data = {
-      updated_at: new Date(),
-      ...(image_url !== undefined ? { image_url } : {}),
-      ...(sort !== undefined ? { sort } : {}),
-      ...(is_published !== undefined ? { is_published } : {}),
-      ...((name_id !== undefined ||
-        description_id !== undefined ||
-        name_en !== undefined ||
-        description_en !== undefined) && {
-        translate: {
-          upsert: [
-            ...(name_id !== undefined || description_id !== undefined
-              ? [
-                  {
-                    where: {
-                      id_aktivitas_locale: {
-                        id_aktivitas: id,
-                        locale: DEFAULT_LOCALE,
-                      },
-                    },
-                    update: {
-                      ...(name_id !== undefined
-                        ? { name: String(name_id).slice(0, 191) }
-                        : {}),
-                      ...(description_id !== undefined
-                        ? { description: description_id }
-                        : {}),
-                      updated_at: new Date(),
-                    },
-                    create: {
-                      id_aktivitas: id,
-                      locale: DEFAULT_LOCALE,
-                      name: String(name_id ?? "(no title)").slice(0, 191),
-                      description: description_id ?? null,
-                    },
-                  },
-                ]
-              : []),
-            ...(name_en !== undefined || description_en !== undefined
-              ? [
-                  {
-                    where: {
-                      id_aktivitas_locale: {
-                        id_aktivitas: id,
-                        locale: EN_LOCALE,
-                      },
-                    },
-                    update: {
-                      ...(name_en !== undefined
-                        ? { name: String(name_en).slice(0, 191) }
-                        : {}),
-                      ...(description_en !== undefined
-                        ? { description: description_en }
-                        : {}),
-                      updated_at: new Date(),
-                    },
-                    create: {
-                      id_aktivitas: id,
-                      locale: EN_LOCALE,
-                      name: String(name_en ?? "(no title)").slice(0, 191),
-                      description: description_en ?? null,
-                    },
-                  },
-                ]
-              : []),
-          ],
-        },
-      }),
-    };
-
+    // Single query update + nested upsert (hemat round-trip)
     const updated = await prisma.aktivitas.update({
       where: { id },
-      data,
-      include: {
-        translate: { where: { locale: { in: [DEFAULT_LOCALE, EN_LOCALE] } } },
+      data: {
+        updated_at: new Date(),
+        ...(image_url !== undefined ? { image_url } : {}),
+        ...(sort !== undefined ? { sort } : {}),
+        ...(is_published !== undefined ? { is_published } : {}),
+        ...((name_id !== undefined ||
+          description_id !== undefined ||
+          name_en !== undefined ||
+          description_en !== undefined) && {
+          translate: {
+            upsert: [
+              ...(name_id !== undefined || description_id !== undefined
+                ? [
+                    {
+                      where: {
+                        id_aktivitas_locale: {
+                          id_aktivitas: id,
+                          locale: DEFAULT_LOCALE,
+                        },
+                      },
+                      update: {
+                        ...(name_id !== undefined
+                          ? { name: String(name_id).slice(0, 191) }
+                          : {}),
+                        ...(description_id !== undefined
+                          ? { description: description_id }
+                          : {}),
+                        updated_at: new Date(),
+                      },
+                      create: {
+                        id_aktivitas: id,
+                        locale: DEFAULT_LOCALE,
+                        name: String(name_id ?? "(no title)").slice(0, 191),
+                        description: description_id ?? null,
+                      },
+                    },
+                  ]
+                : []),
+              ...(name_en !== undefined || description_en !== undefined
+                ? [
+                    {
+                      where: {
+                        id_aktivitas_locale: {
+                          id_aktivitas: id,
+                          locale: EN_LOCALE,
+                        },
+                      },
+                      update: {
+                        ...(name_en !== undefined
+                          ? { name: String(name_en).slice(0, 191) }
+                          : {}),
+                        ...(description_en !== undefined
+                          ? { description: description_en }
+                          : {}),
+                        updated_at: new Date(),
+                      },
+                      create: {
+                        id_aktivitas: id,
+                        locale: EN_LOCALE,
+                        name: String(name_en ?? "(no title)").slice(0, 191),
+                        description: description_en ?? null,
+                      },
+                    },
+                  ]
+                : []),
+            ],
+          },
+        }),
+      },
+      select: {
+        id: true,
+        image_url: true,
+        sort: true,
+        is_published: true,
+        created_at: true,
+        updated_at: true,
+        deleted_at: true,
+        translate: {
+          where: { locale: { in: [DEFAULT_LOCALE, EN_LOCALE] } },
+          select: { locale: true },
+        },
       },
     });
 
@@ -426,6 +292,13 @@ export async function DELETE(req, { params }) {
     const deleted = await prisma.aktivitas.update({
       where: { id },
       data: { deleted_at: new Date(), updated_at: new Date() },
+      select: {
+        id: true,
+        image_url: true,
+        created_at: true,
+        updated_at: true,
+        deleted_at: true,
+      },
     });
 
     const mapped = {

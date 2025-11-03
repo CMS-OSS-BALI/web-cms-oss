@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 
 function normLang(v) {
   return String(v || "id")
@@ -11,59 +11,30 @@ function normLang(v) {
 }
 
 export default function useFooterUViewModel(opts = {}) {
-  // 1) Seed dari server (props) agar SSR dan initial client SAMA persis.
-  //    Jika tidak dikirim, default "id" aman (tidak munculin hydration error).
-  const [lang, setLang] = useState(() => normLang(opts.initialLang));
-
-  // 2) Setelah mount di client, barulah deteksi bahasa aktual.
-  useEffect(() => {
-    try {
-      const urlLang =
-        typeof window !== "undefined"
-          ? new URLSearchParams(window.location.search).get("lang")
-          : null;
-      const stored =
-        typeof window !== "undefined"
-          ? window.localStorage.getItem("oss.lang")
-          : null;
-      const navLang =
-        typeof navigator !== "undefined" ? navigator.language : null;
-
-      const detected = normLang(urlLang || stored || navLang);
-      setLang((prev) => {
-        if (detected !== prev) {
-          if (typeof window !== "undefined") {
-            window.localStorage.setItem("oss.lang", detected);
-          }
-          return detected;
-        }
-        return prev;
-      });
-    } catch {
-      // no-op
-    }
-    // sengaja dependency kosong agar hanya jalan sekali saat mount
-  }, []);
+  // Gunakan seed dari server — tidak mengubah bahasa setelah mount,
+  // sehingga tidak ada FOUC/mismatch.
+  const lang = normLang(opts.initialLang);
 
   // Helper translate
   const t = (id, en) => (lang === "en" ? en : id);
 
-  // Append ?lang= ke setiap link (jaga #hash)
+  // Tambahkan ?lang=en hanya untuk EN; ID = tanpa query (canonical)
   const withLang = useMemo(() => {
     return (path) => {
       if (!path) return path;
       const [base, hash] = String(path).split("#");
-      const joiner = base.includes("?") ? "&" : "?";
-      return `${base}${joiner}lang=${lang}${hash ? `#${hash}` : ""}`;
+      if (lang === "en") {
+        const url = new URL(base, "http://dummy.local");
+        url.searchParams.set("lang", "en");
+        const q = url.search ? url.search : "";
+        return `${url.pathname}${q}${hash ? `#${hash}` : ""}`;
+      }
+      return `${base}${hash ? `#${hash}` : ""}`;
     };
   }, [lang]);
 
-  // --- data dasar
   const logo = useMemo(
-    () => ({
-      src: "/images/loading.png",
-      alt: "OSS Bali",
-    }),
+    () => ({ src: "/images/loading.png", alt: "OSS Bali" }),
     []
   );
 
@@ -76,11 +47,10 @@ export default function useFooterUViewModel(opts = {}) {
     []
   );
 
-  // --- NAV sections (title tergantung lang)
   const navSections = useMemo(
     () => [
       {
-        title: lang === "en" ? "Services" : "Layanan",
+        title: t("Layanan", "Services"),
         links: [
           {
             label: "Study Abroad",
@@ -95,7 +65,7 @@ export default function useFooterUViewModel(opts = {}) {
         ],
       },
       {
-        title: lang === "en" ? "Visa Information" : "Informasi Visa",
+        title: t("Informasi Visa", "Visa Information"),
         links: [
           { label: "Student Visa", href: withLang("/user/visa#student") },
           { label: "Visitor/Tourist", href: withLang("/user/visa#visitor") },
@@ -104,10 +74,10 @@ export default function useFooterUViewModel(opts = {}) {
         ],
       },
       {
-        title: lang === "en" ? "Support" : "Dukungan",
+        title: t("Dukungan", "Support"),
         links: [
           {
-            label: "Career With US",
+            label: t("Karier Bersama Kami", "Career With US"),
             href: withLang("/user/career?menu=career"),
           },
           { label: "Accommodation", href: withLang("/user/accommodation") },
@@ -117,19 +87,19 @@ export default function useFooterUViewModel(opts = {}) {
         ],
       },
     ],
-    [lang, withLang]
+    [t, withLang]
   );
 
   const socials = useMemo(() => {
     const whatsappNumber = "6287705092020";
     return [
-      { icon: "instagram", href: "#", ariaLabel: "Instagram" }, // TODO: ganti
+      { icon: "instagram", href: "#", ariaLabel: "Instagram" },
       {
         icon: "whatsapp",
         href: `https://wa.me/${whatsappNumber}`,
         ariaLabel: "WhatsApp",
       },
-      { icon: "youtube", href: "#", ariaLabel: "YouTube" }, // TODO: ganti
+      { icon: "youtube", href: "#", ariaLabel: "YouTube" },
     ];
   }, []);
 

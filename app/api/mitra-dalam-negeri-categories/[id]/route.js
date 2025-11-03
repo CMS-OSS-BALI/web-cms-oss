@@ -1,98 +1,25 @@
 // app/api/mitra-dalam-negeri-categories/[id]/route.js
-import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import {
+  json,
+  badRequest,
+  unauthorized,
+  forbidden,
+  notFound,
+  readBodyFlexible,
+  pickLocale,
+  pickTrans,
+  slugify,
+  isValidSlug,
+  toMs,
+  assertAdmin,
+} from "@/app/api/mitra-dalam-negeri-categories/_utils";
 import { translate } from "@/app/utils/geminiTranslator";
 
-/* ========= Helpers ========= */
-function sanitize(v) {
-  if (v === null || v === undefined) return v;
-  if (typeof v === "bigint") return v.toString();
-  if (Array.isArray(v)) return v.map(sanitize);
-  if (typeof v === "object") {
-    const o = {};
-    for (const [k, val] of Object.entries(v)) o[k] = sanitize(val);
-    return o;
-  }
-  return v;
-}
-function json(data, init) {
-  return NextResponse.json(sanitize(data), init);
-}
-function pickLocale(req, key = "locale", dflt = "id") {
-  try {
-    const { searchParams } = new URL(req.url);
-    return (searchParams.get(key) || dflt).slice(0, 5).toLowerCase();
-  } catch {
-    return dflt;
-  }
-}
-function badRequest(message, field, hint) {
-  return json(
-    {
-      error: {
-        code: "BAD_REQUEST",
-        message,
-        ...(field ? { field } : {}),
-        ...(hint ? { hint } : {}),
-      },
-    },
-    { status: 400 }
-  );
-}
-function notFound() {
-  return json(
-    {
-      error: {
-        code: "NOT_FOUND",
-        message: "Kategori mitra tidak ditemukan.",
-      },
-    },
-    { status: 404 }
-  );
-}
-function pickTrans(list, primary, fallback) {
-  const by = (loc) => list?.find((t) => t.locale === loc);
-  return by(primary) || by(fallback) || null;
-}
-async function assertAdmin() {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
-  if (!email) throw Object.assign(new Error("UNAUTHORIZED"), { status: 401 });
-  const admin = await prisma.admin_users.findUnique({ where: { email } });
-  if (!admin) throw Object.assign(new Error("FORBIDDEN"), { status: 403 });
-  return admin;
-}
-function slugify(input) {
-  return String(input || "")
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 100);
-}
-function isValidSlug(s) {
-  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(s) && s.length <= 100;
-}
-// accept form-data / urlencoded / json
-async function readBody(req) {
-  const ct = (req.headers.get("content-type") || "").toLowerCase();
-  if (
-    ct.startsWith("multipart/form-data") ||
-    ct.startsWith("application/x-www-form-urlencoded")
-  ) {
-    const form = await req.formData();
-    const body = {};
-    for (const [k, v] of form.entries())
-      body[k] = typeof v === "string" ? v : v?.name ?? "";
-    return body;
-  }
-  return (await req.json().catch(() => ({}))) ?? {};
-}
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
-/* ========= GET /api/mitra-dalam-negeri-categories/:id ========= */
+/* ========= GET detail ========= */
 export async function GET(req, { params }) {
   try {
     const id = String(params?.id || "");
@@ -100,25 +27,20 @@ export async function GET(req, { params }) {
 
     const locale = pickLocale(req, "locale", "id");
     const fallback = pickLocale(req, "fallback", "id");
+    const locales = locale === fallback ? [locale] : [locale, fallback];
 
     const item = await prisma.mitra_dalam_negeri_categories.findFirst({
       where: { id, deleted_at: null },
       include: {
         translate: {
-          where: { locale: { in: [locale, fallback] } },
-          select: { id: true, category_id: true, locale: true, name: true },
+          where: { locale: { in: locales } },
+          select: { locale: true, name: true },
         },
       },
     });
-    if (!item) return notFound();
+    if (!item) return notFound("Kategori mitra tidak ditemukan.");
 
     const t = pickTrans(item.translate, locale, fallback);
-    const created_ts = item?.created_at
-      ? new Date(item.created_at).getTime()
-      : null;
-    const updated_ts = item?.updated_at
-      ? new Date(item.updated_at).getTime()
-      : null;
 
     return json({
       message: "OK",
@@ -128,8 +50,8 @@ export async function GET(req, { params }) {
         sort: item.sort,
         created_at: item.created_at,
         updated_at: item.updated_at,
-        created_ts,
-        updated_ts,
+        created_ts: toMs(item.created_at),
+        updated_ts: toMs(item.updated_at),
         name: t?.name ?? null,
         locale_used: t?.locale ?? null,
       },
@@ -151,27 +73,37 @@ export async function GET(req, { params }) {
   }
 }
 
-/* ========= PUT/PATCH /api/mitra-dalam-negeri-categories/:id ========= */
+/* ========= PUT/PATCH ========= */
 export async function PUT(req, ctx) {
   return PATCH(req, ctx);
 }
-
 export async function PATCH(req, { params }) {
   try {
-    await assertAdmin();
+    await assertAdmin(req);
+  } catch (err) {
+    const status = err?.status || 401;
+    if (status === 401)
+      return unauthorized("Akses ditolak. Silakan login sebagai admin.");
+    if (status === 403)
+      return forbidden("Anda tidak memiliki akses ke resource ini.");
+    return unauthorized();
+  }
 
+  try {
     const id = String(params?.id || "");
     if (!id) return badRequest("Parameter id wajib disertakan.", "id");
 
-    const body = await readBody(req);
+    const body = await readBodyFlexible(req);
 
     const data = {};
     const ops = [];
     let name_id_new;
     const autoTranslate = String(body.autoTranslate ?? "false") === "true";
 
+    // Parent fields
     if (body.slug !== undefined) {
-      const s = String(body.slug || "").trim();
+      let s = String(body.slug || "").trim();
+      if (!s && body.name_id) s = slugify(String(body.name_id));
       if (!s) return badRequest("Slug tidak boleh kosong.", "slug");
       if (!isValidSlug(s)) {
         return badRequest(
@@ -188,10 +120,9 @@ export async function PATCH(req, { params }) {
       data.sort = v;
     }
 
-    // translations (ID)
+    // ID translation
     if (body.name_id !== undefined) {
-      name_id_new = String(body.name_id);
-
+      name_id_new = String(body.name_id || "");
       ops.push(
         prisma.mitra_dalam_negeri_categories_translate.upsert({
           where: { category_id_locale: { category_id: id, locale: "id" } },
@@ -205,7 +136,7 @@ export async function PATCH(req, { params }) {
       );
     }
 
-    // translations (EN) explicit
+    // EN translation (explicit)
     if (body.name_en !== undefined) {
       const name_en = String(body.name_en || "");
       ops.push(
@@ -221,7 +152,7 @@ export async function PATCH(req, { params }) {
       );
     }
 
-    // apply main update (if any)
+    // Apply main update (or ensure exists)
     if (Object.keys(data).length) {
       data.updated_at = new Date();
       await prisma.mitra_dalam_negeri_categories.update({
@@ -229,14 +160,14 @@ export async function PATCH(req, { params }) {
         data,
       });
     } else {
-      // ensure exists
       const exists = await prisma.mitra_dalam_negeri_categories.findUnique({
         where: { id },
+        select: { id: true },
       });
-      if (!exists) return notFound();
+      if (!exists) return notFound("Kategori mitra tidak ditemukan.");
     }
 
-    // auto-translate from ID -> EN (name only)
+    // Auto-translate ID -> EN
     if (autoTranslate && name_id_new !== undefined) {
       try {
         const name_en_auto = name_id_new
@@ -254,7 +185,7 @@ export async function PATCH(req, { params }) {
           })
         );
       } catch (e) {
-        console.warn("Auto-translate name_id -> en failed:", e);
+        console.warn("[auto-translate] name_id -> en failed:", e);
       }
     }
 
@@ -266,28 +197,6 @@ export async function PATCH(req, { params }) {
     });
   } catch (err) {
     const status = err?.status || 500;
-    if (status === 401) {
-      return json(
-        {
-          error: {
-            code: "UNAUTHORIZED",
-            message: "Akses ditolak. Silakan login sebagai admin.",
-          },
-        },
-        { status: 401 }
-      );
-    }
-    if (status === 403) {
-      return json(
-        {
-          error: {
-            code: "FORBIDDEN",
-            message: "Anda tidak memiliki akses ke resource ini.",
-          },
-        },
-        { status: 403 }
-      );
-    }
     if (err?.code === "P2002") {
       return json(
         {
@@ -300,7 +209,12 @@ export async function PATCH(req, { params }) {
         { status: 409 }
       );
     }
-    if (err?.code === "P2025") return notFound();
+    if (status === 401)
+      return unauthorized("Akses ditolak. Silakan login sebagai admin.");
+    if (status === 403)
+      return forbidden("Anda tidak memiliki akses ke resource ini.");
+    if (err?.code === "P2025")
+      return notFound("Kategori mitra tidak ditemukan.");
     console.error(
       `PATCH /api/mitra-dalam-negeri-categories/${params?.id} error:`,
       err
@@ -317,17 +231,27 @@ export async function PATCH(req, { params }) {
   }
 }
 
-/* ========= DELETE /api/mitra-dalam-negeri-categories/:id (soft) ========= */
-export async function DELETE(_req, { params }) {
+/* ========= DELETE (soft) ========= */
+export async function DELETE(req, { params }) {
   try {
-    await assertAdmin();
+    await assertAdmin(req);
+  } catch (err) {
+    const status = err?.status || 401;
+    if (status === 401)
+      return unauthorized("Akses ditolak. Silakan login sebagai admin.");
+    if (status === 403)
+      return forbidden("Anda tidak memiliki akses ke resource ini.");
+    return unauthorized();
+  }
 
+  try {
     const id = String(params?.id || "");
     if (!id) return badRequest("Parameter id wajib disertakan.", "id");
 
     const deleted = await prisma.mitra_dalam_negeri_categories.update({
       where: { id },
       data: { deleted_at: new Date(), updated_at: new Date() },
+      select: { id: true },
     });
 
     return json({
@@ -335,30 +259,8 @@ export async function DELETE(_req, { params }) {
       data: { id: deleted.id },
     });
   } catch (err) {
-    const status = err?.status || 500;
-    if (status === 401) {
-      return json(
-        {
-          error: {
-            code: "UNAUTHORIZED",
-            message: "Akses ditolak. Silakan login sebagai admin.",
-          },
-        },
-        { status: 401 }
-      );
-    }
-    if (status === 403) {
-      return json(
-        {
-          error: {
-            code: "FORBIDDEN",
-            message: "Anda tidak memiliki akses ke resource ini.",
-          },
-        },
-        { status: 403 }
-      );
-    }
-    if (err?.code === "P2025") return notFound();
+    if (err?.code === "P2025")
+      return notFound("Kategori mitra tidak ditemukan.");
     console.error(
       `DELETE /api/mitra-dalam-negeri-categories/${params?.id} error:`,
       err

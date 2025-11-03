@@ -1,241 +1,60 @@
-import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+// /app/api/events/route.js
 import { randomUUID } from "crypto";
 import { translate } from "@/app/utils/geminiTranslator";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import prisma from "@/lib/prisma";
+import {
+  DEFAULT_LOCALE,
+  json,
+  asInt,
+  pickLocale,
+  getOrderBy,
+  toBool,
+  toInt,
+  toDate,
+  normPricingType,
+  pickTrans,
+  parseId,
+  toPublicUrl,
+  badRequest,
+  assertAdmin,
+  readBodyAndFile,
+  uploadEventBanner,
+  resolveCategoryId,
+} from "@/app/api/events/_utils";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-/* -------------------- config -------------------- */
-const DEFAULT_LOCALE = "id";
-const EN_LOCALE = "en";
-const BUCKET = process.env.SUPABASE_BUCKET;
-const SUPA_URL =
-  process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
-const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
-
-/* -------------------- utils -------------------- */
-function sanitize(v) {
-  if (v === null || v === undefined) return v;
-  if (v instanceof Date) return v.toISOString();
-  if (typeof v === "bigint") return v.toString();
-  if (Array.isArray(v)) return v.map(sanitize);
-  if (typeof v === "object") {
-    const o = {};
-    for (const [k, val] of Object.entries(v)) o[k] = sanitize(val);
-    return o;
-  }
-  return v;
-}
-function json(data, init) {
-  return NextResponse.json(sanitize(data), init);
-}
-function asInt(v, dflt) {
-  const n = parseInt(v, 10);
-  return Number.isFinite(n) ? n : dflt;
-}
-function pickLocale(req, key = "locale", dflt = DEFAULT_LOCALE) {
-  try {
-    const { searchParams } = new URL(req.url);
-    return (searchParams.get(key) || dflt).slice(0, 5).toLowerCase();
-  } catch {
-    return dflt;
-  }
-}
-function getOrderBy(param) {
-  const allowed = new Set(["created_at", "updated_at", "start_at", "end_at"]);
-  const [field = "created_at", dir = "desc"] = String(param || "").split(":");
-  const key = allowed.has(field) ? field : "created_at";
-  const order = String(dir).toLowerCase() === "asc" ? "asc" : "desc";
-  return [{ [key]: order }];
-}
-function badRequest(message, field, hint) {
-  return json(
-    {
-      error: {
-        code: "BAD_REQUEST",
-        message,
-        ...(field ? { field } : {}),
-        ...(hint ? { hint } : {}),
-      },
-    },
-    { status: 400 }
-  );
-}
-function toBool(v) {
-  if (v === undefined || v === null) return undefined;
-  const s = String(v).toLowerCase();
-  if (s === "1" || s === "true") return true;
-  if (s === "0" || s === "false") return false;
-  return undefined;
-}
-function toInt(v, dflt = null) {
-  if (v === "" || v === undefined || v === null) return dflt;
-  const n = Number(String(v).replace(/\./g, "").replace(/,/g, ""));
-  return Number.isFinite(n) ? Math.trunc(n) : dflt;
-}
-function toDate(v) {
-  if (!v && v !== 0) return null;
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-function normPricingType(v) {
-  const s = String(v || "").toUpperCase();
-  return s === "PAID" ? "PAID" : "FREE";
-}
-function pickTrans(list, primary, fallback) {
-  const by = (loc) => list?.find((t) => t.locale === loc);
-  return by(primary) || by(fallback) || null;
-}
-const parseId = (v) => {
-  if (v === null || v === undefined) return null;
-  const s = String(v).trim();
-  return s.length ? s : null;
-};
-/** Supabase path → public URL */
-function toPublicUrl(path) {
-  if (!path) return "";
-  if (/^https?:\/\//i.test(path)) return path;
-  if (!SUPA_URL || !BUCKET) return path;
-  return `${SUPA_URL}/storage/v1/object/public/${BUCKET}/${path}`;
-}
-
-/** session OR x-admin-key (untuk Postman) */
-async function assertAdmin(req) {
-  const key = req.headers.get("x-admin-key");
-  if (key && ADMIN_TEST_KEY && key === ADMIN_TEST_KEY) {
-    const anyAdmin = await prisma.admin_users.findFirst({
-      select: { id: true },
-    });
-    if (!anyAdmin) throw new Response("Forbidden", { status: 403 });
-    return { adminId: anyAdmin.id, via: "header" };
-  }
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email)
-    throw new Response("Unauthorized", { status: 401 });
-  const admin = await prisma.admin_users.findUnique({
-    where: { email: session.user.email },
-    select: { id: true },
-  });
-  if (!admin) throw new Response("Forbidden", { status: 403 });
-  return { adminId: admin.id, via: "session" };
-}
-
-/** JSON / form-data → { body, file }  (file key: banner|file|banner_file|banner_url) */
-async function readBodyAndFile(req) {
-  const ct = (req.headers.get("content-type") || "").toLowerCase();
-  const isMultipart = ct.startsWith("multipart/form-data");
-  const isUrlEncoded = ct.startsWith("application/x-www-form-urlencoded");
-  if (isMultipart || isUrlEncoded) {
-    const form = await req.formData();
-    const body = {};
-    let file = null;
-    for (const key of ["banner", "file", "banner_file", "banner_url"]) {
-      const f = form.get(key);
-      if (f && typeof File !== "undefined" && f instanceof File) {
-        file = f;
-        break;
-      }
-    }
-    for (const [k, v] of form.entries()) if (!(v instanceof File)) body[k] = v;
-    return { body, file };
-  }
-  const body = (await req.json().catch(() => ({}))) ?? {};
-  return { body, file: null };
-}
-
-/* ========= Supabase upload ========= */
-async function uploadEventBanner(file) {
-  if (!(file instanceof File)) throw new Error("NO_FILE");
-  if (!BUCKET) throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
-
-  const MAX = 10 * 1024 * 1024; // 10MB
-  const allowed = ["image/jpeg", "image/png", "image/webp"];
-  if ((file.size || 0) > MAX) throw new Error("PAYLOAD_TOO_LARGE");
-  if (!allowed.includes(file.type)) throw new Error("UNSUPPORTED_TYPE");
-
-  const ext = (file.name?.split(".").pop() || "").toLowerCase();
-  const safe = `${Date.now()}-${Math.random().toString(36).slice(2)}${
-    ext ? "." + ext : ""
-  }`;
-  const objectPath = `events/${new Date().toISOString().slice(0, 10)}/${safe}`;
-  const bytes = new Uint8Array(await file.arrayBuffer());
-
-  const { error } = await supabaseAdmin.storage
-    .from(BUCKET)
-    .upload(objectPath, bytes, {
-      contentType: file.type || "application/octet-stream",
-      upsert: false,
-    });
-
-  if (error) throw new Error(error.message);
-  return objectPath; // simpan PATH di DB
-}
-
-/* ========= Category helpers ========= */
-async function resolveCategoryId({ category_id, category_slug }) {
-  const byId = parseId(category_id);
-  const bySlug = parseId(category_slug);
-  if (byId) {
-    const exists = await prisma.event_categories.findUnique({
-      where: { id: byId },
-      select: { id: true },
-    });
-    if (!exists)
-      throw Object.assign(new Error("CATEGORY_NOT_FOUND"), {
-        field: "category_id",
-      });
-    return byId;
-  }
-  if (bySlug) {
-    const found = await prisma.event_categories.findUnique({
-      where: { slug: bySlug },
-      select: { id: true },
-    });
-    if (!found)
-      throw Object.assign(new Error("CATEGORY_NOT_FOUND"), {
-        field: "category_slug",
-      });
-    return found.id;
-  }
-  return null; // optional
-}
-
 /* ========= GET /api/events (LIST) ========= */
 export async function GET(req) {
   try {
-    const { searchParams } = new URL(req.url);
-    const qRaw = (searchParams.get("q") || "").trim();
-    const q = qRaw.length ? qRaw : undefined; // only build OR when present
+    const url = new URL(req.url);
+    const sp = url.searchParams;
+
+    const qRaw = (sp.get("q") || "").trim();
+    const q = qRaw.length ? qRaw : undefined;
 
     const locale = pickLocale(req, "locale", DEFAULT_LOCALE);
     const fallback = pickLocale(req, "fallback", DEFAULT_LOCALE);
     const locales = Array.from(new Set([locale, fallback].filter(Boolean)));
 
-    const page = Math.max(1, asInt(searchParams.get("page"), 1));
-    const perPage = Math.min(
-      100,
-      Math.max(1, asInt(searchParams.get("perPage"), 12))
-    );
-    const orderBy = getOrderBy(searchParams.get("sort")); // e.g. start_at:asc
-    const withDeleted = searchParams.get("with_deleted") === "1";
-    const onlyDeleted = searchParams.get("only_deleted") === "1";
-    const includeCategory = searchParams.get("include_category") === "1";
+    const page = Math.max(1, asInt(sp.get("page"), 1));
+    const perPage = Math.min(100, Math.max(1, asInt(sp.get("perPage"), 12)));
+    const orderBy = getOrderBy(sp.get("sort")); // "start_at:asc" etc
+    const withDeleted = sp.get("with_deleted") === "1";
+    const onlyDeleted = sp.get("only_deleted") === "1";
+    const includeCategory = sp.get("include_category") === "1";
 
-    const is_published = toBool(searchParams.get("is_published"));
-    const from = searchParams.get("from");
-    const to = searchParams.get("to");
-    const status = (searchParams.get("status") || "").toLowerCase(); // done|upcoming|ongoing
+    const is_published = toBool(sp.get("is_published"));
+    const from = sp.get("from");
+    const to = sp.get("to");
+    const status = (sp.get("status") || "").toLowerCase(); // done|upcoming|ongoing
 
-    const category_id = parseId(searchParams.get("category_id"));
-    const category_slug = parseId(searchParams.get("category_slug"));
+    const category_id = parseId(sp.get("category_id"));
+    const category_slug = parseId(sp.get("category_slug"));
 
     const now = new Date();
-
-    const textFilter = q ? { contains: q } : undefined; // MySQL is already case-insensitive on *_ci collations
+    const textFilter = q ? { contains: q } : undefined;
 
     const where = {
       ...(onlyDeleted
@@ -278,8 +97,7 @@ export async function GET(req) {
       }),
       ...(category_id ? { category_id } : {}),
       ...(category_slug ? { category: { slug: category_slug } } : {}),
-      // pastikan ada terjemahan di salah satu locale
-      events_translate: { some: { locale: { in: locales } } },
+      events_translate: { some: { locale: { in: locales } } }, // must have at least one of locales
     };
 
     const [total, rows] = await Promise.all([
@@ -329,7 +147,7 @@ export async function GET(req) {
       }),
     ]);
 
-    // hitung tiket terjual
+    // Hitung tiket terjual per event sekali jalan
     const ids = rows.map((e) => e.id);
     let soldMap = {};
     if (ids.length) {
@@ -345,6 +163,7 @@ export async function GET(req) {
 
     const data = rows.map((r) => {
       const t = pickTrans(r.events_translate, locale, fallback);
+
       const created_ts = r?.created_at
         ? new Date(r.created_at).getTime()
         : null;
@@ -367,7 +186,6 @@ export async function GET(req) {
       const sold = Number(soldMap[r.id] || 0);
       const remaining =
         r.capacity == null ? null : Math.max(0, Number(r.capacity) - sold);
-
       const booth_remaining =
         r.booth_quota == null
           ? null
@@ -443,7 +261,7 @@ export async function POST(req) {
     const { adminId } = await assertAdmin(req);
     const { body, file } = await readBodyAndFile(req);
 
-    // upload banner jika ada, else pakai banner_url string
+    // Upload banner (opsional)
     let banner_url = "";
     if (file) {
       try {
@@ -498,7 +316,7 @@ export async function POST(req) {
     if (banner_url.length > 1024)
       return badRequest("banner_url maksimal 1024 karakter", "banner_url");
 
-    // Translations
+    // Translations (ID wajib)
     const title_id = String(body?.title_id ?? body?.title ?? "").trim();
     const description_id =
       body?.description_id !== undefined
@@ -519,6 +337,7 @@ export async function POST(req) {
       return badRequest("start_at dan end_at wajib diisi.", "start_at");
     if (end_at < start_at)
       return badRequest("end_at harus >= start_at", "end_at");
+
     const location = String(body?.location || "").trim();
     if (!location) return badRequest("location wajib diisi.", "location");
 
@@ -544,7 +363,6 @@ export async function POST(req) {
     const booth_price = toInt(body?.booth_price, 0);
     if (!Number.isFinite(booth_price) || booth_price < 0)
       return badRequest("booth_price harus >= 0", "booth_price");
-
     let booth_quota = toInt(body?.booth_quota, null);
     if (booth_quota !== null && booth_quota < 0)
       return badRequest("booth_quota harus >= 0 atau null", "booth_quota");
@@ -556,6 +374,7 @@ export async function POST(req) {
     const category_slug_in = body?.category_slug
       ? String(body.category_slug).trim()
       : null;
+
     let resolvedCategoryId = null;
     try {
       resolvedCategoryId = await resolveCategoryId({
@@ -578,19 +397,36 @@ export async function POST(req) {
       throw e;
     }
 
-    // auto-translate ke EN
+    // EN auto-translate (paralel)
+    const autoTranslate =
+      String(body?.autoTranslate ?? "true").toLowerCase() !== "false";
     let title_en = String(body?.title_en || "").trim();
     let description_en =
       body?.description_en !== undefined && body?.description_en !== null
         ? String(body.description_en)
         : "";
-    const autoTranslate =
-      String(body?.autoTranslate ?? "true").toLowerCase() !== "false";
+
     if (autoTranslate) {
+      const tasks = [];
       if (!title_en && title_id)
-        title_en = await translate(title_id, "id", "en");
+        tasks.push(translate(title_id, "id", "en").then((t) => (title_en = t)));
       if (!description_en && description_id)
-        description_en = await translate(description_id, "id", "en");
+        tasks.push(
+          translate(description_id, "id", "en").then(
+            (t) => (description_en = t)
+          )
+        );
+      if (tasks.length) {
+        try {
+          await Promise.all(tasks);
+        } catch (e) {
+          // Kalau translasi gagal, tetap lanjut simpan data utama
+          console.warn(
+            "Auto-translate failed, continuing without EN text:",
+            e?.message || e
+          );
+        }
+      }
     }
 
     const id = randomUUID();
@@ -634,7 +470,6 @@ export async function POST(req) {
           },
         });
       }
-
       return parent;
     });
 
@@ -657,7 +492,28 @@ export async function POST(req) {
       { status: 201 }
     );
   } catch (err) {
-    if (err instanceof Response) return err;
+    const status = err?.status || 500;
+    if (status === 401)
+      return json(
+        {
+          error: {
+            code: "UNAUTHORIZED",
+            message: "Akses ditolak. Silakan login sebagai admin.",
+          },
+        },
+        { status: 401 }
+      );
+    if (status === 403)
+      return json(
+        {
+          error: {
+            code: "FORBIDDEN",
+            message: "Anda tidak memiliki akses ke resource ini.",
+          },
+        },
+        { status: 403 }
+      );
+
     console.error("POST /api/events error:", err);
     return json(
       {

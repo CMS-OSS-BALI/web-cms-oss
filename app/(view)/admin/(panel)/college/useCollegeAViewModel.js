@@ -259,6 +259,25 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
   // ===========================================
 
   // ---- CRUD College ----
+
+  // Helper clamp page setelah delete (pakai meta total jika ada; fallback dari panjang rows)
+  const clampPageAfterDelete = useCallback(() => {
+    // Jika kita punya total meta → hitung dari sana
+    if (Number.isFinite(total)) {
+      const newTotal = Math.max(0, Number(total) - 1);
+      const nextTotalPages = Math.max(
+        1,
+        Math.ceil(newTotal / Math.max(1, perPage))
+      );
+      setPage((p) => Math.min(p, nextTotalPages));
+      return;
+    }
+    // Fallback: kalau di halaman ini tinggal 1 item dan >1 page, mundur 1 halaman
+    if (colleges.length <= 1 && page > 1) {
+      setPage(page - 1);
+    }
+  }, [total, perPage, colleges.length, page]);
+
   const createCollege = useCallback(
     async ({
       file,
@@ -309,10 +328,14 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
         };
       }
       const json = await res.json().catch(() => ({}));
-      await mutate();
+
+      // 🔁 Reset ke halaman 1 agar item baru langsung terlihat
+      if (page !== 1) setPage(1);
+      await mutate(); // revalidate list
+
       return { ok: true, data: json };
     },
-    [locale, mutate]
+    [locale, mutate, page]
   );
 
   const getCollege = useCallback(
@@ -381,7 +404,7 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
         };
       }
       const json = await res.json().catch(() => ({}));
-      await mutate();
+      await mutate(); // update tidak perlu adjust page
       return { ok: true, data: json };
     },
     [locale, mutate]
@@ -399,10 +422,14 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
         };
       }
       englishCache.current.delete(id);
+
+      // 🔁 Clamp halaman terhadap total baru agar tidak tersisa di page kosong
+      clampPageAfterDelete();
+
       await mutate();
       return { ok: true };
     },
-    [mutate]
+    [mutate, clampPageAfterDelete]
   );
 
   const englishFor = useCallback(

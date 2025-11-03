@@ -173,11 +173,18 @@ export default function useLeadsViewModel() {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
       });
-      const json = await res.json();
+
+      const ct = res.headers?.get?.("content-type") || "";
+      const json =
+        res.status !== 204 && ct.includes("application/json")
+          ? await res.json().catch(() => null)
+          : null;
+
       if (!res.ok) return { ok: false, error: json?.error?.message || "Gagal" };
-      fetchList();
-      refreshCounters(); // update ringkasan (assignment bisa berubah)
-      return { ok: true, data: json?.data };
+
+      // Penting: tunggu keduanya supaya tidak race
+      await Promise.all([fetchList(), refreshCounters()]);
+      return { ok: true, data: json?.data ?? json };
     } catch (e) {
       return { ok: false, error: e?.message || "Gagal" };
     } finally {
@@ -188,17 +195,27 @@ export default function useLeadsViewModel() {
   /* ========== DELETE ========== */
   async function deleteLead(id) {
     try {
+      setOpLoading(true);
       const res = await fetch(`/api/leads/${encodeURIComponent(id)}`, {
         method: "DELETE",
         credentials: "include",
       });
-      const json = await res.json();
+
+      const ct = res.headers?.get?.("content-type") || "";
+      const json =
+        res.status !== 204 && ct.includes("application/json")
+          ? await res.json().catch(() => null)
+          : null;
+
       if (!res.ok) return { ok: false, error: json?.error?.message || "Gagal" };
-      fetchList();
-      refreshCounters(); // total berkurang
+
+      // Penting: chain supaya list & counter sinkron, dan fetch lama ter-abort oleh fetchList()
+      await Promise.all([fetchList(), refreshCounters()]);
       return { ok: true };
     } catch (e) {
       return { ok: false, error: e?.message || "Gagal" };
+    } finally {
+      setOpLoading(false);
     }
   }
 

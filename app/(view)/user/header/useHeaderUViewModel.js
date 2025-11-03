@@ -1,4 +1,3 @@
-// app/(view)/user/header/useHeaderUViewModel.js
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -15,12 +14,6 @@ const normalizeLang = (value, fallback = "id") => {
   if (base.startsWith("en")) return "en";
   if (base.startsWith("id")) return "id";
   return fallback === "en" ? "en" : "id";
-};
-
-const readLangCookie = () => {
-  if (typeof document === "undefined") return "";
-  const match = document.cookie.match(/(?:^|;\s*)oss\.lang=(en|id)/);
-  return match ? match[1] : "";
 };
 
 const writeLangCookie = (lang) => {
@@ -47,36 +40,11 @@ const stripMenuParamFromCurrentUrl = () => {
   } catch {}
 };
 
-/** 🔧 Baru: urutan prioritas = URL > Cookie > localStorage > <html lang> > default */
-const getInitialLangClient = () => {
-  try {
-    const url = new URL(window.location.href);
-    const q = (url.searchParams.get("lang") || "").toLowerCase();
-    const ck = (readLangCookie() || "").toLowerCase();
-    const ls = (localStorage.getItem(LANG_COOKIE) || "").toLowerCase();
-    const htmlLang = (
-      document.documentElement.getAttribute("lang") || ""
-    ).toLowerCase();
-
-    const cand = q || ck || ls || htmlLang || "id";
-    return normalizeLang(cand);
-  } catch {
-    const ck = (readLangCookie() || "").toLowerCase();
-    const ls = (
-      typeof localStorage !== "undefined"
-        ? localStorage.getItem(LANG_COOKIE)
-        : ""
-    )?.toLowerCase();
-    return normalizeLang(ck || ls || "id");
-  }
-};
-
 const replaceUrlLang = (l) => {
   if (typeof window === "undefined") return;
   const url = new URL(window.location.href);
-  // keep URL clean
   url.searchParams.delete("menu");
-  // ID is default (no ?lang), EN uses ?lang=en
+  // ID default: tanpa ?lang. EN: ?lang=en
   if (l === "en") {
     url.searchParams.set("lang", "en");
   } else {
@@ -86,7 +54,6 @@ const replaceUrlLang = (l) => {
 };
 
 /* ======================= i18n Nav ======================= */
-/* ID */
 const NAV_ID = [
   {
     id: "home",
@@ -157,7 +124,6 @@ const NAV_ID = [
   },
 ];
 
-/* EN */
 const NAV_EN = [
   {
     id: "home",
@@ -234,45 +200,45 @@ const LANG_OPTIONS = [
 ];
 
 /* ======================= Hook ======================= */
-export function useHeaderUViewModel() {
+export function useHeaderUViewModel({ initialLang = "id" } = {}) {
   const pathname = usePathname();
 
   const [isMenuOpen, setMenuOpen] = useState(false);
-  const [lang, setLang] = useState("id");
+  // Seed dari server → tidak baca localStorage/cookie pada first paint
+  const [lang, setLang] = useState(() => normalizeLang(initialLang, "id"));
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
     try {
       stripMenuParamFromCurrentUrl();
-
-      const initial = getInitialLangClient();
-      setLang(initial);
-
-      // Sync ke <html lang> & URL & cookie & localStorage
-      document.documentElement.setAttribute("lang", initial);
-      replaceUrlLang(initial);
-      writeLangCookie(initial);
-      localStorage.setItem(LANG_COOKIE, initial);
+      // Sync atribut html lang dan URL (tanpa mengubah state awal)
+      document.documentElement.setAttribute("lang", lang);
+      replaceUrlLang(lang);
+      // Persist preferensi ke cookie & localStorage (post-hydration)
+      writeLangCookie(lang);
+      localStorage.setItem(LANG_COOKIE, lang);
     } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Persist & reflect ketika user mengubah bahasa
   useEffect(() => {
     if (!mounted) return;
-    // hanya sync jika sudah mount
-    localStorage.setItem(LANG_COOKIE, lang);
-    writeLangCookie(lang);
-    document.documentElement.setAttribute("lang", lang);
-    replaceUrlLang(lang);
+    try {
+      localStorage.setItem(LANG_COOKIE, lang);
+      writeLangCookie(lang);
+      document.documentElement.setAttribute("lang", lang);
+      replaceUrlLang(lang);
+    } catch {}
   }, [lang, mounted]);
 
   // close mobile menu on route change
   useEffect(() => setMenuOpen(false), [pathname]);
 
-  const changeLang = useCallback(
-    (val) => setLang(val === "en" ? "en" : "id"),
-    []
-  );
+  const changeLang = useCallback((val) => {
+    setLang(val === "en" ? "en" : "id");
+  }, []);
 
   const NAV_SRC = lang === "en" ? NAV_EN : NAV_ID;
 

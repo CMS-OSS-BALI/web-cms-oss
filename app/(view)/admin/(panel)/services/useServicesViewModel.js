@@ -71,7 +71,10 @@ export default function useServicesViewModel(initial = {}) {
     if (abortRef.current) abortRef.current.abort();
     abortRef.current = new AbortController();
 
-    fetch(key, { signal: abortRef.current.signal, credentials: "include" })
+    return fetch(key, {
+      signal: abortRef.current.signal,
+      credentials: "include",
+    })
       .then((r) => r.json())
       .then((j) => setServices(Array.isArray(j?.data) ? j.data : []))
       .catch(() => {})
@@ -84,81 +87,119 @@ export default function useServicesViewModel(initial = {}) {
   }, [reload]);
 
   /* ====== CRUD ====== */
-  const createService = useCallback(async (payload = {}) => {
-    try {
-      // kirim multipart kalau ada file, selain itu juga boleh
-      const fd = new FormData();
-      if (payload.file) fd.append("file", payload.file);
-      // field string/number
-      for (const [k, v] of Object.entries(payload)) {
-        if (k === "file" || v === undefined) continue;
-        fd.append(k, v === null ? "" : String(v));
-      }
-
-      const r = await fetch("/api/services", {
-        method: "POST",
-        body: fd,
-        credentials: "include",
-      });
-      const j = await r.json();
-      if (!r.ok) return { ok: false, error: j?.message || "Request failed" };
-      return { ok: true, data: j?.data };
-    } catch (e) {
-      return { ok: false, error: e?.message || "Network error" };
-    }
-  }, []);
-
-  const updateService = useCallback(async (id, payload = {}) => {
-    try {
-      // Kirim FormData jika ada file, atau jika ada string image_url tetap ok
-      const hasFile = !!payload.file;
-      let body;
-      let headers;
-
-      if (hasFile) {
+  const createService = useCallback(
+    async (payload = {}) => {
+      try {
+        // kirim multipart kalau ada file, selain itu juga boleh
         const fd = new FormData();
-        fd.append("file", payload.file);
+        if (payload.file) fd.append("file", payload.file);
+        // field string/number
         for (const [k, v] of Object.entries(payload)) {
           if (k === "file" || v === undefined) continue;
           fd.append(k, v === null ? "" : String(v));
         }
-        body = fd;
-        headers = undefined;
-      } else {
-        // gunakan JSON agar simple
-        const obj = { ...payload };
-        delete obj.file;
-        body = JSON.stringify(obj);
-        headers = { "Content-Type": "application/json" };
+
+        const r = await fetch("/api/services", {
+          method: "POST",
+          body: fd,
+          credentials: "include",
+        });
+
+        const ct = r.headers?.get?.("content-type") || "";
+        const j = ct.includes("application/json")
+          ? await r.json().catch(() => null)
+          : null;
+
+        if (!r.ok) return { ok: false, error: j?.message || "Request failed" };
+
+        // penting: item baru biasanya muncul di halaman 1 (sort desc)
+        setPage(1);
+        await reload();
+
+        return { ok: true, data: j?.data };
+      } catch (e) {
+        return { ok: false, error: e?.message || "Network error" };
       }
+    },
+    [reload]
+  );
 
-      const r = await fetch(`/api/services/${id}`, {
-        method: "PATCH",
-        body,
-        headers,
-        credentials: "include",
-      });
-      const j = await r.json();
-      if (!r.ok) return { ok: false, error: j?.message || "Request failed" };
-      return { ok: true, data: j?.data };
-    } catch (e) {
-      return { ok: false, error: e?.message || "Network error" };
-    }
-  }, []);
+  const updateService = useCallback(
+    async (id, payload = {}) => {
+      try {
+        // Kirim FormData jika ada file, atau jika ada string image_url tetap ok
+        const hasFile = !!payload.file;
+        let body;
+        let headers;
 
-  const deleteService = useCallback(async (id) => {
-    try {
-      const r = await fetch(`/api/services/${id}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      const j = await r.json();
-      if (!r.ok) return { ok: false, error: j?.message || "Request failed" };
-      return { ok: true, data: j?.data };
-    } catch (e) {
-      return { ok: false, error: e?.message || "Network error" };
-    }
-  }, []);
+        if (hasFile) {
+          const fd = new FormData();
+          fd.append("file", payload.file);
+          for (const [k, v] of Object.entries(payload)) {
+            if (k === "file" || v === undefined) continue;
+            fd.append(k, v === null ? "" : String(v));
+          }
+          body = fd;
+          headers = undefined;
+        } else {
+          // gunakan JSON agar simple
+          const obj = { ...payload };
+          delete obj.file;
+          body = JSON.stringify(obj);
+          headers = { "Content-Type": "application/json" };
+        }
+
+        const r = await fetch(`/api/services/${id}`, {
+          method: "PATCH",
+          body,
+          headers,
+          credentials: "include",
+        });
+
+        const ct = r.headers?.get?.("content-type") || "";
+        const j = ct.includes("application/json")
+          ? await r.json().catch(() => null)
+          : null;
+
+        if (!r.ok) return { ok: false, error: j?.message || "Request failed" };
+
+        // revalidate list supaya tabel up-to-date
+        await reload();
+
+        return { ok: true, data: j?.data };
+      } catch (e) {
+        return { ok: false, error: e?.message || "Network error" };
+      }
+    },
+    [reload]
+  );
+
+  const deleteService = useCallback(
+    async (id) => {
+      try {
+        const r = await fetch(`/api/services/${id}`, {
+          method: "DELETE",
+          credentials: "include",
+        });
+
+        // aman untuk 204 / non-JSON
+        const ct = r.headers?.get?.("content-type") || "";
+        const j = ct.includes("application/json")
+          ? await r.json().catch(() => null)
+          : null;
+
+        if (!r.ok) return { ok: false, error: j?.message || "Request failed" };
+
+        // revalidate list setelah delete
+        await reload();
+
+        return { ok: true, data: j?.data };
+      } catch (e) {
+        return { ok: false, error: e?.message || "Network error" };
+      }
+    },
+    [reload]
+  );
 
   const getService = useCallback(async (id, loc = "id") => {
     try {

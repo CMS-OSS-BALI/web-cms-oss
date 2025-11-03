@@ -1,10 +1,10 @@
+// app/(view)/admin/dashboard/DashboardContent.jsx
 "use client";
 
 import dynamic from "next/dynamic";
 import { useMemo } from "react";
 import { ConfigProvider, Select, Empty, Typography, Tooltip } from "antd";
 import { InfoCircleOutlined } from "@ant-design/icons";
-import useDashboardViewModel from "./useDashboardViewModel";
 import Loading from "@/app/components/loading/LoadingImage";
 
 // ==== Dynamic imports (code splitting)
@@ -31,30 +31,34 @@ const PIE_COLORS = [
   "#2c3e50",
 ];
 
-export default function DashboardContent() {
-  const vm = useDashboardViewModel();
+export default function DashboardContent({ vm }) {
+  // ⤷ HAPUS instansiasi hook di sini. Kita pakai vm dari props.
   const { shellW, maxW, blue, text } = TOKENS;
 
   const yearOptions = useMemo(
-    () => vm.years.map((y) => ({ value: y, label: String(y) })),
-    [vm.years]
+    () => (vm?.years ?? []).map((y) => ({ value: y, label: String(y) })),
+    [vm?.years]
   );
 
   const leadsSlices = useMemo(() => {
-    if (vm.yearA == null || vm.yearB == null) return [];
+    if (vm?.yearA == null || vm?.yearB == null) return [];
+    const a = Number(vm.yearA);
+    const b = Number(vm.yearB);
     return [
-      { label: String(vm.yearA), value: vm.leadsA.total },
-      { label: String(vm.yearB), value: vm.leadsB.total },
+      { label: String(a), value: vm?.leadsA?.total ?? 0 },
+      { label: String(b), value: vm?.leadsB?.total ?? 0 },
     ];
-  }, [vm.leadsA.total, vm.leadsB.total, vm.yearA, vm.yearB]);
+  }, [vm?.yearA, vm?.yearB, vm?.leadsA?.total, vm?.leadsB?.total]);
 
   const repsSlices = useMemo(() => {
-    if (vm.yearA == null || vm.yearB == null) return [];
+    if (vm?.yearA == null || vm?.yearB == null) return [];
+    const a = Number(vm.yearA);
+    const b = Number(vm.yearB);
     return [
-      { label: String(vm.yearA), value: vm.repsA.total },
-      { label: String(vm.yearB), value: vm.repsB.total },
+      { label: String(a), value: vm?.repsA?.total ?? 0 },
+      { label: String(b), value: vm?.repsB?.total ?? 0 },
     ];
-  }, [vm.repsA.total, vm.repsB.total, vm.yearA, vm.yearB]);
+  }, [vm?.yearA, vm?.yearB, vm?.repsA?.total, vm?.repsB?.total]);
 
   return (
     <ConfigProvider
@@ -132,23 +136,23 @@ export default function DashboardContent() {
                     <Select
                       allowClear
                       placeholder="Pilih tahun A"
-                      value={vm.yearA ?? undefined}
+                      value={vm?.yearA ?? undefined}
                       options={yearOptions}
-                      onChange={vm.setYearA}
+                      onChange={vm?.setYearA}
                     />
                     <Select
                       allowClear
                       placeholder="Pilih tahun B"
-                      value={vm.yearB ?? undefined}
+                      value={vm?.yearB ?? undefined}
                       options={yearOptions}
-                      onChange={vm.setYearB}
+                      onChange={vm?.setYearB}
                     />
                   </div>
                 </div>
 
-                {vm.loading.leads ? (
+                {vm?.loading?.leads ? (
                   <Loading label="Memuat ringkasan leads…" />
-                ) : !vm.yearA || !vm.yearB ? (
+                ) : !vm?.yearA || !vm?.yearB ? (
                   <div style={{ padding: 16 }}>
                     <Empty description="Pilih kedua tahun untuk melihat perbandingan" />
                   </div>
@@ -163,43 +167,43 @@ export default function DashboardContent() {
 
                     {/* Legend */}
                     <div style={styles.legendWrap}>
-                      {leadsSlices.map((s, i) => (
-                        <div key={s.label} style={styles.legendItem}>
-                          <span
-                            aria-hidden
-                            style={{
-                              width: 12,
-                              height: 12,
-                              borderRadius: 3,
-                              background: PIE_COLORS[i % PIE_COLORS.length],
-                              display: "inline-block",
-                            }}
-                          />
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div
+                      {leadsSlices.map((s, i) => {
+                        const isA = vm?.yearA === Number(s.label);
+                        const count = isA
+                          ? vm?.leadsA?.total ?? 0
+                          : vm?.leadsB?.total ?? 0;
+                        return (
+                          <div key={s.label} style={styles.legendItem}>
+                            <span
+                              aria-hidden
                               style={{
-                                fontWeight: 700,
-                                color: "#0f172a",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
+                                width: 12,
+                                height: 12,
+                                borderRadius: 3,
+                                background: PIE_COLORS[i % PIE_COLORS.length],
+                                display: "inline-block",
                               }}
-                            >
-                              {s.label}
+                            />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div
+                                style={{
+                                  fontWeight: 700,
+                                  color: "#0f172a",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {s.label}
+                              </div>
+                              <div style={{ color: "#64748b", fontSize: 12 }}>
+                                {count} data
+                              </div>
                             </div>
-                            <div style={{ color: "#64748b", fontSize: 12 }}>
-                              {vm.yearA === Number(s.label)
-                                ? `${vm.leadsA.total} data`
-                                : `${vm.leadsB.total} data`}
-                            </div>
+                            <div style={styles.legendNum}>{count}</div>
                           </div>
-                          <div style={styles.legendNum}>
-                            {vm.yearA === Number(s.label)
-                              ? vm.leadsA.total
-                              : vm.leadsB.total}
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -229,23 +233,23 @@ export default function DashboardContent() {
                     <Select
                       allowClear
                       placeholder="Pilih tahun A"
-                      value={vm.yearA ?? undefined}
+                      value={vm?.yearA ?? undefined}
                       options={yearOptions}
-                      onChange={vm.setYearA}
+                      onChange={vm?.setYearA}
                     />
                     <Select
                       allowClear
                       placeholder="Pilih tahun B"
-                      value={vm.yearB ?? undefined}
+                      value={vm?.yearB ?? undefined}
                       options={yearOptions}
-                      onChange={vm.setYearB}
+                      onChange={vm?.setYearB}
                     />
                   </div>
                 </div>
 
-                {vm.loading.leads ? (
+                {vm?.loading?.leads ? (
                   <Loading label="Memuat representative…" />
-                ) : !vm.yearA || !vm.yearB ? (
+                ) : !vm?.yearA || !vm?.yearB ? (
                   <div style={{ padding: 16 }}>
                     <Empty description="Pilih kedua tahun untuk melihat perbandingan" />
                   </div>
@@ -258,43 +262,43 @@ export default function DashboardContent() {
                       centerTitle="Total Representative"
                     />
                     <div style={styles.legendWrap}>
-                      {repsSlices.map((s, i) => (
-                        <div key={s.label} style={styles.legendItem}>
-                          <span
-                            aria-hidden
-                            style={{
-                              width: 12,
-                              height: 12,
-                              borderRadius: 3,
-                              background: PIE_COLORS[i % PIE_COLORS.length],
-                              display: "inline-block",
-                            }}
-                          />
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div
+                      {repsSlices.map((s, i) => {
+                        const isA = vm?.yearA === Number(s.label);
+                        const count = isA
+                          ? vm?.repsA?.total ?? 0
+                          : vm?.repsB?.total ?? 0;
+                        return (
+                          <div key={s.label} style={styles.legendItem}>
+                            <span
+                              aria-hidden
                               style={{
-                                fontWeight: 700,
-                                color: "#0f172a",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
+                                width: 12,
+                                height: 12,
+                                borderRadius: 3,
+                                background: PIE_COLORS[i % PIE_COLORS.length],
+                                display: "inline-block",
                               }}
-                            >
-                              {s.label}
+                            />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div
+                                style={{
+                                  fontWeight: 700,
+                                  color: "#0f172a",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {s.label}
+                              </div>
+                              <div style={{ color: "#64748b", fontSize: 12 }}>
+                                {count} data
+                              </div>
                             </div>
-                            <div style={{ color: "#64748b", fontSize: 12 }}>
-                              {vm.yearA === Number(s.label)
-                                ? `${vm.repsA.total} data`
-                                : `${vm.repsB.total} data`}
-                            </div>
+                            <div style={styles.legendNum}>{count}</div>
                           </div>
-                          <div style={styles.legendNum}>
-                            {vm.yearA === Number(s.label)
-                              ? vm.repsA.total
-                              : vm.repsB.total}
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -306,11 +310,11 @@ export default function DashboardContent() {
           <div style={styles.cardOuter}>
             <div style={styles.cardInner}>
               <SeoSection
-                seo={vm.seo}
-                loading={vm.loading}
-                onMetricChange={vm.setSeoMetric}
-                onGroupChange={vm.setSeoGroup}
-                onPeriodChange={vm.setSeoPeriod}
+                seo={vm?.seo}
+                loading={vm?.loading}
+                onMetricChange={vm?.setSeoMetric}
+                onGroupChange={vm?.setSeoGroup}
+                onPeriodChange={vm?.setSeoPeriod}
               />
             </div>
           </div>

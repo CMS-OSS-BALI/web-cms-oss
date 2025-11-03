@@ -8,6 +8,7 @@ import useDashboardViewModel from "./useDashboardViewModel";
 const DashboardContentLazy = lazy(() => import("./DashboardContent"));
 
 export default function DashboardPage() {
+  // Hoist satu-satunya instance view model di sini
   const vm = useDashboardViewModel();
 
   return (
@@ -18,6 +19,7 @@ export default function DashboardPage() {
         </div>
       }
     >
+      {/* Teruskan vm ke child agar tidak membuat instance kedua */}
       <DashboardContentLazy vm={vm} />
     </Suspense>
   );

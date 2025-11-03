@@ -1,77 +1,20 @@
 // app/api/event-categories/[id]/route.js
-import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { translate } from "@/app/utils/geminiTranslator";
+import {
+  json,
+  pickLocale,
+  badRequest,
+  notFound,
+  pickTrans,
+  assertAdmin,
+  slugify,
+  isValidSlug,
+  readBodyFlexible,
+} from "@/app/api/event-categories/_utils";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-
-/* ========= Helpers ========= */
-function sanitize(v) {
-  if (v === null || v === undefined) return v;
-  if (typeof v === "bigint") return v.toString();
-  if (Array.isArray(v)) return v.map(sanitize);
-  if (typeof v === "object") {
-    const o = {};
-    for (const [k, val] of Object.entries(v)) o[k] = sanitize(val);
-    return o;
-  }
-  return v;
-}
-function json(data, init) {
-  return NextResponse.json(sanitize(data), init);
-}
-function pickLocale(req, key = "locale", dflt = "id") {
-  try {
-    const { searchParams } = new URL(req.url);
-    return (searchParams.get(key) || dflt).slice(0, 5).toLowerCase();
-  } catch {
-    return dflt;
-  }
-}
-function badRequest(message, field, hint) {
-  return json(
-    {
-      error: {
-        code: "BAD_REQUEST",
-        message,
-        ...(field ? { field } : {}),
-        ...(hint ? { hint } : {}),
-      },
-    },
-    { status: 400 }
-  );
-}
-function notFound() {
-  return json(
-    {
-      error: { code: "NOT_FOUND", message: "Kategori event tidak ditemukan." },
-    },
-    { status: 404 }
-  );
-}
-function pickTrans(list, primary, fallback) {
-  const by = (loc) => list?.find((t) => t.locale === loc);
-  return by(primary) || by(fallback) || null;
-}
-async function assertAdmin() {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
-  if (!email) throw Object.assign(new Error("UNAUTHORIZED"), { status: 401 });
-  const admin = await prisma.admin_users.findUnique({ where: { email } });
-  if (!admin) throw Object.assign(new Error("FORBIDDEN"), { status: 403 });
-  return admin.id;
-}
-function slugify(s = "") {
-  return String(s)
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 100);
-}
 
 /* ========= GET /api/event-categories/:id ========= */
 export async function GET(req, { params }) {
@@ -127,7 +70,6 @@ export async function GET(req, { params }) {
 export async function PUT(req, ctx) {
   return PATCH(req, ctx);
 }
-
 export async function PATCH(req, { params }) {
   try {
     await assertAdmin();
@@ -135,81 +77,46 @@ export async function PATCH(req, { params }) {
     const id = params?.id;
     if (!id) return badRequest("Parameter id wajib disertakan.", "id");
 
-    const ct = req.headers.get("content-type") || "";
+    const body = await readBodyFlexible(req);
 
-    // nilai kandidat update
-    let slug; // undefined = tidak diubah
-    let sort; // undefined = tidak diubah
-    let name_id; // undefined = tidak diubah
-    let description_id; // undefined = tidak diubah
-    let name_en; // undefined = tidak diubah
-    let description_en; // undefined = tidak diubah
-    let autoTranslate = false;
+    // nilai kandidat update (undefined = tidak diubah)
+    let slug =
+      body.slug !== undefined ? String(body.slug || "").trim() : undefined;
+    let sort =
+      body.sort !== undefined
+        ? (() => {
+            const n = parseInt(body.sort, 10);
+            if (!Number.isFinite(n) || n < 0)
+              throw badRequest("sort harus bilangan bulat >= 0", "sort");
+            return n;
+          })()
+        : undefined;
 
-    if (ct.includes("multipart/form-data")) {
-      const form = await req.formData();
+    let name_id = body.name_id !== undefined ? String(body.name_id) : undefined;
+    let description_id =
+      body.description_id !== undefined
+        ? body.description_id === null
+          ? null
+          : String(body.description_id)
+        : undefined;
 
-      if (form.get("slug") !== null) {
-        const raw = String(form.get("slug") || "").trim();
-        slug = raw || undefined;
-      }
-      if (form.get("sort") !== null) {
-        const v = parseInt(form.get("sort"), 10);
-        if (!Number.isFinite(v) || v < 0)
-          return badRequest("sort harus bilangan bulat >= 0", "sort");
-        sort = v;
-      }
+    let name_en = body.name_en !== undefined ? String(body.name_en) : undefined;
+    let description_en =
+      body.description_en !== undefined
+        ? body.description_en === null
+          ? null
+          : String(body.description_en)
+        : undefined;
 
-      if (form.get("name_id") !== null) name_id = String(form.get("name_id"));
-      if (form.get("description_id") !== null)
-        description_id =
-          form.get("description_id") === null
-            ? null
-            : String(form.get("description_id"));
+    const autoTranslate = String(body?.autoTranslate ?? "false") === "true";
 
-      if (form.get("name_en") !== null) name_en = String(form.get("name_en"));
-      if (form.get("description_en") !== null)
-        description_en =
-          form.get("description_en") === null
-            ? null
-            : String(form.get("description_en"));
-
-      autoTranslate = String(form.get("autoTranslate") ?? "false") === "true";
-    } else {
-      const body = await req.json().catch(() => ({}));
-
-      if (body.slug !== undefined) {
-        const raw = String(body.slug || "").trim();
-        slug = raw || undefined;
-      }
-      if (body.sort !== undefined) {
-        const v = parseInt(body.sort, 10);
-        if (!Number.isFinite(v) || v < 0)
-          return badRequest("sort harus bilangan bulat >= 0", "sort");
-        sort = v;
-      }
-
-      if (body.name_id !== undefined) name_id = String(body.name_id);
-      if (body.description_id !== undefined)
-        description_id =
-          body.description_id === null ? null : String(body.description_id);
-
-      if (body.name_en !== undefined) name_en = String(body.name_en);
-      if (body.description_en !== undefined)
-        description_en =
-          body.description_en === null ? null : String(body.description_en);
-
-      autoTranslate = Boolean(body?.autoTranslate);
-    }
-
-    // validasi slug (kalau mau diubah)
+    // validasi/derive slug bila diubah
     if (slug !== undefined) {
-      const s = slug || ""; // allow re-derive from name_id
-      let finalSlug = s;
+      let finalSlug = slug;
       if (!finalSlug && name_id) finalSlug = slugify(String(name_id));
       if (!finalSlug)
         return badRequest("Slug wajib diisi ketika mengubah slug.", "slug");
-      if (!/^[a-z0-9-]{1,100}$/.test(finalSlug)) {
+      if (!isValidSlug(finalSlug)) {
         return badRequest(
           "Slug hanya boleh huruf kecil, angka, dan tanda minus (-), maks 100 karakter.",
           "slug"
@@ -218,13 +125,12 @@ export async function PATCH(req, { params }) {
       slug = finalSlug;
     }
 
-    // eksekusi dalam satu transaksi
     await prisma.$transaction(async (tx) => {
       const exists = await tx.event_categories.findUnique({ where: { id } });
       if (!exists)
         throw Object.assign(new Error("NOT_FOUND"), { code: "P2025" });
 
-      // update fields utama
+      // update parent
       const data = {};
       if (slug !== undefined) data.slug = slug;
       if (sort !== undefined) data.sort = sort;
@@ -271,7 +177,7 @@ export async function PATCH(req, { params }) {
         });
       }
 
-      // auto-translate ke EN ketika ada perubahan ID
+      // auto-translate ke EN saat ID berubah
       if (
         autoTranslate &&
         (name_id !== undefined || description_id !== undefined)
@@ -311,18 +217,16 @@ export async function PATCH(req, { params }) {
     });
   } catch (err) {
     const status = err?.status || 500;
-    if (status === 401) {
+    if (status === 401)
       return json(
         { error: { code: "UNAUTHORIZED", message: "Akses ditolak." } },
         { status: 401 }
       );
-    }
-    if (status === 403) {
+    if (status === 403)
       return json(
         { error: { code: "FORBIDDEN", message: "Anda tidak memiliki akses." } },
         { status: 403 }
       );
-    }
     if (err?.code === "P2002") {
       return json(
         {
@@ -367,18 +271,16 @@ export async function DELETE(_req, { params }) {
     });
   } catch (err) {
     const status = err?.status || 500;
-    if (status === 401) {
+    if (status === 401)
       return json(
         { error: { code: "UNAUTHORIZED", message: "Akses ditolak." } },
         { status: 401 }
       );
-    }
-    if (status === 403) {
+    if (status === 403)
       return json(
         { error: { code: "FORBIDDEN", message: "Anda tidak memiliki akses." } },
         { status: 403 }
       );
-    }
     if (err?.code === "P2025") return notFound();
     console.error(`DELETE /api/event-categories/${params?.id} error:`, err);
     return json(

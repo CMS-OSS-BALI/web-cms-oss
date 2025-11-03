@@ -8,25 +8,43 @@ import { sendMail } from "@/lib/mailer";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/* ---------- Auth ---------- */
+/* =========================
+   Auth
+========================= */
 async function assertAdmin() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) throw new Error("UNAUTHORIZED");
   return session.user;
 }
 
-/* ---------- Utils ---------- */
+/* =========================
+   Constants & Utils
+========================= */
 const EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
+
+const LIMITS = {
+  SUBJECT: 256,
+  BODY: 200_000,
+  SAFE_MAX_TO_PER_REQUEST: 500, // hard cap to prevent abuse
+  DEFAULT_MAX_TO_PER_REQUEST: 200,
+  DEFAULT_CONCURRENCY: 5,
+  MIN_CONCURRENCY: 1,
+  MAX_CONCURRENCY: 20,
+};
+
 function normStr(x, max = 512) {
   return (x ?? "").toString().slice(0, max);
 }
+
 function splitMaybeList(s) {
+  // dukung delimiter ; , \n
   return (s || "")
     .toString()
-    .split(/[;,]/)
+    .split(/[;,\n]/)
     .map((v) => v.trim())
     .filter(Boolean);
 }
+
 function dedupValidEmails(arr = []) {
   const out = new Set();
   for (const raw of arr) {
@@ -38,15 +56,130 @@ function dedupValidEmails(arr = []) {
   return Array.from(out);
 }
 
-/* ---------- Streaming helper (NDJSON) ---------- */
+function clampNumber(v, { min, max, fallback }) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(Math.max(n, min), max);
+}
+
+function normalizeAttachments(attachments) {
+  if (!Array.isArray(attachments) || attachments.length === 0) return undefined;
+  const norm = attachments
+    .filter((a) => a && (a.content || a.path))
+    .map((a) => ({
+      filename: a.filename || a.name,
+      content: a.content,
+      path: a.path,
+      encoding: a.encoding,
+      contentType: a.contentType,
+    }));
+  return norm.length ? norm : undefined;
+}
+
+/* =========================
+   DB fetchers
+========================= */
+async function fetchCollegeEmails(collegeIds = []) {
+  if (!Array.isArray(collegeIds) || collegeIds.length === 0) return [];
+  const ids = collegeIds.map(String);
+  const rows = await prisma.college.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, email: true },
+  });
+  const bag = [];
+  for (const r of rows) if (r?.email) bag.push(...splitMaybeList(r.email));
+  return bag;
+}
+
+function extractEmailsFromPartnerContact(contact) {
+  const bag = [];
+  let obj = contact;
+
+  // Contact bisa string JSON atau string e-mail biasa
+  if (typeof contact === "string") {
+    try {
+      obj = JSON.parse(contact);
+    } catch {
+      bag.push(contact);
+    }
+  }
+
+  if (obj && typeof obj === "object") {
+    if (obj.email) bag.push(...splitMaybeList(obj.email));
+    if (obj.emails)
+      bag.push(
+        ...(Array.isArray(obj.emails) ? obj.emails : splitMaybeList(obj.emails))
+      );
+    if (obj.primary_email) bag.push(obj.primary_email);
+
+    if (Array.isArray(obj.contacts)) {
+      for (const c of obj.contacts) {
+        if (c?.email) bag.push(c.email);
+        if (c?.emails)
+          bag.push(
+            ...(Array.isArray(c.emails) ? c.emails : splitMaybeList(c.emails))
+          );
+      }
+    }
+
+    // Fallback: ambil semua field yang mengandung "mail"
+    for (const [k, v] of Object.entries(obj)) {
+      if (typeof v === "string" && /mail/i.test(k)) bag.push(v);
+    }
+  }
+
+  return bag;
+}
+
+async function fetchPartnerEmails(partnerIds = []) {
+  if (!Array.isArray(partnerIds) || partnerIds.length === 0) return [];
+  try {
+    const ids = partnerIds.map(String);
+    const rows = await prisma.partners.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, contact: true },
+    });
+    const bag = [];
+    for (const p of rows)
+      bag.push(...extractEmailsFromPartnerContact(p?.contact));
+    return bag;
+  } catch {
+    // legacy fallback: abaikan error biar tidak memutus flow
+    return [];
+  }
+}
+
+async function fetchMerchantEmails(merchantIds = []) {
+  if (!Array.isArray(merchantIds) || merchantIds.length === 0) return [];
+  const ids = merchantIds.map(String);
+  const rows = await prisma.mitra_dalam_negeri.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, email: true },
+  });
+  const bag = [];
+  for (const r of rows) if (r?.email) bag.push(...splitMaybeList(r.email));
+  return bag;
+}
+
+/* =========================
+   Streaming helper (NDJSON)
+========================= */
 function createNdjsonStream() {
   const ts = new TransformStream();
   const writer = ts.writable.getWriter();
   const enc = new TextEncoder();
+
   return {
     stream: ts.readable,
     async send(obj) {
-      await writer.write(enc.encode(JSON.stringify(obj) + "\n"));
+      // Hindari throw pada stringification besar
+      let line = "";
+      try {
+        line = JSON.stringify(obj);
+      } catch {
+        line = JSON.stringify({ type: "error", message: "serialize-failed" });
+      }
+      await writer.write(enc.encode(line + "\n"));
     },
     async close() {
       await writer.close();
@@ -54,151 +187,111 @@ function createNdjsonStream() {
   };
 }
 
-/* ---------- Handler: POST /api/blast ---------- */
+/* =========================
+   Handler: POST /api/blast
+========================= */
 export async function POST(req) {
   try {
     await assertAdmin();
-    const body = await req.json().catch(() => ({}));
 
+    const body = await req.json().catch(() => ({}));
     const {
       subject = "",
       html = "",
       text = "",
       attachments = [],
       emails = [],
-      // 🔁 baru: collegeIds (ganti partners)
+      // 🔁 baru
       collegeIds = [],
-      // legacy (masih diterima tapi diabaikan kalau collegeIds ada)
+      // legacy (aktif hanya jika collegeIds kosong)
       partnerIds = [],
-      // tetap: Mitra Dalam Negeri
+      // Mitra Dalam Negeri
       merchantIds = [],
       cc = [],
       bcc = [],
       dryRun = false,
-      maxPerRequest = 200,
-      concurrency = 5,
+      maxPerRequest = LIMITS.DEFAULT_MAX_TO_PER_REQUEST,
+      concurrency = LIMITS.DEFAULT_CONCURRENCY,
     } = body || {};
 
-    const safeSubject = normStr(subject, 256);
-    const safeHtml = normStr(html, 200_000);
-    const safeText = normStr(text, 200_000);
-    if (!safeSubject)
+    // ---- normalize inputs ----
+    const safeSubject = normStr(subject, LIMITS.SUBJECT).trim();
+    const safeHtml = normStr(html, LIMITS.BODY);
+    const safeText = normStr(text, LIMITS.BODY);
+
+    const maxTo =
+      clampNumber(maxPerRequest, {
+        min: 1,
+        max: LIMITS.SAFE_MAX_TO_PER_REQUEST,
+        fallback: LIMITS.DEFAULT_MAX_TO_PER_REQUEST,
+      }) | 0;
+
+    const conc =
+      clampNumber(concurrency, {
+        min: LIMITS.MIN_CONCURRENCY,
+        max: LIMITS.MAX_CONCURRENCY,
+        fallback: LIMITS.DEFAULT_CONCURRENCY,
+      }) | 0;
+
+    if (!safeSubject) {
       return NextResponse.json(
         { ok: false, error: "NO_SUBJECT" },
         { status: 400 }
       );
-    if (
-      !safeHtml &&
-      !safeText &&
-      !(Array.isArray(attachments) && attachments.length)
-    )
+    }
+
+    const hasContent =
+      Boolean(safeHtml) ||
+      Boolean(safeText) ||
+      (Array.isArray(attachments) && attachments.length > 0);
+
+    if (!hasContent) {
       return NextResponse.json(
         { ok: false, error: "NO_CONTENT" },
         { status: 400 }
       );
-
-    // ====== Kumpulkan email kampus (prioritas baru)
-    let collegeEmails = [];
-    if (Array.isArray(collegeIds) && collegeIds.length) {
-      const colleges = await prisma.college.findMany({
-        where: { id: { in: collegeIds.map(String) } },
-        select: { id: true, email: true },
-      });
-      for (const c of colleges) {
-        if (c?.email) collegeEmails.push(...splitMaybeList(c.email));
-      }
     }
 
-    // (Legacy) kalau tidak ada collegeIds, fallback ke partners lama (biar aman)
-    let partnerEmails = [];
-    if (
-      !collegeEmails.length &&
-      Array.isArray(partnerIds) &&
-      partnerIds.length
-    ) {
-      try {
-        const partners = await prisma.partners.findMany({
-          where: { id: { in: partnerIds.map(String) } },
-          select: { id: true, contact: true },
-        });
-        for (const p of partners) {
-          // dukung format lama: ambil semua email dari field contact
-          const bag = [];
-          const contact = p?.contact;
-          let obj = contact;
-          if (typeof contact === "string") {
-            try {
-              obj = JSON.parse(contact);
-            } catch {
-              bag.push(contact);
-            }
-          }
-          if (obj && typeof obj === "object") {
-            if (obj.email) bag.push(...splitMaybeList(obj.email));
-            if (obj.emails)
-              bag.push(
-                ...(Array.isArray(obj.emails)
-                  ? obj.emails
-                  : splitMaybeList(obj.emails))
-              );
-            if (obj.primary_email) bag.push(obj.primary_email);
-            if (Array.isArray(obj.contacts)) {
-              for (const c of obj.contacts) {
-                if (c?.email) bag.push(c.email);
-                if (c?.emails)
-                  bag.push(
-                    ...(Array.isArray(c.emails)
-                      ? c.emails
-                      : splitMaybeList(c.emails))
-                  );
-              }
-            }
-            for (const [k, v] of Object.entries(obj)) {
-              if (typeof v === "string" && /mail/i.test(k)) bag.push(v);
-            }
-          }
-          partnerEmails.push(...bag);
-        }
-      } catch {
-        // ignore partners error
+    // ---- collect recipients from DB ----
+    // Prioritas baru: colleges; jika kosong, fallback ke partners (legacy).
+    const [collegeEmails, partnerEmails, merchantEmails] = await (async () => {
+      if (Array.isArray(collegeIds) && collegeIds.length) {
+        const ce = await fetchCollegeEmails(collegeIds);
+        const me = await fetchMerchantEmails(merchantIds);
+        return [ce, [], me];
       }
-    }
+      // legacy path
+      const pe = await fetchPartnerEmails(partnerIds);
+      const me = await fetchMerchantEmails(merchantIds);
+      return [[], pe, me];
+    })();
 
-    // ====== Kumpulkan email Mitra Dalam Negeri
-    let merchantEmails = [];
-    if (Array.isArray(merchantIds) && merchantIds.length) {
-      const mitraList = await prisma.mitra_dalam_negeri.findMany({
-        where: { id: { in: merchantIds.map(String) } },
-        select: { id: true, email: true },
-      });
-      for (const m of mitraList) {
-        if (m?.email) merchantEmails.push(...splitMaybeList(m.email));
-      }
-    }
-
-    // Gabungkan + dedup + validasi
+    // ---- merge + dedup ----
     const toList = dedupValidEmails([
-      ...(emails || []),
+      ...(Array.isArray(emails) ? emails : []),
       ...collegeEmails,
       ...partnerEmails,
       ...merchantEmails,
     ]);
+
     const ccList = dedupValidEmails(cc);
     const bccList = dedupValidEmails(bcc);
 
-    if (!toList.length)
+    if (!toList.length) {
       return NextResponse.json(
         { ok: false, error: "NO_RECIPIENTS" },
         { status: 400 }
       );
-    if (toList.length > maxPerRequest) {
+    }
+
+    if (toList.length > maxTo) {
       return NextResponse.json(
-        { ok: false, error: "TOO_MANY", count: toList.length },
+        { ok: false, error: "TOO_MANY", count: toList.length, limit: maxTo },
         { status: 413 }
       );
     }
 
-    // Preview (dry run)
+    // ---- dry run preview ----
     if (dryRun) {
       return NextResponse.json({
         ok: true,
@@ -214,40 +307,36 @@ export async function POST(req) {
       });
     }
 
+    // ---- prepare once (avoid per-email recompute) ----
+    const normalizedAttachments = normalizeAttachments(attachments);
+    const ccHeader = ccList.length ? ccList.join(", ") : undefined;
+    const bccHeader = bccList.length ? bccList.join(", ") : undefined;
+
     const { stream, send, close } = createNdjsonStream();
 
     (async () => {
       try {
-        await send({ type: "start", total: toList.length });
+        await send({ type: "start", total: toList.length, concurrency: conc });
 
-        let sent = 0,
-          failed = 0;
+        let sent = 0;
+        let failed = 0;
 
-        for (let i = 0; i < toList.length; i += concurrency) {
-          const chunk = toList.slice(i, i + concurrency);
+        // Batch by concurrency
+        for (let i = 0; i < toList.length; i += conc) {
+          const chunk = toList.slice(i, i + conc);
+
           const results = await Promise.allSettled(
-            chunk.map((to) => {
-              const atts = Array.isArray(attachments)
-                ? attachments
-                    .filter((a) => a && (a.content || a.path))
-                    .map((a) => ({
-                      filename: a.filename || a.name,
-                      content: a.content,
-                      path: a.path,
-                      encoding: a.encoding,
-                      contentType: a.contentType,
-                    }))
-                : undefined;
-              return sendMail({
+            chunk.map((to) =>
+              sendMail({
                 to,
                 subject: safeSubject,
                 html: safeHtml || undefined,
                 text: safeText || undefined,
-                attachments: atts,
-                cc: ccList.length ? ccList.join(", ") : undefined,
-                bcc: bccList.length ? bccList.join(", ") : undefined,
-              });
-            })
+                attachments: normalizedAttachments,
+                cc: ccHeader,
+                bcc: bccHeader,
+              })
+            )
           );
 
           for (let j = 0; j < results.length; j++) {
@@ -258,12 +347,8 @@ export async function POST(req) {
               await send({ type: "progress", to, ok: true });
             } else {
               failed++;
-              await send({
-                type: "progress",
-                to,
-                ok: false,
-                error: (r.reason?.message || "send-failed").slice(0, 512),
-              });
+              const errMsg = (r.reason?.message || "send-failed").slice(0, 512);
+              await send({ type: "progress", to, ok: false, error: errMsg });
             }
           }
         }
@@ -282,6 +367,7 @@ export async function POST(req) {
         "Content-Type": "application/x-ndjson; charset=utf-8",
         "Cache-Control": "no-cache, no-transform",
         "X-Accel-Buffering": "no",
+        "X-Content-Type-Options": "nosniff",
       },
     });
   } catch (e) {

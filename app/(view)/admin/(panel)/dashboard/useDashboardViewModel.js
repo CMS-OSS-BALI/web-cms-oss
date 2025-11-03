@@ -1,3 +1,4 @@
+// app/(view)/admin/(panel)/dashboard/useDashboardViewModel.js
 "use client";
 import { useEffect, useMemo, useState } from "react";
 
@@ -28,6 +29,7 @@ async function fetchLeadsSummary(year) {
 export default function useDashboardViewModel() {
   const now = new Date();
   const currentYear = now.getFullYear();
+  const lastYear = currentYear - 1;
 
   const years = useMemo(() => {
     const arr = [];
@@ -35,8 +37,9 @@ export default function useDashboardViewModel() {
     return arr;
   }, [currentYear]);
 
-  const [yearA, setYearA] = useState(null);
-  const [yearB, setYearB] = useState(null);
+  // Prefill default comparison: current vs last year
+  const [yearA, setYearA] = useState(currentYear);
+  const [yearB, setYearB] = useState(lastYear);
 
   const [loading, setLoading] = useState({
     leads: false,
@@ -52,7 +55,8 @@ export default function useDashboardViewModel() {
   const [repsA, setRepsA] = useState({ total: 0, monthly: [] });
   const [repsB, setRepsB] = useState({ total: 0, monthly: [] });
 
-  const [metricsYear, setMetricsYear] = useState(null);
+  // Prefill metrics tahun berjalan
+  const [metricsYear, setMetricsYear] = useState(currentYear);
   const [metrics, setMetrics] = useState({
     year: null,
     months: [],
@@ -107,6 +111,7 @@ export default function useDashboardViewModel() {
     return { year: y, months, total, peakIndex };
   }
 
+  // ==== Metrics effect (prefilled & clear stale error on success/init) ====
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -116,9 +121,15 @@ export default function useDashboardViewModel() {
         return;
       }
       try {
+        // reset error sebelum fetch supaya pesan lama tidak muncul saat loading
+        setError((s) => ({ ...s, metrics: undefined }));
         setLoading((s) => ({ ...s, metrics: true }));
         const m = await loadMetrics(metricsYear);
-        mounted && setMetrics(m);
+        if (mounted) {
+          setMetrics(m);
+          // clear error ketika data baru sudah ada
+          setError((s) => ({ ...s, metrics: undefined }));
+        }
       } catch (e) {
         setError((s) => ({
           ...s,
@@ -148,13 +159,15 @@ export default function useDashboardViewModel() {
     });
   }
 
+  // ==== Leads/Reps effect (prefilled & clear stale error on success/init) ====
   useEffect(() => {
     let mounted = true;
     (async () => {
       const tasks = [];
       try {
-        if (yearA != null || yearB != null)
-          setLoading((s) => ({ ...s, leads: true }));
+        // reset error sebelum fetch agar pesan lama tidak tampil saat state berubah
+        setError((s) => ({ ...s, leads: undefined }));
+        setLoading((s) => ({ ...s, leads: true }));
 
         if (yearA != null) {
           tasks.push(
@@ -183,11 +196,13 @@ export default function useDashboardViewModel() {
         }
 
         if (tasks.length) await Promise.all(tasks);
+
+        // clear error ketika data baru sukses masuk
+        mounted && setError((s) => ({ ...s, leads: undefined }));
       } catch (e) {
         setError((s) => ({ ...s, leads: e?.message || "Leads gagal dimuat" }));
       } finally {
-        if (yearA != null || yearB != null)
-          mounted && setLoading((s) => ({ ...s, leads: false }));
+        mounted && setLoading((s) => ({ ...s, leads: false }));
       }
     })();
     return () => {
@@ -317,7 +332,7 @@ export default function useDashboardViewModel() {
     loading,
     error,
     metrics,
-    setMetricsYear,
+    setMetricsYear, // default: currentYear
     seo: {
       group: seoGroup,
       period: seoPeriod,

@@ -1,197 +1,26 @@
-import { NextResponse } from "next/server";
+// /app/api/events/[id]/route.js
 import prisma from "@/lib/prisma";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { translate } from "@/app/utils/geminiTranslator";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import {
+  DEFAULT_LOCALE,
+  json,
+  pickLocale,
+  pickTrans,
+  toPublicUrl,
+  badRequest,
+  notFound,
+  toBool,
+  toInt,
+  toDate,
+  normPricingType,
+  assertAdmin,
+  readBodyAndFile,
+  uploadEventBanner,
+  resolveCategoryId,
+} from "@/app/api/events/_utils";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-
-/* -------------------- config -------------------- */
-const DEFAULT_LOCALE = "id";
-const EN_LOCALE = "en";
-const BUCKET = process.env.SUPABASE_BUCKET;
-const SUPA_URL =
-  process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
-const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
-
-/* -------------------- utils -------------------- */
-function sanitize(v) {
-  if (v === null || v === undefined) return v;
-  if (v instanceof Date) return v.toISOString();
-  if (typeof v === "bigint") return v.toString();
-  if (Array.isArray(v)) return v.map(sanitize);
-  if (typeof v === "object") {
-    const o = {};
-    for (const [k, val] of Object.entries(v)) o[k] = sanitize(val);
-    return o;
-  }
-  return v;
-}
-function json(data, init) {
-  return NextResponse.json(sanitize(data), init);
-}
-function pickLocale(req, key = "locale", dflt = DEFAULT_LOCALE) {
-  try {
-    const { searchParams } = new URL(req.url);
-    return (searchParams.get(key) || dflt).slice(0, 5).toLowerCase();
-  } catch {
-    return dflt;
-  }
-}
-function badRequest(message, field, hint) {
-  return json(
-    {
-      error: {
-        code: "BAD_REQUEST",
-        message,
-        ...(field ? { field } : {}),
-        ...(hint ? { hint } : {}),
-      },
-    },
-    { status: 400 }
-  );
-}
-function notFound() {
-  return json(
-    { error: { code: "NOT_FOUND", message: "Data event tidak ditemukan." } },
-    { status: 404 }
-  );
-}
-function toBool(v) {
-  if (v === undefined || v === null) return undefined;
-  const s = String(v).toLowerCase();
-  if (s === "1" || s === "true") return true;
-  if (s === "0" || s === "false") return false;
-  return undefined;
-}
-function toInt(v, dflt = null) {
-  if (v === "" || v === undefined || v === null) return dflt;
-  const n = Number(String(v).replace(/\./g, "").replace(/,/g, ""));
-  return Number.isFinite(n) ? Math.trunc(n) : dflt;
-}
-function toDate(v) {
-  if (!v && v !== 0) return null;
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-function normPricingType(v) {
-  const s = String(v || "").toUpperCase();
-  return s === "PAID" ? "PAID" : "FREE";
-}
-function pickTrans(list, primary, fallback) {
-  const by = (loc) => list?.find((t) => t.locale === loc);
-  return by(primary) || by(fallback) || null;
-}
-function toPublicUrl(path) {
-  if (!path) return "";
-  if (/^https?:\/\//i.test(path)) return path;
-  if (!SUPA_URL || !BUCKET) return path;
-  return `${SUPA_URL}/storage/v1/object/public/${BUCKET}/${path}`;
-}
-
-/** session OR x-admin-key */
-async function assertAdmin(req) {
-  const key = req.headers.get("x-admin-key");
-  if (key && ADMIN_TEST_KEY && key === ADMIN_TEST_KEY) {
-    const anyAdmin = await prisma.admin_users.findFirst({
-      select: { id: true },
-    });
-    if (!anyAdmin) throw Object.assign(new Error("FORBIDDEN"), { status: 403 });
-    return anyAdmin;
-  }
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
-  if (!email) throw Object.assign(new Error("UNAUTHORIZED"), { status: 401 });
-  const admin = await prisma.admin_users.findUnique({ where: { email } });
-  if (!admin) throw Object.assign(new Error("FORBIDDEN"), { status: 403 });
-  return admin;
-}
-
-/** JSON / form-data → { body, file } */
-async function readBodyAndFile(req) {
-  const ct = (req.headers.get("content-type") || "").toLowerCase();
-  const isMultipart = ct.startsWith("multipart/form-data");
-  const isUrlEncoded = ct.startsWith("application/x-www-form-urlencoded");
-  if (isMultipart || isUrlEncoded) {
-    const form = await req.formData();
-    const body = {};
-    let file = null;
-    for (const key of ["banner", "file", "banner_file", "banner_url"]) {
-      const f = form.get(key);
-      if (f && typeof File !== "undefined" && f instanceof File) {
-        file = f;
-        break;
-      }
-    }
-    for (const [k, v] of form.entries()) if (!(v instanceof File)) body[k] = v;
-    return { body, file };
-  }
-  const body = (await req.json().catch(() => ({}))) ?? {};
-  return { body, file: null };
-}
-
-/* ========= Supabase ========= */
-async function uploadEventBanner(file) {
-  if (!(file instanceof File)) throw new Error("NO_FILE");
-  if (!BUCKET) throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
-
-  const MAX = 10 * 1024 * 1024;
-  const allowed = ["image/jpeg", "image/png", "image/webp"];
-  if ((file.size || 0) > MAX) throw new Error("PAYLOAD_TOO_LARGE");
-  if (!allowed.includes(file.type)) throw new Error("UNSUPPORTED_TYPE");
-
-  const ext = (file.name?.split(".").pop() || "").toLowerCase();
-  const safe = `${Date.now()}-${Math.random().toString(36).slice(2)}${
-    ext ? "." + ext : ""
-  }`;
-  const objectPath = `events/${new Date().toISOString().slice(0, 10)}/${safe}`;
-  const bytes = new Uint8Array(await file.arrayBuffer());
-
-  const { error } = await supabaseAdmin.storage
-    .from(BUCKET)
-    .upload(objectPath, bytes, {
-      contentType: file.type || "application/octet-stream",
-      upsert: false,
-    });
-  if (error) throw new Error(error.message);
-
-  return objectPath;
-}
-
-/* ========= Category helpers ========= */
-async function resolveCategoryId({ category_id, category_slug }) {
-  const byId = (v) => {
-    const s = typeof v === "string" ? v.trim() : null;
-    return s && s.length ? s : null;
-  };
-  const bySlug = byId(category_slug);
-  const id = byId(category_id);
-  if (id) {
-    const exists = await prisma.event_categories.findUnique({
-      where: { id },
-      select: { id: true },
-    });
-    if (!exists)
-      throw Object.assign(new Error("CATEGORY_NOT_FOUND"), {
-        field: "category_id",
-      });
-    return id;
-  }
-  if (bySlug) {
-    const found = await prisma.event_categories.findUnique({
-      where: { slug: bySlug },
-      select: { id: true },
-    });
-    if (!found)
-      throw Object.assign(new Error("CATEGORY_NOT_FOUND"), {
-        field: "category_slug",
-      });
-    return found.id;
-  }
-  return null;
-}
 
 /* ========= GET /api/events/:id ========= */
 export async function GET(req, { params }) {
@@ -222,7 +51,6 @@ export async function GET(req, { params }) {
         booth_price: true,
         booth_quota: true,
         booth_sold_count: true,
-
         events_translate: {
           where: { locale: { in: locales } },
           select: { locale: true, title: true, description: true },
@@ -243,13 +71,16 @@ export async function GET(req, { params }) {
     });
     if (!item) return notFound();
 
-    const sold = await prisma.tickets.count({
-      where: { event_id: id, status: "CONFIRMED", deleted_at: null },
-    });
+    const [sold] = await Promise.all([
+      prisma.tickets.count({
+        where: { event_id: id, status: "CONFIRMED", deleted_at: null },
+      }),
+    ]);
+
     const remaining =
       item.capacity == null ? null : Math.max(0, Number(item.capacity) - sold);
-
     const t = pickTrans(item.events_translate, locale, fallback);
+
     const created_ts = item?.created_at
       ? new Date(item.created_at).getTime()
       : null;
@@ -329,7 +160,6 @@ export async function GET(req, { params }) {
 export async function PUT(req, ctx) {
   return PATCH(req, ctx);
 }
-
 export async function PATCH(req, { params }) {
   try {
     await assertAdmin(req);
@@ -355,6 +185,7 @@ export async function PATCH(req, { params }) {
     const ops = [];
     let title_id_new, desc_id_new;
 
+    // Banner (file terlebih dulu)
     if (file) {
       try {
         data.banner_url = await uploadEventBanner(file);
@@ -409,6 +240,7 @@ export async function PATCH(req, { params }) {
       data.banner_url = v || null;
     }
 
+    // Waktu
     if ("start_at" in body) {
       const newStart = toDate(body.start_at);
       if (!newStart) return badRequest("start_at tidak valid", "start_at");
@@ -424,6 +256,7 @@ export async function PATCH(req, { params }) {
     if (startC && endC && endC < startC)
       return badRequest("end_at harus >= start_at", "end_at");
 
+    // Properti umum
     if ("location" in body) data.location = String(body.location || "").trim();
     if ("is_published" in body)
       data.is_published =
@@ -457,7 +290,7 @@ export async function PATCH(req, { params }) {
       data.ticket_price = 0;
     }
 
-    // Booth fields
+    // Booth
     if ("booth_price" in body) {
       const v = toInt(body.booth_price, 0);
       if (!Number.isFinite(v) || v < 0)
@@ -466,10 +299,7 @@ export async function PATCH(req, { params }) {
     }
     if ("booth_quota" in body) {
       const raw = body.booth_quota;
-      let v =
-        raw === "" || raw === null || raw === undefined
-          ? null
-          : toInt(raw, null);
+      let v = raw === "" || raw == null ? null : toInt(raw, null);
       if (v !== null && v < 0)
         return badRequest("booth_quota harus >= 0 atau null", "booth_quota");
       const soldNow = Number(current.booth_sold_count || 0);
@@ -481,7 +311,7 @@ export async function PATCH(req, { params }) {
       data.booth_quota = v;
     }
 
-    // Translations (ID/EN) + optional auto-translate
+    // Translate ID
     if ("title_id" in body || "description_id" in body) {
       title_id_new =
         "title_id" in body ? String(body.title_id || "") : undefined;
@@ -514,6 +344,7 @@ export async function PATCH(req, { params }) {
       );
     }
 
+    // Translate EN (manual)
     if ("title_en" in body || "description_en" in body) {
       const title_en =
         "title_en" in body ? String(body.title_en || "") : undefined;
@@ -541,19 +372,18 @@ export async function PATCH(req, { params }) {
       );
     }
 
-    // Kategori (opsional)
+    // Category
     if ("category_id" in body || "category_slug" in body) {
-      const catId =
-        "category_id" in body ? String(body.category_id || "").trim() : null;
-      const catSlug =
-        "category_slug" in body
-          ? String(body.category_slug || "").trim()
-          : null;
-
       try {
         const resolved = await resolveCategoryId({
-          category_id: catId,
-          category_slug: catSlug,
+          category_id:
+            "category_id" in body
+              ? String(body.category_id || "").trim()
+              : null,
+          category_slug:
+            "category_slug" in body
+              ? String(body.category_slug || "").trim()
+              : null,
         });
         if (resolved === null) data.category = { disconnect: true };
         else data.category = { connect: { id: resolved } };
@@ -575,19 +405,23 @@ export async function PATCH(req, { params }) {
 
     const autoTranslate = String(body?.autoTranslate ?? "false") === "true";
 
-    if (Object.keys(data).length) data.updated_at = new Date();
+    // Update row utama (kalau ada perubahan)
     if (Object.keys(data).length) {
+      data.updated_at = new Date();
       await prisma.events.update({ where: { id }, data });
     } else {
-      const exists = await prisma.events.findUnique({ where: { id } });
+      // tetap cek eksistensi (agar respons NOT_FOUND konsisten)
+      const exists = await prisma.events.findUnique({
+        where: { id },
+        select: { id: true },
+      });
       if (!exists) return notFound();
     }
 
-    // 🔧 BUGFIX: jalankan semua upsert terjemahan yang terkumpul
-    if (ops.length) {
-      await prisma.$transaction(ops);
-    }
+    // Jalankan upsert terjemahan terkumpul
+    if (ops.length) await prisma.$transaction(ops);
 
+    // Auto translate EN dari perubahan ID
     if (autoTranslate && ("title_id" in body || "description_id" in body)) {
       const title_en_auto =
         "title_id" in body && body.title_id
@@ -629,7 +463,6 @@ export async function PATCH(req, { params }) {
       },
     });
 
-    // ambil judul (ID) terbaru untuk bantu UI sinkron
     const trId = await prisma.events_translate.findUnique({
       where: { id_events_locale: { id_events: id, locale: "id" } },
       select: { title: true },
@@ -658,7 +491,7 @@ export async function PATCH(req, { params }) {
     });
   } catch (err) {
     const status = err?.status || 500;
-    if (status === 401) {
+    if (status === 401)
       return json(
         {
           error: {
@@ -668,8 +501,7 @@ export async function PATCH(req, { params }) {
         },
         { status: 401 }
       );
-    }
-    if (status === 403) {
+    if (status === 403)
       return json(
         {
           error: {
@@ -679,8 +511,8 @@ export async function PATCH(req, { params }) {
         },
         { status: 403 }
       );
-    }
     if (err?.code === "P2025") return notFound();
+
     console.error(`PATCH /api/events/${params?.id} error:`, err);
     return json(
       {
@@ -704,6 +536,7 @@ export async function DELETE(req, { params }) {
     const deleted = await prisma.events.update({
       where: { id },
       data: { deleted_at: new Date(), updated_at: new Date() },
+      select: { id: true },
     });
 
     return json({
@@ -712,7 +545,7 @@ export async function DELETE(req, { params }) {
     });
   } catch (err) {
     const status = err?.status || 500;
-    if (status === 401) {
+    if (status === 401)
       return json(
         {
           error: {
@@ -722,8 +555,7 @@ export async function DELETE(req, { params }) {
         },
         { status: 401 }
       );
-    }
-    if (status === 403) {
+    if (status === 403)
       return json(
         {
           error: {
@@ -733,8 +565,8 @@ export async function DELETE(req, { params }) {
         },
         { status: 403 }
       );
-    }
     if (err?.code === "P2025") return notFound();
+
     console.error(`DELETE /api/events/${params?.id} error:`, err);
     return json(
       {

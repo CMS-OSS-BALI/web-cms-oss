@@ -1,150 +1,61 @@
 // app/api/jurusan/route.js
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
 import { translate } from "@/app/utils/geminiTranslator";
+import {
+  json,
+  badRequest,
+  notFound,
+  asInt,
+  pickTrans,
+  readQuery,
+  readBodyFlexible,
+  normalizeLocale,
+  mapJurusan,
+  assertAdmin,
+} from "@/app/api/jurusan/_utils";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-/* -------------------- utils -------------------- */
 const DEFAULT_LOCALE = "id";
 const EN_LOCALE = "en";
-const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
 
-function normalizeLocale(v, fallback = DEFAULT_LOCALE) {
-  return (v || fallback).toLowerCase().slice(0, 5);
-}
-function pickTrans(
-  list = [],
-  primary = DEFAULT_LOCALE,
-  fallback = DEFAULT_LOCALE
-) {
-  const by = (loc) => list.find((t) => t.locale === loc);
-  return by(primary) || by(fallback) || null;
-}
-function sanitize(v) {
-  if (v === null || v === undefined) return v;
-  if (typeof v === "bigint") return v.toString();
-  if (Array.isArray(v)) return v.map(sanitize);
-  if (typeof v === "object") {
-    const o = {};
-    for (const [k, val] of Object.entries(v)) o[k] = sanitize(val);
-    return o;
-  }
-  return v;
-}
-function json(data, init) {
-  return NextResponse.json(sanitize(data), init);
-}
-function badRequest(message) {
-  return NextResponse.json({ message }, { status: 400 });
-}
-function asInt(v, dflt) {
-  const n = parseInt(v, 10);
-  return Number.isFinite(n) ? n : dflt;
-}
-/** Accept NextAuth session OR x-admin-key header (for Postman) */
-async function assertAdmin(req) {
-  const key = req.headers.get("x-admin-key");
-  if (key && ADMIN_TEST_KEY && key === ADMIN_TEST_KEY) {
-    const anyAdmin = await prisma.admin_users.findFirst({
-      select: { id: true },
-    });
-    if (!anyAdmin) throw new Response("Forbidden", { status: 403 });
-    return { adminId: anyAdmin.id, via: "header" };
-  }
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email)
-    throw new Response("Unauthorized", { status: 401 });
-  const admin = await prisma.admin_users.findUnique({
-    where: { email: session.user.email },
-    select: { id: true },
-  });
-  if (!admin) throw new Response("Forbidden", { status: 403 });
-  return { adminId: admin.id, via: "session" };
-}
-async function readBody(req) {
-  const ct = (req.headers.get("content-type") || "").toLowerCase();
-  if (
-    ct.startsWith("multipart/form-data") ||
-    ct.startsWith("application/x-www-form-urlencoded")
-  ) {
-    const form = await req.formData();
-    const body = {};
-    for (const [k, v] of form.entries()) {
-      if (v instanceof File) continue;
-      body[k] = v;
-    }
-    return body;
-  }
-  return (await req.json().catch(() => ({}))) ?? {};
-}
-
-/** -- NEW: date → timestamp (ms), with guard */
-function toTs(v) {
-  if (!v) return null;
-  const t = new Date(String(v)).getTime();
-  return Number.isFinite(t) ? t : null;
-}
-
-/** map DB row → API shape (with created_ts/updated_ts) */
-function mapJurusan(row, locale, fallback) {
-  const t = pickTrans(row.jurusan_translate || [], locale, fallback);
-  const created_ts = toTs(row.created_at) ?? toTs(row.updated_at) ?? null;
-  const updated_ts = toTs(row.updated_at) ?? null;
-  return {
-    id: row.id,
-    college_id: row.college_id,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-    deleted_at: row.deleted_at,
-    created_ts,
-    updated_ts,
-    locale_used: t?.locale || null,
-    name: t?.name || null,
-    description: t?.description || null,
-  };
-}
-
-/* -------------------- GET (list) -------------------- */
+/* ================= GET (list) ================= */
 export async function GET(req) {
   try {
-    const { searchParams } = new URL(req.url);
-    const page = Math.max(1, asInt(searchParams.get("page"), 1));
-    const perPage = Math.min(
-      100,
-      Math.max(1, asInt(searchParams.get("perPage"), 10))
-    );
-    const q = (searchParams.get("q") || "").trim();
-    const college_id =
-      (searchParams.get("college_id") || "").trim() || undefined;
+    const sp = readQuery(req);
+    const page = Math.max(1, asInt(sp.get("page"), 1));
+    const perPage = Math.min(100, Math.max(1, asInt(sp.get("perPage"), 10)));
+    const q = (sp.get("q") || "").trim();
+    const college_id = (sp.get("college_id") || "").trim() || undefined;
 
-    const sort = String(searchParams.get("sort") || "created_at:desc");
-    const [sortField = "created_at", sortDir = "desc"] = sort.split(":");
-    const nameSort = sortField === "name";
+    const sortParam = String(sp.get("sort") || "created_at:desc");
+    const [sortField = "created_at", sortDirRaw = "desc"] =
+      sortParam.split(":");
+    const sortDir = sortDirRaw === "asc" ? "asc" : "desc";
     const allowed = new Set(["created_at", "updated_at", "name"]);
+    const nameSort = sortField === "name";
     const orderBy =
       !allowed.has(sortField) || nameSort
         ? [{ created_at: "desc" }]
-        : [{ [sortField]: sortDir === "asc" ? "asc" : "desc" }];
+        : [{ [sortField]: sortDir }];
 
-    const locale = normalizeLocale(searchParams.get("locale"));
+    const locale = normalizeLocale(sp.get("locale"), DEFAULT_LOCALE);
     const fallback = normalizeLocale(
-      searchParams.get("fallback") || DEFAULT_LOCALE
+      sp.get("fallback") || DEFAULT_LOCALE,
+      DEFAULT_LOCALE
     );
     const locales = locale === fallback ? [locale] : [locale, fallback];
 
-    const withDeleted = searchParams.get("with_deleted") === "1";
-    const onlyDeleted = searchParams.get("only_deleted") === "1";
+    const withDeleted = sp.get("with_deleted") === "1";
+    const onlyDeleted = sp.get("only_deleted") === "1";
     const baseDeleted = onlyDeleted
       ? { NOT: { deleted_at: null } }
       : withDeleted
       ? {}
       : { deleted_at: null };
 
-    // ⬇️ FIX: remove `mode: 'insensitive'` (not supported on MySQL).
+    // MySQL: tanpa mode: 'insensitive' (default collation biasanya ci)
     const where = {
       ...baseDeleted,
       ...(college_id ? { college_id } : {}),
@@ -185,43 +96,53 @@ export async function GET(req) {
     ]);
 
     let data = rows.map((r) => mapJurusan(r, locale, fallback));
-
     if (nameSort) {
       data.sort((a, b) => {
         const A = (a.name || "").toLowerCase();
         const B = (b.name || "").toLowerCase();
-        return (sortDir === "asc" ? 1 : -1) * (A > B ? 1 : A < B ? -1 : 0);
+        if (A === B) return 0;
+        return sortDir === "asc" ? (A > B ? 1 : -1) : A < B ? 1 : -1;
       });
     }
 
     return json({
-      page,
-      perPage,
-      total,
-      totalPages: Math.max(1, Math.ceil(total / perPage)),
+      message: "OK",
       data,
+      meta: {
+        page,
+        perPage,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / perPage)),
+        locale,
+        fallback,
+      },
     });
   } catch (err) {
     console.error("GET /api/jurusan error:", err);
-    return NextResponse.json(
-      { message: "Failed to fetch jurusan list" },
+    return json(
+      {
+        error: {
+          code: "SERVER_ERROR",
+          message: "Failed to fetch jurusan list",
+        },
+      },
       { status: 500 }
     );
   }
 }
 
-/* -------------------- POST (create) -------------------- */
+/* ================= POST (create) ================= */
 export async function POST(req) {
   try {
     await assertAdmin(req);
-    const body = await readBody(req);
+    const body = await readBodyFlexible(req);
 
     const college_id = String(body?.college_id || "").trim();
-    if (!college_id) return badRequest("college_id is required");
+    if (!college_id) return badRequest("college_id is required", "college_id");
 
-    const locale = normalizeLocale(body.locale);
+    const locale = normalizeLocale(body.locale, DEFAULT_LOCALE);
     const name = String(body?.name || "").trim();
-    if (!name) return badRequest("name is required");
+    if (!name) return badRequest("name is required", "name");
 
     const description =
       body.description !== undefined && body.description !== null
@@ -231,23 +152,25 @@ export async function POST(req) {
     const autoTranslate =
       String(body.autoTranslate ?? "true").toLowerCase() !== "false";
 
+    // pre-check FK agar errornya ramah (daripada nunggu P2003)
+    const college = await prisma.college.findUnique({
+      where: { id: college_id },
+      select: { id: true },
+    });
+    if (!college)
+      return badRequest("college_id invalid (not found)", "college_id");
+
     const created = await prisma.$transaction(async (tx) => {
       const parent = await tx.jurusan.create({
-        data: {
-          college_id,
-          created_at: new Date(),
-          updated_at: new Date(),
-        },
+        data: { college_id, created_at: new Date(), updated_at: new Date() },
       });
 
-      // primary translation
       await tx.jurusan_translate.upsert({
         where: { id_jurusan_locale: { id_jurusan: parent.id, locale } },
         update: { name, description },
         create: { id_jurusan: parent.id, locale, name, description },
       });
 
-      // optional EN translation
       if (autoTranslate && locale !== EN_LOCALE && (name || description)) {
         const [nameEn, descEn] = await Promise.all([
           name ? translate(name, locale, EN_LOCALE) : Promise.resolve(name),
@@ -276,18 +199,28 @@ export async function POST(req) {
       return parent;
     });
 
-    return json({ data: { id: created.id } }, { status: 201 });
+    return json(
+      { message: "Created", data: { id: created.id } },
+      { status: 201 }
+    );
   } catch (err) {
     if (err?.code === "P2003") {
-      return NextResponse.json(
-        { message: "college_id invalid (FK failed)" },
-        { status: 400 }
-      );
+      return badRequest("college_id invalid (FK failed)", "college_id");
     }
-    if (err instanceof Response) return err;
+    const status = err?.status || 500;
+    if (status === 401)
+      return json(
+        { error: { code: "UNAUTHORIZED", message: "Access denied" } },
+        { status: 401 }
+      );
+    if (status === 403)
+      return json(
+        { error: { code: "FORBIDDEN", message: "Not allowed" } },
+        { status: 403 }
+      );
     console.error("POST /api/jurusan error:", err);
-    return NextResponse.json(
-      { message: "Failed to create jurusan" },
+    return json(
+      { error: { code: "SERVER_ERROR", message: "Failed to create jurusan" } },
       { status: 500 }
     );
   }
