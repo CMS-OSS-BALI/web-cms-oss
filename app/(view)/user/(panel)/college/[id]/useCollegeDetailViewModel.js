@@ -4,9 +4,7 @@ import { useMemo } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/lib/swr/fetcher";
 
-/* =========================
-   Helpers & Constants
-========================= */
+/* ========================= Helpers ========================= */
 const strip = (html = "") =>
   String(html)
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
@@ -15,42 +13,18 @@ const strip = (html = "") =>
     .replace(/\s+/g, " ")
     .trim();
 
-const fmtMoney = (n, currency) => {
+const fmtMoney = (n, currency = "IDR") => {
   if (n === null || n === undefined || n === "") return null;
   try {
     return new Intl.NumberFormat("en-US", {
-      style: currency ? "currency" : "decimal",
-      currency: (currency || "USD").toUpperCase(),
+      style: "currency",
+      currency: currency.toUpperCase(),
       maximumFractionDigits: 0,
     }).format(Number(n));
   } catch {
     return String(n);
   }
 };
-
-const FALLBACK_HERO =
-  "data:image/svg+xml;utf8," +
-  encodeURIComponent(
-    `<svg xmlns='http://www.w3.org/2000/svg' width='1600' height='900'>
-      <defs><linearGradient id='g' x1='0' y1='0' x2='0' y2='1'>
-        <stop offset='0%' stop-color='#0b4da6' stop-opacity='0.55'/>
-        <stop offset='100%' stop-color='#0b2f74' stop-opacity='0.55'/>
-      </linearGradient></defs>
-      <rect width='100%' height='100%' fill='url(#g)'/>
-    </svg>`
-  );
-
-const FALLBACK_LOGO =
-  "data:image/svg+xml;utf8," +
-  encodeURIComponent(
-    `<svg xmlns='http://www.w3.org/2000/svg' width='400' height='140'>
-      <rect x='1' y='1' width='398' height='138' rx='16' fill='#ffffff' stroke='#e5e7eb'/>
-      <text x='200' y='78' text-anchor='middle' dominant-baseline='middle'
-            font-family='Poppins, Arial, sans-serif' font-weight='700' font-size='22' fill='#0B2F74'>
-        LOGO
-      </text>
-    </svg>`
-  );
 
 const SWR_OPTS = { revalidateOnFocus: false, shouldRetryOnError: false };
 
@@ -63,35 +37,10 @@ const normalizeLocale = (v, fb = "id") => {
   if (raw.startsWith("id")) return "id";
   return fb;
 };
-
-const normalizeId = (value) => {
+const normalizeId = (v) => {
   const s =
-    typeof value === "string"
-      ? value.trim()
-      : value != null
-      ? String(value).trim()
-      : "";
+    typeof v === "string" ? v.trim() : v != null ? String(v).trim() : "";
   return s && s !== "undefined" && s !== "null" ? s : "";
-};
-
-const COUNTRY_ASSETS = [
-  { match: ["australia"], flag: "/flags/au.svg", cover: "/aus-campus.svg" },
-  { match: ["canada"], flag: "/flags/ca.svg", cover: "/can-campus.svg" },
-  {
-    match: ["united kingdom", "uk", "england", "great britain", "britain"],
-    flag: "/flags/gb.svg",
-    cover: "/uk-campus.svg",
-  },
-];
-
-const pickCountryAsset = (countryName = "") => {
-  const c = countryName.toLowerCase();
-  const found =
-    COUNTRY_ASSETS.find((x) => x.match.some((m) => c.includes(m))) || null;
-  return {
-    flag: found?.flag || "/flags/gb.svg",
-    cover: found?.cover || FALLBACK_HERO,
-  };
 };
 
 const buildQuery = (obj = {}) => {
@@ -102,19 +51,7 @@ const buildQuery = (obj = {}) => {
   return p.toString();
 };
 
-// Nama program bisa beda-beda; ini fallback aman
-const pickName = (it) =>
-  it?.name ??
-  it?.nama ??
-  it?.title ??
-  it?.program_name ??
-  it?.programName ??
-  "";
-
-// Param filter untuk /api/prodi
-const PRODI_PARAM = "jurusan_id";
-
-// Ambil ID jurusan dengan beberapa kemungkinan nama field
+// ambil id jurusan dari berbagai kemungkinan field
 const getJurusanId = (j) =>
   j?.id ??
   j?.jurusan_id ??
@@ -123,15 +60,41 @@ const getJurusanId = (j) =>
   j?.departmentId ??
   null;
 
-/* =========================
-   Hook
-========================= */
+const getTitle = (it) =>
+  it?.name ??
+  it?.nama ??
+  it?.title ??
+  it?.program_name ??
+  it?.programName ??
+  "";
+
+const getDesc = (it) =>
+  it?.description ??
+  it?.deskripsi ??
+  it?.desc ??
+  it?.ringkasan ??
+  it?.keterangan ??
+  "";
+
+// normalisasi intake → string singkat
+const getIntake = (it) => {
+  const v =
+    it?.in_take ??
+    it?.intake ??
+    it?.intakes ??
+    it?.inTake ??
+    it?.in_takes ??
+    "";
+  return String(v || "").trim();
+};
+
+/* ========================= Hook ========================= */
 export default function useCollegeDetailViewModel({ id, locale = "id" } = {}) {
   const safeId = normalizeId(id);
   const activeLocale = normalizeLocale(locale, "id");
   const fallbackLocale = "id";
 
-  // 1) DETAIL
+  /* ---------- College detail ---------- */
   const detailUrl = useMemo(() => {
     if (!safeId) return null;
     return `/api/college/${encodeURIComponent(safeId)}?${buildQuery({
@@ -146,7 +109,7 @@ export default function useCollegeDetailViewModel({ id, locale = "id" } = {}) {
     isLoading: loadingCollege,
   } = useSWR(detailUrl, fetcher, SWR_OPTS);
 
-  // 2) JURUSAN
+  /* ---------- Jurusan list ---------- */
   const jurusanUrl = useMemo(() => {
     if (!college?.id) return null;
     return `/api/jurusan?${buildQuery({
@@ -155,7 +118,6 @@ export default function useCollegeDetailViewModel({ id, locale = "id" } = {}) {
       locale: activeLocale,
       fallback: fallbackLocale,
       college_id: college.id,
-      public: 1,
     })}`;
   }, [college?.id, activeLocale]);
 
@@ -165,58 +127,71 @@ export default function useCollegeDetailViewModel({ id, locale = "id" } = {}) {
     isLoading: loadingJurusan,
   } = useSWR(jurusanUrl, fetcher, SWR_OPTS);
 
-  const jurusanList = Array.isArray(jurusanRes?.data) ? jurusanRes.data : [];
+  const jurusanList = useMemo(
+    () => (Array.isArray(jurusanRes?.data) ? jurusanRes.data : []),
+    [jurusanRes?.data]
+  );
 
-  // KUMPULKAN ID JURUSAN
+  /* ---------- Prodi per jurusan (string key agar selalu trigger) ---------- */
   const jurusanIds = useMemo(
     () =>
       jurusanList
-        .map((j) => getJurusanId(j))
-        .filter((x) => typeof x === "string" && x.trim().length > 0),
+        .map(getJurusanId)
+        .filter((x) => Boolean(String(x || "").trim())),
     [jurusanList]
   );
 
-  // 3) PRODI per jurusan — FIX: fetcher menerima array key sebagai 1 argumen
   const prodiKey = useMemo(() => {
     if (!jurusanIds.length) return null;
-    return ["prodi-by-jurusan", JSON.stringify(jurusanIds), activeLocale];
+    return `__prodi_batch__${JSON.stringify({
+      ids: jurusanIds,
+      loc: activeLocale,
+    })}`;
   }, [jurusanIds, activeLocale]);
 
   const { data: prodiMapRes, error: prodiErr } = useSWR(
     prodiKey,
-    // SWR passes the whole array as the first argument
-    async (key) => {
-      const [_, idsJSON, loc] = Array.isArray(key)
-        ? key
-        : [null, "[]", activeLocale];
-      const ids = JSON.parse(idsJSON || "[]");
+    async (keyStr) => {
+      const json = keyStr.replace(/^__prodi_batch__/, "");
+      const { ids, loc } = JSON.parse(json || "{}");
       const reqLocale = normalizeLocale(loc, "id");
 
       const results = await Promise.all(
-        ids.map((jurusanId) =>
+        (ids || []).map((jid) =>
           fetcher(
             `/api/prodi?${buildQuery({
               page: 1,
               perPage: 1000,
               locale: reqLocale,
               fallback: fallbackLocale,
-              [PRODI_PARAM]: jurusanId,
+              jurusan_id: jid,
+              sort: "name:asc",
             })}`
           ).catch(() => ({ data: [] }))
         )
       );
 
-      return results.reduce((acc, r, i) => {
+      const map = {};
+      results.forEach((r, i) => {
         const items = Array.isArray(r?.data) ? r.data : [];
-        acc[ids[i]] = items.map(pickName).filter(Boolean);
-        return acc;
-      }, {});
+        map[ids[i]] = items.map((p) => ({
+          id: p.id,
+          title: getTitle(p),
+          description: getDesc(p),
+          harga: p.harga ?? null,
+          jurusan_id: p.jurusan_id ?? null,
+          college_id: p.college_id ?? null,
+          intake: getIntake(p), // <<< NEW
+        }));
+      });
+      return map;
     },
     SWR_OPTS
   );
+
   const prodiMap = prodiMapRes || {};
 
-  // 4) REQUIREMENTS
+  /* ---------- Requirements ---------- */
   const requirementsUrl = useMemo(() => {
     if (!college?.id) return null;
     return `/api/college/${encodeURIComponent(
@@ -233,81 +208,230 @@ export default function useCollegeDetailViewModel({ id, locale = "id" } = {}) {
     isLoading: loadingReq,
   } = useSWR(requirementsUrl, fetcher, SWR_OPTS);
 
-  const requirements = Array.isArray(reqRes?.data)
-    ? reqRes.data.map((r) => r?.text).filter(Boolean)
-    : [];
+  const requirements = useMemo(
+    () =>
+      Array.isArray(reqRes?.data)
+        ? reqRes.data
+            .map((r) => (typeof r === "string" ? r : r?.text))
+            .filter(Boolean)
+        : [],
+    [reqRes?.data]
+  );
 
-  /* ----- hero ----- */
-  const countryName = (college?.country || "").trim();
-  const { flag, cover } = pickCountryAsset(countryName);
+  /* ---------- Derived memoized values ---------- */
+  const currency = useMemo(
+    () => (college?.currency ? String(college.currency).toUpperCase() : "IDR"),
+    [college?.currency]
+  );
 
-  const hero = {
-    name: college?.name || "College",
-    cover,
-    logo:
-      typeof college?.logo_url === "string" && college.logo_url.trim()
-        ? college.logo_url
-        : FALLBACK_LOGO,
-    websiteText: college?.website
-      ? String(college.website).replace(/^https?:\/\//, "")
-      : "",
-    objectPosition: "50% 50%",
-    flagSrc: flag,
-    countryName,
+  // ===== utils: pickFlag =====
+  const FLAG_PATH = {
+    au: "/flags/au.svg",
+    ca: "/flags/cn.svg",
+    nz: "/flags/nz.svg",
+    nl: "/flags/nl.svg",
+    us: "/flags/us.svg",
+    jp: "/flags/jp.svg",
+    tw: "/flags/tw.svg",
+    fr: "/flags/fr.svg",
+    de: "/flags/de.svg",
+    gb: "/flags/gb.svg",
+    pl: "/flags/pl.svg",
+    kr: "/flags/kr.svg",
+    ch: "/flags/ch.svg",
+    cn: "/flags/cn.svg",
+    sg: "/flags/sg.svg",
+    my: "/flags/my.svg",
+    it: "/flags/it.svg",
   };
 
-  /* ----- sections ----- */
-  const faculties = jurusanList.map((j) => {
-    const jid = getJurusanId(j);
+  const ALIAS_TO_CODE = {
+    australia: "au",
+    au: "au",
+    "new zealand": "nz",
+    "selandia baru": "nz",
+    nz: "nz",
+    canada: "ca",
+    kanada: "ca",
+    ca: "ca",
+    netherlands: "nl",
+    holland: "nl",
+    belanda: "nl",
+    nl: "nl",
+    "united states": "us",
+    usa: "us",
+    america: "us",
+    amerika: "us",
+    "amerika serikat": "us",
+    as: "us",
+    us: "us",
+    japan: "jp",
+    jepang: "jp",
+    jp: "jp",
+    taiwan: "tw",
+    tw: "tw",
+    france: "fr",
+    prancis: "fr",
+    fr: "fr",
+    germany: "de",
+    jerman: "de",
+    deutschland: "de",
+    de: "de",
+    "united kingdom": "gb",
+    uk: "gb",
+    britain: "gb",
+    "great britain": "gb",
+    england: "gb",
+    inggris: "gb",
+    gb: "gb",
+    poland: "pl",
+    polandia: "pl",
+    pl: "pl",
+    "south korea": "kr",
+    "korea selatan": "kr",
+    korea: "kr",
+    kr: "kr",
+    switzerland: "ch",
+    swiss: "ch",
+    ch: "ch",
+    china: "cn",
+    tiongkok: "cn",
+    cn: "cn",
+    singapore: "sg",
+    singapura: "sg",
+    sg: "sg",
+    malaysia: "my",
+    my: "my",
+    italy: "it",
+    italia: "it",
+    it: "it",
+  };
+
+  const pickFlag = (countryRaw = "") => {
+    const s = String(countryRaw)
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/\p{Diacritic}/gu, "");
+
+    let code = ALIAS_TO_CODE[s];
+    if (!code) {
+      for (const [alias, c] of Object.entries(ALIAS_TO_CODE)) {
+        if (s.includes(alias)) {
+          code = c;
+          break;
+        }
+      }
+    }
+    if (!code && s.length === 2) code = s;
+    return FLAG_PATH[code] || "/flags/gb.svg";
+  };
+
+  // ====== Hero ======
+  const hero = useMemo(() => {
+    const countryName = (college?.country || "").trim();
+
     return {
-      id: jid || undefined,
-      title: j?.name || j?.nama || "-",
-      items: prodiMap[jid] || [],
+      name: college?.name || "College",
+      cover: "/aus-campus.svg",
+      logo:
+        typeof college?.logo_url === "string" && college.logo_url.trim()
+          ? college.logo_url
+          : "/images/logo-fallback.svg",
+      websiteText: college?.website
+        ? String(college.website).replace(/^https?:\/\//, "")
+        : "",
+      objectPosition: "50% 50%",
+      flagSrc: pickFlag(countryName),
+      countryName,
     };
-  });
+  }, [college?.name, college?.logo_url, college?.website, college?.country]);
 
-  const sections = {
-    aboutTitle:
-      college?.about_title ||
-      (activeLocale === "en"
-        ? `About ${college?.name || "the College"}`
-        : `Tentang ${college?.name || "Kampus"}`),
-    aboutHTML:
-      typeof college?.description === "string" && college.description
-        ? college.description
-        : activeLocale === "en"
-        ? "<p>Description is not available yet.</p>"
-        : "<p>Deskripsi kampus belum tersedia.</p>",
-    faculties,
-    requirements,
-    excerpt: strip(college?.description || ""),
-  };
+  const { faculties, prodiById } = useMemo(() => {
+    const byId = {};
+    const facs = jurusanList.map((j) => {
+      const jid = getJurusanId(j);
+      const progs = prodiMap[jid] || [];
 
-  /* ----- tuition ----- */
-  const currency = (college?.currency || "IDR").toUpperCase();
-  const min = fmtMoney(college?.tuition_min, currency);
-  const max = fmtMoney(college?.tuition_max, currency);
-  const feeLabel = min && max ? `${min} - ${max}` : min || max || "-";
+      progs.forEach((p) => {
+        byId[p.id] = {
+          ...p,
+          priceLabel: p.harga != null ? fmtMoney(p.harga, currency) : null,
+        };
+      });
 
-  const tuition = {
-    feeLabel,
-    livingCost:
-      college?.living_cost_estimate != null
-        ? fmtMoney(college.living_cost_estimate, currency)
-        : "-",
-  };
+      return {
+        id: jid || undefined,
+        title: getTitle(j) || "-",
+        description: getDesc(j) || "",
+        priceLabel: j?.harga != null ? fmtMoney(j.harga, currency) : null,
+        intake: getIntake(j), // <<< NEW (intake jurusan)
+        programs: progs.map((p) => ({
+          ...p,
+          priceLabel: p.harga != null ? fmtMoney(p.harga, currency) : null,
+        })),
+      };
+    });
 
-  /* ----- website href ----- */
-  let websiteHref = college?.website || "";
-  if (websiteHref && !/^https?:\/\//i.test(websiteHref)) {
-    websiteHref = `https://${websiteHref}`;
-  }
+    return { faculties: facs, prodiById: byId };
+  }, [jurusanList, prodiMap, currency]);
+
+  const sections = useMemo(
+    () => ({
+      aboutTitle:
+        college?.about_title ||
+        (activeLocale === "en"
+          ? `About ${college?.name || "the College"}`
+          : `Tentang ${college?.name || "Kampus"}`),
+      aboutHTML:
+        typeof college?.description === "string" && college.description
+          ? college.description
+          : activeLocale === "en"
+          ? "<p>Description is not available yet.</p>"
+          : "<p>Deskripsi kampus belum tersedia.</p>",
+      faculties,
+      requirements,
+      excerpt: strip(college?.description || ""),
+    }),
+    [
+      college?.about_title,
+      college?.name,
+      college?.description,
+      activeLocale,
+      faculties,
+      requirements,
+    ]
+  );
+
+  const tuition = useMemo(() => {
+    const feeMin = fmtMoney(college?.tuition_min, currency);
+    const feeMax = fmtMoney(college?.tuition_max, currency);
+    return {
+      feeLabel:
+        feeMin && feeMax ? `${feeMin} - ${feeMax}` : feeMin || feeMax || "-",
+      livingCost:
+        college?.living_cost_estimate != null
+          ? fmtMoney(college.living_cost_estimate, currency)
+          : "-",
+    };
+  }, [
+    college?.tuition_min,
+    college?.tuition_max,
+    college?.living_cost_estimate,
+    currency,
+  ]);
+
+  const websiteHref = useMemo(() => {
+    let href = college?.website || "";
+    if (href && !/^https?:\/\//i.test(href)) href = `https://${href}`;
+    return href;
+  }, [college?.website]);
 
   const isLoading =
     loadingCollege ||
     loadingJurusan ||
-    loadingReq ||
-    (jurusanIds.length > 0 && !prodiMapRes && !prodiErr);
+    (jurusanIds.length > 0 && !prodiMapRes && !prodiErr) ||
+    loadingReq;
 
   const error = resolveErr || jurusanErr || prodiErr || reqErr || null;
 
@@ -317,7 +441,8 @@ export default function useCollegeDetailViewModel({ id, locale = "id" } = {}) {
     hero,
     countryName: hero.countryName || "",
     websiteHref,
-    sections,
+    sections, // faculties + requirements
     tuition,
+    prodiById, // untuk modal detail prodi
   };
 }

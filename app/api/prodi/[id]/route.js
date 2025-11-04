@@ -1,4 +1,3 @@
-// app/api/prodi/[id]/route.js
 import prisma from "@/lib/prisma";
 import { translate } from "@/app/utils/geminiTranslator";
 import {
@@ -7,13 +6,15 @@ import {
   unauthorized,
   forbidden,
   notFound,
-  assertAdmin,
   readBodyFlexible,
   normalizeLocale,
   pickTrans,
   toTs,
   DEFAULT_LOCALE,
   EN_LOCALE,
+  toDecimalNullable,
+  toNullableLongText, // ← NEW
+  assertAdmin,
 } from "@/app/api/prodi/_utils";
 
 export const dynamic = "force-dynamic";
@@ -26,7 +27,7 @@ function mapProdi(row, locale, fallback) {
   const updated_ts = toTs(row.updated_at) ?? null;
   return {
     id: row.id,
-    jurusan_id: row.jurusan_id,
+    jurusan_id: row.jurusan_id ?? null,
     college_id: row.college_id ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -36,6 +37,8 @@ function mapProdi(row, locale, fallback) {
     locale_used: t?.locale || null,
     name: t?.name || null,
     description: t?.description || null,
+    harga: row.harga ?? null,
+    in_take: row.in_take ?? null, // ← NEW
   };
 }
 
@@ -46,9 +49,13 @@ export async function GET(req, { params }) {
     if (!id) return badRequest("id is required", "id");
 
     const url = new URL(req.url);
-    const locale = normalizeLocale(url.searchParams.get("locale"));
+    const locale = normalizeLocale(
+      url.searchParams.get("locale"),
+      DEFAULT_LOCALE
+    );
     const fallback = normalizeLocale(
-      url.searchParams.get("fallback") || DEFAULT_LOCALE
+      url.searchParams.get("fallback") || DEFAULT_LOCALE,
+      DEFAULT_LOCALE
     );
     const locales = locale === fallback ? [locale] : [locale, fallback];
 
@@ -61,6 +68,8 @@ export async function GET(req, { params }) {
         created_at: true,
         updated_at: true,
         deleted_at: true,
+        harga: true,
+        in_take: true, // ← NEW
         prodi_translate: {
           where: { locale: { in: locales } },
           select: { locale: true, name: true, description: true },
@@ -99,41 +108,88 @@ export async function PATCH(req, { params }) {
     if (!id) return badRequest("id is required", "id");
 
     const body = await readBodyFlexible(req);
-    const locale = normalizeLocale(body.locale);
+    const locale = normalizeLocale(body.locale, DEFAULT_LOCALE);
 
     const ops = [];
 
-    // If jurusan_id changes, also re-derive college_id
-    if (Object.prototype.hasOwnProperty.call(body, "jurusan_id")) {
-      const newJurId = String(body.jurusan_id || "").trim();
-      if (!newJurId)
-        return badRequest("jurusan_id cannot be empty", "jurusan_id");
-      const jur = await prisma.jurusan.findUnique({
-        where: { id: newJurId },
-        select: { id: true, college_id: true },
-      });
-      if (!jur) {
-        return json(
-          {
-            error: {
-              code: "FK_INVALID",
-              field: "jurusan_id",
-              message: "jurusan_id invalid (not found)",
-            },
-          },
-          { status: 400 }
-        );
+    // Parent update: jurusan_id / college_id / harga / in_take
+    const hasJurusan = Object.prototype.hasOwnProperty.call(body, "jurusan_id");
+    const hasCollege = Object.prototype.hasOwnProperty.call(body, "college_id");
+    const hasHarga = Object.prototype.hasOwnProperty.call(body, "harga");
+    const hasInTake = Object.prototype.hasOwnProperty.call(body, "in_take"); // ← NEW
+
+    if (hasJurusan || hasCollege || hasHarga || hasInTake) {
+      const data = { updated_at: new Date() };
+
+      if (hasJurusan) {
+        const newJurId = body.jurusan_id
+          ? String(body.jurusan_id).trim()
+          : null;
+
+        if (newJurId) {
+          const jur = await prisma.jurusan.findUnique({
+            where: { id: newJurId },
+            select: { id: true, college_id: true },
+          });
+          if (!jur) {
+            return json(
+              {
+                error: {
+                  code: "FK_INVALID",
+                  field: "jurusan_id",
+                  message: "jurusan_id invalid (not found)",
+                },
+              },
+              { status: 400 }
+            );
+          }
+          data.jurusan_id = newJurId;
+          data.college_id = jur.college_id ?? null; // derive
+        } else {
+          data.jurusan_id = null; // clear jurusan
+          if (hasCollege) {
+            const colId = body.college_id
+              ? String(body.college_id).trim()
+              : null;
+            if (colId) {
+              const col = await prisma.college.findUnique({
+                where: { id: colId },
+                select: { id: true },
+              });
+              if (!col)
+                return badRequest(
+                  "college_id invalid (not found)",
+                  "college_id"
+                );
+            }
+            data.college_id = colId || null;
+          }
+        }
+      } else if (hasCollege) {
+        const colId = body.college_id ? String(body.college_id).trim() : null;
+        if (colId) {
+          const col = await prisma.college.findUnique({
+            where: { id: colId },
+            select: { id: true },
+          });
+          if (!col)
+            return badRequest("college_id invalid (not found)", "college_id");
+        }
+        data.college_id = colId || null;
       }
-      ops.push(
-        prisma.prodi.update({
-          where: { id },
-          data: {
-            jurusan_id: newJurId,
-            college_id: jur.college_id ?? null,
-            updated_at: new Date(),
-          },
-        })
-      );
+
+      if (hasHarga) {
+        const hargaDec = toDecimalNullable(body.harga);
+        if (hargaDec && hargaDec.lessThan(0))
+          return badRequest("harga cannot be negative", "harga");
+        data.harga = hargaDec ?? null;
+      }
+
+      if (hasInTake) {
+        data.in_take = toNullableLongText(body.in_take); // ← NEW
+      }
+
+      ops.push(prisma.prodi.update({ where: { id }, data }));
     } else {
       const exists = await prisma.prodi.findUnique({
         where: { id },
@@ -142,7 +198,7 @@ export async function PATCH(req, { params }) {
       if (!exists) return notFound("Prodi tidak ditemukan.");
     }
 
-    // Update translation if provided
+    // Translation update (opsional)
     const hasName = Object.prototype.hasOwnProperty.call(body, "name");
     const hasDesc = Object.prototype.hasOwnProperty.call(body, "description");
     const name = hasName ? String(body.name || "").trim() : undefined;
@@ -213,6 +269,8 @@ export async function PATCH(req, { params }) {
         created_at: true,
         updated_at: true,
         deleted_at: true,
+        harga: true,
+        in_take: true, // ← NEW
         prodi_translate: {
           where: { locale: { in: locales } },
           select: { locale: true, name: true, description: true },

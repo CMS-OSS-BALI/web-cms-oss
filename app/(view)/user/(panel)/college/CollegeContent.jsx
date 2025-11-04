@@ -224,7 +224,7 @@ const styles = {
       position: "relative",
       display: "grid",
       alignItems: "center",
-      gridTemplateColumns: "48px 1fr", // << removed divider & mic
+      gridTemplateColumns: "48px 1fr",
       gap: 0,
       height: 62,
       flex: 1,
@@ -459,32 +459,7 @@ const styles = {
 
 /* ================== Component ================== */
 export default function CollegeContent({ locale = "id" }) {
-  const {
-    hero,
-    findProgram,
-    popularMajors,
-    search,
-    recommendedUniversity,
-    universities,
-    scholarshipCTA,
-  } = useCollegeViewModel({ locale });
-
-  const t = (id, en) => (locale === "en" ? en : id);
-
-  /* relevant campus */
-  const relevantCampus = useMemo(
-    () =>
-      Array.isArray(recommendedUniversity?.relevantCampus)
-        ? recommendedUniversity.relevantCampus
-        : [],
-    [recommendedUniversity]
-  );
-  const hasMultipleRelevantCampus = relevantCampus.length > 1;
-  const relevantCampusAutoplay = hasMultipleRelevantCampus
-    ? marqueeAutoplay
-    : undefined;
-
-  /* search state (tanpa microphone) */
+  // search state (jurusan / program)
   const [query, setQuery] = useState("");
   const [country, setCountry] = useState("");
   const [qApplied, setQApplied] = useState("");
@@ -517,10 +492,41 @@ export default function CollegeContent({ locale = "id" }) {
     }
   };
 
+  const {
+    hero,
+    findProgram,
+    popularMajors,
+    search,
+    recommendedUniversity = {},
+    universities = [],
+    jpMatchesByCollegeId = {},
+    scholarshipCTA = null,
+  } = useCollegeViewModel({
+    locale,
+    q: qApplied,
+    country: countryApplied,
+    perPage: 100,
+  });
+
+  const t = (id, en) => (locale === "en" ? en : id);
+
+  /* relevant campus */
+  const relevantCampus = useMemo(
+    () =>
+      Array.isArray(recommendedUniversity?.relevantCampus)
+        ? recommendedUniversity.relevantCampus
+        : [],
+    [recommendedUniversity]
+  );
+  const hasMultipleRelevantCampus = relevantCampus.length > 1;
+  const relevantCampusAutoplay = hasMultipleRelevantCampus
+    ? marqueeAutoplay
+    : undefined;
+
   /* pagination */
   const PAGE_SIZE = 3;
   const [page, setPage] = useState(1);
-  useEffect(() => setPage(1), [qApplied, countryApplied]);
+  useEffect(() => setPage(1), [qApplied, countryApplied, universities]);
 
   const pageItems = useMemo(() => {
     const arr = universities || [];
@@ -637,8 +643,18 @@ export default function CollegeContent({ locale = "id" }) {
       {/* HEADING + SEARCH */}
       <section style={{ paddingBottom: 0 }}>
         <div style={styles.rec.block}>
-          <h2 style={styles.rec.title}>{recommendedUniversity.title}</h2>
-          <p style={styles.rec.subtitle}>{recommendedUniversity.subtitle}</p>
+          <h2 style={styles.rec.title}>
+            {recommendedUniversity?.title ||
+              (locale === "en"
+                ? "RECOMMENDED UNIVERSITY"
+                : "RECOMMENDED UNIVERSITY")}
+          </h2>
+          <p style={styles.rec.subtitle}>
+            {recommendedUniversity?.subtitle ||
+              (locale === "en"
+                ? "Find Your Path At Leading Universities Worldwide"
+                : "Temukan jalurmu di universitas-universitas terkemuka dunia")}
+          </p>
         </div>
 
         <div style={styles.search.wrap}>
@@ -738,6 +754,10 @@ export default function CollegeContent({ locale = "id" }) {
             {pageItems.map((u) => {
               const src = normalizeImgSrc(u.logo_url);
               const external = /^https?:\/\//i.test(src);
+              const jpMatch = jpMatchesByCollegeId[String(u.id)] || null;
+              const matchCount =
+                (jpMatch?.jurusan?.length || 0) + (jpMatch?.prodi?.length || 0);
+
               return (
                 <article
                   key={u.id}
@@ -767,6 +787,22 @@ export default function CollegeContent({ locale = "id" }) {
                           <span>{b.text}</span>
                         </div>
                       ))}
+                      {matchCount > 0 && (
+                        <div
+                          style={styles.uni.bulletItem}
+                          title={t(
+                            "Jumlah kecocokan program/jurusan berdasarkan pencarian",
+                            "Number of program/major matches from your search"
+                          )}
+                        >
+                          <BulletIcon />
+                          <span>
+                            {locale === "en"
+                              ? `${matchCount} matching program(s)`
+                              : `${matchCount} program/jurusan cocok`}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -899,38 +935,40 @@ export default function CollegeContent({ locale = "id" }) {
       </section>
 
       {/* ====== SCHOLARSHIP CTA ====== */}
-      <section style={styles.cta.section}>
-        <div style={styles.cta.container}>
-          <article style={styles.cta.card}>
-            <h2 style={styles.cta.title}>{scholarshipCTA.title}</h2>
-            <p style={styles.cta.body}>{scholarshipCTA.body}</p>
+      {scholarshipCTA?.title && (
+        <section style={styles.cta.section}>
+          <div style={styles.cta.container}>
+            <article style={styles.cta.card}>
+              <h2 style={styles.cta.title}>{scholarshipCTA.title}</h2>
+              <p style={styles.cta.body}>{scholarshipCTA.body}</p>
 
-            <a
-              href={scholarshipCTA.href}
-              style={styles.cta.btn}
-              onMouseEnter={(e) =>
-                Object.assign(e.currentTarget.style, styles.cta.btnHover)
-              }
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = "";
-                e.currentTarget.style.boxShadow = styles.cta.btn.boxShadow;
-              }}
-            >
-              {scholarshipCTA.ctaLabel}
-              <svg
-                viewBox="0 0 24 24"
-                style={styles.cta.btnIcon}
-                fill="none"
-                stroke="#4A76C8"
-                strokeWidth="2"
+              <a
+                href={scholarshipCTA.href}
+                style={styles.cta.btn}
+                onMouseEnter={(e) =>
+                  Object.assign(e.currentTarget.style, styles.cta.btnHover)
+                }
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = "";
+                  e.currentTarget.style.boxShadow = styles.cta.btn.boxShadow;
+                }}
               >
-                <path d="M5 12h14" />
-                <path d="m13 6 6 6-6 6" />
-              </svg>
-            </a>
-          </article>
-        </div>
-      </section>
+                {scholarshipCTA.ctaLabel}
+                <svg
+                  viewBox="0 0 24 24"
+                  style={styles.cta.btnIcon}
+                  fill="none"
+                  stroke="#4A76C8"
+                  strokeWidth="2"
+                >
+                  <path d="M5 12h14" />
+                  <path d="m13 6 6 6-6 6" />
+                </svg>
+              </a>
+            </article>
+          </div>
+        </section>
+      )}
     </>
   );
 }

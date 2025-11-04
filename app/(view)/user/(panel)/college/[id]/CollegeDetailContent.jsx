@@ -1,7 +1,6 @@
-// app/(view)/user/(panel)/college/[id]/CollegeDetailContent.jsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import useCollegeDetailViewModel from "./useCollegeDetailViewModel";
@@ -183,6 +182,16 @@ const leftNavCSS = `
   .cd-leftnav__item[data-active="true"]::before { background: #0B4DA6; height: 32px; }
 `;
 
+/* clickable style */
+const clickable = {
+  color: "#0B4DA6",
+  textDecoration: "underline",
+  textUnderlineOffset: "3px",
+  textDecorationThickness: "2px",
+  cursor: "pointer",
+  display: "inline-block",
+};
+
 const facultyStyles = {
   grid: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 18 },
   card: {
@@ -193,18 +202,45 @@ const facultyStyles = {
     boxShadow: "0 10px 24px rgba(15,23,42,.06)",
   },
   title: {
-    margin: "0 0 8px",
+    margin: "0 0 6px",
     color: "#0B2F74",
     fontWeight: 800,
     letterSpacing: ".02em",
     fontSize: 14,
     textTransform: "uppercase",
   },
+  intake: {
+    margin: "0 0 10px",
+    color: "#4b5b86",
+    fontWeight: 600,
+    fontSize: 12,
+  },
   ul: { margin: 0, padding: "0 0 0 18px", lineHeight: 1.7, fontSize: 14 },
   media: `
     @media (max-width: 980px){ .cd-fac-grid { grid-template-columns: repeat(2,1fr); } }
     @media (max-width: 640px){ .cd-fac-grid { grid-template-columns: 1fr; } }
   `,
+};
+
+/* --- custom bullet list --- */
+const progListStyles = {
+  ul: { margin: 0, padding: 0, display: "grid", gap: 8 },
+  li: {
+    listStyle: "none",
+    display: "grid",
+    gridTemplateColumns: "12px 1fr",
+    columnGap: 10,
+    alignItems: "start",
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: "50%",
+    background: "#0B2F74",
+    marginTop: "0.55em",
+  },
+  text: { wordBreak: "break-word" },
+  sub: { display: "block", color: "#6a7aa4", fontSize: 12, marginTop: 2 }, // intake mini
 };
 
 const reqStyles = {
@@ -238,7 +274,7 @@ const tuitionStyles = {
   value: { color: "#0B2F74", fontWeight: 800, fontSize: 16 },
 };
 
-// CTA (smooth gradient)
+// CTA
 const ctaStyles = {
   wrapBleed: {
     width: "100vw",
@@ -334,14 +370,78 @@ const normalizeSrc = (s = "") => {
 };
 const shouldUnoptimize = (s = "") => /^(https?:|data:|blob:)/i.test(s);
 
+/* ===== Modal (vanilla) ===== */
+const modalCSS = `
+  .cd-modal-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(3,16,46,.55);
+    display: grid; place-items: center;
+    z-index: 9999;
+  }
+  .cd-modal {
+    width: min(720px, 94vw);
+    background: #fff;
+    border-radius: 18px;
+    box-shadow: 0 30px 80px rgba(15,23,42,.35);
+    padding: 18px 18px 20px;
+  }
+  .cd-modal__head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; margin-bottom: 10px;
+  }
+  .cd-modal__title {
+    margin: 0; color: #0B2F74; font-weight: 900; letter-spacing: .02em;
+    font-size: clamp(18px, 2.6vw, 22px);
+  }
+  .cd-modal__close {
+    border: 0; background: #0B4DA6; color: #fff; width: 36px; height: 36px;
+    border-radius: 10px; cursor: pointer; font-size: 18px; font-weight: 800;
+    box-shadow: 0 10px 22px rgba(11,77,166,.35);
+  }
+  .cd-modal__body { color: #2b3a5e; line-height: 1.7; }
+  .cd-modal__row { display: grid; grid-template-columns: 140px 1fr; gap: 10px; margin: 6px 0; }
+  .cd-modal__label { color: #5b6a92; font-weight: 700; font-size: 14px; }
+  .cd-modal__value { color: #0B2F74; font-weight: 700; }
+`;
+
 export default function CollegeDetailContent({ id, locale = "id" }) {
   const { hero, sections, tuition, websiteHref } = useCollegeDetailViewModel({
     id,
     locale,
   });
 
-  const sectionIds = ["umum", "biaya", "fakultas", "syarat"];
+  const sectionIds = useMemo(() => ["umum", "biaya", "fakultas", "syarat"], []);
   const [active, setActive] = useState(sectionIds[0]);
+
+  // modal state
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalData, setModalData] = useState({
+    title: "",
+    description: "",
+    priceLabel: "",
+    intakeLabel: "", // <<< NEW
+  });
+
+  const openModal = useCallback((payload) => {
+    setModalData({
+      title: payload?.title || "",
+      description: payload?.description || "",
+      priceLabel: payload?.priceLabel || "",
+      intakeLabel: payload?.intake || "", // <<< NEW
+    });
+    setModalOpen(true);
+  }, []);
+
+  useEffect(() => {
+    if (!modalOpen) return;
+    const onKey = (e) => e.key === "Escape" && setModalOpen(false);
+    window.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [modalOpen]);
 
   useEffect(() => {
     const obs = sectionIds
@@ -357,20 +457,37 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
         return ob;
       });
     return () => obs.forEach((o) => o.disconnect());
-  }, []);
+  }, [sectionIds]);
 
-  const goTo = (sid) => {
+  const goTo = useCallback((sid) => {
     const el = document.getElementById(sid);
     if (!el) return;
     const top =
       el.getBoundingClientRect().top + window.scrollY - CLICK_OFFSET_PX;
     window.scrollTo({ top, behavior: "smooth" });
-  };
+  }, []);
 
   const coverSrc = normalizeSrc(hero.cover);
   const logoSrc = normalizeSrc(hero.logo);
 
-  // CTA content
+  const navItems = useMemo(
+    () => [
+      ["umum", locale === "en" ? "General Information" : "Informasi Umum"],
+      [
+        "biaya",
+        locale === "en"
+          ? "Tuition & Living Cost"
+          : "Biaya Kuliah &\nBiaya Hidup",
+      ],
+      [
+        "fakultas",
+        locale === "en" ? "Departments & Programs" : "Jurusan & Prodi",
+      ],
+      ["syarat", locale === "en" ? "Requirements" : "Persyaratan"],
+    ],
+    [locale]
+  );
+
   const ctaHeadline =
     locale === "en"
       ? "CURIOUS HOW MUCH YOU MIGHT SPEND?"
@@ -378,7 +495,6 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
   const ctaHref = "/user/calculator";
   const ctaImg = normalizeSrc("/images/loading.png");
 
-  // safe guards
   const faculties = Array.isArray(sections?.faculties)
     ? sections.faculties
     : [];
@@ -389,6 +505,8 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
   return (
     <main style={shell.page}>
       <style dangerouslySetInnerHTML={{ __html: globalCSS }} />
+      <style dangerouslySetInnerHTML={{ __html: modalCSS }} />
+
       {/* ===== HERO ===== */}
       <div style={heroStyles.wrapBleed}>
         <div style={heroStyles.frame}>
@@ -459,25 +577,7 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
             <div className="cd-sidenav-stick" style={layout.sidenavStick}>
               <style dangerouslySetInnerHTML={{ __html: leftNavCSS }} />
               <nav className="cd-leftnav" aria-label="College sections">
-                {[
-                  [
-                    "umum",
-                    locale === "en" ? "General Information" : "Informasi Umum",
-                  ],
-                  [
-                    "biaya",
-                    locale === "en"
-                      ? "Tuition & Living Cost"
-                      : "Biaya Kuliah &\nBiaya Hidup",
-                  ],
-                  [
-                    "fakultas",
-                    locale === "en"
-                      ? "Departments & Programs"
-                      : "Jurusan & Prodi",
-                  ],
-                  ["syarat", locale === "en" ? "Requirements" : "Persyaratan"],
-                ].map(([id, label]) => (
+                {navItems.map(([id, label]) => (
                   <button
                     key={id}
                     className="cd-leftnav__item"
@@ -539,20 +639,78 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
                 {faculties.length ? (
                   faculties.map((grp, idx) => (
                     <article key={idx} style={facultyStyles.card}>
-                      <h4 style={facultyStyles.title}>{grp.title}</h4>
-                      <ul style={facultyStyles.ul}>
-                        {(grp.items || []).length ? (
-                          (grp.items || []).map((it, i) => (
-                            <li key={i}>{it}</li>
-                          ))
-                        ) : (
+                      {/* JURUSAN CLICKABLE */}
+                      <h4
+                        style={{ ...facultyStyles.title, ...clickable }}
+                        onClick={() =>
+                          openModal({
+                            title: grp.title,
+                            description: grp.description,
+                            priceLabel: grp.priceLabel,
+                            intake: grp.intake, // <<< NEW
+                          })
+                        }
+                        title={
+                          locale === "en"
+                            ? "Click to see department details"
+                            : "Klik untuk lihat detail jurusan"
+                        }
+                      >
+                        {grp.title}
+                      </h4>
+
+                      {/* PROGRAM LIST */}
+                      {(grp.programs || []).length ? (
+                        <ul style={progListStyles.ul}>
+                          {(grp.programs || []).map((it, i) => {
+                            const title =
+                              typeof it === "string" ? it : it.title;
+                            const description =
+                              typeof it === "string" ? "" : it.description;
+                            const priceLabel =
+                              typeof it === "string" ? "" : it.priceLabel;
+                            const intake =
+                              typeof it === "string" ? "" : it.intake || "";
+                            return (
+                              <li key={i} style={progListStyles.li}>
+                                <span
+                                  aria-hidden="true"
+                                  style={progListStyles.dot}
+                                />
+                                <span
+                                  style={{
+                                    ...clickable,
+                                    ...progListStyles.text,
+                                  }}
+                                  onClick={() =>
+                                    openModal({
+                                      title,
+                                      description,
+                                      priceLabel,
+                                      intake,
+                                    })
+                                  }
+                                  title={
+                                    locale === "en"
+                                      ? "Click to see program details"
+                                      : "Klik untuk lihat detail program"
+                                  }
+                                >
+                                  {title}
+                                </span>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      ) : (
+                        <ul style={facultyStyles.ul}>
                           <li style={{ opacity: 0.6, listStyle: "none" }}>
                             {locale === "en"
                               ? "No programs listed."
                               : "Belum ada program."}
                           </li>
-                        )}
-                      </ul>
+                        </ul>
+                      )}
                     </article>
                   ))
                 ) : (
@@ -631,23 +789,88 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
               CLICK HERE
             </Link>
           </div>
-          {!!ctaImg && (
-            <div className="cd-cta-illo" style={ctaStyles.illobox}>
-              <Image
-                src={ctaImg}
-                alt={
-                  locale === "en" ? "Mascot illustration" : "Ilustrasi maskot"
-                }
-                fill
-                sizes="480px"
-                style={{ objectFit: "contain" }}
-                priority
-                unoptimized={shouldUnoptimize(ctaImg)}
-              />
-            </div>
-          )}
+          <div className="cd-cta-illo" style={ctaStyles.illobox}>
+            <Image
+              src={normalizeSrc("/images/loading.png")}
+              alt={locale === "en" ? "Mascot illustration" : "Ilustrasi maskot"}
+              fill
+              sizes="480px"
+              style={{ objectFit: "contain" }}
+              priority
+              unoptimized={shouldUnoptimize(ctaImg)}
+            />
+          </div>
         </div>
       </section>
+
+      {/* ===== MODAL ===== */}
+      {modalOpen && (
+        <div
+          className="cd-modal-backdrop"
+          onClick={(e) => {
+            if (e.target.classList.contains("cd-modal-backdrop"))
+              setModalOpen(false);
+          }}
+        >
+          <div className="cd-modal" role="dialog" aria-modal="true">
+            <div className="cd-modal__head">
+              <h3 className="cd-modal__title">
+                {modalData.title || (locale === "en" ? "Detail" : "Detail")}
+              </h3>
+              <button
+                className="cd-modal__close"
+                onClick={() => setModalOpen(false)}
+                aria-label={locale === "en" ? "Close" : "Tutup"}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="cd-modal__body">
+              <div className="cd-modal__row">
+                <div className="cd-modal__label">
+                  {locale === "en" ? "Name" : "Nama"}
+                </div>
+                <div className="cd-modal__value">{modalData.title || "—"}</div>
+              </div>
+
+              <div className="cd-modal__row" style={{ alignItems: "start" }}>
+                <div className="cd-modal__label">
+                  {locale === "en" ? "Description" : "Deskripsi"}
+                </div>
+                <div
+                  className="cd-modal__value"
+                  dangerouslySetInnerHTML={{
+                    __html: sanitizeHtml(
+                      modalData.description ||
+                        (locale === "en"
+                          ? "<em>No description.</em>"
+                          : "<em>Tidak ada deskripsi.</em>")
+                    ),
+                  }}
+                />
+              </div>
+
+              <div className="cd-modal__row">
+                <div className="cd-modal__label">
+                  {locale === "en" ? "Price" : "Harga"}
+                </div>
+                <div className="cd-modal__value">
+                  {modalData.priceLabel || "—"}
+                </div>
+              </div>
+
+              {/* NEW: Intake */}
+              <div className="cd-modal__row">
+                <div className="cd-modal__label">Intake</div>
+                <div className="cd-modal__value">
+                  {modalData.intakeLabel || "—"}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

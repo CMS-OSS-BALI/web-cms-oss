@@ -1,4 +1,3 @@
-// app/api/prodi/route.js
 import prisma from "@/lib/prisma";
 import { translate } from "@/app/utils/geminiTranslator";
 import { randomUUID } from "crypto";
@@ -7,8 +6,6 @@ import {
   badRequest,
   unauthorized,
   forbidden,
-  notFound,
-  assertAdmin,
   asInt,
   readQuery,
   readBodyFlexible,
@@ -17,6 +14,9 @@ import {
   toTs,
   DEFAULT_LOCALE,
   EN_LOCALE,
+  toDecimalNullable,
+  toNullableLongText, // ← NEW
+  assertAdmin,
 } from "@/app/api/prodi/_utils";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +29,7 @@ function mapProdi(row, locale, fallback) {
   const updated_ts = toTs(row.updated_at) ?? null;
   return {
     id: row.id,
-    jurusan_id: row.jurusan_id,
+    jurusan_id: row.jurusan_id ?? null,
     college_id: row.college_id ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -39,6 +39,8 @@ function mapProdi(row, locale, fallback) {
     locale_used: t?.locale || null,
     name: t?.name || null,
     description: t?.description || null,
+    harga: row.harga ?? null, // Decimal → number by sanitize
+    in_take: row.in_take ?? null, // ← NEW
   };
 }
 
@@ -51,13 +53,17 @@ export async function GET(req) {
     const q = (sp.get("q") || "").trim();
     const jurusan_id = (sp.get("jurusan_id") || "").trim() || undefined;
 
-    const sort = String(sp.get("sort") || "created_at:desc");
-    const [sortFieldRaw = "created_at", sortDirRaw = "desc"] = sort.split(":");
+    const sortParam = String(sp.get("sort") || "created_at:desc");
+    const [sortFieldRaw = "created_at", sortDirRaw = "desc"] =
+      sortParam.split(":");
     const sortField = sortFieldRaw.toLowerCase();
     const sortDir = sortDirRaw.toLowerCase() === "asc" ? "asc" : "desc";
 
-    const locale = normalizeLocale(sp.get("locale"));
-    const fallback = normalizeLocale(sp.get("fallback") || DEFAULT_LOCALE);
+    const locale = normalizeLocale(sp.get("locale"), DEFAULT_LOCALE);
+    const fallback = normalizeLocale(
+      sp.get("fallback") || DEFAULT_LOCALE,
+      DEFAULT_LOCALE
+    );
     const locales = locale === fallback ? [locale] : [locale, fallback];
 
     const withDeleted = sp.get("with_deleted") === "1";
@@ -68,7 +74,6 @@ export async function GET(req) {
       ? {}
       : { deleted_at: null };
 
-    // MySQL: tanpa mode: 'insensitive'; gunakan collation *_ci untuk case-insensitive
     const where = {
       ...deletedFilter,
       ...(jurusan_id ? { jurusan_id } : {}),
@@ -87,11 +92,11 @@ export async function GET(req) {
         : {}),
     };
 
-    // Sort by name → in-memory agar sesuai terjemahan yang dipakai
+    // name sort → in-memory agar sesuai terjemahan aktif
     if (sortField === "name") {
       const rowsAll = await prisma.prodi.findMany({
         where,
-        orderBy: { created_at: "desc" }, // stable fallback
+        orderBy: { created_at: "desc" },
         select: {
           id: true,
           jurusan_id: true,
@@ -99,6 +104,8 @@ export async function GET(req) {
           created_at: true,
           updated_at: true,
           deleted_at: true,
+          harga: true,
+          in_take: true, // ← NEW
           prodi_translate: {
             where: { locale: { in: locales } },
             select: { locale: true, name: true, description: true },
@@ -111,14 +118,13 @@ export async function GET(req) {
         const A = (a.name || "").toLowerCase();
         const B = (b.name || "").toLowerCase();
         if (A === B) return 0;
-        const comp = A > B ? 1 : -1;
-        return sortDir === "asc" ? comp : -comp;
+        const c = A > B ? 1 : -1;
+        return sortDir === "asc" ? c : -c;
       });
 
       const total = dataAll.length;
       const start = (page - 1) * perPage;
       const data = dataAll.slice(start, start + perPage);
-
       return json({
         message: "OK",
         data,
@@ -133,7 +139,7 @@ export async function GET(req) {
       });
     }
 
-    // DB-side sort for created_at / updated_at
+    // DB-side sort: created_at / updated_at / harga
     const [total, rows] = await Promise.all([
       prisma.prodi.count({ where }),
       prisma.prodi.findMany({
@@ -141,6 +147,8 @@ export async function GET(req) {
         orderBy:
           sortField === "updated_at"
             ? [{ updated_at: sortDir }]
+            : sortField === "harga"
+            ? [{ harga: sortDir }, { created_at: "desc" }]
             : [{ created_at: sortDir }],
         skip: (page - 1) * perPage,
         take: perPage,
@@ -151,6 +159,8 @@ export async function GET(req) {
           created_at: true,
           updated_at: true,
           deleted_at: true,
+          harga: true,
+          in_take: true, // ← NEW
           prodi_translate: {
             where: { locale: { in: locales } },
             select: { locale: true, name: true, description: true },
@@ -197,10 +207,10 @@ export async function POST(req) {
   try {
     const body = await readBodyFlexible(req);
 
-    const jurusan_id = String(body?.jurusan_id || "").trim();
-    if (!jurusan_id) return badRequest("jurusan_id is required", "jurusan_id");
+    const jurusan_id_raw = body?.jurusan_id ?? null; // opsional
+    const jurusan_id = jurusan_id_raw ? String(jurusan_id_raw).trim() : null;
 
-    const locale = normalizeLocale(body.locale);
+    const locale = normalizeLocale(body.locale, DEFAULT_LOCALE);
     const name = String(body?.name || "").trim();
     if (!name) return badRequest("name is required", "name");
 
@@ -209,40 +219,66 @@ export async function POST(req) {
         ? String(body.description)
         : null;
 
+    const hargaDec = toDecimalNullable(body.harga); // PrismaDecimal|null
+    if (hargaDec && hargaDec.lessThan(0))
+      return badRequest("harga cannot be negative", "harga");
+
+    const in_take = toNullableLongText(body.in_take); // ← NEW
+
+    // derive/validate college_id
+    let college_id = null;
+    if (jurusan_id) {
+      const jur = await prisma.jurusan.findUnique({
+        where: { id: jurusan_id },
+        select: { id: true, college_id: true },
+      });
+      if (!jur)
+        return json(
+          {
+            error: {
+              code: "FK_INVALID",
+              field: "jurusan_id",
+              message: "jurusan_id invalid (not found)",
+            },
+          },
+          { status: 400 }
+        );
+      college_id = jur.college_id ?? null;
+    } else if (body.college_id) {
+      college_id = String(body.college_id).trim() || null;
+      if (college_id) {
+        const col = await prisma.college.findUnique({
+          where: { id: college_id },
+          select: { id: true },
+        });
+        if (!col)
+          return badRequest("college_id invalid (not found)", "college_id");
+      }
+    }
+
     const autoTranslate =
       String(body.autoTranslate ?? "true").toLowerCase() !== "false";
     const id = randomUUID();
 
     const created = await prisma.$transaction(async (tx) => {
-      // derive college_id from jurusan
-      const jur = await tx.jurusan.findUnique({
-        where: { id: jurusan_id },
-        select: { id: true, college_id: true },
-      });
-      if (!jur)
-        throw Object.assign(new Error("FK_INVALID"), {
-          code: "P2003",
-          field: "jurusan_id",
-        });
-
       const parent = await tx.prodi.create({
         data: {
           id,
           jurusan_id,
-          college_id: jur.college_id ?? null,
+          college_id,
+          harga: hargaDec ?? null,
+          in_take, // ← NEW
           created_at: new Date(),
           updated_at: new Date(),
         },
       });
 
-      // primary translation
       await tx.prodi_translate.upsert({
         where: { id_prodi_locale: { id_prodi: parent.id, locale } },
         update: { name, description },
         create: { id_prodi: parent.id, locale, name, description },
       });
 
-      // optional EN translation
       if (autoTranslate && locale !== EN_LOCALE && (name || description)) {
         const [nameEn, descEn] = await Promise.all([
           name ? translate(name, locale, EN_LOCALE) : Promise.resolve(name),

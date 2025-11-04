@@ -1,17 +1,16 @@
-// app/api/jurusan/route.js
 import prisma from "@/lib/prisma";
 import { translate } from "@/app/utils/geminiTranslator";
 import {
   json,
   badRequest,
-  notFound,
   asInt,
-  pickTrans,
   readQuery,
   readBodyFlexible,
   normalizeLocale,
   mapJurusan,
   assertAdmin,
+  toDecimalNullable, // ← existing
+  toNullableLongText, // ← NEW
 } from "@/app/api/jurusan/_utils";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +32,9 @@ export async function GET(req) {
     const [sortField = "created_at", sortDirRaw = "desc"] =
       sortParam.split(":");
     const sortDir = sortDirRaw === "asc" ? "asc" : "desc";
-    const allowed = new Set(["created_at", "updated_at", "name"]);
+
+    // izinkan sortir by harga juga
+    const allowed = new Set(["created_at", "updated_at", "name", "harga"]); // (in_take tidak disortir)
     const nameSort = sortField === "name";
     const orderBy =
       !allowed.has(sortField) || nameSort
@@ -55,7 +56,6 @@ export async function GET(req) {
       ? {}
       : { deleted_at: null };
 
-    // MySQL: tanpa mode: 'insensitive' (default collation biasanya ci)
     const where = {
       ...baseDeleted,
       ...(college_id ? { college_id } : {}),
@@ -87,6 +87,8 @@ export async function GET(req) {
           created_at: true,
           updated_at: true,
           deleted_at: true,
+          harga: true,
+          in_take: true, // ← NEW
           jurusan_translate: {
             where: { locale: { in: locales } },
             select: { locale: true, name: true, description: true },
@@ -149,10 +151,16 @@ export async function POST(req) {
         ? String(body.description)
         : null;
 
+    const hargaDec = toDecimalNullable(body.harga);
+    if (hargaDec && hargaDec.lessThan(0))
+      return badRequest("harga cannot be negative", "harga");
+
+    const in_take = toNullableLongText(body.in_take); // ← NEW
+
     const autoTranslate =
       String(body.autoTranslate ?? "true").toLowerCase() !== "false";
 
-    // pre-check FK agar errornya ramah (daripada nunggu P2003)
+    // pre-check FK
     const college = await prisma.college.findUnique({
       where: { id: college_id },
       select: { id: true },
@@ -162,7 +170,13 @@ export async function POST(req) {
 
     const created = await prisma.$transaction(async (tx) => {
       const parent = await tx.jurusan.create({
-        data: { college_id, created_at: new Date(), updated_at: new Date() },
+        data: {
+          college_id,
+          harga: hargaDec ?? null,
+          in_take, // ← NEW
+          created_at: new Date(),
+          updated_at: new Date(),
+        },
       });
 
       await tx.jurusan_translate.upsert({

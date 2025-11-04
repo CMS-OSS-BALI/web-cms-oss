@@ -7,6 +7,7 @@ import {
   Modal,
   Form,
   Input,
+  InputNumber,
   Empty,
   Skeleton,
   Popconfirm,
@@ -33,6 +34,11 @@ const TOKENS = {
   text: "#0f172a",
 };
 
+/* ===== Grid kolom konsisten (header & baris) =====
+   Prodi | Jurusan | Intake | Harga | Kampus | Aksi  */
+const GRID_COLS =
+  "minmax(300px,2fr) minmax(220px,1.2fr) minmax(140px,.9fr) minmax(160px,.9fr) minmax(260px,1.2fr) 120px";
+
 const T = {
   title: "Manajemen Prodi",
   totalLabel: "Total Prodi",
@@ -41,6 +47,8 @@ const T = {
   searchPh: "Cari nama prodi",
   programCol: "Nama Prodi",
   majorCol: "Nama Jurusan",
+  intakeCol: "Intake",
+  priceCol: "Harga",
   collegeCol: "Nama Kampus",
   action: "Aksi",
   view: "Lihat",
@@ -51,7 +59,18 @@ const T = {
   // form
   name: "Nama Prodi",
   desc: "Deskripsi",
-  jurusan: "Jurusan",
+  jurusan: "Jurusan (opsional)",
+  price: "Harga (IDR)",
+  intake: "Intake (opsional)", // <<< NEW
+
+  // sorting
+  sort: "Urutkan",
+  sNewest: "Terbaru",
+  sOldest: "Terlama",
+  sNameAsc: "Nama A–Z",
+  sNameDesc: "Nama Z–A",
+  sPriceAsc: "Harga termurah",
+  sPriceDesc: "Harga termahal",
 };
 
 const monthsId = [
@@ -79,7 +98,7 @@ const fmtDateId = (dLike) => {
     return "-";
   }
 };
-// helper: pick created_ts → created_at → updated_ts → updated_at
+// pick created_ts → created_at → updated_ts → updated_at
 const pickCreated = (obj) =>
   obj?.created_ts ??
   obj?.created_at ??
@@ -89,8 +108,59 @@ const pickCreated = (obj) =>
 
 const stripTags = (s) => (s ? String(s).replace(/<[^>]*>/g, "") : "");
 
+/* ==== currency helpers ==== */
+const fmtIdr = (v) => {
+  if (v === null || v === undefined || v === "") return "—";
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "—";
+  const hasFrac = Math.abs(n - Math.round(n)) > 1e-6;
+  return (
+    "Rp " +
+    new Intl.NumberFormat("id-ID", {
+      minimumFractionDigits: hasFrac ? 2 : 0,
+      maximumFractionDigits: 2,
+    }).format(n)
+  );
+};
+
+// untuk InputNumber.stringMode
+const idrFormatter = (val) => {
+  if (val === undefined || val === null || val === "") return "";
+  const s = String(val).replace(/[^\d.,-]/g, "");
+  const negative = s.startsWith("-") ? "-" : "";
+  const raw = negative ? s.slice(1) : s;
+  const cleaned = raw.replace(/[^0-9.,]/g, "");
+  let int = cleaned;
+  let frac = "";
+  if (cleaned.includes(".")) {
+    const [i, f] = cleaned.split(".");
+    int = i;
+    frac = f ? "," + f.slice(0, 2) : "";
+  } else if (cleaned.includes(",")) {
+    const [i, f] = cleaned.split(",");
+    int = i;
+    frac = f ? "," + f.slice(0, 2) : "";
+  }
+  int = int.replace(/\D/g, "");
+  if (!int) int = "0";
+  int = int.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `${negative}Rp ${int}${frac}`;
+};
+
+const idrParser = (val) => {
+  if (!val) return "";
+  const s = String(val).replace(/[^\d,.\-]/g, "");
+  const noThousand = s.replace(/\./g, "");
+  const lastComma = noThousand.lastIndexOf(",");
+  if (lastComma >= 0) {
+    const left = noThousand.slice(0, lastComma).replace(/,/g, "");
+    const right = noThousand.slice(lastComma + 1);
+    return `${left}.${right}`;
+  }
+  return noThousand.replace(/,/g, "");
+};
+
 export default function ProdiContent({ vm }) {
-  // if not provided via props, allow local import
   const viewModel = vm ?? require("./useProdiViewModel").default();
 
   // notifications
@@ -130,12 +200,11 @@ export default function ProdiContent({ vm }) {
     const v = (searchValue || "").trim();
     const t = setTimeout(() => {
       viewModel.setQ?.(v);
-      viewModel.setPage?.(1);
     }, 400);
     return () => clearTimeout(t);
-  }, [searchValue]); // eslint-disable-line
+  }, [searchValue, viewModel]); // eslint-disable-line
 
-  // jurusan options for filter & forms
+  // jurusan options untuk filter & form
   const [jurusanOptions, setJurusanOptions] = useState([]);
   const [fetchingJurusan, setFetchingJurusan] = useState(false);
   const fetchJurusanOpts = async (kw = "") => {
@@ -148,8 +217,39 @@ export default function ProdiContent({ vm }) {
     fetchJurusanOpts("");
   }, []); // eslint-disable-line
 
+  // Pastikan label untuk value terpilih selalu ada di options (UX aman)
+  useEffect(() => {
+    const id = viewModel.jurusanId;
+    if (!id) return;
+    const sid = String(id);
+    const already = jurusanOptions.some((o) => String(o.value) === sid);
+    if (already) return;
+    const jName = viewModel.jurusanName?.(sid) || "";
+    const label = jName
+      ? `${jName}${
+          viewModel.collegeName?.(viewModel.collegeIdOfJurusan?.(sid) || "")
+            ? " — " +
+              (viewModel.collegeName?.(viewModel.collegeIdOfJurusan?.(sid)) ||
+                "")
+            : ""
+        }`
+      : "";
+    if (label) {
+      setJurusanOptions((prev) => [{ value: id, label }, ...prev]);
+    }
+  }, [viewModel.jurusanId]); // eslint-disable-line
+
   const { shellW, maxW, blue, text } = TOKENS;
   const req = (msg) => [{ required: true, message: msg }];
+
+  const sortOptions = [
+    { value: "created_at:desc", label: T.sNewest },
+    { value: "created_at:asc", label: T.sOldest },
+    { value: "name:asc", label: T.sNameAsc },
+    { value: "name:desc", label: T.sNameDesc },
+    { value: "harga:asc", label: T.sPriceAsc },
+    { value: "harga:desc", label: T.sPriceDesc },
+  ];
 
   /* ========================== CRUD ========================== */
   const onCreate = async () => {
@@ -157,9 +257,11 @@ export default function ProdiContent({ vm }) {
     if (!v) return;
 
     const out = await viewModel.createProdi({
-      jurusan_id: v.jurusan_id,
+      jurusan_id: v.jurusan_id || "",
       name: v.name,
       description: v.description || "",
+      in_take: v.in_take ?? null, // <<< NEW
+      harga: v.harga ?? null, // stringMode → string, server normalizes
       autoTranslate: true,
     });
     if (!out.ok) {
@@ -202,6 +304,8 @@ export default function ProdiContent({ vm }) {
       jurusan_id: d.jurusan_id || undefined,
       name: d.name || "",
       description: d.description || "",
+      in_take: d.in_take || "", // <<< NEW
+      harga: d.harga !== undefined && d.harga !== null ? String(d.harga) : "", // stringMode
     });
   };
 
@@ -214,6 +318,8 @@ export default function ProdiContent({ vm }) {
       jurusan_id: v.jurusan_id,
       name: v.name,
       description: v.description ?? null,
+      in_take: v.in_take ?? null, // <<< NEW
+      harga: v.harga ?? null, // stringMode → server normalize
       autoTranslate: false,
     });
 
@@ -326,7 +432,6 @@ export default function ProdiContent({ vm }) {
                   onChange={(e) => setSearchValue(e.target.value)}
                   onPressEnter={() => {
                     viewModel.setQ?.((searchValue || "").trim());
-                    viewModel.setPage?.(1);
                   }}
                   placeholder={T.searchPh}
                   prefix={<SearchOutlined />}
@@ -338,25 +443,32 @@ export default function ProdiContent({ vm }) {
                   showSearch
                   placeholder="Filter jurusan"
                   value={viewModel.jurusanId || undefined}
-                  onChange={(v) => {
-                    viewModel.setJurusanId?.(v || "");
-                    viewModel.setPage?.(1);
-                  }}
+                  onChange={(v) => viewModel.setJurusanId?.(v || "")}
                   filterOption={false}
                   notFoundContent={fetchingJurusan ? "Loading..." : null}
                   onSearch={fetchJurusanOpts}
                   options={jurusanOptions}
                   style={styles.filterSelect}
                 />
+
+                <Select
+                  value={viewModel.sort}
+                  onChange={(v) => viewModel.setSort(v)}
+                  options={sortOptions}
+                  style={styles.filterSort}
+                />
               </div>
 
-              {/* Table header */}
+              {/* Table */}
               <div style={{ overflowX: "auto" }}>
+                {/* Header */}
                 <div style={styles.tableHeader}>
                   <div style={{ ...styles.thLeft, paddingLeft: 8 }}>
                     {T.programCol}
                   </div>
                   <div style={styles.thCenter}>{T.majorCol}</div>
+                  <div style={styles.thCenter}>{T.intakeCol}</div>
+                  <div style={styles.thRight}>{T.priceCol}</div>
                   <div style={styles.thCenter}>{T.collegeCol}</div>
                   <div style={styles.thCenter}>{T.action}</div>
                 </div>
@@ -364,9 +476,61 @@ export default function ProdiContent({ vm }) {
                 {/* Rows */}
                 <div style={{ display: "grid", gap: 8, marginTop: 4 }}>
                   {viewModel.loading ? (
-                    <div style={{ padding: "8px 4px" }}>
-                      <Skeleton active paragraph={{ rows: 2 }} />
-                    </div>
+                    Array.from({ length: 4 }).map((_, i) => (
+                      <div key={`sk-${i}`} style={styles.row}>
+                        <div style={styles.colName}>
+                          <Skeleton.Input
+                            active
+                            size="small"
+                            style={{
+                              width: 240,
+                              height: 16,
+                              borderRadius: 6,
+                            }}
+                          />
+                        </div>
+                        <div style={styles.colCenter}>
+                          <Skeleton.Input
+                            active
+                            size="small"
+                            style={{ width: 180, height: 16, borderRadius: 6 }}
+                          />
+                        </div>
+                        <div style={styles.colCenter}>
+                          <Skeleton.Input
+                            active
+                            size="small"
+                            style={{ width: 120, height: 16, borderRadius: 6 }}
+                          />
+                        </div>
+                        <div style={styles.colRight}>
+                          <Skeleton.Input
+                            active
+                            size="small"
+                            style={{
+                              width: 100,
+                              height: 16,
+                              borderRadius: 6,
+                              marginLeft: "auto",
+                            }}
+                          />
+                        </div>
+                        <div style={styles.colCenter}>
+                          <Skeleton.Input
+                            active
+                            size="small"
+                            style={{ width: 200, height: 16, borderRadius: 6 }}
+                          />
+                        </div>
+                        <div style={styles.colActionsCenter}>
+                          <Skeleton.Input
+                            active
+                            size="small"
+                            style={{ width: 96, height: 28, borderRadius: 8 }}
+                          />
+                        </div>
+                      </div>
+                    ))
                   ) : rows.length === 0 ? (
                     <div
                       style={{
@@ -380,13 +544,15 @@ export default function ProdiContent({ vm }) {
                   ) : (
                     rows.map((r) => {
                       const name = r.name || "(untitled)";
-                      const jurusanName =
-                        viewModel.jurusanName?.(r.jurusan_id) || "—";
-                      const collegeName =
-                        viewModel.collegeName?.(r.college_id) || "—";
+                      const jurusanLabel =
+                        viewModel.jurusanName?.(r.jurusan_id) || "";
+                      const intake = r.in_take || "";
+                      const collegeLabel =
+                        viewModel.collegeName?.(r.college_id) || "";
 
                       return (
                         <div key={r.id} style={styles.row}>
+                          {/* Nama Prodi */}
                           <div style={styles.colName}>
                             <div style={styles.nameWrap}>
                               <div style={styles.nameText} title={name}>
@@ -398,9 +564,49 @@ export default function ProdiContent({ vm }) {
                             </div>
                           </div>
 
-                          <div style={styles.colCenter}>{jurusanName}</div>
-                          <div style={styles.colCenter}>{collegeName}</div>
+                          {/* Nama Jurusan */}
+                          <div style={styles.colCenter}>
+                            {jurusanLabel ? (
+                              <div
+                                style={styles.clampCell}
+                                title={jurusanLabel}
+                              >
+                                {jurusanLabel}
+                              </div>
+                            ) : (
+                              "—"
+                            )}
+                          </div>
 
+                          {/* Intake */}
+                          <div style={styles.colCenter}>
+                            {intake ? (
+                              <div style={styles.clampCell} title={intake}>
+                                {intake}
+                              </div>
+                            ) : (
+                              "—"
+                            )}
+                          </div>
+
+                          {/* Harga */}
+                          <div style={styles.colRight}>{fmtIdr(r.harga)}</div>
+
+                          {/* Nama Kampus */}
+                          <div style={styles.colCenter}>
+                            {collegeLabel ? (
+                              <div
+                                style={styles.clampCell}
+                                title={collegeLabel}
+                              >
+                                {collegeLabel}
+                              </div>
+                            ) : (
+                              "—"
+                            )}
+                          </div>
+
+                          {/* Aksi */}
                           <div style={styles.colActionsCenter}>
                             <Tooltip title={T.view}>
                               <Button
@@ -503,11 +709,7 @@ export default function ProdiContent({ vm }) {
       >
         <div style={styles.modalShell}>
           <Form layout="vertical" form={formCreate}>
-            <Form.Item
-              label={T.jurusan}
-              name="jurusan_id"
-              rules={req("Jurusan wajib dipilih")}
-            >
+            <Form.Item label={T.jurusan} name="jurusan_id">
               <Select
                 showSearch
                 placeholder="Cari jurusan…"
@@ -515,6 +717,7 @@ export default function ProdiContent({ vm }) {
                 onSearch={fetchJurusanOpts}
                 notFoundContent={fetchingJurusan ? "Loading..." : null}
                 options={jurusanOptions}
+                allowClear
               />
             </Form.Item>
 
@@ -528,6 +731,23 @@ export default function ProdiContent({ vm }) {
 
             <Form.Item label={T.desc} name="description">
               <Input.TextArea rows={3} placeholder="Deskripsi (opsional)" />
+            </Form.Item>
+
+            {/* NEW: Intake */}
+            <Form.Item label={T.intake} name="in_take">
+              <Input placeholder="Contoh: Jan, May, Sep" />
+            </Form.Item>
+
+            <Form.Item label={T.price} name="harga">
+              <InputNumber
+                stringMode
+                min={0}
+                step="1000"
+                style={{ width: "100%" }}
+                formatter={idrFormatter}
+                parser={idrParser}
+                placeholder="Contoh: Rp 2.500.000"
+              />
             </Form.Item>
 
             <div style={styles.modalFooter}>
@@ -567,6 +787,7 @@ export default function ProdiContent({ vm }) {
                   onSearch={fetchJurusanOpts}
                   notFoundContent={fetchingJurusan ? "Loading..." : null}
                   options={jurusanOptions}
+                  allowClear
                 />
               </Form.Item>
 
@@ -576,6 +797,23 @@ export default function ProdiContent({ vm }) {
 
               <Form.Item label={T.desc} name="description">
                 <Input.TextArea rows={3} placeholder="Deskripsi (opsional)" />
+              </Form.Item>
+
+              {/* NEW: Intake */}
+              <Form.Item label={T.intake} name="in_take">
+                <Input placeholder="Contoh: Jan, May, Sep" />
+              </Form.Item>
+
+              <Form.Item label={T.price} name="harga">
+                <InputNumber
+                  stringMode
+                  min={0}
+                  step="1000"
+                  style={{ width: "100%" }}
+                  formatter={idrFormatter}
+                  parser={idrParser}
+                  placeholder="Contoh: Rp 2.500.000"
+                />
               </Form.Item>
 
               <div style={styles.modalFooter}>
@@ -623,6 +861,12 @@ export default function ProdiContent({ vm }) {
                 </div>
               </div>
               <div>
+                <div style={styles.label}>{T.intakeCol}</div>
+                <div style={styles.value}>
+                  {detailData?.in_take ?? activeRow?.in_take ?? "—"}
+                </div>
+              </div>
+              <div>
                 <div style={styles.label}>{T.collegeCol}</div>
                 <div style={styles.value}>
                   {viewModel.collegeName?.(
@@ -631,9 +875,9 @@ export default function ProdiContent({ vm }) {
                 </div>
               </div>
               <div>
-                <div style={styles.label}>{T.desc}</div>
-                <div style={{ ...styles.value, whiteSpace: "pre-wrap" }}>
-                  {stripTags(detailData?.description) || "—"}
+                <div style={styles.label}>{T.priceCol}</div>
+                <div style={styles.value}>
+                  {fmtIdr(detailData?.harga ?? activeRow?.harga)}
                 </div>
               </div>
               <div>
@@ -642,6 +886,12 @@ export default function ProdiContent({ vm }) {
                   {fmtDateId(
                     pickCreated(detailData) ?? pickCreated(activeRow) ?? null
                   )}
+                </div>
+              </div>
+              <div>
+                <div style={styles.label}>{T.desc}</div>
+                <div style={{ ...styles.value, whiteSpace: "pre-wrap" }}>
+                  {stripTags(detailData?.description) || "—"}
                 </div>
               </div>
             </div>
@@ -706,30 +956,32 @@ const styles = {
 
   filtersRow: {
     display: "grid",
-    gridTemplateColumns: "1fr 260px",
+    gridTemplateColumns: "1fr 220px 220px", // search | jurusan | sort
     gap: 8,
     marginBottom: 10,
     alignItems: "center",
   },
   searchInput: { height: 36, borderRadius: 10 },
   filterSelect: { width: "100%" },
+  filterSort: { width: "100%" },
 
   tableHeader: {
     display: "grid",
-    gridTemplateColumns: "2.1fr 1.4fr 1.2fr .8fr",
+    gridTemplateColumns: GRID_COLS, // konsisten dengan row
     gap: 8,
     marginBottom: 4,
     color: "#0b3e91",
     fontWeight: 700,
     alignItems: "center",
-    minWidth: 880,
+    minWidth: 1140,
   },
   thLeft: { display: "flex", justifyContent: "flex-start", width: "100%" },
   thCenter: { display: "flex", justifyContent: "center", width: "100%" },
+  thRight: { display: "flex", justifyContent: "flex-end", width: "100%" },
 
   row: {
     display: "grid",
-    gridTemplateColumns: "2.1fr 1.4fr 1.2fr .8fr",
+    gridTemplateColumns: GRID_COLS, // konsisten dengan header
     gap: 8,
     alignItems: "center",
     background: "#f5f8ff",
@@ -737,7 +989,7 @@ const styles = {
     border: "1px solid #e8eeff",
     padding: "8px 10px",
     boxShadow: "0 6px 12px rgba(11, 86, 201, 0.05)",
-    minWidth: 880,
+    minWidth: 1140,
   },
 
   colName: {
@@ -748,8 +1000,9 @@ const styles = {
     display: "flex",
     alignItems: "center",
     gap: 10,
+    minWidth: 0,
   },
-  nameWrap: { display: "grid", gap: 2, minWidth: 0 },
+  nameWrap: { display: "grid", gap: 2, minWidth: 0, width: "100%" },
   nameText: {
     fontWeight: 600,
     color: "#111827",
@@ -759,8 +1012,28 @@ const styles = {
   },
   subDate: { fontSize: 11.5, color: "#6b7280" },
 
+  clampCell: {
+    maxWidth: 220,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    margin: "0 auto",
+  },
+
   colCenter: { textAlign: "center", color: "#0f172a", fontWeight: 600 },
-  colActionsCenter: { display: "flex", justifyContent: "center", gap: 6 },
+  colRight: {
+    textAlign: "right",
+    color: "#0f172a",
+    fontWeight: 700,
+    paddingRight: 6,
+    fontVariantNumeric: "tabular-nums",
+  },
+  colActionsCenter: {
+    display: "flex",
+    justifyContent: "center",
+    gap: 6,
+    minWidth: 120,
+  },
   iconBtn: { borderRadius: 8 },
 
   pagination: {

@@ -1,4 +1,3 @@
-// app/api/jurusan/[id]/route.js
 import prisma from "@/lib/prisma";
 import { translate } from "@/app/utils/geminiTranslator";
 import {
@@ -9,6 +8,8 @@ import {
   normalizeLocale,
   mapJurusan,
   assertAdmin,
+  toDecimalNullable,
+  toNullableLongText, // ← NEW
 } from "@/app/api/jurusan/_utils";
 
 export const dynamic = "force-dynamic";
@@ -42,6 +43,8 @@ export async function GET(req, { params }) {
         created_at: true,
         updated_at: true,
         deleted_at: true,
+        harga: true,
+        in_take: true, // ← NEW
         jurusan_translate: {
           where: { locale: { in: locales } },
           select: { locale: true, name: true, description: true },
@@ -75,25 +78,51 @@ export async function PATCH(req, { params }) {
 
     const ops = [];
 
-    // parent update (optional)
-    if (body.college_id !== undefined) {
-      const college_id = String(body.college_id || "").trim();
-      if (!college_id)
-        return badRequest("college_id cannot be empty", "college_id");
-      // pre-check FK
-      const college = await prisma.college.findUnique({
-        where: { id: college_id },
-        select: { id: true },
-      });
-      if (!college)
-        return badRequest("college_id invalid (not found)", "college_id");
-      ops.push(
-        prisma.jurusan.update({
-          where: { id },
-          data: { college_id, updated_at: new Date() },
-        })
-      );
+    // parent update (college_id / harga / in_take)
+    const wantsUpdateCollege = Object.prototype.hasOwnProperty.call(
+      body,
+      "college_id"
+    );
+    const wantsUpdateHarga = Object.prototype.hasOwnProperty.call(
+      body,
+      "harga"
+    );
+    const wantsUpdateInTake = Object.prototype.hasOwnProperty.call(
+      body,
+      "in_take"
+    ); // ← NEW
+
+    if (wantsUpdateCollege || wantsUpdateHarga || wantsUpdateInTake) {
+      const data = { updated_at: new Date() };
+
+      if (wantsUpdateCollege) {
+        const college_id = String(body.college_id || "").trim();
+        if (!college_id)
+          return badRequest("college_id cannot be empty", "college_id");
+        // pre-check FK
+        const college = await prisma.college.findUnique({
+          where: { id: college_id },
+          select: { id: true },
+        });
+        if (!college)
+          return badRequest("college_id invalid (not found)", "college_id");
+        data.college_id = college_id;
+      }
+
+      if (wantsUpdateHarga) {
+        const hargaDec = toDecimalNullable(body.harga);
+        if (hargaDec && hargaDec.lessThan(0))
+          return badRequest("harga cannot be negative", "harga");
+        data.harga = hargaDec ?? null; // allow null to clear
+      }
+
+      if (wantsUpdateInTake) {
+        data.in_take = toNullableLongText(body.in_take); // ← NEW (allow null)
+      }
+
+      ops.push(prisma.jurusan.update({ where: { id }, data }));
     } else {
+      // jika tidak ada update parent, pastikan row ada
       const exists = await prisma.jurusan.findUnique({
         where: { id },
         select: { id: true },
@@ -121,7 +150,9 @@ export async function PATCH(req, { params }) {
 
       ops.push(
         prisma.jurusan_translate.upsert({
-          where: { id_jurusan_locale: { id_jurusan: id, locale } },
+          where: {
+            id_jurusan_locale: { id: undefined, id_jurusan: id, locale },
+          },
           update,
           create: {
             id_jurusan: id,
@@ -164,7 +195,7 @@ export async function PATCH(req, { params }) {
 
     if (ops.length) await prisma.$transaction(ops);
 
-    // return latest minimal
+    // return latest
     const locales = [locale, DEFAULT_LOCALE];
     const updated = await prisma.jurusan.findUnique({
       where: { id },
@@ -174,6 +205,8 @@ export async function PATCH(req, { params }) {
         created_at: true,
         updated_at: true,
         deleted_at: true,
+        harga: true,
+        in_take: true, // ← NEW
         jurusan_translate: {
           where: { locale: { in: locales } },
           select: { locale: true, name: true, description: true },

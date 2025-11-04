@@ -7,10 +7,20 @@ const DEFAULT_LOCALE = "id";
 const FALLBACK_FOR = (loc) =>
   String(loc).toLowerCase() === "id" ? "en" : "id";
 const DEFAULT_PER_PAGE = 10;
+const DEFAULT_SORT = "created_at:desc";
 
 const jsonFetcher = (url) =>
   fetch(url).then(async (r) => {
-    if (!r.ok) throw new Error((await r.text().catch(() => "")) || r.status);
+    if (!r.ok) {
+      let msg = "";
+      try {
+        const j = await r.json();
+        msg = j?.error?.message || j?.message || "";
+      } catch {
+        msg = await r.text().catch(() => "");
+      }
+      throw new Error(msg || `Request failed: ${r.status}`);
+    }
     return r.json();
   });
 
@@ -21,7 +31,7 @@ const toTs = (v) => {
   return Number.isFinite(t) ? t : null;
 };
 
-function buildListKey({ page, perPage, q, locale, fallback, collegeId }) {
+function buildListKey({ page, perPage, q, locale, fallback, collegeId, sort }) {
   const p = new URLSearchParams();
   p.set("page", String(page));
   p.set("perPage", String(perPage));
@@ -29,6 +39,7 @@ function buildListKey({ page, perPage, q, locale, fallback, collegeId }) {
   if (collegeId) p.set("college_id", String(collegeId));
   p.set("locale", locale);
   p.set("fallback", fallback);
+  if (sort) p.set("sort", String(sort));
   return `/api/jurusan?${p.toString()}`;
 }
 
@@ -38,25 +49,20 @@ export default function useJurusanViewModel(initial = {}) {
 
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(DEFAULT_PER_PAGE);
+  const [sort, setSort] = useState(DEFAULT_SORT);
 
-  // wrap setters -> selalu reset page ke 1 saat filter berubah
+  // reset page saat filter berubah
   const [_q, _setQ] = useState("");
-  const setQ = useCallback(
-    (v) => {
-      _setQ(v);
-      setPage(1);
-    },
-    [setPage]
-  );
+  const setQ = useCallback((v) => {
+    _setQ(v);
+    setPage(1);
+  }, []);
 
   const [_collegeId, _setCollegeId] = useState("");
-  const setCollegeId = useCallback(
-    (v) => {
-      _setCollegeId(v);
-      setPage(1);
-    },
-    [setPage]
-  );
+  const setCollegeId = useCallback((v) => {
+    _setCollegeId(v);
+    setPage(1);
+  }, []);
 
   const key = buildListKey({
     page,
@@ -65,6 +71,7 @@ export default function useJurusanViewModel(initial = {}) {
     locale,
     fallback,
     collegeId: _collegeId,
+    sort,
   });
 
   const { data, error, isLoading, mutate } = useSWR(key, jsonFetcher, {
@@ -79,37 +86,26 @@ export default function useJurusanViewModel(initial = {}) {
       ...r,
       created_ts:
         r.created_ts ?? toTs(r.created_at) ?? toTs(r.updated_at) ?? null,
+      // in_take & harga sudah dipetakan oleh server (mapJurusan + sanitize)
     }));
   }, [data]);
 
-  const total = useMemo(() => {
-    const d = data || {};
-    const candidates = [
-      d.total,
-      d?.meta?.total,
-      d.count,
-      d.totalCount,
-      d?.pagination?.total,
-      Array.isArray(d.data) ? d.data.length : undefined,
-    ];
-    const val = candidates.find((v) => v !== undefined && v !== null);
-    if (val === undefined || val === null) return undefined;
-    const n = Number(val);
-    return Number.isFinite(n) ? n : undefined;
-  }, [data]);
-
+  // meta
+  const meta = data?.meta || {};
+  const total =
+    meta.total ??
+    data?.total ??
+    (Array.isArray(data?.data) ? data.data.length : undefined);
   const totalPages =
-    data?.totalPages ??
+    meta.totalPages ??
     (jurusan.length < perPage && page > 1 ? page : undefined);
 
   /* ---------- College name cache ---------- */
   const collegeNameCache = useRef(new Map());
-
-  const collegeName = useCallback((id) => {
-    if (!id) return "";
-    return collegeNameCache.current.get(String(id)) || "";
-  }, []);
-
+  const collegeName = useCallback(
+    (id) => (id ? collegeNameCache.current.get(String(id)) || "" : ""),
+    []
+  );
   const refreshCollegeNamesForPage = useCallback(
     async (rows = []) => {
       const missing = [];
@@ -118,7 +114,6 @@ export default function useJurusanViewModel(initial = {}) {
         if (key && !collegeNameCache.current.has(key)) missing.push(key);
       }
       if (!missing.length) return;
-
       await Promise.all(
         Array.from(new Set(missing)).map(async (id) => {
           const url = `/api/college/${encodeURIComponent(
@@ -141,7 +136,7 @@ export default function useJurusanViewModel(initial = {}) {
     async (keyword = "") => {
       const p = new URLSearchParams();
       p.set("perPage", "10");
-      if (keyword.trim()) p.set("name", keyword.trim());
+      if (keyword.trim()) p.set("name", keyword.trim()); // server mendukung filter name
       p.set("locale", locale);
       p.set("fallback", fallback);
       const url = `/api/college?${p.toString()}`;
@@ -159,13 +154,22 @@ export default function useJurusanViewModel(initial = {}) {
 
   /* ----------------------------- CRUD ----------------------------- */
   const createJurusan = useCallback(
-    async ({ college_id, name, description, autoTranslate = true }) => {
+    async ({
+      college_id,
+      name,
+      description,
+      harga,
+      in_take,
+      autoTranslate,
+    }) => {
       const payload = {
         locale,
         college_id,
         name,
         description: description ?? null,
-        autoTranslate: Boolean(autoTranslate),
+        harga: harga ?? null, // stringMode → server toDecimalNullable
+        in_take: in_take ?? null, // ← NEW
+        autoTranslate: !!(autoTranslate ?? true),
       };
       const res = await fetch("/api/jurusan", {
         method: "POST",
@@ -173,10 +177,14 @@ export default function useJurusanViewModel(initial = {}) {
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
-        return {
-          ok: false,
-          error: (await res.json().catch(() => ({})))?.message || res.status,
-        };
+        let msg = "";
+        try {
+          const j = await res.json();
+          msg = j?.error?.message || j?.message;
+        } catch {
+          msg = await res.text();
+        }
+        return { ok: false, error: msg || res.status };
       }
       await mutate();
       return { ok: true, data: await res.json() };
@@ -207,14 +215,18 @@ export default function useJurusanViewModel(initial = {}) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           locale,
-          ...payload,
+          ...payload, // boleh kirim college_id, name, description, harga, in_take, autoTranslate
         }),
       });
       if (!res.ok) {
-        return {
-          ok: false,
-          error: (await res.json().catch(() => ({})))?.message || res.status,
-        };
+        let msg = "";
+        try {
+          const j = await res.json();
+          msg = j?.error?.message || j?.message;
+        } catch {
+          msg = await res.text();
+        }
+        return { ok: false, error: msg || res.status };
       }
       await mutate();
       return { ok: true, data: await res.json() };
@@ -228,10 +240,14 @@ export default function useJurusanViewModel(initial = {}) {
         method: "DELETE",
       });
       if (!res.ok) {
-        return {
-          ok: false,
-          error: (await res.json().catch(() => ({})))?.message || res.status,
-        };
+        let msg = "";
+        try {
+          const j = await res.json();
+          msg = j?.error?.message || j?.message;
+        } catch {
+          msg = await res.text();
+        }
+        return { ok: false, error: msg || res.status };
       }
       await mutate();
       return { ok: true };
@@ -246,12 +262,14 @@ export default function useJurusanViewModel(initial = {}) {
     setLocale,
     page,
     perPage,
+    sort,
     q: _q,
     collegeId: _collegeId,
     setPage,
     setPerPage,
     setQ,
     setCollegeId,
+    setSort,
 
     // data
     jurusan,
