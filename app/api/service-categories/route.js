@@ -1,4 +1,3 @@
-// app/api/service-categories/route.js
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
@@ -69,7 +68,7 @@ async function readBody(req) {
   return (await req.json().catch(() => ({}))) ?? {};
 }
 
-/* GET list */
+/* GET list (with meta) */
 export async function GET(req) {
   try {
     const url = new URL(req.url);
@@ -82,11 +81,13 @@ export async function GET(req) {
     const where = q
       ? {
           OR: [
-            { slug: { contains: q } }, // no `mode`
+            { slug: { contains: q } }, // MySQL default collation case-insensitive
             { name: { contains: q } },
           ],
         }
       : undefined;
+
+    const total = await prisma.service_categories.count({ where });
 
     const rows = await prisma.service_categories.findMany({
       where,
@@ -107,7 +108,14 @@ export async function GET(req) {
       ...(withCounts ? { services_count: r._count?.services ?? 0 } : {}),
     }));
 
-    return NextResponse.json({ data });
+    const meta = {
+      page,
+      perPage: limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    };
+
+    return NextResponse.json({ data, meta });
   } catch (e) {
     console.error("GET /api/service-categories error:", e);
     return NextResponse.json({ message: "Server error" }, { status: 500 });

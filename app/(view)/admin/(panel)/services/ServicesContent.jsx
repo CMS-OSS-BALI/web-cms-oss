@@ -1,4 +1,3 @@
-// app/(view)/admin/services/ServicesContent.jsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -16,7 +15,7 @@ import {
   Spin,
   Select,
   InputNumber,
-  notification, // ⟵ tambahkan
+  notification,
 } from "antd";
 import {
   PlusCircleOutlined,
@@ -111,7 +110,7 @@ const stripTags = (s) => (s ? String(s).replace(/<[^>]*>/g, "") : "");
 export default function ServicesContent({ locale = "id" }) {
   const vm = useServicesViewModel({ locale });
 
-  // ===== notifications (top-right)
+  // ===== notifications
   const [notify, contextHolder] = notification.useNotification();
   const ok = (message, description) =>
     notify.success({ message, description, placement: "topRight" });
@@ -130,7 +129,7 @@ export default function ServicesContent({ locale = "id" }) {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailData, setDetailData] = useState(null);
 
-  // Lebar modal view dinamis (berdasarkan rasio gambar)
+  // Lebar modal view dinamis
   const [viewImgMeta, setViewImgMeta] = useState({ w: 0, h: 0 });
   const viewModalWidth =
     (viewImgMeta.h || 0) >= (viewImgMeta.w || 0) ? 560 : 900;
@@ -161,11 +160,10 @@ export default function ServicesContent({ locale = "id" }) {
   // category live search (debounced)
   const [catSearchQ, setCatSearchQ] = useState("");
   useEffect(() => {
-    vm.searchCategories("");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  useEffect(() => {
-    const t = setTimeout(() => vm.searchCategories(catSearchQ || ""), 300);
+    const t = setTimeout(
+      () => vm.searchCategories(catSearchQ || "", { force: false }),
+      300
+    );
     return () => clearTimeout(t);
   }, [catSearchQ, vm]);
 
@@ -176,14 +174,14 @@ export default function ServicesContent({ locale = "id" }) {
     try {
       setImgPrevCreate(URL.createObjectURL(file));
     } catch {}
-    return false; // prevent auto upload
+    return false;
   };
   const beforeImgEdit = (file) => {
     if (!isImg(file) || tooBig(file, 10)) return Upload.LIST_IGNORE;
     try {
       setImgPrevEdit(URL.createObjectURL(file));
     } catch {}
-    return false; // prevent auto upload
+    return false;
   };
 
   /* ================= CREATE ================= */
@@ -223,10 +221,7 @@ export default function ServicesContent({ locale = "id" }) {
     setDetailLoading(false);
     if (!okLoad) {
       setEditOpen(false);
-      err(
-        "Gagal memuat data layanan",
-        error || "Terjadi kesalahan saat memuat"
-      );
+      err("Gagal memuat data layanan", error || "Terjadi kesalahan");
       return;
     }
     const d = data || row;
@@ -241,7 +236,8 @@ export default function ServicesContent({ locale = "id" }) {
       is_published: !!d.is_published,
     });
     setImgPrevEdit(d.image_public_url || d.image_url || "");
-    vm.searchCategories("");
+    // paksa refresh opsi kategori saat modal dibuka
+    vm.searchCategories("", { force: true });
   };
 
   /* ================= EDIT (submit) ================= */
@@ -311,9 +307,7 @@ export default function ServicesContent({ locale = "id" }) {
       }}
     >
       {contextHolder}
-      {/* ⟵ penting agar notification tampil */}
 
-      {/* paksa rasio 16:9 untuk Upload */}
       <style jsx global>{`
         .landscape-uploader.ant-upload.ant-upload-select-picture-card {
           width: 320px !important;
@@ -382,7 +376,8 @@ export default function ServicesContent({ locale = "id" }) {
                   icon={<PlusCircleOutlined />}
                   onClick={() => {
                     setCreateOpen(true);
-                    vm.searchCategories("");
+                    // paksa refresh opsi saat modal create dibuka
+                    vm.searchCategories("", { force: true });
                   }}
                 >
                   {T.addNew}
@@ -427,6 +422,9 @@ export default function ServicesContent({ locale = "id" }) {
                     vm.setPage?.(1);
                   }}
                   onSearch={setCatSearchQ}
+                  onDropdownVisibleChange={(open) => {
+                    if (open) vm.searchCategories("", { force: true });
+                  }}
                   filterOption={false}
                   options={vm.categoryOptions}
                   style={styles.filterSelect}
@@ -625,9 +623,7 @@ export default function ServicesContent({ locale = "id" }) {
               <Form.Item
                 name="image"
                 valuePropName="fileList"
-                getValueFromEvent={(e) =>
-                  Array.isArray(e) ? e : e?.fileList || []
-                }
+                getValueFromEvent={normList}
                 noStyle
               >
                 <Upload
@@ -691,6 +687,9 @@ export default function ServicesContent({ locale = "id" }) {
                   showSearch
                   placeholder="Pilih kategori"
                   onSearch={setCatSearchQ}
+                  onDropdownVisibleChange={(open) => {
+                    if (open) vm.searchCategories("", { force: true });
+                  }}
                   filterOption={false}
                   options={vm.categoryOptions}
                 />
@@ -766,9 +765,7 @@ export default function ServicesContent({ locale = "id" }) {
                 <Form.Item
                   name="image"
                   valuePropName="fileList"
-                  getValueFromEvent={(e) =>
-                    Array.isArray(e) ? e : e?.fileList || []
-                  }
+                  getValueFromEvent={normList}
                   noStyle
                 >
                   <Upload
@@ -823,6 +820,9 @@ export default function ServicesContent({ locale = "id" }) {
                     showSearch
                     placeholder="Pilih kategori"
                     onSearch={setCatSearchQ}
+                    onDropdownVisibleChange={(open) => {
+                      if (open) vm.searchCategories("", { force: true });
+                    }}
                     filterOption={false}
                     options={vm.categoryOptions}
                   />

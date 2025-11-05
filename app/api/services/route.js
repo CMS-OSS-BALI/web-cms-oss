@@ -1,4 +1,3 @@
-// app/api/services/route.js
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
@@ -86,11 +85,13 @@ function ensureServiceType(v) {
 }
 function normalizeSlug(s) {
   return String(s || "")
-    .trim()
     .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s-]/g, "")
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
+    .replace(/^-+|-+$/g, "");
 }
 
 /* ---- Supabase public URL helper (no network call) ---- */
@@ -140,32 +141,42 @@ async function uploadServiceImage(file) {
   return objectPath;
 }
 
-/* ---- Category resolver (dipakai POST) ---- */
+/* ---- Category resolver (POST) — per-field semantics ---- */
 async function resolveCategoryId({ category_id, category_slug }) {
-  if (category_id === null || category_id === "") return null;
-  if (category_slug === null || category_slug === "") return null;
+  // If `category_id` is provided (even empty/null), handle it and return immediately.
+  if (category_id !== undefined) {
+    if (category_id === null || category_id === "") return null; // explicit clear
+    if (typeof category_id === "string" && category_id.trim()) {
+      const found = await prisma.service_categories.findUnique({
+        where: { id: category_id.trim() },
+        select: { id: true },
+      });
+      if (!found) throw new Error("CATEGORY_NOT_FOUND");
+      return found.id;
+    }
+    return undefined; // unrecognized form
+  }
 
-  if (typeof category_id === "string" && category_id.trim()) {
-    const found = await prisma.service_categories.findUnique({
-      where: { id: category_id.trim() },
-      select: { id: true },
-    });
-    if (!found) throw new Error("CATEGORY_NOT_FOUND");
-    return found.id;
+  // Else, if `category_slug` is provided, handle it.
+  if (category_slug !== undefined) {
+    if (category_slug === null || category_slug === "") return null; // explicit clear
+    if (typeof category_slug === "string" && category_slug.trim()) {
+      const slug = normalizeSlug(category_slug);
+      const found = await prisma.service_categories.findUnique({
+        where: { slug },
+        select: { id: true },
+      });
+      if (!found) throw new Error("CATEGORY_NOT_FOUND");
+      return found.id;
+    }
+    return undefined;
   }
-  if (typeof category_slug === "string" && category_slug.trim()) {
-    const slug = normalizeSlug(category_slug);
-    const found = await prisma.service_categories.findUnique({
-      where: { slug },
-      select: { id: true },
-    });
-    if (!found) throw new Error("CATEGORY_NOT_FOUND");
-    return found.id;
-  }
+
+  // Neither provided
   return undefined;
 }
 
-/* ===================== GET (list) ===================== */
+/* ===================== GET (list/single) ===================== */
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
@@ -227,6 +238,7 @@ export async function GET(req) {
       });
     }
 
+    // ===== list =====
     const q = searchParams.get("q")?.trim();
     const service_type = searchParams.get("service_type") || undefined;
     const published = parseBool(searchParams.get("published"));
@@ -258,7 +270,7 @@ export async function GET(req) {
       typeFilter = service_type.toUpperCase();
     }
 
-    // strict filter by related category.slug (no `mode`)
+    // strict filter by related category.slug (normalized)
     const normalizedSlug =
       category_slug && !category_id ? normalizeSlug(category_slug) : null;
 
@@ -282,6 +294,10 @@ export async function GET(req) {
           }
         : {}),
     };
+
+    // === total global & totalPages
+    const total = await prisma.services.count({ where });
+    const totalPages = Math.max(1, Math.ceil(total / perPage));
 
     const rows = await prisma.services.findMany({
       where,
@@ -317,7 +333,7 @@ export async function GET(req) {
           },
     });
 
-    if (!rows.length) return NextResponse.json({ data: [] });
+    const meta = { page, perPage, total, totalPages };
 
     if (minimalOnly) {
       const data = rows.map((s) => {
@@ -335,7 +351,7 @@ export async function GET(req) {
             : {}),
         };
       });
-      return NextResponse.json({ data });
+      return NextResponse.json({ data, meta });
     }
 
     const data = rows.map((s) => {
@@ -360,7 +376,7 @@ export async function GET(req) {
       };
     });
 
-    return NextResponse.json({ data });
+    return NextResponse.json({ data, meta });
   } catch (err) {
     console.error("GET /api/services error:", err);
     return NextResponse.json(
@@ -373,7 +389,7 @@ export async function GET(req) {
 /* ===================== POST (create + auto-translate) ===================== */
 export async function POST(req) {
   try {
-    const admin = await assertAdmin();
+    const admin = await assertAdmin(); // <-- FIX: keep object (no await later)
 
     const contentType = (req.headers.get("content-type") || "").toLowerCase();
     const isMultipart = contentType.startsWith("multipart/form-data");
@@ -553,7 +569,7 @@ export async function POST(req) {
       await prisma.services.create({
         data: {
           id,
-          admin_user_id: admin.id,
+          admin_user_id: admin.id, // <-- FIX here
           image_url,
           service_type,
           ...(category_id_resolved !== undefined

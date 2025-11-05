@@ -1,4 +1,3 @@
-// app/api/services/[id]/route.js
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
@@ -59,6 +58,16 @@ function parseBool(v) {
   const s = String(v).toLowerCase();
   return s === "true" || s === "1" || s === "y" || s === "yes";
 }
+function normalizeSlug(s) {
+  return String(s || "")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
 
 /* ---- Supabase public URL helper ---- */
 function publicUrlFromPath(path) {
@@ -108,28 +117,32 @@ async function uploadServiceImage(file) {
   return objectPath;
 }
 
-/* ---- Category resolver ---- */
+/* ---- Category resolver (PATCH) — per-field semantics ---- */
 async function resolveCategoryId({ category_id, category_slug }) {
-  if (category_id === undefined && category_slug === undefined)
+  if (category_id !== undefined) {
+    if (category_id === null || category_id === "") return null;
+    if (typeof category_id === "string" && category_id.trim()) {
+      const found = await prisma.service_categories.findUnique({
+        where: { id: category_id.trim() },
+        select: { id: true },
+      });
+      if (!found) throw new Error("CATEGORY_NOT_FOUND");
+      return found.id;
+    }
     return undefined;
-  if (category_id === null || category_id === "") return null;
-  if (category_slug === null || category_slug === "") return null;
-
-  if (typeof category_id === "string" && category_id.trim()) {
-    const found = await prisma.service_categories.findUnique({
-      where: { id: category_id.trim() },
-      select: { id: true },
-    });
-    if (!found) throw new Error("CATEGORY_NOT_FOUND");
-    return found.id;
   }
-  if (typeof category_slug === "string" && category_slug.trim()) {
-    const found = await prisma.service_categories.findUnique({
-      where: { slug: category_slug.trim().toLowerCase() },
-      select: { id: true },
-    });
-    if (!found) throw new Error("CATEGORY_NOT_FOUND");
-    return found.id;
+  if (category_slug !== undefined) {
+    if (category_slug === null || category_slug === "") return null;
+    if (typeof category_slug === "string" && category_slug.trim()) {
+      const slug = normalizeSlug(category_slug);
+      const found = await prisma.service_categories.findUnique({
+        where: { slug },
+        select: { id: true },
+      });
+      if (!found) throw new Error("CATEGORY_NOT_FOUND");
+      return found.id;
+    }
+    return undefined;
   }
   return undefined;
 }
@@ -302,7 +315,7 @@ export async function PATCH(req, { params }) {
       }
     }
 
-    // category
+    // category (per-field semantics)
     if (body.category_id !== undefined || body.category_slug !== undefined) {
       let category_id;
       try {

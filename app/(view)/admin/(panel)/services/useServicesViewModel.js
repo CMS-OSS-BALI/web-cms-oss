@@ -36,6 +36,8 @@ export default function useServicesViewModel(initial = {}) {
   const [services, setServices] = useState([]);
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(12);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
   const [loading, setLoading] = useState(false);
 
   const [q, setQ] = useState("");
@@ -47,6 +49,8 @@ export default function useServicesViewModel(initial = {}) {
   /* categories dropdown options */
   const [categoryOptions, setCategoryOptions] = useState([]);
   const catAbort = useRef(null);
+  // sentinel supaya fetch awal ("") tidak di-skip
+  const lastCatQRef = useRef("__INIT__");
 
   const abortRef = useRef(null);
 
@@ -75,8 +79,14 @@ export default function useServicesViewModel(initial = {}) {
       signal: abortRef.current.signal,
       credentials: "include",
     })
-      .then((r) => r.json())
-      .then((j) => setServices(Array.isArray(j?.data) ? j.data : []))
+      .then(async (r) => {
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j?.message || "Failed to fetch");
+        const rows = Array.isArray(j?.data) ? j.data : [];
+        setServices(rows);
+        setTotal(Number(j?.meta?.total || rows.length || 0));
+        setTotalPages(Number(j?.meta?.totalPages || 0));
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [key]);
@@ -90,10 +100,8 @@ export default function useServicesViewModel(initial = {}) {
   const createService = useCallback(
     async (payload = {}) => {
       try {
-        // kirim multipart kalau ada file, selain itu juga boleh
         const fd = new FormData();
         if (payload.file) fd.append("file", payload.file);
-        // field string/number
         for (const [k, v] of Object.entries(payload)) {
           if (k === "file" || v === undefined) continue;
           fd.append(k, v === null ? "" : String(v));
@@ -112,7 +120,7 @@ export default function useServicesViewModel(initial = {}) {
 
         if (!r.ok) return { ok: false, error: j?.message || "Request failed" };
 
-        // penting: item baru biasanya muncul di halaman 1 (sort desc)
+        // item baru biasanya tampil di page 1 (sort desc)
         setPage(1);
         await reload();
 
@@ -127,7 +135,6 @@ export default function useServicesViewModel(initial = {}) {
   const updateService = useCallback(
     async (id, payload = {}) => {
       try {
-        // Kirim FormData jika ada file, atau jika ada string image_url tetap ok
         const hasFile = !!payload.file;
         let body;
         let headers;
@@ -142,7 +149,6 @@ export default function useServicesViewModel(initial = {}) {
           body = fd;
           headers = undefined;
         } else {
-          // gunakan JSON agar simple
           const obj = { ...payload };
           delete obj.file;
           body = JSON.stringify(obj);
@@ -163,9 +169,7 @@ export default function useServicesViewModel(initial = {}) {
 
         if (!r.ok) return { ok: false, error: j?.message || "Request failed" };
 
-        // revalidate list supaya tabel up-to-date
         await reload();
-
         return { ok: true, data: j?.data };
       } catch (e) {
         return { ok: false, error: e?.message || "Network error" };
@@ -182,7 +186,6 @@ export default function useServicesViewModel(initial = {}) {
           credentials: "include",
         });
 
-        // aman untuk 204 / non-JSON
         const ct = r.headers?.get?.("content-type") || "";
         const j = ct.includes("application/json")
           ? await r.json().catch(() => null)
@@ -190,9 +193,7 @@ export default function useServicesViewModel(initial = {}) {
 
         if (!r.ok) return { ok: false, error: j?.message || "Request failed" };
 
-        // revalidate list setelah delete
         await reload();
-
         return { ok: true, data: j?.data };
       } catch (e) {
         return { ok: false, error: e?.message || "Network error" };
@@ -231,20 +232,37 @@ export default function useServicesViewModel(initial = {}) {
   const clearView = () => setViewData(null);
 
   /* ===== categories search/options ===== */
-  const searchCategories = useCallback(async (q = "") => {
+  const searchCategories = useCallback(async (q = "", opts = {}) => {
+    const { force = false } = opts;
+    const qs = (q || "").trim();
+
+    // anti-spam: skip bila query sama & bukan paksaan
+    if (!force && qs === lastCatQRef.current) return;
+    lastCatQRef.current = qs;
+
     try {
-      if (catAbort.current) catAbort.current.abort();
+      catAbort.current?.abort?.();
       catAbort.current = new AbortController();
+
       const r = await fetch(
-        `/api/service-categories?q=${encodeURIComponent(q)}&limit=20&page=1`,
+        `/api/service-categories?q=${encodeURIComponent(qs)}&limit=20&page=1`,
         { signal: catAbort.current.signal, credentials: "include" }
       );
       const j = await r.json();
       if (Array.isArray(j?.data)) {
         setCategoryOptions(j.data.map((c) => ({ value: c.id, label: c.name })));
+      } else {
+        setCategoryOptions([]);
       }
-    } catch {}
+    } catch {
+      // request sebelumnya kemungkinan di-abort — aman diabaikan
+    }
   }, []);
+
+  // Fetch awal kategori — dipaksa supaya tidak diskip oleh sentinel
+  useEffect(() => {
+    searchCategories("", { force: true });
+  }, [searchCategories]);
 
   /* ===== money formatter ===== */
   const money = useCallback((n, currency = "IDR") => {
@@ -265,6 +283,8 @@ export default function useServicesViewModel(initial = {}) {
     loading,
     page,
     perPage,
+    total,
+    totalPages,
 
     // filters
     q,

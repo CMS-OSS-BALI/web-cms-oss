@@ -23,18 +23,16 @@ function consultantsKey({
   params.set("sort", sort || DEFAULT_SORT);
   params.set("locale", locale || DEFAULT_LOCALE);
   params.set("fallback", fallback || DEFAULT_FALLBACK);
-  params.set("public", "1"); // public listing (tanpa PII)
+  params.set("public", "1");
   if (q && String(q).trim().length > 0) params.set("q", String(q).trim());
   return `/api/consultants?${params.toString()}`;
 }
 
-// tolerant number cast
 const toNumber = (value, fallback = 0) => {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
 };
 
-// prefer public URL fields; fallback ke path lama; terakhir default avatar
 const pickPublicImage = (obj, fallback = DEFAULT_AVATAR) =>
   obj?.image_public_url ||
   obj?.photo_public_url ||
@@ -47,12 +45,6 @@ const pickPublicImage = (obj, fallback = DEFAULT_AVATAR) =>
   fallback;
 
 /* ---------- fetchers ---------- */
-/**
- * Public fetcher aman untuk ngrok:
- * - Skip interstitial warning (ERR_NGROK_6024)
- * - Force JSON (kalau bukan JSON -> fallback data kosong)
- * - credentials: "omit" biar gak kirim cookie tak perlu
- */
 const publicFetcher = async (url) => {
   try {
     const res = await fetch(url, {
@@ -61,7 +53,6 @@ const publicFetcher = async (url) => {
       cache: "no-store",
       headers: {
         Accept: "application/json",
-        // penting untuk ngrok free domain:
         "ngrok-skip-browser-warning": "true",
       },
     });
@@ -75,7 +66,7 @@ const publicFetcher = async (url) => {
 };
 
 export function useLandingViewModel(arg) {
-  // allow: useLandingViewModel(), useLandingViewModel({ locale: "en" }), useLandingViewModel("en")
+  // allow string or object
   let locale = DEFAULT_LOCALE;
   if (typeof arg === "string") locale = arg;
   else if (arg && typeof arg === "object" && arg.locale) locale = arg.locale;
@@ -83,82 +74,75 @@ export function useLandingViewModel(arg) {
 
   const t = (id, en) => (locale === "en" ? en : id);
 
+  /* ===== HERO (baru) ===== */
   const hero = {
-    background: "/bg-1-lp.svg",
-    title: t("JADIKAN KAMU PRIORITAS", "MAKE YOU A PRIORITY"),
+    background: "",
+    title: "#WE MAKE YOU PRIORITY",
     description: t(
-      "One Step Solution (OSS) Bali adalah konsultan pendidikan & karier yang membantu siswa serta profesional di Bali meraih peluang karier di luar negeri.",
-      "One Step Solution (OSS) Bali is an education & career consultancy helping students and professionals in Bali pursue global career opportunities."
+      "37.000+ alumni sukses bersama OSS Bali",
+      "37,000+ successful alumni with OSS Bali"
     ),
+    ctaText: t("Konsultasi Gratis Sekarang", "Get Free Consultation"),
+    ctaHref: "/user/landing-page?section=consultation",
   };
 
-  const metrics = [
-    {
-      id: "global-partner-1",
-      value: "50K+",
-      label: t("Mitra Global", "Global Partner"),
-      gradient:
-        "linear-gradient(180deg, rgba(18,88,190,0.95) 0%, rgba(12,63,151,0.95) 100%)",
-    },
-    {
-      id: "visa-apply",
-      value: "50K+",
-      label: t("Pengajuan Visa", "Visa Apply"),
-      gradient:
-        "linear-gradient(180deg, rgba(74,154,255,0.95) 0%, rgba(43,131,231,0.95) 100%)",
-    },
-    {
-      id: "student-exchange",
-      value: "50K+",
-      label: t("Pertukaran Pelajar", "Student Exchange"),
-      gradient:
-        "linear-gradient(180deg, rgba(32,107,220,0.95) 0%, rgba(25,86,184,0.95) 100%)",
-    },
-    {
-      id: "global-partner-2",
-      value: "50K+",
-      label: t("Mitra Global", "Global Partner"),
-      gradient:
-        "linear-gradient(180deg, rgba(13,74,168,0.95) 0%, rgba(8,46,108,0.95) 100%)",
-    },
-  ];
-
-  const whyChoose = {
-    title: t("KENAPA PILIH KAMI?", "WHY CHOOSE US?"),
-    cards: [
+  /* ===== Video Education (copy bilingual) ===== */
+  const education = {
+    blocks: [
       {
-        id: "trusted",
-        icon: "/trusted.svg",
-        value: "50K+",
-        label: t("Lembaga Terpercaya", "Trusted Institution"),
+        title: t(
+          "Siapa Bilang Kuliah Luar Negeri Susah?",
+          "Who Says Studying Abroad Is Hard?"
+        ),
+        desc: t(
+          "Mungkin mereka belum tahu caranya yang benar. Temukan langkahmu bersama kami.",
+          "Maybe they just don't know the right way. Find your path with us."
+        ),
+        youtube: "https://youtu.be/jVUIMA6VmKA?si=S1ii5lHlAy3pWjA2",
       },
       {
-        id: "program",
-        icon: "/program.svg",
-        value: "50K+",
-        label: t("Program Unggulan", "Featured Programs"),
-      },
-      {
-        id: "exchange",
-        icon: "/exchange.svg",
-        value: "50K+",
-        label: t("Program Pertukaran", "Study Exchange"),
-      },
-      {
-        id: "universitas",
-        icon: "/university.svg",
-        value: "50K+",
-        label: t("Universitas Global", "Global Universities"),
+        title: t(
+          "Langkah pertamamu menuju Study & Karir Luar Negeri",
+          "Your First Step to Overseas Study & Career"
+        ),
+        desc: t(
+          "Jangan khawatir—kami akan menuntunmu dari awal hingga berhasil kuliah dan karier di luar negeri.",
+          "Don't worry—we'll guide you from the start until you succeed in studying and building a career abroad."
+        ),
+        youtube: "https://youtu.be/jVUIMA6VmKA?si=S1ii5lHlAy3pWjA2",
       },
     ],
+    centerTitle: t(
+      "Kesuksesan Itu 80%-Nya Adalah Memulai",
+      "Success Is 80% About Getting Started"
+    ),
+    centerSubtitle: t(
+      "Rencanakan study & karirmu bersama kami.",
+      "Plan your study & career with us."
+    ),
+    centerYoutube: "https://youtu.be/jVUIMA6VmKA?si=S1ii5lHlAy3pWjA2",
   };
 
+  /* ===== Popular Program (layout teks kiri + slider kanan) ===== */
   const popularProgram = {
+    headline: t(
+      "Mulai Dari Sini Tentukan Kemanapun Perjalananmu",
+      "Start Here, Choose Your Journey Anywhere"
+    ),
+    subheadline: t(
+      "Temukan Layanan Terbaikmu",
+      "Find the best service for you"
+    ),
+    ctaText: t("Bandingkan Sekarang", "Compare Now"),
+    ctaHref: "/user/services/compare",
+
+    // keep legacy title/subtitle if used somewhere else
     title: t("PROGRAM POPULER KAMI", "OUR POPULAR PROGRAM"),
     subtitle: t(
-      "Kami menawarkan program unggulan untuk mendukung studi dan karier global Anda, dengan pengalaman belajar berkualitas, peluang internasional, serta akses ke universitas dan mitra terbaik.",
-      "We offer standout programs to support your study and global career, with quality learning, international opportunities, and access to top universities & partners."
+      "Kami menawarkan program unggulan ...",
+      "We offer standout programs ..."
     ),
+
     items: [
       {
         id: "destinations",
@@ -176,17 +160,17 @@ export function useLandingViewModel(arg) {
         label: t("KARIER LUAR NEGERI", "OVERSEAS CAREERS"),
       },
       {
-        id: "destinations",
+        id: "destinations-2",
         image: "/program-destinations.svg",
         label: t("PULUHAN NEGARA TUJUAN", "DOZENS OF DESTINATION COUNTRIES"),
       },
       {
-        id: "campus",
+        id: "campus-2",
         image: "/program-campus.svg",
         label: t("RATUSAN MITRA KAMPUS", "HUNDREDS OF CAMPUS PARTNERS"),
       },
       {
-        id: "career",
+        id: "career-2",
         image: "/program-career.svg",
         label: t("KARIER LUAR NEGERI", "OVERSEAS CAREERS"),
       },
@@ -195,10 +179,6 @@ export function useLandingViewModel(arg) {
 
   const testimonials = {
     title: t("Apa Kata Mereka", "What They Say"),
-    subtitle: t(
-      "Cerita mereka yang sudah merasakan layanan OSS Bali.",
-      "Stories from those who have experienced OSS Bali's services."
-    ),
   };
 
   /* ===== Testimonials (GET) ===== */
@@ -253,7 +233,6 @@ export function useLandingViewModel(arg) {
   } = useSWR(consultantsReqKey, publicFetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 30_000,
-    // fallback agar komponen tidak error saat awal
     fallbackData: { data: [] },
     shouldRetryOnError: false,
   });
@@ -264,7 +243,6 @@ export function useLandingViewModel(arg) {
       : [];
     return list.map((c, i) => ({
       id: c?.id ?? c?._id ?? `consultant-${i}`,
-      // API terbaru sudah sediakan "name" & "description" sesuai locale
       name:
         c?.name ??
         (locale === "en" ? c?.name_en : c?.name_id) ??
@@ -283,7 +261,10 @@ export function useLandingViewModel(arg) {
 
   const consultants = useMemo(
     () => ({
-      title: t("Konsultan Kami", "Our Consultants"),
+      title: t(
+        "Temukan solusimu bersama ahli kami",
+        "Find your solution with our experts"
+      ),
       items: consultantsItems,
     }),
     [consultantsItems, locale]
@@ -291,7 +272,7 @@ export function useLandingViewModel(arg) {
 
   const faq = {
     title: t("PERTANYAAN YANG SERING DITANYAKAN", "FREQUENTLY ASKED QUESTIONS"),
-    illustration: "/images/maskot.png",
+    illustration: "/dar.svg",
     items: [
       {
         q: t(
@@ -370,8 +351,7 @@ export function useLandingViewModel(arg) {
 
   return {
     hero,
-    metrics,
-    whyChoose,
+    education,
     popularProgram,
 
     testimonials,
