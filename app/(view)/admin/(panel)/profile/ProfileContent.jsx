@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import {
   ConfigProvider,
@@ -11,10 +11,19 @@ import {
   Skeleton,
   notification,
 } from "antd";
+import { cropCenterAndResize1x1 } from "@/app/utils/cropper";
 
 export default function ProfileContent({ vm }) {
-  const { T, tokens, api, rules } = vm;
+  const { T, tokens, api, rules, opts } = vm;
   const { shellW, blue, text, headerH } = tokens;
+  const AVATAR_SIZE = Number(opts?.avatarSize || 600);
+  const ALLOWED = opts?.fileTypes || [
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/avif",
+  ];
+  const MAX_MB = Number(opts?.fileMaxMB || 5);
 
   const { update: updateSession } = useSession();
 
@@ -23,15 +32,22 @@ export default function ProfileContent({ vm }) {
   const [saving, setSaving] = useState(false);
   const [preview, setPreview] = useState("");
   const [file, setFile] = useState(null);
+  const [dirty, setDirty] = useState(false);
+  const [ringHover, setRingHover] = useState(false); // <-- untuk hover warna ring
 
-  // antd notification (topRight)
+  const initialRef = useRef({
+    name: "",
+    email: "",
+    no_whatsapp: "",
+    photo: "",
+  });
+
   const [notifyApi, contextHolder] = notification.useNotification();
   const notifyError = (message, description) =>
     notifyApi.error({ message, description, placement: "topRight" });
   const notifySuccess = (message, description) =>
     notifyApi.success({ message, description, placement: "topRight" });
 
-  // cleanup blob URL saat preview berubah/komponen unmount
   useEffect(() => {
     return () => {
       try {
@@ -42,54 +58,84 @@ export default function ProfileContent({ vm }) {
   }, [preview]);
 
   useEffect(() => {
-    let alive = true;
+    const ctrl = new AbortController();
     (async () => {
       try {
-        const res = await fetch(api.me, { cache: "no-store" });
-        const data = await res.json();
-        if (!alive) return;
+        const res = await fetch(api.me, {
+          cache: "no-store",
+          signal: ctrl.signal,
+        });
+        const data = await res.json().catch(() => ({}));
         if (!res.ok) {
           notifyError("Gagal memuat profil", data?.error?.message);
           return;
         }
-        form.setFieldsValue({
+        const init = {
           name: data?.name || "",
           email: data?.email || "",
           no_whatsapp: data?.no_whatsapp || "",
+          photo: data?.profile_photo || "",
+        };
+        initialRef.current = init;
+        form.setFieldsValue({
+          name: init.name,
+          email: init.email,
+          no_whatsapp: init.no_whatsapp,
         });
-        setPreview(data?.profile_photo || "");
-      } catch {
-        notifyError("Gagal memuat profil");
+        setPreview(init.photo);
+        setDirty(false);
+      } catch (e) {
+        if (e?.name !== "AbortError") notifyError("Gagal memuat profil");
       } finally {
-        if (alive) setLoading(false);
+        setLoading(false);
       }
     })();
-    return () => {
-      alive = false;
-    };
+    return () => ctrl.abort();
   }, [api.me, form]);
 
-  const beforeUpload = (f) => {
-    const okType =
-      f.type === "image/jpeg" ||
-      f.type === "image/png" ||
-      f.type === "image/webp";
+  const onValuesChange = () => {
+    const v = form.getFieldsValue();
+    const init = initialRef.current;
+    const changed =
+      (v.name || "") !== init.name ||
+      (v.email || "") !== init.email ||
+      (v.no_whatsapp || "") !== init.no_whatsapp ||
+      !!file;
+    setDirty(changed);
+  };
+
+  const beforeUpload = async (f) => {
+    const okType = ALLOWED.includes(f.type);
     if (!okType) {
-      notifyError("File tidak didukung", "Harus JPG/PNG/WebP");
+      notifyError("File tidak didukung", "Harus JPG/PNG/WebP/AVIF");
       return Upload.LIST_IGNORE;
     }
-    if (f.size / 1024 / 1024 >= 2) {
-      notifyError("Ukuran gambar terlalu besar", "Maksimal 2MB");
+    if (f.size / 1024 / 1024 > MAX_MB) {
+      notifyError("Ukuran gambar terlalu besar", `Maksimal ${MAX_MB}MB`);
       return Upload.LIST_IGNORE;
     }
+
     try {
-      const blobUrl = URL.createObjectURL(f);
-      setFile(f);
-      setPreview(blobUrl);
+      const cropped = await cropCenterAndResize1x1(f, AVATAR_SIZE);
+      const url = URL.createObjectURL(cropped);
+      try {
+        if (preview && preview.startsWith("blob:"))
+          URL.revokeObjectURL(preview);
+      } catch {}
+      setFile(cropped);
+      setPreview(url);
+      setDirty(true);
     } catch {
-      setFile(f);
+      try {
+        const blobUrl = URL.createObjectURL(f);
+        setFile(f);
+        setPreview(blobUrl);
+      } catch {
+        setFile(f);
+      }
+      setDirty(true);
     }
-    return false; // prevent auto-upload
+    return Upload.LIST_IGNORE;
   };
 
   const onSubmit = async (values) => {
@@ -99,39 +145,55 @@ export default function ProfileContent({ vm }) {
       fd.append("name", values.name || "");
       fd.append("no_whatsapp", values.no_whatsapp || "");
       fd.append("email", (values.email || "").trim());
+      fd.append("size", String(AVATAR_SIZE));
       if (file) fd.append("avatar", file);
 
       const res = await fetch(api.update, { method: "PATCH", body: fd });
       const out = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        notifyError("Gagal menyimpan profil", out?.error?.message);
+        const msg =
+          out?.error?.message ||
+          (out?.error?.code === "PAYLOAD_TOO_LARGE"
+            ? `Max file ${MAX_MB}MB`
+            : out?.error?.code === "UNSUPPORTED_TYPE"
+            ? "Gunakan JPG/PNG/WebP/AVIF"
+            : "Gagal menyimpan profil");
+        notifyError("Gagal menyimpan profil", msg);
         return;
       }
 
-      form.setFieldsValue({
+      const nextInit = {
         name: out?.name ?? values.name,
         email: out?.email ?? values.email,
         no_whatsapp: out?.no_whatsapp ?? values.no_whatsapp,
+        photo: out?.profile_photo || preview,
+      };
+      initialRef.current = nextInit;
+
+      form.setFieldsValue({
+        name: nextInit.name,
+        email: nextInit.email,
+        no_whatsapp: nextInit.no_whatsapp,
       });
 
-      // ganti preview ke URL publik dari server (revoke blob lama jika ada)
       try {
         if (preview && preview.startsWith("blob:"))
           URL.revokeObjectURL(preview);
       } catch {}
       setPreview(out?.profile_photo || preview);
       setFile(null);
+      setDirty(false);
 
       notifySuccess(T.success);
 
-      // ---- HINDARI FULL RELOAD ----
-      // 1) Broadcast ke channel "profile" agar header (useHeaderViewModel) melakukan mutate()
       try {
         new BroadcastChannel("profile").postMessage("updated");
-      } catch {}
-
-      // 2) Trigger session.update() → callback jwt(trigger:"update") akan refresh token.picture dari DB
+      } catch {
+        try {
+          localStorage.setItem("profile.updated", String(Date.now()));
+        } catch {}
+      }
       try {
         await updateSession?.({});
       } catch {}
@@ -143,9 +205,18 @@ export default function ProfileContent({ vm }) {
   };
 
   const onReset = () => {
-    form.resetFields();
-    // reset preview ke server value terakhir (tanpa reload)
+    const init = initialRef.current;
+    form.setFieldsValue({
+      name: init.name,
+      email: init.email,
+      no_whatsapp: init.no_whatsapp,
+    });
     setFile(null);
+    try {
+      if (preview && preview.startsWith("blob:")) URL.revokeObjectURL(preview);
+    } catch {}
+    setPreview(init.photo);
+    setDirty(false);
   };
 
   return (
@@ -164,7 +235,6 @@ export default function ProfileContent({ vm }) {
         },
       }}
     >
-      {/* contextHolder wajib dirender sekali */}
       {contextHolder}
 
       <section
@@ -189,27 +259,36 @@ export default function ProfileContent({ vm }) {
                 accept="image/*"
                 showUploadList={false}
                 beforeUpload={beforeUpload}
+                // hilangkan border default Dragger → ring digambar oleh wrapper circle
                 style={styles.dragger}
               >
-                {preview ? (
-                  <div style={styles.previewBox}>
+                <div
+                  style={{
+                    ...styles.circle,
+                    borderColor: ringHover ? "#8fb4ff" : "#c0c8d8",
+                  }}
+                  onMouseEnter={() => setRingHover(true)}
+                  onMouseLeave={() => setRingHover(false)}
+                >
+                  {preview ? (
                     <img
                       src={preview}
-                      alt="avatar"
+                      alt={`Avatar ${form.getFieldValue("name") || ""}`}
                       style={{
                         width: "100%",
                         height: "100%",
                         objectFit: "cover",
-                        borderRadius: 12,
+                        borderRadius: "50%", // pastikan clip bulat
+                        display: "block",
                       }}
                     />
-                  </div>
-                ) : (
-                  <div style={styles.placeholder}>
-                    <div style={styles.plus}>+</div>
-                    <div style={styles.hint}>{T.uploadHint}</div>
-                  </div>
-                )}
+                  ) : (
+                    <div style={styles.placeholder}>
+                      <div style={styles.plus}>+</div>
+                      <div style={styles.hint}>{T.uploadHint}</div>
+                    </div>
+                  )}
+                </div>
               </Upload.Dragger>
               <div style={styles.photoLabel}>{T.photo}</div>
             </div>
@@ -222,6 +301,7 @@ export default function ProfileContent({ vm }) {
                   form={form}
                   layout="vertical"
                   onFinish={onSubmit}
+                  onValuesChange={onValuesChange}
                   requiredMark={false}
                 >
                   <Form.Item label={T.name} name="name" rules={rules.name}>
@@ -242,7 +322,12 @@ export default function ProfileContent({ vm }) {
 
                   <div style={styles.actions}>
                     <Button onClick={onReset}>{T.reset}</Button>
-                    <Button type="primary" htmlType="submit" loading={saving}>
+                    <Button
+                      type="primary"
+                      htmlType="submit"
+                      loading={saving}
+                      disabled={!dirty || saving}
+                    >
                       {T.save}
                     </Button>
                   </div>
@@ -255,6 +340,8 @@ export default function ProfileContent({ vm }) {
     </ConfigProvider>
   );
 }
+
+const AVATAR_SIZE_PX = 136; // gampang diatur dari satu tempat
 
 const styles = {
   card: {
@@ -272,18 +359,25 @@ const styles = {
     marginTop: 8,
     marginBottom: 12,
   },
+  // Dragger dibuat transparan & tanpa border; drop area tetap berfungsi
   dragger: {
-    width: 128,
-    height: 128,
-    border: "2px dashed #c0c8d8",
-    borderRadius: 12,
-    background: "#fff",
+    width: AVATAR_SIZE_PX,
+    height: AVATAR_SIZE_PX,
+    border: "none",
+    background: "transparent",
+    padding: 0,
   },
-  previewBox: {
+  // Lingkaran dengan border dashed (ring)
+  circle: {
     width: "100%",
     height: "100%",
-    borderRadius: 12,
+    borderRadius: "50%",
+    border: "2px dashed #c0c8d8",
     overflow: "hidden",
+    display: "grid",
+    placeItems: "center",
+    background: "#fff",
+    transition: "border-color .15s ease",
   },
   placeholder: {
     width: "100%",
@@ -293,9 +387,9 @@ const styles = {
     position: "relative",
   },
   plus: {
-    fontSize: 48,
+    fontSize: 42,
     lineHeight: 1,
-    color: "#e11d48",
+    color: "#0b56c9",
     marginTop: -6,
     userSelect: "none",
   },
@@ -304,7 +398,7 @@ const styles = {
     bottom: 6,
     fontSize: 11,
     color: "#94a3b8",
-    background: "rgba(255,255,255,0.85)",
+    background: "rgba(255,255,255,0.9)",
     padding: "2px 6px",
     borderRadius: 6,
   },

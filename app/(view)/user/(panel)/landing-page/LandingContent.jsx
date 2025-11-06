@@ -3,7 +3,7 @@
 import { useMemo, useEffect, useRef } from "react";
 import { Card, Col, Image, Row, Typography, Collapse } from "antd";
 import { Swiper, SwiperSlide } from "swiper/react";
-import { Navigation, Autoplay, FreeMode } from "swiper/modules";
+import { Navigation, Autoplay } from "swiper/modules";
 import "swiper/css";
 import "swiper/css/navigation";
 
@@ -24,6 +24,187 @@ const slugify = (s = "") =>
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)+/g, "");
+
+const TARGET_IMAGE_ASPECT = 16 / 9;
+const toFiniteNumber = (value) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+};
+
+const resolveImage16x9 = (input, fallback = "/images/fallback.jpg") => {
+  const queue = [input];
+  const seen = new Set();
+
+  while (queue.length) {
+    const value = queue.shift();
+    if (!value) continue;
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed) return trimmed;
+      continue;
+    }
+
+    if (Array.isArray(value)) {
+      queue.unshift(...value);
+      continue;
+    }
+
+    if (typeof value !== "object") continue;
+    if (seen.has(value)) continue;
+    seen.add(value);
+
+    const formats = value.formats || value.variants;
+    if (formats && typeof formats === "object") {
+      const candidates = [];
+      Object.values(formats).forEach((fmt) => {
+        if (!fmt) return;
+
+        const collect = (entry) => {
+          if (!entry) return;
+          if (Array.isArray(entry)) {
+            entry.forEach(collect);
+            return;
+          }
+          if (typeof entry === "string") {
+            const str = entry.trim();
+            if (str) {
+              candidates.push({ url: str, width: 0, ratio: null });
+            }
+            return;
+          }
+          if (typeof entry !== "object") return;
+
+          const urlValue =
+            typeof entry.url === "string"
+              ? entry.url
+              : typeof entry.src === "string"
+              ? entry.src
+              : typeof entry.href === "string"
+              ? entry.href
+              : "";
+
+          if (!urlValue) {
+            if (entry.url) queue.unshift(entry.url);
+            if (entry.src) queue.unshift(entry.src);
+            if (entry.href) queue.unshift(entry.href);
+            return;
+          }
+
+          const width = toFiniteNumber(entry.width ?? entry.w ?? entry.Width);
+          const height = toFiniteNumber(
+            entry.height ?? entry.h ?? entry.Height
+          );
+          const ratio = width && height && height !== 0 ? width / height : null;
+
+          candidates.push({
+            url: urlValue,
+            width: width || 0,
+            ratio,
+          });
+        };
+
+        collect(fmt);
+      });
+
+      if (candidates.length) {
+        candidates.sort((a, b) => {
+          const diffA =
+            typeof a.ratio === "number"
+              ? Math.abs(a.ratio - TARGET_IMAGE_ASPECT)
+              : Number.POSITIVE_INFINITY;
+          const diffB =
+            typeof b.ratio === "number"
+              ? Math.abs(b.ratio - TARGET_IMAGE_ASPECT)
+              : Number.POSITIVE_INFINITY;
+          if (diffA !== diffB) return diffA - diffB;
+          return (b.width || 0) - (a.width || 0);
+        });
+
+        const best = candidates[0];
+        if (best?.url) return best.url;
+      }
+    }
+
+    const ratioKeys = [
+      "image16x9",
+      "image_16x9",
+      "image_16_9",
+      "image169",
+      "image_169",
+      "url16x9",
+      "url_16x9",
+      "url169",
+      "url_169",
+      "cover16x9",
+      "cover_16x9",
+      "cover169",
+      "landscape",
+      "landscapeUrl",
+      "landscape_url",
+      "landscape16x9",
+      "landscape_16x9",
+      "poster16x9",
+      "poster_16x9",
+      "image9x16",
+      "image_9x16",
+      "image_9_16",
+      "image916",
+      "image_916",
+      "url9x16",
+      "url_9x16",
+      "url916",
+      "url_916",
+      "cover9x16",
+      "cover_9x16",
+      "cover916",
+      "portrait",
+      "portraitUrl",
+      "portrait_url",
+      "portrait9x16",
+      "portrait_9x16",
+      "poster9x16",
+      "poster_9x16",
+    ];
+    for (const key of ratioKeys) {
+      if (value[key]) queue.unshift(value[key]);
+    }
+
+    const directKeys = [
+      "url",
+      "urlDefault",
+      "src",
+      "href",
+      "path",
+      "location",
+      "file",
+      "file_url",
+      "fileUrl",
+      "public_url",
+      "publicUrl",
+      "image_public_url",
+      "imagePublicUrl",
+      "default",
+      "originalUrl",
+      "original_url",
+    ];
+    for (const key of directKeys) {
+      if (!value[key]) continue;
+      const candidate = value[key];
+      if (typeof candidate === "string") {
+        const trimmed = candidate.trim();
+        if (trimmed) return trimmed;
+      } else {
+        queue.unshift(candidate);
+      }
+    }
+
+    if (value.data) queue.unshift(value.data);
+    if (value.attributes) queue.unshift(value.attributes);
+  }
+
+  return fallback;
+};
 
 const CONTAINER = { width: "min(1220px, 96%)", margin: "0 auto" };
 
@@ -291,14 +472,7 @@ const consultants = {
   },
 };
 
-const MARQUEE_SPEED = 6000;
-const marqueeAutoplay = {
-  delay: 0,
-  disableOnInteraction: false,
-  pauseOnMouseEnter: false,
-};
-const marqueeFreeMode = { enabled: true, momentum: false, sticky: false };
-
+const MARQUEE_SPEED = 7000; // smooth marquee
 export default function LandingContent({ locale = "id" }) {
   const heroRef = useRef(null);
 
@@ -310,22 +484,78 @@ export default function LandingContent({ locale = "id" }) {
     consultants: CONS,
     faq: FAQ,
     education: EDU,
+    countryPartners: CP,
   } = useLandingViewModel({ locale });
 
   const popularItems = A(popularProgram?.items);
   const testiContent = A(testimonialsList);
   const consItems = A(CONS?.items);
 
+  // NEW: country partners split rows
+  const cpItems = A(CP?.items);
+  const cpHalf = Math.ceil(cpItems.length / 2);
+  const cpTop = cpItems.slice(0, cpHalf);
+  const cpBottom = cpItems.slice(cpHalf);
+  const cpTopLoop = cpTop.length > 1;
+  const cpBottomLoop = cpBottom.length > 1;
+  const cpTopKey =
+    cpTop.map((c) => c?.id ?? c?.name ?? "").join("|") || "country-top-empty";
+  const cpBottomKey =
+    cpBottom.map((c) => c?.id ?? c?.name ?? "").join("|") ||
+    "country-bottom-empty";
+  const countrySpeed = useMemo(() => {
+    const base = Math.max(1, cpItems.length);
+    const computed = base * 900;
+    return Math.max(5000, Math.min(14000, computed));
+  }, [cpItems.length]);
+
   // observe reveal saat data async datang
   useRevealOnScroll([
     testiContent.length,
     consItems.length,
     popularItems.length,
+    cpItems.length,
   ]);
   useHeroParallax(heroRef);
 
   const hasMultipleTesti = testiContent.length > 1;
-  const testiAutoplay = hasMultipleTesti ? marqueeAutoplay : undefined;
+  const testiAutoplay = useMemo(
+    () =>
+      hasMultipleTesti
+        ? {
+            delay: 0,
+            disableOnInteraction: false,
+            pauseOnMouseEnter: false,
+            stopOnLastSlide: false,
+            waitForTransition: false,
+          }
+        : false,
+    [hasMultipleTesti]
+  );
+  const testiSwiperKey = useMemo(
+    () => `${hasMultipleTesti ? "loop" : "single"}-${testiContent.length}`,
+    [hasMultipleTesti, testiContent.length]
+  );
+
+  const countryAutoplayBase = useMemo(
+    () => ({
+      delay: 0,
+      disableOnInteraction: false,
+      pauseOnMouseEnter: true,
+      waitForTransition: false,
+    }),
+    []
+  );
+
+  const cpTopAutoplay = useMemo(
+    () => (cpTopLoop ? countryAutoplayBase : false),
+    [cpTopLoop, countryAutoplayBase]
+  );
+
+  const cpBottomAutoplay = useMemo(
+    () => (cpBottomLoop ? countryAutoplayBase : false),
+    [cpBottomLoop, countryAutoplayBase]
+  );
 
   const faqItems = useMemo(
     () =>
@@ -446,10 +676,10 @@ export default function LandingContent({ locale = "id" }) {
           >
             <div style={vid.box}>
               <Row gutter={[20, 20]} align="middle" wrap>
+                {/* gunakan prop order responsif supaya konsisten */}
                 <Col
-                  xs={24}
-                  md={14}
-                  order={1}
+                  xs={{ span: 24, order: 2 }}
+                  md={{ span: 14, order: 1 }}
                   className="reveal"
                   data-anim="left"
                   style={{ ["--rvd"]: "80ms" }}
@@ -460,9 +690,8 @@ export default function LandingContent({ locale = "id" }) {
                   <Paragraph style={vid.desc}>{EDU1.desc}</Paragraph>
                 </Col>
                 <Col
-                  xs={24}
-                  md={10}
-                  order={2}
+                  xs={{ span: 24, order: 1 }}
+                  md={{ span: 10, order: 2 }}
                   className="reveal"
                   data-anim="right"
                   style={{ ["--rvd"]: "140ms" }}
@@ -638,7 +867,10 @@ export default function LandingContent({ locale = "id" }) {
                       >
                         <div className="popular-imgWrap">
                           <Image
-                            src={p.image || "/images/fallback.jpg"}
+                            src={resolveImage16x9(
+                              p.image,
+                              "/images/fallback.jpg"
+                            )}
                             alt={p.label || "Popular"}
                             preview={false}
                             fallback="/images/fallback.jpg"
@@ -648,6 +880,7 @@ export default function LandingContent({ locale = "id" }) {
                               background: "transparent",
                             }}
                             imgProps={{
+                              loading: "lazy",
                               style: {
                                 width: "100%",
                                 height: "100%",
@@ -692,15 +925,22 @@ export default function LandingContent({ locale = "id" }) {
 
         <div className="testiV2-wrap">
           <Swiper
+            key={testiSwiperKey}
             className="testiV2-swiper"
-            modules={[Autoplay, FreeMode]}
+            modules={[Autoplay]}
             slidesPerView="auto"
             spaceBetween={16}
             loop={hasMultipleTesti}
+            loopAdditionalSlides={
+              hasMultipleTesti ? Math.max(20, testiContent.length) : 0
+            }
             speed={MARQUEE_SPEED}
-            allowTouchMove
+            allowTouchMove={hasMultipleTesti}
             autoplay={testiAutoplay}
-            freeMode={marqueeFreeMode}
+            observer
+            observeParents
+            watchSlidesProgress
+            preloadImages={false}
           >
             {testiContent.map((t, idx) => (
               <SwiperSlide key={t.id ?? `${t.name}-${idx}`}>
@@ -716,6 +956,7 @@ export default function LandingContent({ locale = "id" }) {
                       onError={(e) => {
                         e.currentTarget.src = "/images/avatars/default.jpg";
                       }}
+                      loading="lazy"
                     />
                   </div>
 
@@ -784,6 +1025,7 @@ export default function LandingContent({ locale = "id" }) {
                 onError={(e) => {
                   e.currentTarget.src = "/images/mascot-faq-fallback.png";
                 }}
+                loading="lazy"
               />
             </Col>
           </Row>
@@ -843,6 +1085,7 @@ export default function LandingContent({ locale = "id" }) {
                           onError={(e) => {
                             e.currentTarget.src = "/images/avatars/default.jpg";
                           }}
+                          loading="lazy"
                         />
                       </div>
 
@@ -869,11 +1112,148 @@ export default function LandingContent({ locale = "id" }) {
         </div>
       </section>
 
-      {/* ==== GLOBAL STYLES (tambahan animasi + fix swiper height) ==== */}
+      {/* ====== COUNTRY PARTNERS (NEW) ====== */}
+      <section className="country-section">
+        <div style={CONTAINER}>
+          <Title
+            level={2}
+            className="country-title reveal"
+            data-anim="down"
+            style={{ ["--rvd"]: "40ms" }}
+          >
+            {CP?.title || "Negara Partner"}
+          </Title>
+
+          {/* Row Top - ke kanan */}
+          {cpTop.length > 0 ? (
+            <div
+              className="country-row reveal"
+              data-anim="up"
+              style={{ ["--rvd"]: "100ms" }}
+            >
+              <Swiper
+                key={cpTopKey}
+                className="country-swiper country-swiper--reverse"
+                modules={[Autoplay]}
+                slidesPerView="auto"
+                spaceBetween={14}
+                loop={cpTopLoop}
+                loopAdditionalSlides={
+                  cpTopLoop ? Math.max(10, cpTop.length) : 0
+                }
+                speed={countrySpeed}
+                allowTouchMove={cpTopLoop}
+                autoplay={cpTopAutoplay}
+                observer
+                observeParents
+                watchSlidesProgress
+                preloadImages={false}
+              >
+                {cpTop.map((c) => (
+                  <SwiperSlide
+                    key={`ctop-${c.id}`}
+                    style={{ width: "var(--country-card-w)" }}
+                  >
+                    <article className="country-card" title={c.name}>
+                      <div className="country-photo">
+                        <img
+                          src={c.cover || "/images/country-fallback.jpg"}
+                          alt={c.name}
+                          loading="lazy"
+                          onError={(e) => {
+                            e.currentTarget.src =
+                              "/images/country-fallback.jpg";
+                          }}
+                        />
+                        <div className="country-flag">
+                          <img
+                            src={c.flag}
+                            alt={`${c.name} flag`}
+                            loading="lazy"
+                            onError={(e) => {
+                              e.currentTarget.src = "/flags/gb.svg";
+                            }}
+                          />
+                          <span className="country-flag-name">{c.name}</span>
+                        </div>
+                      </div>
+                      <div className="country-name">{c.name}</div>
+                    </article>
+                  </SwiperSlide>
+                ))}
+              </Swiper>
+            </div>
+          ) : null}
+
+          {/* Row Bottom - ke kiri */}
+          {cpBottom.length > 0 ? (
+            <div
+              className="country-row reveal"
+              data-anim="up"
+              style={{ ["--rvd"]: "160ms", marginTop: 12 }}
+            >
+              <Swiper
+                key={cpBottomKey}
+                className="country-swiper"
+                modules={[Autoplay]}
+                slidesPerView="auto"
+                spaceBetween={14}
+                loop={cpBottomLoop}
+                loopAdditionalSlides={
+                  cpBottomLoop ? Math.max(10, cpBottom.length) : 0
+                }
+                speed={countrySpeed}
+                allowTouchMove={cpBottomLoop}
+                autoplay={cpBottomAutoplay}
+                observer
+                observeParents
+                watchSlidesProgress
+                preloadImages={false}
+              >
+                {cpBottom.map((c) => (
+                  <SwiperSlide
+                    key={`cbot-${c.id}`}
+                    style={{ width: "var(--country-card-w)" }}
+                  >
+                    <article className="country-card" title={c.name}>
+                      <div className="country-photo">
+                        <img
+                          src={c.cover || "/images/country-fallback.jpg"}
+                          alt={c.name}
+                          loading="lazy"
+                          onError={(e) => {
+                            e.currentTarget.src =
+                              "/images/country-fallback.jpg";
+                          }}
+                        />
+                        <div className="country-flag">
+                          <img
+                            src={c.flag}
+                            alt={`${c.name} flag`}
+                            loading="lazy"
+                            onError={(e) => {
+                              e.currentTarget.src = "/flags/gb.svg";
+                            }}
+                          />
+                          <span className="country-flag-name">{c.name}</span>
+                        </div>
+                      </div>
+                      <div className="country-name">{c.name}</div>
+                    </article>
+                  </SwiperSlide>
+                ))}
+              </Swiper>
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      {/* ==== GLOBAL STYLES ==== */}
       <style jsx global>{`
         :root {
           --popular-card-w: clamp(240px, 28vw, 360px);
           --nav-h: 80px;
+          --country-card-w: clamp(220px, 26vw, 300px);
         }
 
         /* ===== Fix: Swiper height di mobile ===== */
@@ -966,7 +1346,7 @@ export default function LandingContent({ locale = "id" }) {
           border-radius: 999px;
         }
 
-        /* ===== Popular board (dibiarkan kosong jika ingin tanpa papan) ===== */
+        /* ===== Popular board ===== */
         .popular-board {
           position: relative;
           border-radius: 16px;
@@ -1098,7 +1478,7 @@ export default function LandingContent({ locale = "id" }) {
         .popular-imgWrap {
           position: relative;
           width: 100%;
-          aspect-ratio: 16 / 10;
+          aspect-ratio: 16 / 9;
         }
         .popular-imgWrap :global(.ant-image-img) {
           width: 100%;
@@ -1124,7 +1504,6 @@ export default function LandingContent({ locale = "id" }) {
 
         /* === NEW: center-kan copy Popular di mobile === */
         .popular-copy {
-          /* desktop: normal */
         }
         @media (max-width: 767px) {
           .popular-copy {
@@ -1182,7 +1561,6 @@ export default function LandingContent({ locale = "id" }) {
         .testiV2-card {
           width: min(1180px, 96%);
           margin: 0 auto;
-          margin-left: 60px;
           display: grid;
           grid-template-columns: clamp(220px, 28vw, 320px) 1fr;
           align-items: center;
@@ -1225,6 +1603,14 @@ export default function LandingContent({ locale = "id" }) {
         }
         .testiV2-swiper {
           overflow: visible;
+        }
+        .testiV2-swiper .swiper-wrapper {
+          transition-timing-function: linear !important;
+        }
+        @media (min-width: 992px) {
+          .testiV2-card {
+            margin-left: 60px;
+          }
         }
         @media (max-width: 767px) {
           .testiV2-card {
@@ -1386,27 +1772,114 @@ export default function LandingContent({ locale = "id" }) {
           }
         }
 
+        /* ===== COUNTRY PARTNERS ===== */
+        .country-section {
+          width: 100vw;
+          margin-left: calc(50% - 50vw);
+          margin-right: calc(50% - 50vw);
+          background: #fff;
+          padding: 10px 0 60px;
+        }
+        .country-title {
+          margin: 0 !important;
+          text-align: center;
+          color: #0b3e91 !important;
+          font-weight: 900 !important;
+          letter-spacing: 0.02rem;
+          font-size: clamp(22px, 5.2vw, 36px) !important;
+        }
+        .country-row {
+          margin-top: 16px;
+        }
+        .country-swiper {
+          overflow: visible;
+        }
+        .country-swiper .swiper-wrapper {
+          transition-timing-function: linear !important;
+        }
+        .country-swiper--reverse {
+          transform: scaleX(-1);
+        }
+        .country-swiper--reverse :global(.swiper-slide) {
+          transform: scaleX(-1);
+        }
+
+        .country-card {
+          background: #fff;
+          border-radius: 14px;
+          overflow: hidden;
+          border: 1px solid #e6eeff;
+          box-shadow: 0 10px 22px rgba(11, 86, 201, 0.08);
+        }
+        .country-photo {
+          position: relative;
+          width: 100%;
+          aspect-ratio: 16/9;
+          overflow: hidden;
+        }
+        .country-photo img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+          transform: scale(1.02);
+          transition: transform 0.28s ease, filter 0.28s ease;
+        }
+        .country-flag {
+          position: absolute;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.25);
+          display: grid;
+          place-items: center;
+          opacity: 0;
+          transform: scale(1.04);
+          transition: opacity 0.22s ease, transform 0.22s ease;
+          backdrop-filter: blur(0px);
+        }
+        .country-flag img {
+          width: 66%;
+          height: auto;
+          object-fit: contain;
+          border-radius: 10px;
+          box-shadow: 0 10px 18px rgba(0, 0, 0, 0.28);
+        }
+        .country-flag-name {
+          position: absolute;
+          bottom: 10px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: #0b3e91;
+          color: #fff;
+          font-weight: 800;
+          padding: 6px 12px;
+          border-radius: 999px;
+          font-size: 12px;
+          letter-spacing: 0.02em;
+          white-space: nowrap;
+          box-shadow: 0 8px 16px rgba(11, 86, 201, 0.2);
+        }
+        .country-name {
+          text-align: center;
+          font-weight: 700;
+          color: #0b3e91;
+          padding: 10px 12px;
+          font-size: 14px;
+        }
+        @media (hover: hover) {
+          .country-card:hover .country-photo img {
+            transform: scale(1.08);
+            filter: brightness(0.6) saturate(1.1);
+          }
+          .country-card:hover .country-flag {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+
         /* Hindari overflow horizontal */
         html,
         body {
           overflow-x: clip;
-        }
-
-        /* Existing responsive tweaks */
-        @media (prefers-reduced-motion: reduce) {
-          .testiV2-swiper .swiper-wrapper {
-            transition-duration: 0ms !important;
-          }
-        }
-        @media (max-width: 991px) {
-          h1[style] {
-            margin-top: -42px !important;
-          }
-        }
-        @media (max-width: 767px) {
-          h1[style] {
-            margin-top: 0 !important;
-          }
         }
       `}</style>
     </>

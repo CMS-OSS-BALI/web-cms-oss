@@ -1,7 +1,9 @@
+// app/api/auth/profile/route.js
 import { NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
 import prisma from "@/lib/prisma";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import sharp from "sharp";
 
 /* -------------------- config -------------------- */
 export const dynamic = "force-dynamic";
@@ -15,6 +17,14 @@ const SUPA_URL = (
   ""
 ).replace(/\/+$/, "");
 const NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET;
+
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const ALLOWED_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/avif",
+]);
 
 /* -------------------- helpers -------------------- */
 const json = (d, init) => NextResponse.json(d, init);
@@ -62,6 +72,7 @@ async function readBodyAndFile(req) {
     const candidates = ["avatar", "image", "file", "profile_photo"];
     for (const k of candidates) {
       const f = form.get(k);
+      // di runtime node Next.js, File tersedia di Web Streams API
       if (f && typeof File !== "undefined" && f instanceof File) {
         file = f;
         break;
@@ -77,33 +88,56 @@ async function readBodyAndFile(req) {
   return { body, file: null };
 }
 
-async function uploadAvatar(file) {
+/**
+ * Upload avatar dengan crop 1:1 center di server menggunakan sharp.
+ * @param {File} file - file dari multipart/form-data
+ * @param {object} opt
+ * @param {string|number} opt.userId - id user untuk folder di storage
+ * @param {number} [opt.size=600] - dimensi square output (WxH)
+ * @param {number} [opt.quality=90] - kualitas WebP 1..100
+ * @returns {Promise<string>} path object di bucket (bukan public URL)
+ */
+async function uploadAvatar1x1(
+  file,
+  { userId, size = 600, quality = 90 } = {}
+) {
   if (!file) return null;
   if (!supabaseAdmin || !BUCKET)
     throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
 
-  const size = file.size || 0;
-  const type = (file.type || "").toLowerCase();
-  const allowed = ["image/jpeg", "image/png", "image/webp"];
-  if (size > 5 * 1024 * 1024) throw new Error("PAYLOAD_TOO_LARGE");
-  if (type && !allowed.includes(type)) throw new Error("UNSUPPORTED_TYPE");
+  const inputSize = file.size || 0;
+  const inputType = (file.type || "").toLowerCase();
 
-  const ext =
-    (file.name && file.name.includes(".")
-      ? file.name.split(".").pop()
-      : "jpg") || "jpg";
-  const objectPath = `avatars/${Date.now()}-${Math.random()
-    .toString(36)
-    .slice(2)}.${ext}`;
+  if (inputSize > MAX_FILE_SIZE) throw new Error("PAYLOAD_TOO_LARGE");
+  if (inputType && !ALLOWED_TYPES.has(inputType))
+    throw new Error("UNSUPPORTED_TYPE");
 
-  const bytes = new Uint8Array(await file.arrayBuffer());
+  // Baca buffer dari File
+  const arrayBuf = await file.arrayBuffer();
+  const inputBuffer = Buffer.from(arrayBuf);
+
+  // Proses crop square 1:1 (center) + rotate EXIF + convert WebP
+  const outBuffer = await sharp(inputBuffer)
+    .rotate()
+    .resize(Number(size) || 600, Number(size) || 600, {
+      fit: "cover",
+      position: "centre",
+    })
+    .webp({ quality: Number(quality) || 90 })
+    .toBuffer();
+
+  const ts = Date.now();
+  const rnd = Math.random().toString(36).slice(2);
+  const objectPath = `avatars/${userId || "unknown"}/avatar_${ts}_${rnd}.webp`;
+
   const { error } = await supabaseAdmin.storage
     .from(BUCKET)
-    .upload(objectPath, bytes, {
+    .upload(objectPath, outBuffer, {
       cacheControl: "3600",
-      contentType: type || "application/octet-stream",
-      upsert: false,
+      contentType: "image/webp",
+      upsert: true,
     });
+
   if (error) throw new Error(error.message);
   return objectPath; // simpan PATH di DB
 }
@@ -135,9 +169,19 @@ export async function PATCH(req) {
     const me = await currentAdmin(req);
     const { body, file } = await readBodyAndFile(req);
 
+    // Opsi ukuran square dari body (baik multipart form fields atau JSON)
+    const sizeParam = Number(body?.size);
+    const AVATAR_SIZE =
+      Number.isFinite(sizeParam) && sizeParam >= 64 ? sizeParam : 600;
+
     let photoPath = null;
     if (file) {
-      photoPath = await uploadAvatar(file); // path di bucket
+      // 🚀 PROSES CROP 1:1 + UPLOAD
+      photoPath = await uploadAvatar1x1(file, {
+        userId: me.id,
+        size: AVATAR_SIZE,
+        quality: 90,
+      });
     } else if (body?.profile_photo) {
       // jika dikirim full public URL, konversi ke PATH
       const s = String(body.profile_photo).trim();
@@ -232,6 +276,7 @@ export async function PATCH(req) {
     resp.headers.set("Cache-Control", "no-store");
     return resp;
   } catch (e) {
+    // Prisma unique
     if (e?.code === "P2002") {
       return json(
         {
@@ -242,6 +287,24 @@ export async function PATCH(req) {
           },
         },
         { status: 400 }
+      );
+    }
+    // Validasi upload
+    if (e?.message === "PAYLOAD_TOO_LARGE") {
+      return json(
+        { error: { code: "PAYLOAD_TOO_LARGE", message: "Max file 5MB" } },
+        { status: 413 }
+      );
+    }
+    if (e?.message === "UNSUPPORTED_TYPE") {
+      return json(
+        {
+          error: {
+            code: "UNSUPPORTED_TYPE",
+            message: "Gunakan JPEG/PNG/WebP/AVIF",
+          },
+        },
+        { status: 415 }
       );
     }
     if (e instanceof Response) return e;

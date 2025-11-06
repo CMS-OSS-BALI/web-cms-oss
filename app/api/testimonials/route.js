@@ -5,8 +5,10 @@ import prisma from "@/lib/prisma";
 import { randomUUID } from "crypto";
 import { translate } from "@/app/utils/geminiTranslator";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { cropFileTo16x9Webp } from "@/app/utils/cropper";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 /* ===================== Auth & Helpers ===================== */
 async function assertAdmin() {
@@ -30,6 +32,18 @@ function normalizeImageUrl(path) {
   if (isHttpUrl(path)) return path;
   return path.startsWith("/") ? path : `/${path}`;
 }
+function pickExtFromMime(type) {
+  if (!type) return null;
+  if (/image\/webp/i.test(type)) return "webp";
+  if (/image\/png/i.test(type)) return "png";
+  if (/image\/jpe?g/i.test(type)) return "jpg";
+  return null;
+}
+function extFromName(name) {
+  if (typeof name !== "string") return null;
+  const match = /\.([a-z0-9]+)$/i.exec(name);
+  return match ? match[1].toLowerCase() : null;
+}
 function getPublicUrl(path) {
   if (!path) return null;
   if (isHttpUrl(path)) return path;
@@ -46,11 +60,12 @@ function getPublicUrl(path) {
   }
 }
 
-async function uploadTestimonialImage(file) {
+async function uploadTestimonialImage16x9(file) {
   if (typeof File === "undefined" || !(file instanceof File))
     throw new Error("NO_FILE");
   if (!BUCKET) throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
 
+  // Validasi input file (sebelum di-convert)
   const MAX = 10 * 1024 * 1024;
   const allowed = ["image/jpeg", "image/png", "image/webp"];
   const size = file.size || 0;
@@ -58,23 +73,46 @@ async function uploadTestimonialImage(file) {
   if (size > MAX) throw new Error("PAYLOAD_TOO_LARGE");
   if (type && !allowed.includes(type)) throw new Error("UNSUPPORTED_TYPE");
 
-  const ext = (file.name?.split(".").pop() || "").toLowerCase();
-  const safe = `${Date.now()}-${Math.random().toString(36).slice(2)}${
-    ext ? "." + ext : ""
-  }`;
+  // ⚙️ Crop + resize ke 16:9 (1280x720) & convert ke WebP
+  const processed = await cropFileTo16x9Webp(file, {
+    width: 1280,
+    height: 720,
+    quality: 90,
+  });
+
+  let { buffer, contentType, ext } = processed || {};
+
+  if (!buffer) {
+    const original = await file.arrayBuffer();
+    buffer = Buffer.from(original);
+  } else if (buffer instanceof ArrayBuffer) {
+    buffer = Buffer.from(buffer);
+  } else if (ArrayBuffer.isView(buffer)) {
+    buffer = Buffer.from(buffer.buffer);
+  }
+  if (!Buffer.isBuffer(buffer)) {
+    buffer = Buffer.from(buffer);
+  }
+  if (!buffer?.length) throw new Error("EMPTY_FILE_BUFFER");
+
+  const fallbackType = file.type || "application/octet-stream";
+  contentType = (contentType || fallbackType || "").toString() || fallbackType;
+  ext = (ext && String(ext).trim()) || pickExtFromMime(contentType) || extFromName(file.name) || "bin";
+
+  const safe = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
   const objectPath = `testimonials/${new Date()
     .toISOString()
     .slice(0, 10)}/${safe}`;
-  const bytes = new Uint8Array(await file.arrayBuffer());
 
   const { error } = await supabaseAdmin.storage
     .from(BUCKET)
-    .upload(objectPath, bytes, {
-      contentType: type || "application/octet-stream",
+    .upload(objectPath, buffer, {
+      contentType,
       upsert: false,
+      cacheControl: "3600",
     });
   if (error) throw new Error(error.message);
-  return objectPath;
+  return objectPath; // simpan PATH
 }
 
 function getLocaleFromReq(req) {
@@ -235,9 +273,8 @@ export async function GET(req) {
     for (const tr of translations) {
       const key = tr.id_testimonials;
       const prev = pick.get(key);
-      if (!prev || (prev.locale !== locale && tr.locale === locale)) {
+      if (!prev || (prev.locale !== locale && tr.locale === locale))
         pick.set(key, tr);
-      }
     }
 
     if (minimalOnly) {
@@ -246,7 +283,6 @@ export async function GET(req) {
         const image_public_url = getPublicUrl(r.photo_url);
         return {
           id: r.id,
-          // aliases for compatibility
           ...(fields.has("image") ? { image: image_public_url } : {}),
           ...(fields.has("image_public_url") ? { image_public_url } : {}),
           ...(fields.has("name") ? { name: t?.name ?? null } : {}),
@@ -303,7 +339,6 @@ export async function GET(req) {
       return {
         id: r.id,
         photo_url: r.photo_url,
-        // keep old key + add new canonical key
         photo_public_url: image_public_url,
         image_public_url,
         star: r.star ?? null,
@@ -439,7 +474,8 @@ export async function POST(req) {
       let storedPhotoPath = trimOrNull(body.photo_url, 255);
       if (file && typeof File !== "undefined" && file instanceof File) {
         try {
-          storedPhotoPath = await uploadTestimonialImage(file);
+          // ⬇️ crop 16:9 sebelum upload
+          storedPhotoPath = await uploadTestimonialImage16x9(file);
         } catch (e) {
           if (e?.message === "PAYLOAD_TOO_LARGE")
             return NextResponse.json(
@@ -502,7 +538,6 @@ export async function POST(req) {
       results.push({
         id,
         photo_url: storedPhotoPath,
-        // keep old + add new canonical key
         photo_public_url: image_public_url,
         image_public_url,
         star: star ?? null,

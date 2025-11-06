@@ -58,7 +58,7 @@ const T = {
   del: "Hapus",
   save: "Simpan",
 
-  image: "Foto (1:1)",
+  image: "Foto (9:16)",
   nameId: "Nama",
   msgId: "Pesan",
   star: "Rating (1-5)",
@@ -104,6 +104,13 @@ const stripTags = (s) => (s ? String(s).replace(/<[^>]*>/g, "") : "");
 // Grid kolom (header & row HARUS sama persis)
 const GRID_COLS = "1.6fr 2.4fr 0.9fr 1fr 0.8fr 1.1fr 0.9fr";
 //  Nama | Pesan | Rating | Kategori | YouTube | Kampus | Aksi
+
+// helper cache-buster
+const bust = (url, ver) => {
+  if (!url) return "";
+  const v = ver ? new Date(ver).getTime?.() || ver : Date.now();
+  return url.includes("?") ? `${url}&v=${v}` : `${url}?v=${v}`;
+};
 
 export default function TestimonialsContent({ locale = "id" }) {
   const vm = useTestimonialsViewModel({ locale });
@@ -151,7 +158,7 @@ export default function TestimonialsContent({ locale = "id" }) {
     return () => clearTimeout(t);
   }, [catSearchQ, vm]);
 
-  // Upload helpers
+  // Upload helpers (preview saja; crop dilakukan saat submit di VM)
   const beforeImgCreate = (file) => {
     if (!isImg(file) || tooBig(file, 10)) return Upload.LIST_IGNORE;
     try {
@@ -185,6 +192,9 @@ export default function TestimonialsContent({ locale = "id" }) {
 
     if (!out?.ok)
       return err("Gagal membuat testimoni", out?.error || "Gagal menyimpan");
+
+    // refresh agar data + URL public sinkron
+    await vm.refresh?.();
     ok("Berhasil", "Testimoni berhasil dibuat");
     setCreateOpen(false);
     formCreate.resetFields();
@@ -242,6 +252,10 @@ export default function TestimonialsContent({ locale = "id" }) {
 
     if (!res?.ok)
       return err("Gagal memperbarui", res?.error || "Gagal menyimpan");
+
+    // refresh agar URL gambar baru terbaca & bust cache
+    await vm.refresh?.();
+
     ok("Berhasil", "Perubahan berhasil disimpan");
     setEditOpen(false);
     formEdit.resetFields();
@@ -251,10 +265,12 @@ export default function TestimonialsContent({ locale = "id" }) {
   const onDelete = async (id) => {
     const res = await vm.deleteTestimonial?.(id);
     if (!res?.ok) err("Gagal menghapus", res?.error || "Tidak bisa menghapus");
-    else ok("Berhasil", "Testimoni telah dihapus");
+    else {
+      await vm.refresh?.();
+      ok("Berhasil", "Testimoni telah dihapus");
+    }
   };
 
-  // compatibility utk VM rating/starFilter
   const ratingValue = vm.rating ?? vm.starFilter ?? "";
   const setRating = (v) => {
     if (vm.setRating) vm.setRating(v || "");
@@ -285,12 +301,13 @@ export default function TestimonialsContent({ locale = "id" }) {
 
       {/* Global styles */}
       <style jsx global>{`
-        .square-uploader.ant-upload.ant-upload-select-picture-card {
-          width: 160px !important;
-          height: 160px !important;
+        /* Uploader 9:16 */
+        .rect916-uploader.ant-upload.ant-upload-select-picture-card {
+          width: 180px !important;
+          height: 320px !important; /* 9:16 */
           padding: 0 !important;
         }
-        .square-uploader .ant-upload {
+        .rect916-uploader .ant-upload {
           width: 100% !important;
           height: 100% !important;
         }
@@ -389,7 +406,7 @@ export default function TestimonialsContent({ locale = "id" }) {
                 </Button>
               </div>
 
-              {/* BAR: Search + Kategori + Rating (sebaris) */}
+              {/* BAR: Search + Kategori + Rating */}
               <div className="filtersRow">
                 <Input
                   allowClear
@@ -465,8 +482,9 @@ export default function TestimonialsContent({ locale = "id" }) {
                       const name = r.name || "(tanpa nama)";
                       const yt = r.youtube_url;
                       const campus = r.kampus_negara_tujuan || "—";
-                      const image =
+                      const baseImg =
                         r.image_public_url || r.photo_public_url || r.photo_url;
+                      const image = bust(baseImg, r.updated_at || r._v);
 
                       return (
                         <div key={r.id} style={styles.row}>
@@ -524,9 +542,17 @@ export default function TestimonialsContent({ locale = "id" }) {
                           {/* YouTube */}
                           <div style={styles.colCenter}>
                             {yt ? (
-                              <Tag style={styles.ytTag}>
-                                <YoutubeOutlined /> &nbsp;Link
-                              </Tag>
+                              <a
+                                href={yt}
+                                target="_blank"
+                                rel="noreferrer"
+                                title={yt}
+                                style={{ textDecoration: "none" }}
+                              >
+                                <Tag style={styles.ytTag}>
+                                  <YoutubeOutlined /> &nbsp;Link
+                                </Tag>
+                              </a>
                             ) : (
                               <Tag style={styles.ytTagMuted}>—</Tag>
                             )}
@@ -664,7 +690,7 @@ export default function TestimonialsContent({ locale = "id" }) {
                   listType="picture-card"
                   showUploadList={false}
                   beforeUpload={beforeImgCreate}
-                  className="square-uploader"
+                  className="rect916-uploader"
                 >
                   <div style={styles.coverBox}>
                     {imgPrevCreate ? (
@@ -766,7 +792,7 @@ export default function TestimonialsContent({ locale = "id" }) {
                     listType="picture-card"
                     showUploadList={false}
                     beforeUpload={beforeImgEdit}
-                    className="square-uploader"
+                    className="rect916-uploader"
                   >
                     <div style={styles.coverBox}>
                       {imgPrevEdit ? (
@@ -786,7 +812,6 @@ export default function TestimonialsContent({ locale = "id" }) {
               <Form.Item label={T.nameId} name="name_id">
                 <Input placeholder="Nama" />
               </Form.Item>
-
               <Form.Item label={T.msgId} name="message_id">
                 <Input.TextArea rows={4} placeholder="Pesan" />
               </Form.Item>
@@ -852,11 +877,12 @@ export default function TestimonialsContent({ locale = "id" }) {
                   detailData?.photo_public_url ||
                   detailData?.photo_url ? (
                     <img
-                      src={
+                      src={bust(
                         detailData.image_public_url ||
-                        detailData.photo_public_url ||
-                        detailData.photo_url
-                      }
+                          detailData.photo_public_url ||
+                          detailData.photo_url,
+                        detailData.updated_at
+                      )}
                       alt="cover"
                       style={styles.coverImgRead}
                     />

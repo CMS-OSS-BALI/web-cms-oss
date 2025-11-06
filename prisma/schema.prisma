@@ -164,6 +164,7 @@ model testimonial_categories {
   slug       String   @unique @db.VarChar(100)
   created_at DateTime @default(now()) @db.DateTime(6)
   updated_at DateTime @updatedAt @db.DateTime(6)
+  translate  testimonial_categories_translate[]
 
   @@map("testimonial_categories")
 }
@@ -173,6 +174,7 @@ model testimonial_categories_translate {
   category_id String @db.VarChar(36)
   locale      String @db.Char(5)
   name        String
+  category    testimonial_categories @relation(fields: [category_id], references: [id], onDelete: Cascade)
 
   @@unique([category_id, locale], map: "uniq_testimonial_category_locale")
   @@index([locale], map: "idx_testimonial_category_locale")

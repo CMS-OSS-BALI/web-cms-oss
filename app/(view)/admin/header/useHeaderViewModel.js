@@ -70,21 +70,26 @@ export default function useHeaderViewModel() {
     swrDefaults
   );
 
-  // dengarkan update profil dari tab lain
+  // dengarkan update profil dari tab lain (BroadcastChannel + fallback storage)
   useEffect(() => {
     let ch;
+    const onStorage = (e) => {
+      if (e?.key === "profile.updated") mutate();
+    };
     try {
       ch = new BroadcastChannel("profile");
       ch.onmessage = (ev) => ev?.data === "updated" && mutate();
     } catch {}
-    return () => ch?.close?.();
+    window.addEventListener("storage", onStorage);
+    return () => {
+      ch?.close?.();
+      window.removeEventListener("storage", onStorage);
+    };
   }, [mutate]);
 
   // AUTO-LOGOUT bila JWT callback menandai forceReauth (password diganti)
   useEffect(() => {
-    if (session?.forceReauth) {
-      onLogout();
-    }
+    if (session?.forceReauth) onLogout();
   }, [session?.forceReauth, onLogout]);
 
   const image =

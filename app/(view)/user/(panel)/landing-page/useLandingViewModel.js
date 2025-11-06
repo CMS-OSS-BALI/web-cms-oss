@@ -6,7 +6,7 @@ import { fetcher } from "../../../../utils/fetcher";
 const DEFAULT_SORT = "created_at:desc";
 const DEFAULT_LOCALE = "id";
 const DEFAULT_FALLBACK = "id";
-const DEFAULT_AVATAR = "/images/avatars/default.jpg";
+const DEFAULT_AVATAR = "/images/avatars/default.svg";
 
 /* ---------- utils ---------- */
 function consultantsKey({
@@ -307,47 +307,123 @@ export function useLandingViewModel(arg) {
     ],
   };
 
+  /* ===== Country Partners (static list, with covers & flags) ===== */
   const countryPartners = {
-    title: t("MITRA NEGARA KAMI", "OUR COUNTRY PARTNER"),
+    title: t("Negara Partner", "Partner Countries"),
     items: [
-      {
-        id: "us",
-        name: t("Amerika Serikat", "United States"),
-        flag: "/flags/us.svg",
-      },
-      { id: "au", name: t("Australia", "Australia"), flag: "/flags/au.svg" },
-      { id: "ca", name: t("Kanada", "Canada"), flag: "/flags/ca.svg" },
-      { id: "de", name: t("Jerman", "Germany"), flag: "/flags/de.svg" },
-      { id: "jp", name: t("Jepang", "Japan"), flag: "/flags/jp.svg" },
-      {
-        id: "kr",
-        name: t("Korea Selatan", "South Korea"),
-        flag: "/flags/kr.svg",
-      },
-      { id: "nl", name: t("Belanda", "Netherlands"), flag: "/flags/nl.svg" },
-      { id: "ch", name: t("Swiss", "Switzerland"), flag: "/flags/ch.svg" },
-      { id: "cn", name: t("Tiongkok", "China"), flag: "/flags/cn.svg" },
+      // baris 1 & 2 akan dibagi otomatis di Content
       {
         id: "nz",
-        name: t("Selandia Baru", "New Zealand"),
+        name: t("New Zealand", "New Zealand"),
         flag: "/flags/nz.svg",
+        cover: "/countries/nz.svg",
       },
-      { id: "gb", name: t("Inggris", "United Kingdom"), flag: "/flags/gb.svg" },
-      { id: "dk", name: t("Denmark", "Denmark"), flag: "/flags/dk.svg" },
-      { id: "pl", name: t("Polandia", "Poland"), flag: "/flags/pl.svg" },
-      { id: "ie", name: t("Irlandia", "Ireland"), flag: "/flags/ie.svg" },
-      { id: "tw", name: t("Taiwan", "Taiwan"), flag: "/flags/tw.svg" },
-      { id: "sg", name: t("Singapura", "Singapore"), flag: "/flags/sg.svg" },
-      { id: "my", name: t("Malaysia", "Malaysia"), flag: "/flags/my.svg" },
-      { id: "tr", name: t("Turki", "Turkey"), flag: "/flags/tr.svg" },
       {
-        id: "cz",
-        name: t("Republik Ceko", "Czech Republic"),
-        flag: "/flags/cz.svg",
+        id: "au",
+        name: t("Australia", "Australia"),
+        flag: "/flags/au.svg",
+        cover: "/countries/au.svg",
       },
-      { id: "it", name: t("Italia", "Italy"), flag: "/flags/it.svg" },
+      {
+        id: "ca",
+        name: t("Kanada", "Canada"),
+        flag: "/flags/ca.svg",
+        cover: "/countries/ca.svg",
+      },
+      {
+        id: "nl",
+        name: t("Belanda", "Netherlands"),
+        flag: "/flags/nl.svg",
+        cover: "/countries/nl.svg",
+      },
+      {
+        id: "us",
+        name: t("Amerika", "United States"),
+        flag: "/flags/us.svg",
+        cover: "/countries/us.svg",
+      },
+      {
+        id: "jp",
+        name: t("Jepang", "Japan"),
+        flag: "/flags/jp.svg",
+        cover: "/countries/jp.svg",
+      },
+
+      {
+        id: "tw",
+        name: t("Taiwan", "Taiwan"),
+        flag: "/flags/tw.svg",
+        cover: "/countries/tw.svg",
+      },
+      {
+        id: "fr",
+        name: t("Prancis", "France"),
+        flag: "/flags/fr.svg",
+        cover: "/countries/fr.svg",
+      },
+      {
+        id: "de",
+        name: t("Jerman", "Germany"),
+        flag: "/flags/de.svg",
+        cover: "/countries/de.svg",
+      },
+      {
+        id: "gb",
+        name: t("Inggris", "United Kingdom"),
+        flag: "/flags/gb.svg",
+        cover: "/countries/gb.svg",
+      },
+      {
+        id: "pl",
+        name: t("Polandia", "Poland"),
+        flag: "/flags/pl.svg",
+        cover: "/countries/pl.svg",
+      },
+      {
+        id: "it",
+        name: t("Italia", "Italy"),
+        flag: "/flags/it.svg",
+        cover: "/countries/it.svg",
+      },
+      {
+        id: "kr",
+        name: t("Korea", "Korea"),
+        flag: "/flags/kr.svg",
+        cover: "/countries/kr.svg",
+      },
+      {
+        id: "ch",
+        name: t("Swiss", "Switzerland"),
+        flag: "/flags/ch.svg",
+        cover: "/countries/ch.svg",
+      },
+      {
+        id: "cn",
+        name: t("China", "China"),
+        flag: "/flags/cn.svg",
+        cover: "/countries/cn.svg",
+      },
+      {
+        id: "sg",
+        name: t("Singapura", "Singapore"),
+        flag: "/flags/sg.svg",
+        cover: "/countries/sg.svg",
+      },
+      {
+        id: "my",
+        name: t("Malaysia", "Malaysia"),
+        flag: "/flags/my.svg",
+        cover: "/countries/my.svg",
+      },
+      {
+        id: "it",
+        name: t("Italia", "Italy"),
+        flag: "/flags/it.svg",
+        cover: "/countries/it.svg",
+      },
     ],
   };
+  // Catatan: pastikan file cover tersedia. Jika belum ada, UI fallback ke /images/country-fallback.svg.
 
   return {
     hero,

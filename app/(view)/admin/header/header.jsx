@@ -32,7 +32,6 @@ export default function Header() {
           title="Notifikasi"
           placement="bottomRight"
           arrow
-          /** pastikan tooltip nempel ke body supaya gak kena clipping parent */
           getPopupContainer={() => document.body}
         >
           <Badge dot offset={[2, -2]}>
@@ -47,7 +46,7 @@ export default function Header() {
           placement="bottomRight"
           menu={{ items: menuItems, onClick: onMenuClick }}
           arrow
-          overlayStyle={{ marginTop: 10 }} // beri jarak ekstra dari tepi atas viewport
+          overlayStyle={{ marginTop: 10 }}
           getPopupContainer={() => document.body}
         >
           <button className="ah-avatar-btn" aria-label="User menu">
