@@ -20,10 +20,7 @@ export default function useOverseasViewModel({ locale = "id" } = {}) {
   const { data, error, isLoading } = useSWR(
     `/api/overseas?locale=${lk}`,
     fetcher,
-    {
-      revalidateOnFocus: false,
-      shouldRetryOnError: false,
-    }
+    { revalidateOnFocus: false, shouldRetryOnError: false }
   );
 
   const fallback = useMemo(() => {
@@ -62,10 +59,24 @@ export default function useOverseasViewModel({ locale = "id" } = {}) {
         ],
       },
 
-      cta: {
-        title: "Mulai Perjalananmu Sekarang",
-        subtitle: "Temukan Program Luar Negeri dan Raih Kampus Impianmu.",
-        button: { label: "COBA SEKARANG", href: "/user/leads" },
+      /* ===== NEW: Levels Section (replace CTA) ===== */
+      levelsSection: {
+        title: "Level Kampus",
+        image: "/level-kampus.svg", // ganti ke aset ilustrasi sesuai repo kamu
+        items: [
+          {
+            title: "Level 1 (Universitas)",
+            text: "Puncak Riset dan Teori. Institusi bagi pemikir strategis, memberikan fondasi akademik terluas untuk memimpin berbagai karir global.",
+          },
+          {
+            title: "Level 2",
+            text: "Pendidikan Berbasis Keahlian Vokasi. Fokus pada skill terapan yang relevan, menjamin kompetensi teknis dan transisi karir cepat ke dunia kerja.",
+          },
+          {
+            title: "Level 3",
+            text: "Akses Studi Internasional yang Efisien, menyediakan kualifikasi dasar dengan biaya terjangkau, dan pondasi ideal menuju jenjang akademik global.",
+          },
+        ],
       },
     };
 
@@ -81,7 +92,7 @@ export default function useOverseasViewModel({ locale = "id" } = {}) {
 
       studySection: {
         title: "STUDY ABROAD",
-        text: "Studying abroad is the first step toward your global future. Gain experience studying at an international university, master a language, discover new cultures, and open the door to unlimited career opportunities.",
+        text: "Studying abroad is the first step toward your global future. Gain experience at international universities, master languages, discover new cultures, and open the door to unlimited career opportunities.",
         image: "/ngopi.svg",
         pills: [
           { id: "p1", label: "High-quality education", icon: "🎓" },
@@ -93,7 +104,7 @@ export default function useOverseasViewModel({ locale = "id" } = {}) {
 
       internSection: {
         title: "OVERSEAS INTERNSHIP",
-        text: "Start an international work experience that will transform your career! Overseas internships provide opportunities to learn directly from global companies, expand your network, and improve your professional skills. Don't miss the chance to compete at a global level.",
+        text: "Start an international work experience that will transform your career! Overseas internships provide opportunities to learn directly in global companies, expand networks, and elevate professional skills.",
         mainImage: "/laptop.svg",
         subImage: "/laptop2.svg",
         benefits: [
@@ -104,11 +115,23 @@ export default function useOverseasViewModel({ locale = "id" } = {}) {
         ],
       },
 
-      cta: {
-        title: "Start Your Journey Now",
-        subtitle:
-          "Discover Study Abroad Programs and Achieve Your Dream Campus.",
-        button: { label: "GET STARTED", href: "/user/leads" },
+      levelsSection: {
+        title: "Campus Levels",
+        image: "/level-kampus.svg",
+        items: [
+          {
+            title: "Level 1 (University)",
+            text: "Peak of research and theory. Designed for strategic thinkers; provides the broadest academic foundation to lead diverse global careers.",
+          },
+          {
+            title: "Level 2",
+            text: "Vocational, skills-based education. Focused on relevant applied skills, ensuring technical competence and a fast transition into the workforce.",
+          },
+          {
+            title: "Level 3",
+            text: "Efficient international study access providing affordable foundational qualifications and an ideal pathway to higher academic levels.",
+          },
+        ],
       },
     };
 

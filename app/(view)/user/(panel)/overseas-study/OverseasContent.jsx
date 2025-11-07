@@ -200,8 +200,6 @@ const styles = {
       overflowWrap: "anywhere",
       wordBreak: "break-word",
       hyphens: "auto",
-      /* NOTE: maxWidth dihapus agar selebar hero (container) */
-      // maxWidth: "68ch",
     },
     cardMobile: {
       background: "#fff",
@@ -297,60 +295,67 @@ const styles = {
     chipIcon: { fontSize: 22 },
   },
 
-  /* ---------- CTA ---------- */
-  cta: {
+  /* ---------- LEVELS (replace CTA) ---------- */
+  levels: {
     section: { padding: "20px 0 48px", marginTop: "clamp(70px, 10vw, 150px)" },
     wrap: {
-      position: "relative",
-      background: `linear-gradient(90deg, ${PALETTE.primarySoftA} 0%, ${PALETTE.primarySoftB} 50%, ${PALETTE.primarySoftA} 100%)`,
-      borderRadius: 14,
-      padding: "clamp(16px, 3vw, 24px) clamp(16px, 3.2vw, 28px)",
-      boxShadow: "0 10px 28px rgba(15,23,42,0.08)",
+      background: "#F3F7FF",
+      borderRadius: 18,
+      border: `1px solid ${PALETTE.border}`,
+      boxShadow: "0 10px 24px rgba(15,23,42,.04)",
       overflow: "hidden",
-    },
-    spine: {
-      position: "absolute",
-      left: 12,
-      top: 12,
-      bottom: 12,
-      width: 10,
-      background: PALETTE.primary,
-      borderRadius: 12,
-      boxShadow: "inset 0 0 0 2px rgba(255,255,255,.35)",
     },
     inner: {
       display: "grid",
-      gridTemplateColumns: "1fr auto",
+      gridTemplateColumns: "minmax(260px, 520px) 1fr",
       alignItems: "center",
-      gap: 16,
-      paddingLeft: 24,
+      gap: 24,
+      padding: "clamp(18px, 4vw, 30px)",
     },
-    title: {
-      margin: 0,
-      fontFamily: FONT_FAMILY,
-      fontWeight: 900,
-      fontSize: "clamp(18px, 2.4vw, 28px)",
-      letterSpacing: ".02em",
-      color: PALETTE.primary,
+    left: {
+      display: "grid",
+      gridTemplateRows: "auto 1fr",
+      alignItems: "center",
+      justifyItems: "center",
+      textAlign: "center",
+      padding: "clamp(8px, 2vw, 12px)",
     },
-    sub: {
-      margin: "6px 0 0",
-      fontFamily: FONT_FAMILY,
-      fontWeight: 700,
-      fontSize: "clamp(12px, 1.4vw, 16px)",
-      color: PALETTE.primaryDeep,
-    },
-    btn: {
-      background: "linear-gradient(180deg,#2f7aff 0%, #1e4fd9 100%)",
-      color: PALETTE.white,
+    heading: {
       fontWeight: 800,
-      padding: "14px 22px",
-      borderRadius: 999,
-      border: 0,
-      boxShadow: "0 12px 24px rgba(47,122,255,.28)",
-      textDecoration: "none",
-      display: "inline-block",
-      whiteSpace: "nowrap",
+      color: PALETTE.primary,
+      fontSize: "clamp(22px, 3.4vw, 40px)",
+      margin: "0 0 6px",
+    },
+    art: { width: "min(420px, 100%)", height: "auto", objectFit: "contain" },
+    right: { display: "grid", gap: 18 },
+    item: {
+      display: "grid",
+      gridTemplateColumns: "40px 1fr",
+      gap: 14,
+      alignItems: "start",
+    },
+    itemTitle: {
+      margin: 0,
+      fontWeight: 800,
+      color: PALETTE.primary,
+      fontSize: "clamp(14px, 2vw, 18px)",
+    },
+    itemText: {
+      margin: "6px 0 0",
+      color: PALETTE.ink,
+      lineHeight: 1.75,
+      fontSize: "clamp(12px, 1.6vw, 15px)",
+    },
+    badge: {
+      width: 36,
+      height: 36,
+      borderRadius: "50%",
+      background: PALETTE.primary,
+      display: "grid",
+      placeItems: "center",
+      boxShadow: "0 8px 18px rgba(11,86,201,.25)",
+      transform: "translateZ(0)",
+      flexShrink: 0,
     },
   },
 };
@@ -369,6 +374,16 @@ function Img({ src, alt, style, className }) {
           "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=1200&auto=format&fit=crop";
       }}
     />
+  );
+}
+
+function CheckBadge() {
+  return (
+    <span style={styles.levels.badge} aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="#fff">
+        <path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z" />
+      </svg>
+    </span>
   );
 }
 
@@ -482,7 +497,7 @@ export default function OverseasContent({ locale = "id" }) {
     [isNarrow]
   );
 
-  /* Title & Text (Studi & Magang) mobile tweaks */
+  /* Title & Text mobile tweaks */
   const studMagTitleStyle = useMemo(
     () => ({
       ...styles.study.title,
@@ -566,11 +581,11 @@ export default function OverseasContent({ locale = "id" }) {
     [isNarrow]
   );
 
-  // >>>> PATCH: bikin paragraf deskripsi selebar hero/container di desktop
+  // paragraf deskripsi selebar container di desktop
   const descBodyStyle = useMemo(
     () => ({
       ...styles.desc.body,
-      maxWidth: "unset", // override 68ch supaya penuh selebar container
+      maxWidth: "unset",
       ...(isNarrow
         ? { textAlign: "left", fontSize: 16, lineHeight: 1.85 }
         : {}),
@@ -586,32 +601,12 @@ export default function OverseasContent({ locale = "id" }) {
     [isNarrow]
   );
 
-  const ctaInnerStyle = useMemo(
+  /* ===== Levels responsive ===== */
+  const levelsInnerStyle = useMemo(
     () => ({
-      ...styles.cta.inner,
+      ...styles.levels.inner,
       ...(isNarrow
-        ? {
-            gridTemplateColumns: "1fr",
-            textAlign: "center",
-            paddingLeft: 12,
-            gap: 20,
-          }
-        : {}),
-    }),
-    [isNarrow]
-  );
-
-  const ctaButtonStyle = useMemo(
-    () => ({
-      ...styles.cta.btn,
-      ...(isNarrow
-        ? {
-            display: "block",
-            width: "min(100%, 420px)",
-            margin: "8px auto 0",
-            textAlign: "center",
-            whiteSpace: "normal",
-          }
+        ? { gridTemplateColumns: "1fr", textAlign: "center", gap: 24 }
         : {}),
     }),
     [isNarrow]
@@ -816,7 +811,7 @@ export default function OverseasContent({ locale = "id" }) {
                   ...(isNarrow ? { gridTemplateColumns: "1fr" } : {}),
                 }}
               >
-                {internBenefits.map((b, i) => (
+                {(content.internSection?.benefits || []).map((b, i) => (
                   <div
                     key={i}
                     style={{
@@ -869,46 +864,46 @@ export default function OverseasContent({ locale = "id" }) {
         </div>
       </section>
 
-      {/* ===== CTA ===== */}
-      <section style={styles.cta.section}>
+      {/* ===== LEVEL KAMPUS (Replacement of CTA) ===== */}
+      <section style={styles.levels.section}>
         <div style={sectionInnerStyle}>
-          <div className="reveal" data-anim="zoom" style={styles.cta.wrap}>
-            <div
-              style={{
-                ...styles.cta.spine,
-                ...(isNarrow ? { left: 8, top: 8, bottom: 8, width: 8 } : {}),
-              }}
-            />
-            <div style={ctaInnerStyle}>
-              <div>
+          <div className="reveal" data-anim="zoom" style={styles.levels.wrap}>
+            <div style={levelsInnerStyle}>
+              {/* LEFT (Title + Illustration) */}
+              <div style={styles.levels.left}>
                 <h3
                   className="reveal"
                   data-anim="down"
-                  data-rvd="80ms"
-                  style={styles.cta.title}
+                  data-rvd="60ms"
+                  style={styles.levels.heading}
                 >
-                  {content.cta?.title}
+                  {content.levelsSection?.title}
                 </h3>
-                <p
-                  className="reveal"
-                  data-anim="up"
-                  data-rvd="120ms"
-                  style={styles.cta.sub}
-                >
-                  {content.cta?.subtitle}
-                </p>
+                <Img
+                  src={content.levelsSection?.image}
+                  alt=""
+                  style={styles.levels.art}
+                />
               </div>
-              {content.cta?.button?.href && (
-                <a
-                  href={content.cta.button.href}
-                  className="cta-btn hero-cta--pulse reveal"
-                  data-anim="up"
-                  data-rvd="180ms"
-                  style={ctaButtonStyle}
-                >
-                  {content.cta.button.label}
-                </a>
-              )}
+
+              {/* RIGHT (Items) */}
+              <div style={styles.levels.right}>
+                {(content.levelsSection?.items || []).map((it, idx) => (
+                  <div
+                    key={idx}
+                    className="reveal"
+                    data-anim="up"
+                    data-rvd={`${80 + idx * 60}ms`}
+                    style={styles.levels.item}
+                  >
+                    <CheckBadge />
+                    <div>
+                      <h4 style={styles.levels.itemTitle}>{it.title}</h4>
+                      <p style={styles.levels.itemText}>{it.text}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -988,31 +983,9 @@ export default function OverseasContent({ locale = "id" }) {
             opacity: 1 !important;
             transform: none !important;
           }
-          .hero-cta--pulse {
-            animation: none !important;
-          }
           .pill-item {
             transform: none !important;
           }
-        }
-        @keyframes pulse-soft {
-          0%,
-          100% {
-            box-shadow: 0 10px 24px rgba(11, 86, 201, 0.25);
-            transform: translateY(0);
-          }
-          50% {
-            box-shadow: 0 14px 32px rgba(11, 86, 201, 0.32);
-            transform: translateY(-1px);
-          }
-        }
-        .hero-cta--pulse {
-          animation: pulse-soft 2.8s ease-in-out infinite;
-        }
-        .cta-btn:focus-visible {
-          outline: 3px solid #5aa8ff;
-          outline-offset: 2px;
-          border-radius: 999px;
         }
 
         @media (hover: hover) {
@@ -1025,17 +998,16 @@ export default function OverseasContent({ locale = "id" }) {
           }
         }
 
-        @media (max-width: 960px) {
-          .desc-content {
-            text-align: left !important;
+        /* Levels hover microinteraction */
+        @media (hover: hover) {
+          .reveal[style*="grid-template-columns: 40px 1fr"] {
+            transition: background 0.18s ease, box-shadow 0.18s ease;
           }
-          .intern-chips {
-            grid-template-columns: 1fr !important;
-          }
-        }
-        @media (max-width: 640px) {
-          .hero-cta--pulse {
-            animation-duration: 3.2s;
+          .reveal[style*="grid-template-columns: 40px 1fr"]:hover {
+            background: rgba(255, 255, 255, 0.5);
+            box-shadow: 0 6px 16px rgba(11, 86, 201, 0.06);
+            border-radius: 12px;
+            padding: 6px 8px;
           }
         }
       `}</style>

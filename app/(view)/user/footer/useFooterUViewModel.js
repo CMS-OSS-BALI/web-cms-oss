@@ -11,14 +11,12 @@ function normLang(v) {
 }
 
 export default function useFooterUViewModel(opts = {}) {
-  // Gunakan seed dari server — tidak mengubah bahasa setelah mount,
-  // sehingga tidak ada FOUC/mismatch.
   const lang = normLang(opts.initialLang);
 
-  // Helper translate
+  // translator sederhana
   const t = (id, en) => (lang === "en" ? en : id);
 
-  // Tambahkan ?lang=en hanya untuk EN; ID = tanpa query (canonical)
+  // tambahkan ?lang=en jika perlu (ID tetap canonical)
   const withLang = useMemo(() => {
     return (path) => {
       if (!path) return path;
@@ -33,56 +31,63 @@ export default function useFooterUViewModel(opts = {}) {
     };
   }, [lang]);
 
+  // Ganti logo menjadi maskot sesuai desain (fallback ke loading)
   const logo = useMemo(
-    () => ({ src: "/images/loading.png", alt: "OSS Bali" }),
+    () => ({
+      src:
+        "/images/mascot-oss.svg" /* ganti sesuai asetmu */ ||
+        "/images/loading.png",
+      alt: "OSS Bali",
+    }),
     []
   );
 
+  // Kontak — sesuai teks pada desain
   const contacts = useMemo(
     () => [
-      { icon: "location", text: "Hayam Wuruk 66 B, lt 2 Denpasar" },
+      {
+        icon: "location",
+        text: "Jalan Hayam Wuruk No 66B Lantai 2, Sumerta Kelod,\nDenpasar Timur, Kota Denpasar, Bali, Indonesia, 80239",
+      },
       { icon: "phone", text: "+62 877 0509 2020" },
-      { icon: "email", text: "onestepsolution@gmail.com" },
+      { icon: "email", text: "info@onestepsolutionbali.com" },
     ],
     []
   );
 
+  // Section & links disusun mengikuti layout di desain
   const navSections = useMemo(
     () => [
       {
-        title: t("Layanan", "Services"),
-        links: [
-          {
-            label: "Study Abroad",
-            href: withLang("/user/services#study-abroad"),
-          },
-          {
-            label: "Work Abroad",
-            href: withLang("/user/services#work-abroad"),
-          },
-          { label: "Language Course", href: withLang("/user/english-course") },
-          { label: "Visa Consultant", href: withLang("/user/visa-apply") },
-        ],
-      },
-      {
-        title: t("Informasi Visa", "Visa Information"),
+        title: t("Kampus", "Campus"),
         links: [
           { label: "Student Visa", href: withLang("/user/visa#student") },
           { label: "Visitor/Tourist", href: withLang("/user/visa#visitor") },
-          { label: "Visa Extension", href: withLang("/user/visa#extension") },
+          { label: "Visa Extention", href: withLang("/user/visa#extension") },
           { label: "Scholarship", href: withLang("/user/visa#scholarship") },
+        ],
+      },
+      {
+        title: t("Layanan", "Services"),
+        links: [
+          { label: "Overseas Study", href: withLang("/user/overseas-study") },
+          { label: "Visa Apply", href: withLang("/user/visa-apply") },
+          { label: "English Course", href: withLang("/user/english-course") },
+          {
+            label: t("Akomodasi", "Accommodation"),
+            href: withLang("/user/accommodation"),
+          },
         ],
       },
       {
         title: t("Dukungan", "Support"),
         links: [
           {
-            label: t("Karier Bersama Kami", "Career With US"),
+            label: t("Career With US", "Career With US"),
             href: withLang("/user/career?menu=career"),
           },
-          { label: "Accommodation", href: withLang("/user/accommodation") },
-          { label: "FAQ", href: withLang("/user/faq") },
-          { label: "Review", href: withLang("/user/reviews") },
+          { label: "Event", href: withLang("/user/event") },
+          { label: "Mitra", href: withLang("/user/partners") },
           { label: "Calculator", href: withLang("/user/calculator") },
         ],
       },
@@ -90,22 +95,42 @@ export default function useFooterUViewModel(opts = {}) {
     [t, withLang]
   );
 
+  // Ikon sosial sesuai deretan pada desain
+  // useFooterUViewModel.js
   const socials = useMemo(() => {
-    const whatsappNumber = "6287705092020";
+    const whatsappNumber = "6287705092020"; // ganti jika perlu
     return [
-      { icon: "instagram", href: "#", ariaLabel: "Instagram" },
+      {
+        icon: "instagram",
+        href: "https://www.instagram.com/oss_bali/",
+        ariaLabel: "Instagram",
+      },
+      { icon: "facebook", href: "#", ariaLabel: "Facebook" },
       {
         icon: "whatsapp",
         href: `https://wa.me/${whatsappNumber}`,
         ariaLabel: "WhatsApp",
       },
-      { icon: "youtube", href: "#", ariaLabel: "YouTube" },
+      {
+        icon: "tiktok",
+        href: "https://www.tiktok.com/@oss_bali",
+        ariaLabel: "TikTok",
+      },
+      {
+        icon: "linkedin",
+        href: "https://www.linkedin.com/in/one-step-solution-bali-7b4150238/",
+        ariaLabel: "LinkedIn",
+      },
+      {
+        icon: "youtube",
+        href: "https://www.youtube.com/@onestepsolutionbali1853",
+        ariaLabel: "YouTube",
+      },
     ];
   }, []);
 
   const copyright = useMemo(
-    () =>
-      "\u00A9 " + new Date().getFullYear() + " OSS Bali. All Rights Reserved.",
+    () => "© " + new Date().getFullYear() + " OSS Bali. All Rights Reserved.",
     []
   );
 
