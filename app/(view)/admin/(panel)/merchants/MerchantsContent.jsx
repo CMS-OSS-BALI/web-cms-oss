@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -210,7 +210,7 @@ const fmtDateId = (dLike) => {
     return "-";
   }
 };
-const clip = (s) => (s ? String(s) : "—");
+const clip = (s) => (s ? String(s) : "â€”");
 const isImg = (f) =>
   ["image/jpeg", "image/png", "image/webp", "image/svg+xml"].includes(
     f?.type || ""
@@ -516,7 +516,7 @@ export default function MerchantsContent({ vm }) {
           colorPrimary: blue,
           colorText: text,
           fontFamily:
-            '"Poppins", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
+            '"Public Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
           borderRadius: 12,
           fontSize: 13,
           controlHeight: 36,
@@ -595,7 +595,7 @@ export default function MerchantsContent({ vm }) {
               <div style={styles.totalBadgeWrap}>
                 <div style={styles.totalBadgeLabel}>{T.totalLabel}</div>
                 <div style={styles.totalBadgeValue}>
-                  {viewModel.total ?? rows.length ?? "—"}
+                  {viewModel.total ?? rows.length ?? "â€”"}
                 </div>
               </div>
             </div>
@@ -613,7 +613,7 @@ export default function MerchantsContent({ vm }) {
                 />
               </div>
               <div style={styles.statTitle}>Pending</div>
-              <div style={styles.statValue}>{pendingCount ?? "—"}</div>
+              <div style={styles.statValue}>{pendingCount ?? "â€”"}</div>
             </div>
             <div style={styles.statCard} aria-label="Jumlah Approved">
               <div style={styles.statIconBox}>
@@ -625,7 +625,7 @@ export default function MerchantsContent({ vm }) {
                 />
               </div>
               <div style={styles.statTitle}>Approved</div>
-              <div style={styles.statValue}>{approvedCount ?? "—"}</div>
+              <div style={styles.statValue}>{approvedCount ?? "â€”"}</div>
             </div>
             <div style={styles.statCard} aria-label="Jumlah Declined">
               <div style={styles.statIconBox}>
@@ -637,7 +637,7 @@ export default function MerchantsContent({ vm }) {
                 />
               </div>
               <div style={styles.statTitle}>Declined</div>
-              <div style={styles.statValue}>{declinedCount ?? "—"}</div>
+              <div style={styles.statValue}>{declinedCount ?? "â€”"}</div>
             </div>
           </div>
 
@@ -835,11 +835,11 @@ export default function MerchantsContent({ vm }) {
                     rows.map((r) => {
                       const image = toPublicUrl(r.image_url);
                       const title = r.merchant_name || "(tanpa nama)";
-                      // ⬇️ Fallback tanggal: reviewed_at -> created_ts -> created_at
+                      // â¬‡ï¸ Fallback tanggal: reviewed_at -> created_ts -> created_at
                       const date = fmtDateId(
                         r.reviewed_at ?? r.created_ts ?? r.created_at
                       );
-                      const cat = r.category?.name || "—";
+                      const cat = r.category?.name || "â€”";
                       return (
                         <div key={r.id} style={styles.row}>
                           {/* Mitra */}
@@ -852,7 +852,7 @@ export default function MerchantsContent({ vm }) {
                                   style={styles.thumbImg}
                                 />
                               ) : (
-                                <div style={styles.thumbFallback}>🏢</div>
+                                <div style={styles.thumbFallback}>ðŸ¢</div>
                               )}
                             </div>
                             <div style={styles.nameWrap}>
@@ -1483,7 +1483,7 @@ const styles = {
 
   filtersRow: {
     display: "grid",
-    gridTemplateColumns: "1fr 1fr", // ← simplified (per page & reset removed)
+    gridTemplateColumns: "1fr 1fr", // â† simplified (per page & reset removed)
     gap: 8,
     marginBottom: 10,
     alignItems: "center",
@@ -1675,3 +1675,4 @@ const styles = {
   modalFooter: { marginTop: 8, display: "grid", placeItems: "center" },
   saveBtn: { minWidth: 220, height: 40, borderRadius: 12 },
 };
+

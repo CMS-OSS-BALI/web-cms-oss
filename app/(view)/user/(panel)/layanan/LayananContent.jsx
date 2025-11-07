@@ -44,11 +44,18 @@ const STORAGE_BASE_URL = (() => {
     return `${supabaseUrl}/storage/v1/object/public/${bucket}`;
   return "";
 })();
+const STORAGE_PREFIX_HINT =
+  /^(testimonials|user|services|programs|consultant|consultants|events|blog|blogs|college|colleges)/i;
 
 const DEFAULT_TESTI_PLACEHOLDER =
   "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=1200&auto=format&fit=crop";
 
-const shouldUseStorage = (path = "") => /testimonials\//i.test(path);
+const looksLikeStorageObject = (path = "") => {
+  const cleaned = path.replace(/^\/+/, "");
+  if (!cleaned) return false;
+  if (STORAGE_PREFIX_HINT.test(cleaned)) return true;
+  return cleaned.includes("/");
+};
 const A = (v) => (Array.isArray(v) ? v : []);
 
 /* ========= image helpers ========= */
@@ -56,12 +63,15 @@ function normalizeImgSrc(input) {
   const raw = (input ?? "").toString().trim();
   if (!raw) return DEFAULT_TESTI_PLACEHOLDER;
   if (/^https?:\/\//i.test(raw)) return raw;
+  if (raw.startsWith("/")) return raw;
   const cleaned = raw.replace(/^\/+/, "");
-  if (shouldUseStorage(cleaned)) {
+  if (!cleaned) return DEFAULT_TESTI_PLACEHOLDER;
+
+  if (looksLikeStorageObject(cleaned)) {
     if (STORAGE_BASE_URL) return `${STORAGE_BASE_URL}/${cleaned}`;
     return DEFAULT_TESTI_PLACEHOLDER;
   }
-  if (raw.startsWith("/")) return raw;
+
   return `/${cleaned}`;
 }
 function isExternal(src) {

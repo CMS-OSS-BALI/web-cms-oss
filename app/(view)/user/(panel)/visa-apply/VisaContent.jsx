@@ -1,11 +1,11 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { Skeleton } from "antd";
 import useVisaViewModel from "./useVisaViewModel";
 import { sanitizeHtml } from "@/app/utils/dompurify";
 
-const FONT_FAMILY = '"Poppins", sans-serif';
+const FONT_FAMILY = '"Public Sans", sans-serif';
 const SECTION_MT = 75; // margin top global (tidak untuk hero)
 
 /* simple <img> helper */
@@ -509,3 +509,4 @@ export default function VisaContent({ locale = "id" }) {
     </div>
   );
 }
+

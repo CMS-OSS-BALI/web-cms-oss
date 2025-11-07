@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-const FONT_FAMILY = '"Poppins", sans-serif';
+const FONT_FAMILY = '"Public Sans", sans-serif';
 
 export default function useMitraDalamNegeriViewModel({ locale = "id" } = {}) {
   const t = (id, en) => (locale === "en" ? en : id);
@@ -36,3 +36,4 @@ export default function useMitraDalamNegeriViewModel({ locale = "id" } = {}) {
 
   return { font: FONT_FAMILY, hero, sections, merchants, organizations };
 }
+

@@ -1,4 +1,4 @@
-// app/(view)/admin/(panel)/events/EventsContent.jsx
+﻿// app/(view)/admin/(panel)/events/EventsContent.jsx
 "use client";
 
 import { useMemo, useState, lazy, Suspense } from "react";
@@ -12,7 +12,7 @@ import { normalizeEvent } from "./utils/eventUtils";
 import dayjs from "dayjs";
 import Loading from "@/app/components/loading/LoadingImage";
 
-/** Bagian berat → lazy */
+/** Bagian berat â†’ lazy */
 const EventsCharts = lazy(() => import("./components/EventsCharts"));
 const CreateEventModal = lazy(() => import("./modals/CreateEventModal"));
 const EditEventModal = lazy(() => import("./modals/EditEventModal"));
@@ -285,7 +285,7 @@ export default function EventsContent({ vm }) {
           colorPrimary: blue,
           colorText: text,
           fontFamily:
-            '"Poppins", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
+            '"Public Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
           borderRadius: 12,
           fontSize: 13,
           controlHeight: 36,
@@ -341,7 +341,7 @@ export default function EventsContent({ vm }) {
           {/* Header */}
           <EventsHeader
             title="Manajemen Event"
-            total={vm?.total ?? rows.length ?? "—"}
+            total={vm?.total ?? rows.length ?? "â€”"}
           />
 
           {/* Stats */}
@@ -451,3 +451,4 @@ export default function EventsContent({ vm }) {
     </ConfigProvider>
   );
 }
+

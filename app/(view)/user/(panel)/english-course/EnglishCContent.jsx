@@ -1,12 +1,13 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Row, Col, Card, Typography, Button, Skeleton, Alert } from "antd";
 import { Check, MessageCircle, Calendar } from "lucide-react";
 
 const { Title } = Typography;
 
-const FONT_FAMILY = '"Poppins", sans-serif';
+const FONT_FAMILY = '"Public Sans", sans-serif';
 
 /* ----------------- Base Styles ----------------- */
 const styles = {
@@ -34,6 +35,8 @@ const styles = {
       color: "#fff",
       boxShadow: "0 24px 54px rgba(3, 30, 88, 0.28)",
       fontFamily: FONT_FAMILY,
+      position: "relative",
+      overflow: "hidden",
     },
     left: {
       minWidth: 0,
@@ -107,7 +110,7 @@ const styles = {
       letterSpacing: "0.04em",
       color: "#0f172a",
       margin: 0,
-      textAlign: "justify", // ← rata kanan-kiri
+      textAlign: "justify",
     },
   },
 
@@ -127,6 +130,8 @@ const styles = {
       boxShadow: "0 10px 28px rgba(8,12,24,.06)",
       overflow: "hidden",
       zIndex: 1,
+      transition: "transform .18s ease, box-shadow .18s ease",
+      willChange: "transform",
     },
     body: { padding: 20 },
     pricePill: {
@@ -144,6 +149,7 @@ const styles = {
       letterSpacing: ".01em",
       zIndex: 5,
       pointerEvents: "none",
+      whiteSpace: "nowrap",
     },
     imageWrap: {
       width: "100%",
@@ -219,6 +225,7 @@ function Img({ src, alt, style }) {
         e.currentTarget.src =
           "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=1200&auto=format&fit=crop";
       }}
+      loading="lazy"
     />
   );
 }
@@ -237,8 +244,57 @@ function ChipIcon({ type }) {
   return <Check size={14} />;
 }
 
+const tt = (locale, id, en) => (locale === "en" ? en : id);
+
+/* ===== Reveal on scroll (simple, from your reference) ===== */
+function useRevealOnScroll(deps = []) {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const prefersReduce = window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    ).matches;
+
+    const showAll = (nodes) =>
+      nodes.forEach((el) => el.classList.add("is-visible"));
+
+    if (prefersReduce) {
+      showAll(Array.from(document.querySelectorAll(".reveal")));
+      return;
+    }
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            e.target.classList.add("is-visible");
+            io.unobserve(e.target);
+          }
+        });
+      },
+      { threshold: 0.16, rootMargin: "0px 0px -10% 0px" }
+    );
+
+    const observe = () =>
+      document
+        .querySelectorAll(".reveal:not(.is-visible)")
+        .forEach((el) => io.observe(el));
+
+    observe();
+
+    const mo = new MutationObserver(observe);
+    mo.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      io.disconnect();
+      mo.disconnect();
+    };
+  }, deps);
+}
+
 /* ----------------- Component ----------------- */
 export default function EnglishCContent({
+  locale = "id",
   hero,
   description,
   packages,
@@ -246,12 +302,23 @@ export default function EnglishCContent({
   error,
 }) {
   const {
-    title = "KURSUS BAHASA INGGRIS",
+    title = tt(locale, "KURSUS BAHASA INGGRIS", "ENGLISH COURSE"),
     subtitle = "",
     bullets = [],
     illustration,
   } = hero || {};
   const heroBullets = Array.isArray(bullets) ? bullets : [];
+
+  // Currency/number formatter
+  const priceFmt = useMemo(
+    () =>
+      new Intl.NumberFormat(locale === "en" ? "en-US" : "id-ID", {
+        style: "currency",
+        currency: "IDR",
+        maximumFractionDigits: 0,
+      }),
+    [locale]
+  );
 
   const [isNarrow, setIsNarrow] = useState(false);
   useEffect(() => {
@@ -267,6 +334,9 @@ export default function EnglishCContent({
         : mq.removeListener(update);
     };
   }, []);
+
+  // reveal anim when data comes in
+  useRevealOnScroll([packages?.length, loading]);
 
   const sectionInnerStyle = useMemo(
     () => ({
@@ -324,12 +394,24 @@ export default function EnglishCContent({
       {/* ===== HERO ===== */}
       <section style={{ padding: "0 0 24px" }}>
         <div style={sectionInnerStyle}>
-          <div style={heroWrapperStyle}>
-            <div style={styles.hero.left}>
+          <div style={heroWrapperStyle} className="reveal" data-anim="zoom">
+            <div style={styles.hero.left} className="reveal" data-anim="left">
               <h1 style={heroHeadingStyle}>{title}</h1>
-              {subtitle ? <p style={styles.hero.tagline}>{subtitle}</p> : null}
+              {subtitle ? (
+                <p
+                  className="reveal"
+                  data-anim="up"
+                  style={styles.hero.tagline}
+                >
+                  {subtitle}
+                </p>
+              ) : null}
               {heroBullets.length ? (
-                <div style={styles.hero.chips}>
+                <div
+                  style={styles.hero.chips}
+                  className="reveal"
+                  data-anim="up"
+                >
                   {heroBullets.map((b) => (
                     <span
                       key={b.id || b.label}
@@ -346,12 +428,16 @@ export default function EnglishCContent({
               ) : null}
             </div>
 
-            <div style={styles.hero.right}>
+            <div style={styles.hero.right} className="reveal" data-anim="right">
               {illustration ? (
                 <div style={heroIllustrationStyle}>
                   <Img
                     src={illustration}
-                    alt="English Course Illustration"
+                    alt={tt(
+                      locale,
+                      "Ilustrasi Kursus Bahasa Inggris",
+                      "English Course Illustration"
+                    )}
                     style={{
                       width: "100%",
                       height: "100%",
@@ -369,8 +455,12 @@ export default function EnglishCContent({
       <section style={sectionStyle}>
         <div style={sectionInnerStyle}>
           <div style={styles.desc.wrap}>
-            <h2 style={descTitleStyle}>Deskripsi Program</h2>
-            <p style={descTextStyle}>{description}</p>
+            <h2 className="reveal" data-anim="down" style={descTitleStyle}>
+              {tt(locale, "Deskripsi Program", "Program Description")}
+            </h2>
+            <p className="reveal" data-anim="up" style={descTextStyle}>
+              {description}
+            </p>
           </div>
         </div>
       </section>
@@ -380,6 +470,8 @@ export default function EnglishCContent({
         <div style={sectionInnerStyle}>
           <Title
             level={3}
+            className="reveal"
+            data-anim="down"
             style={{
               marginTop: "75px",
               marginBottom: "100px",
@@ -392,13 +484,17 @@ export default function EnglishCContent({
               letterSpacing: "0.01em",
             }}
           >
-            Course Packages
+            {tt(locale, "Paket Kursus", "Course Packages")}
           </Title>
 
           {error ? (
             <Alert
               type="error"
-              message="Gagal memuat paket"
+              message={tt(
+                locale,
+                "Gagal memuat paket",
+                "Failed to load packages"
+              )}
               description={error}
               showIcon
               style={{ marginBottom: 16 }}
@@ -408,10 +504,15 @@ export default function EnglishCContent({
           <Row gutter={[28, 28]}>
             {(loading ? Array.from({ length: 4 }) : packages).map((p, idx) => (
               <Col key={p?.id || idx} xs={24} md={12}>
-                <div style={styles.pack.wrap}>
+                <div
+                  style={styles.pack.wrap}
+                  className="reveal"
+                  data-anim={idx % 2 ? "right" : "left"}
+                  data-rvd={`${(idx % 6) * 60}ms`}
+                >
                   {!loading && (
                     <div style={styles.pack.pricePill}>
-                      Rp. {new Intl.NumberFormat("id-ID").format(p.price || 0)}
+                      {priceFmt.format(p?.price || 0)}
                     </div>
                   )}
 
@@ -419,6 +520,7 @@ export default function EnglishCContent({
                     bordered={false}
                     style={styles.pack.card}
                     bodyStyle={styles.pack.body}
+                    className="pkg-card"
                   >
                     {loading ? (
                       <Skeleton.Image
@@ -479,7 +581,9 @@ export default function EnglishCContent({
                       </div>
                     ) : (
                       <>
-                        <h4 style={styles.pack.benefitTitle}>BENEFIT</h4>
+                        <h4 style={styles.pack.benefitTitle}>
+                          {tt(locale, "MANFAAT", "BENEFITS")}
+                        </h4>
                         <ul style={styles.pack.benefitList}>
                           {p.benefits.map((b, i) => (
                             <li key={i} style={styles.pack.benefitItem}>
@@ -495,15 +599,16 @@ export default function EnglishCContent({
                       {loading ? (
                         <Skeleton.Button active />
                       ) : (
-                        <a href={p.cta.href} target="_blank" rel="noreferrer">
+                        <Link href="/user/leads" prefetch={false}>
                           <Button
                             type="primary"
                             size="large"
                             style={styles.pack.ctaBtn}
+                            className="cta-anim"
                           >
-                            {p.cta.label}
+                            {tt(locale, "Daftar Sekarang", "Enroll Now")}
                           </Button>
-                        </a>
+                        </Link>
                       )}
                     </div>
                   </Card>
@@ -513,6 +618,86 @@ export default function EnglishCContent({
           </Row>
         </div>
       </section>
+
+      {/* ==== GLOBAL STYLES: reveal + micro-interaction + responsive tweaks ==== */}
+      <style jsx global>{`
+        /* Reveal */
+        .reveal {
+          opacity: 0;
+          transform: var(--reveal-from, translate3d(0, 16px, 0));
+          transition: opacity 680ms ease,
+            transform 680ms cubic-bezier(0.21, 1, 0.21, 1);
+          transition-delay: var(--rvd, 0ms);
+          will-change: opacity, transform;
+        }
+        .reveal[data-anim="up"] {
+          --reveal-from: translate3d(0, 18px, 0);
+        }
+        .reveal[data-anim="down"] {
+          --reveal-from: translate3d(0, -18px, 0);
+        }
+        .reveal[data-anim="left"] {
+          --reveal-from: translate3d(-18px, 0, 0);
+        }
+        .reveal[data-anim="right"] {
+          --reveal-from: translate3d(18px, 0, 0);
+        }
+        .reveal[data-anim="zoom"] {
+          --reveal-from: scale(0.96);
+        }
+        .reveal.is-visible {
+          opacity: 1;
+          transform: none;
+        }
+
+        /* read custom delay if provided via data-rvd */
+        .reveal[data-rvd] {
+          transition-delay: attr(data-rvd);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .reveal {
+            transition: none !important;
+            opacity: 1 !important;
+            transform: none !important;
+          }
+        }
+
+        /* Card hover micro interaction */
+        @media (hover: hover) {
+          .pkg-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 16px 36px rgba(8, 12, 24, 0.12);
+          }
+        }
+
+        /* CTA focus style */
+        .cta-anim:focus-visible {
+          outline: 3px solid #5aa8ff !important;
+          outline-offset: 2px;
+        }
+
+        /* Responsiveness */
+        @media (max-width: 960px) {
+          /* Smaller hero pill & fonts */
+          .ant-typography h3 {
+            line-height: 1.2;
+          }
+        }
+        @media (max-width: 640px) {
+          /* Price pill shrink to avoid overlap */
+          .pkg-card + .ant-card-body,
+          .pkg-card .ant-card-body {
+            padding: 16px !important;
+          }
+        }
+
+        /* Avoid horizontal scroll */
+        html,
+        body {
+          overflow-x: clip;
+        }
+      `}</style>
     </div>
   );
 }

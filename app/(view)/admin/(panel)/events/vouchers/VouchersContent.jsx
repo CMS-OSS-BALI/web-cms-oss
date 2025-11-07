@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -102,8 +102,8 @@ const fmtRange = (from, to) => {
   const a = fmtDateId(from);
   const b = fmtDateId(to);
   if (a === "-" && b === "-") return "-";
-  if (a !== "-" && b !== "-") return `${a} — ${b}`;
-  return a !== "-" ? `${a} —` : `— ${b}`;
+  if (a !== "-" && b !== "-") return `${a} â€” ${b}`;
+  return a !== "-" ? `${a} â€”` : `â€” ${b}`;
 };
 
 /* ===== NEW: IDR currency helper ===== */
@@ -247,7 +247,7 @@ export default function VouchersContent({ vm }) {
     if (!payload.code) return err("Validasi", "Kode tidak boleh kosong");
     if (payload.type === "PERCENT") {
       if (payload.value < 1 || payload.value > 100)
-        return err("Validasi", "Nilai (percent) harus 1–100");
+        return err("Validasi", "Nilai (percent) harus 1â€“100");
       if (payload.max_discount != null && payload.max_discount < 0)
         return err("Validasi", "Maks diskon harus >= 0 atau kosong");
     } else {
@@ -335,7 +335,7 @@ export default function VouchersContent({ vm }) {
           colorPrimary: blue,
           colorText: text,
           fontFamily:
-            '"Poppins", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
+            '"Public Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
           borderRadius: 12,
           fontSize: 13,
           controlHeight: 36,
@@ -384,7 +384,7 @@ export default function VouchersContent({ vm }) {
               <div style={styles.totalBadgeWrap}>
                 <div style={styles.totalBadgeLabel}>{T.totalLabel}</div>
                 <div style={styles.totalBadgeValue}>
-                  {vm.total ?? rows.length ?? "—"}
+                  {vm.total ?? rows.length ?? "â€”"}
                 </div>
               </div>
             </div>
@@ -498,9 +498,9 @@ export default function VouchersContent({ vm }) {
                             <div style={styles.nameWrap}>
                               <div
                                 style={styles.nameText}
-                                title={r.code || "—"}
+                                title={r.code || "â€”"}
                               >
-                                {r.code || "—"}
+                                {r.code || "â€”"}
                               </div>
                               <div style={styles.subDate}>
                                 Dibuat: {fmtDateId(r.created_at)}
@@ -524,14 +524,14 @@ export default function VouchersContent({ vm }) {
                             {typeU === "PERCENT"
                               ? r.max_discount != null
                                 ? fmtIDR(r.max_discount)
-                                : "—"
-                              : "—"}
+                                : "â€”"
+                              : "â€”"}
                           </div>
 
                           <div style={styles.colCenter}>{statusTag}</div>
 
                           <div style={styles.colCenter}>
-                            {r.used_count ?? 0}/{r.max_uses ?? "∞"}
+                            {r.used_count ?? 0}/{r.max_uses ?? "âˆž"}
                           </div>
 
                           <div style={styles.colCenter}>
@@ -877,3 +877,4 @@ const styles = {
 
   label: { fontSize: 11.5, color: "#64748b" },
 };
+

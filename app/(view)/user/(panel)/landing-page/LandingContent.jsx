@@ -14,6 +14,16 @@ import { sanitizeHtml } from "@/app/utils/dompurify";
 const { Title, Paragraph } = Typography;
 
 const CONSULTANT_DETAIL_BASE = "/user/landing-page";
+const LEADS_PATH = "/user/leads";
+
+/** ===== Popular route map (klik kartu -> rute ini) ===== */
+const POPULAR_ROUTE_MAP = {
+  "eng-course": "/user/english-course",
+  "translate-doc": "/user/doc.translate",
+  "study-overseas": "/user/overseas-study",
+  "visa-apply": "/user/visa-apply",
+  accommodation: "/user/accomodation", // sesuai permintaan (1 m)
+};
 
 /* helpers */
 const A = (v) => (Array.isArray(v) ? v : []);
@@ -472,7 +482,6 @@ const consultants = {
   },
 };
 
-const MARQUEE_SPEED = 7000; // smooth marquee
 export default function LandingContent({ locale = "id" }) {
   const heroRef = useRef(null);
 
@@ -605,7 +614,7 @@ export default function LandingContent({ locale = "id" }) {
           {H?.ctaText ? (
             <div style={hero.ctaDock}>
               <Link
-                href={H.ctaHref || "#"}
+                href={LEADS_PATH}
                 className="hero-cta hero-cta--bob reveal"
                 data-anim="up"
                 style={{ ...hero.cta, ["--rvd"]: "220ms" }}
@@ -769,7 +778,7 @@ export default function LandingContent({ locale = "id" }) {
             {(H?.ctaText || H?.ctaHref) && (
               <div style={{ marginTop: 18 }}>
                 <Link
-                  href={H?.ctaHref || "#"}
+                  href={LEADS_PATH}
                   className="hero-cta hero-cta--pulse reveal"
                   data-anim="up"
                   style={{ ...hero.cta, ["--rvd"]: "260ms" }}
@@ -808,7 +817,7 @@ export default function LandingContent({ locale = "id" }) {
 
               {popularProgram?.ctaText ? (
                 <Link
-                  href={popularProgram?.ctaHref || "#"}
+                  href={LEADS_PATH}
                   className="popular-cta reveal"
                   data-anim="up"
                   style={{ ["--rvd"]: "200ms" }}
@@ -845,55 +854,63 @@ export default function LandingContent({ locale = "id" }) {
                   modules={[Navigation]}
                   loop
                   centeredSlides
-                  centeredSlidesBounds
-                  slidesPerView="auto"
-                  spaceBetween={12}
-                  initialSlide={1}
+                  slidesPerView={1}
+                  spaceBetween={0}
+                  initialSlide={0}
                   navigation={{
                     prevEl: ".popular-prev",
                     nextEl: ".popular-next",
                   }}
                 >
-                  {popularItems.map((p, idx) => (
-                    <SwiperSlide
-                      key={p.id ?? `${p.label}-${idx}`}
-                      style={{ width: "var(--popular-card-w)" }}
-                      className="popular-slide"
-                    >
-                      <div
-                        className="popular-card reveal"
-                        data-anim="zoom"
-                        style={{ ["--rvd"]: `${(idx % 6) * 60}ms` }}
+                  {popularItems.map((p, idx) => {
+                    const href = POPULAR_ROUTE_MAP[p.id] || LEADS_PATH;
+                    return (
+                      <SwiperSlide
+                        key={p.id ?? `${p.label}-${idx}`}
+                        className="popular-slide"
                       >
-                        <div className="popular-imgWrap">
-                          <Image
-                            src={resolveImage16x9(
-                              p.image,
-                              "/images/fallback.jpg"
-                            )}
-                            alt={p.label || "Popular"}
-                            preview={false}
-                            fallback="/images/fallback.jpg"
-                            style={{
-                              width: "100%",
-                              height: "100%",
-                              background: "transparent",
-                            }}
-                            imgProps={{
-                              loading: "lazy",
-                              style: {
-                                width: "100%",
-                                height: "100%",
-                                objectFit: "cover",
-                                display: "block",
-                              },
-                            }}
-                          />
-                          <div className="popular-pill">{p.label}</div>
-                        </div>
-                      </div>
-                    </SwiperSlide>
-                  ))}
+                        <Link
+                          href={href}
+                          className="popular-link"
+                          aria-label={p.label || "Popular"}
+                          prefetch={false}
+                        >
+                          <div
+                            className="popular-card popular-card--fixed"
+                            data-anim="zoom"
+                            style={{ ["--rvd"]: `${(idx % 6) * 60}ms` }}
+                          >
+                            <div className="popular-imgWrap">
+                              <Image
+                                src={resolveImage16x9(
+                                  p.image,
+                                  "/images/fallback.jpg"
+                                )}
+                                alt={p.label || "Popular"}
+                                preview={false}
+                                fallback="/images/fallback.jpg"
+                                style={{
+                                  width: "100%",
+                                  height: "100%",
+                                  background: "transparent",
+                                }}
+                                imgProps={{
+                                  loading: "lazy",
+                                  style: {
+                                    width: "100%",
+                                    height: "100%",
+                                    objectFit: "cover",
+                                    display: "block",
+                                  },
+                                }}
+                              />
+                              <div className="popular-pill">{p.label}</div>
+                            </div>
+                          </div>
+                        </Link>
+                      </SwiperSlide>
+                    );
+                  })}
                 </Swiper>
               </div>
             </Col>
@@ -934,9 +951,19 @@ export default function LandingContent({ locale = "id" }) {
             loopAdditionalSlides={
               hasMultipleTesti ? Math.max(20, testiContent.length) : 0
             }
-            speed={MARQUEE_SPEED}
+            speed={7000}
             allowTouchMove={hasMultipleTesti}
-            autoplay={testiAutoplay}
+            autoplay={
+              hasMultipleTesti
+                ? {
+                    delay: 0,
+                    disableOnInteraction: false,
+                    pauseOnMouseEnter: false,
+                    stopOnLastSlide: false,
+                    waitForTransition: false,
+                  }
+                : false
+            }
             observer
             observeParents
             watchSlidesProgress
@@ -1141,9 +1168,21 @@ export default function LandingContent({ locale = "id" }) {
                 loopAdditionalSlides={
                   cpTopLoop ? Math.max(10, cpTop.length) : 0
                 }
-                speed={countrySpeed}
+                speed={Math.max(
+                  5000,
+                  Math.min(14000, Math.max(1, cpItems.length) * 900)
+                )}
                 allowTouchMove={cpTopLoop}
-                autoplay={cpTopAutoplay}
+                autoplay={
+                  cpTopLoop
+                    ? {
+                        delay: 0,
+                        disableOnInteraction: false,
+                        pauseOnMouseEnter: true,
+                        waitForTransition: false,
+                      }
+                    : false
+                }
                 observer
                 observeParents
                 watchSlidesProgress
@@ -1202,9 +1241,21 @@ export default function LandingContent({ locale = "id" }) {
                 loopAdditionalSlides={
                   cpBottomLoop ? Math.max(10, cpBottom.length) : 0
                 }
-                speed={countrySpeed}
+                speed={Math.max(
+                  5000,
+                  Math.min(14000, Math.max(1, cpItems.length) * 900)
+                )}
                 allowTouchMove={cpBottomLoop}
-                autoplay={cpBottomAutoplay}
+                autoplay={
+                  cpBottomLoop
+                    ? {
+                        delay: 0,
+                        disableOnInteraction: false,
+                        pauseOnMouseEnter: true,
+                        waitForTransition: false,
+                      }
+                    : false
+                }
                 observer
                 observeParents
                 watchSlidesProgress
@@ -1263,7 +1314,9 @@ export default function LandingContent({ locale = "id" }) {
         }
         .testiV2-swiper .swiper-slide,
         .landing-popular-swiper--hero .swiper-slide {
-          height: auto !important;
+          display: flex;
+          justify-content: center; /* center horizontal */
+          height: auto;
         }
         .testiV2-swiper .swiper-wrapper,
         .landing-popular-swiper--hero .swiper-wrapper {
@@ -1436,7 +1489,10 @@ export default function LandingContent({ locale = "id" }) {
         .landing-popular-swiper--hero .swiper-slide.swiper-slide-active {
           visibility: visible;
         }
-
+        .popular-card--fixed {
+          width: var(--popular-card-w);
+          margin-inline: auto;
+        }
         .popular-card {
           background: transparent;
           border-radius: 18px;
@@ -1446,6 +1502,12 @@ export default function LandingContent({ locale = "id" }) {
           will-change: transform;
           position: relative;
           isolation: isolate;
+          cursor: pointer; /* tanda bisa diklik */
+        }
+        .popular-link {
+          display: block; /* biar anchor seluas kartu */
+          text-decoration: none;
+          color: inherit;
         }
         .popular-card::after {
           content: "";

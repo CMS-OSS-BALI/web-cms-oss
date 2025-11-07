@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -209,7 +209,7 @@ export default function RepresentativesContent({ vm }) {
           colorPrimary: blue,
           colorText: text,
           fontFamily:
-            '"Poppins", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
+            '"Public Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
           borderRadius: 12,
           fontSize: 13,
           controlHeight: 36,
@@ -258,7 +258,7 @@ export default function RepresentativesContent({ vm }) {
               <div style={styles.totalBadgeWrap}>
                 <div style={styles.totalBadgeLabel}>{T.totalLabel}</div>
                 <div style={styles.totalBadgeValue}>
-                  {vm.total ?? rows.length ?? "—"}
+                  {vm.total ?? rows.length ?? "â€”"}
                 </div>
               </div>
             </div>
@@ -300,7 +300,7 @@ export default function RepresentativesContent({ vm }) {
                   placeholder={T.filterPh}
                 />
 
-                {/* ✅ Dropdown Nama Event */}
+                {/* âœ… Dropdown Nama Event */}
                 <Select
                   allowClear
                   showSearch
@@ -377,7 +377,7 @@ export default function RepresentativesContent({ vm }) {
                       const voucherTag = voucher ? (
                         <Tag color="green">{voucher}</Tag>
                       ) : (
-                        <Tag color="default">—</Tag>
+                        <Tag color="default">â€”</Tag>
                       );
 
                       const opLoadingCheckKey =
@@ -389,9 +389,9 @@ export default function RepresentativesContent({ vm }) {
                             <div style={styles.nameWrap}>
                               <div
                                 style={styles.nameText}
-                                title={r.rep_name || "—"}
+                                title={r.rep_name || "â€”"}
                               >
-                                {r.rep_name || "—"}
+                                {r.rep_name || "â€”"}
                               </div>
                               <div style={styles.subDate}>
                                 {fmtDateId(r.created_at)}
@@ -399,7 +399,7 @@ export default function RepresentativesContent({ vm }) {
                             </div>
                           </div>
 
-                          {/* ✅ sekarang pakai judul event */}
+                          {/* âœ… sekarang pakai judul event */}
                           <div style={styles.colCenter}>
                             {r.event_title || "-"}
                           </div>
@@ -547,13 +547,13 @@ export default function RepresentativesContent({ vm }) {
                   <div>
                     <div style={styles.label}>Nama Representative</div>
                     <div style={styles.value}>
-                      {detailData?.rep_name || "—"}
+                      {detailData?.rep_name || "â€”"}
                     </div>
                   </div>
                   <div>
                     <div style={styles.label}>Kampus</div>
                     <div style={styles.value}>
-                      {detailData?.campus_name || "—"}
+                      {detailData?.campus_name || "â€”"}
                     </div>
                   </div>
                 </div>
@@ -568,11 +568,11 @@ export default function RepresentativesContent({ vm }) {
                   <div>
                     <div style={styles.label}>Nama Event</div>
                     <div style={styles.value}>
-                      {/* ✅ title (fallback location) */}
+                      {/* âœ… title (fallback location) */}
                       {detailData?.event?.title ||
                         detailData?.event_title ||
                         detailData?.event?.location ||
-                        "—"}
+                        "â€”"}
                     </div>
                   </div>
                   <div>
@@ -581,7 +581,7 @@ export default function RepresentativesContent({ vm }) {
                       {detailData?.event?.category_name ||
                         detailData?.event_category ||
                         detailData?.event?.category ||
-                        "—"}
+                        "â€”"}
                     </div>
                   </div>
                 </div>
@@ -596,12 +596,12 @@ export default function RepresentativesContent({ vm }) {
                   <div>
                     <div style={styles.label}>WhatsApp</div>
                     <div style={styles.value}>
-                      {detailData?.whatsapp || "—"}
+                      {detailData?.whatsapp || "â€”"}
                     </div>
                   </div>
                   <div>
                     <div style={styles.label}>Email</div>
-                    <div style={styles.value}>{detailData?.email || "—"}</div>
+                    <div style={styles.value}>{detailData?.email || "â€”"}</div>
                   </div>
                 </div>
 
@@ -615,13 +615,13 @@ export default function RepresentativesContent({ vm }) {
                   <div>
                     <div style={styles.label}>Kode Voucher</div>
                     <div style={styles.value}>
-                      {detailData?.voucher_code || "—"}
+                      {detailData?.voucher_code || "â€”"}
                     </div>
                   </div>
                   <div>
                     <div style={styles.label}>Ticket ID (Order)</div>
                     <div style={styles.value}>
-                      {detailData?.order_id || "—"}
+                      {detailData?.order_id || "â€”"}
                     </div>
                   </div>
                 </div>
@@ -635,7 +635,7 @@ export default function RepresentativesContent({ vm }) {
                 >
                   <div>
                     <div style={styles.label}>Status</div>
-                    <div style={styles.value}>{detailData?.status || "—"}</div>
+                    <div style={styles.value}>{detailData?.status || "â€”"}</div>
                   </div>
                   <div>
                     <div style={styles.label}>Dibuat</div>
@@ -795,3 +795,4 @@ const styles = {
     boxShadow: "0 10px 36px rgba(11,86,201,0.08)",
   },
 };
+

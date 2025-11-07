@@ -1,11 +1,11 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { Skeleton } from "antd";
 import useAccommodationViewModel from "./useAccommodationViewModel";
 import { sanitizeHtml } from "@/app/utils/dompurify";
 
-const FONT_FAMILY = '"Poppins", sans-serif';
+const FONT_FAMILY = '"Public Sans", sans-serif';
 
 /* ===== utilities ===== */
 const isSvgSrc = (v) => typeof v === "string" && /\.svg(\?.*)?$/i.test(v);
@@ -523,7 +523,7 @@ export default function AccommodationContent({ locale = "id" }) {
             >
               {(content.services?.items || []).map((it) => (
                 <div key={it.id} style={styles.services.item}>
-                  <div style={styles.services.icon}>{it.icon || "•"}</div>
+                  <div style={styles.services.icon}>{it.icon || "â€¢"}</div>
                   <div>
                     <h4 style={styles.services.itemTitle}>{it.title}</h4>
                     <p style={styles.services.itemDesc}>{it.text}</p>
@@ -565,7 +565,7 @@ export default function AccommodationContent({ locale = "id" }) {
                     ...(isNarrow ? styles.why.iconNarrow : {}),
                   }}
                 >
-                  {w.icon || "•"}
+                  {w.icon || "â€¢"}
                 </div>
                 <div>
                   <h4 style={styles.why.title}>{w.title}</h4>
@@ -611,3 +611,4 @@ export default function AccommodationContent({ locale = "id" }) {
     </div>
   );
 }
+

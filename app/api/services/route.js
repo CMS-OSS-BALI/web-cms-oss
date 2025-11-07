@@ -1,3 +1,4 @@
+// app/api/services/route.js
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
@@ -22,8 +23,11 @@ async function assertAdmin() {
 const SERVICE_TYPE_VALUES = new Set(["B2B", "B2C"]);
 const MAX_NAME_LENGTH = 191;
 const MAX_TEXT_LENGTH = 10000;
-const BUCKET = process.env.SUPABASE_BUCKET;
 
+const BUCKET =
+  process.env.SUPABASE_BUCKET || process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "";
+
+/* --------- parsers / utils --------- */
 function parseBool(v) {
   if (v === undefined || v === null) return undefined;
   const s = String(v).toLowerCase();
@@ -94,13 +98,36 @@ function normalizeSlug(s) {
     .replace(/^-+|-+$/g, "");
 }
 
-/* ---- Supabase public URL helper (no network call) ---- */
+/* ---- Supabase URL helpers ---- */
 function publicUrlFromPath(path) {
   if (!path) return null;
-  if (/^https?:\/\//i.test(path)) return path; // already url
+  if (/^https?:\/\//i.test(path)) return path; // already URL
   try {
     if (!BUCKET || !supabaseAdmin?.storage) return null;
     const { data } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path);
+    return data?.publicUrl || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Prefer signed URL (works for private/public), fallback ke public */
+async function renderableUrl(path, { expiresIn = 60 * 60 * 24 * 7 } = {}) {
+  if (!path) return null;
+  if (/^https?:\/\//i.test(path)) return path;
+  if (!BUCKET || !supabaseAdmin?.storage) return null;
+
+  const from = supabaseAdmin.storage.from(BUCKET);
+
+  try {
+    const { data, error } = await from.createSignedUrl(path, expiresIn);
+    if (!error && data?.signedUrl) return data.signedUrl;
+  } catch {
+    // ignore
+  }
+
+  try {
+    const { data } = from.getPublicUrl(path);
     return data?.publicUrl || null;
   } catch {
     return null;
@@ -141,9 +168,8 @@ async function uploadServiceImage(file) {
   return objectPath;
 }
 
-/* ---- Category resolver (POST) — per-field semantics ---- */
+/* ---- Category resolver (POST) ---- */
 async function resolveCategoryId({ category_id, category_slug }) {
-  // If `category_id` is provided (even empty/null), handle it and return immediately.
   if (category_id !== undefined) {
     if (category_id === null || category_id === "") return null; // explicit clear
     if (typeof category_id === "string" && category_id.trim()) {
@@ -154,10 +180,9 @@ async function resolveCategoryId({ category_id, category_slug }) {
       if (!found) throw new Error("CATEGORY_NOT_FOUND");
       return found.id;
     }
-    return undefined; // unrecognized form
+    return undefined;
   }
 
-  // Else, if `category_slug` is provided, handle it.
   if (category_slug !== undefined) {
     if (category_slug === null || category_slug === "") return null; // explicit clear
     if (typeof category_slug === "string" && category_slug.trim()) {
@@ -172,11 +197,10 @@ async function resolveCategoryId({ category_id, category_slug }) {
     return undefined;
   }
 
-  // Neither provided
   return undefined;
 }
 
-/* ===================== GET (list/single) ===================== */
+/* ===================== GET (list/single via ?id=) ===================== */
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
@@ -210,14 +234,23 @@ export async function GET(req) {
 
       if (!item)
         return NextResponse.json({ message: "Not found" }, { status: 404 });
+
       const t = pickTrans(item.services_translate, locale, fallback);
+      const pub = publicUrlFromPath(item.image_url);
+      const signed = await renderableUrl(item.image_url);
+      const hasToken = typeof signed === "string" && signed.includes("token=");
+      const ver = item.updated_at
+        ? `?v=${new Date(item.updated_at).getTime()}`
+        : "";
+      const resolved = signed ? (hasToken ? signed : signed + ver) : null;
 
       return NextResponse.json({
         data: {
           id: item.id,
           admin_user_id: item.admin_user_id,
           image_url: item.image_url,
-          image_public_url: publicUrlFromPath(item.image_url),
+          image_public_url: pub,
+          image_resolved_url: resolved,
           service_type: item.service_type,
           category: item.category
             ? {
@@ -255,10 +288,12 @@ export async function GET(req) {
     const locale = getLocaleFromReq(req);
     const fallback = getFallbackFromReq(req);
     const fields = parseFields(req);
+
     const allowedMinimal = new Set([
       "image",
-      "image_public",
       "image_public_url",
+      "image_public", // backward compat
+      "image_resolved_url",
       "name",
       "description",
     ]);
@@ -270,7 +305,6 @@ export async function GET(req) {
       typeFilter = service_type.toUpperCase();
     }
 
-    // strict filter by related category.slug (normalized)
     const normalizedSlug =
       category_slug && !category_id ? normalizeSlug(category_slug) : null;
 
@@ -295,7 +329,6 @@ export async function GET(req) {
         : {}),
     };
 
-    // === total global & totalPages
     const total = await prisma.services.count({ where });
     const totalPages = Math.max(1, Math.ceil(total / perPage));
 
@@ -335,46 +368,72 @@ export async function GET(req) {
 
     const meta = { page, perPage, total, totalPages };
 
+    // Build payload with signed/public URLs
     if (minimalOnly) {
-      const data = rows.map((s) => {
-        const t = pickTrans(s.services_translate, locale, fallback);
-        const image_public_url = publicUrlFromPath(s.image_url);
-        return {
-          id: s.id,
-          ...(fields.has("image") ? { image: s.image_url } : {}),
-          ...(fields.has("image_public") || fields.has("image_public_url")
-            ? { image_public_url }
-            : {}),
-          ...(fields.has("name") ? { name: t?.name ?? null } : {}),
-          ...(fields.has("description")
-            ? { description: t?.description ?? null }
-            : {}),
-        };
-      });
+      const data = await Promise.all(
+        rows.map(async (s) => {
+          const t = pickTrans(s.services_translate, locale, fallback);
+          const pub = publicUrlFromPath(s.image_url);
+          const signed = await renderableUrl(s.image_url);
+          const hasToken =
+            typeof signed === "string" && signed.includes("token=");
+          const ver = s.updated_at
+            ? `?v=${new Date(s.updated_at).getTime()}`
+            : "";
+          const resolved = signed ? (hasToken ? signed : signed + ver) : null;
+
+          const obj = { id: s.id };
+          if (fields.has("image")) obj.image = s.image_url;
+          if (fields.has("image_public") || fields.has("image_public_url"))
+            obj.image_public_url = pub;
+          if (fields.has("image_resolved_url"))
+            obj.image_resolved_url = resolved;
+          if (fields.has("name")) obj.name = t?.name ?? null;
+          if (fields.has("description"))
+            obj.description = t?.description ?? null;
+          return obj;
+        })
+      );
       return NextResponse.json({ data, meta });
     }
 
-    const data = rows.map((s) => {
-      const t = pickTrans(s.services_translate, locale, fallback);
-      return {
-        id: s.id,
-        admin_user_id: s.admin_user_id,
-        image_url: s.image_url,
-        image_public_url: publicUrlFromPath(s.image_url),
-        service_type: s.service_type,
-        category: s.category
-          ? { id: s.category.id, slug: s.category.slug, name: s.category.name }
-          : null,
-        price: s.price,
-        phone: s.phone,
-        is_published: s.is_published,
-        created_at: s.created_at,
-        updated_at: s.updated_at,
-        locale_used: t?.locale || null,
-        name: t?.name || null,
-        description: t?.description || null,
-      };
-    });
+    const data = await Promise.all(
+      rows.map(async (s) => {
+        const t = pickTrans(s.services_translate, locale, fallback);
+        const pub = publicUrlFromPath(s.image_url);
+        const signed = await renderableUrl(s.image_url);
+        const hasToken =
+          typeof signed === "string" && signed.includes("token=");
+        const ver = s.updated_at
+          ? `?v=${new Date(s.updated_at).getTime()}`
+          : "";
+        const resolved = signed ? (hasToken ? signed : signed + ver) : null;
+
+        return {
+          id: s.id,
+          admin_user_id: s.admin_user_id,
+          image_url: s.image_url,
+          image_public_url: pub,
+          image_resolved_url: resolved, // for FE
+          service_type: s.service_type,
+          category: s.category
+            ? {
+                id: s.category.id,
+                slug: s.category.slug,
+                name: s.category.name,
+              }
+            : null,
+          price: s.price,
+          phone: s.phone,
+          is_published: s.is_published,
+          created_at: s.created_at,
+          updated_at: s.updated_at,
+          locale_used: t?.locale || null,
+          name: t?.name || null,
+          description: t?.description || null,
+        };
+      })
+    );
 
     return NextResponse.json({ data, meta });
   } catch (err) {
@@ -389,7 +448,7 @@ export async function GET(req) {
 /* ===================== POST (create + auto-translate) ===================== */
 export async function POST(req) {
   try {
-    const admin = await assertAdmin(); // <-- FIX: keep object (no await later)
+    const admin = await assertAdmin();
 
     const contentType = (req.headers.get("content-type") || "").toLowerCase();
     const isMultipart = contentType.startsWith("multipart/form-data");
@@ -569,7 +628,7 @@ export async function POST(req) {
       await prisma.services.create({
         data: {
           id,
-          admin_user_id: admin.id, // <-- FIX here
+          admin_user_id: admin.id,
           image_url,
           service_type,
           ...(category_id_resolved !== undefined
@@ -604,10 +663,12 @@ export async function POST(req) {
         });
       }
 
+      const resolved = await renderableUrl(image_url);
       results.push({
         id,
         image_url,
         image_public_url: publicUrlFromPath(image_url),
+        image_resolved_url: resolved,
         service_type,
         category_id: category_id_resolved ?? null,
         price,

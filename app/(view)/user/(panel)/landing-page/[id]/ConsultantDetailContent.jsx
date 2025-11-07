@@ -10,7 +10,7 @@ import { sanitizeHtml } from "@/app/utils/dompurify";
 
 const { Title } = Typography;
 
-const FONT_FAMILY = '"Poppins", sans-serif';
+const FONT_FAMILY = '"Public Sans", sans-serif';
 const FALLBACK_ABOUT_MESSAGE_ID =
   "Belum ada deskripsi konsultan yang tersedia saat ini.";
 const FALLBACK_ABOUT_MESSAGE_EN =

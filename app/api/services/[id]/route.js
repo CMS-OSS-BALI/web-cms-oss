@@ -1,3 +1,4 @@
+// app/api/services/[id]/route.js
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
@@ -19,7 +20,8 @@ async function assertAdmin() {
 }
 
 const SERVICE_TYPE_VALUES = new Set(["B2B", "B2C"]);
-const BUCKET = process.env.SUPABASE_BUCKET;
+const BUCKET =
+  process.env.SUPABASE_BUCKET || process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "";
 
 function badRequest(message) {
   return NextResponse.json({ message }, { status: 400 });
@@ -69,7 +71,7 @@ function normalizeSlug(s) {
     .replace(/^-+|-+$/g, "");
 }
 
-/* ---- Supabase public URL helper ---- */
+/* ---- Supabase URL helpers ---- */
 function publicUrlFromPath(path) {
   if (!path) return null;
   if (/^https?:\/\//i.test(path)) return path;
@@ -81,8 +83,29 @@ function publicUrlFromPath(path) {
     return null;
   }
 }
+async function renderableUrl(path, { expiresIn = 60 * 60 * 24 * 7 } = {}) {
+  if (!path) return null;
+  if (/^https?:\/\//i.test(path)) return path;
+  if (!BUCKET || !supabaseAdmin?.storage) return null;
 
-/* ---- Supabase upload helper ---- */
+  const from = supabaseAdmin.storage.from(BUCKET);
+
+  try {
+    const { data, error } = await from.createSignedUrl(path, expiresIn);
+    if (!error && data?.signedUrl) return data.signedUrl;
+  } catch {
+    // ignore
+  }
+
+  try {
+    const { data } = from.getPublicUrl(path);
+    return data?.publicUrl || null;
+  } catch {
+    return null;
+  }
+}
+
+/* ---- Upload helper ---- */
 async function uploadServiceImage(file) {
   if (typeof File === "undefined" || !(file instanceof File)) {
     throw new Error("NO_FILE");
@@ -117,7 +140,7 @@ async function uploadServiceImage(file) {
   return objectPath;
 }
 
-/* ---- Category resolver (PATCH) — per-field semantics ---- */
+/* ---- Category resolver (PATCH) ---- */
 async function resolveCategoryId({ category_id, category_slug }) {
   if (category_id !== undefined) {
     if (category_id === null || category_id === "") return null;
@@ -181,12 +204,21 @@ export async function GET(req, { params }) {
       return by(locale) || by(fallback) || null;
     })(item.services_translate);
 
+    const pub = publicUrlFromPath(item.image_url);
+    const signed = await renderableUrl(item.image_url);
+    const hasToken = typeof signed === "string" && signed.includes("token=");
+    const ver = item.updated_at
+      ? `?v=${new Date(item.updated_at).getTime()}`
+      : "";
+    const resolved = signed ? (hasToken ? signed : signed + ver) : null;
+
     return NextResponse.json({
       data: {
         id: item.id,
         admin_user_id: item.admin_user_id,
         image_url: item.image_url,
-        image_public_url: publicUrlFromPath(item.image_url),
+        image_public_url: pub,
+        image_resolved_url: resolved,
         service_type: item.service_type,
         category: item.category
           ? {
@@ -315,7 +347,7 @@ export async function PATCH(req, { params }) {
       }
     }
 
-    // category (per-field semantics)
+    // category
     if (body.category_id !== undefined || body.category_slug !== undefined) {
       let category_id;
       try {
@@ -332,7 +364,7 @@ export async function PATCH(req, { params }) {
         }
         throw e;
       }
-      if (category_id !== undefined) data.category_id = category_id; // null to clear, or id
+      if (category_id !== undefined) data.category_id = category_id;
     }
 
     // price
@@ -451,6 +483,7 @@ export async function PATCH(req, { params }) {
         price: true,
         phone: true,
         is_published: true,
+        updated_at: true,
       },
     });
     if (!latest) return notFound();
@@ -474,11 +507,20 @@ export async function PATCH(req, { params }) {
       }
     }
 
+    const pub = publicUrlFromPath(latest.image_url ?? null);
+    const signed = await renderableUrl(latest.image_url ?? null);
+    const hasToken = typeof signed === "string" && signed.includes("token=");
+    const ver = latest.updated_at
+      ? `?v=${new Date(latest.updated_at).getTime()}`
+      : "";
+    const resolved = signed ? (hasToken ? signed : signed + ver) : null;
+
     return NextResponse.json({
       data: {
         id,
         image_url: latest.image_url ?? null,
-        image_public_url: publicUrlFromPath(latest.image_url ?? null),
+        image_public_url: pub,
+        image_resolved_url: resolved,
         service_type: latest.service_type ?? null,
         category_id: latest.category_id ?? null,
         price: latest.price ?? null,
@@ -527,17 +569,16 @@ export async function DELETE(_req, { params }) {
       prisma.services.delete({ where: { id } }),
     ]);
 
+    // attempt to remove object (best-effort)
     try {
       const path = existing.image_url || "";
       if (
         path &&
         !/^https?:\/\//i.test(path) &&
         supabaseAdmin?.storage &&
-        process.env.SUPABASE_BUCKET
+        BUCKET
       ) {
-        await supabaseAdmin.storage
-          .from(process.env.SUPABASE_BUCKET)
-          .remove([path]);
+        await supabaseAdmin.storage.from(BUCKET).remove([path]);
       }
     } catch (err) {
       console.warn("Supabase remove image failed:", err?.message || err);

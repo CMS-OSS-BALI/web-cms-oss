@@ -7,7 +7,7 @@ import useCollegeDetailViewModel from "./useCollegeDetailViewModel";
 import { sanitizeHtml } from "@/app/utils/dompurify";
 
 /* ===== Base ===== */
-const FONT_FAMILY = '"Poppins", sans-serif';
+const FONT_FAMILY = '"Public Sans", sans-serif';
 const HEADER_OFFSET = "clamp(48px, 8vw, 84px)";
 const STICKY_TOP = "clamp(72px, 9vw, 108px)";
 const CLICK_OFFSET_PX = 96;

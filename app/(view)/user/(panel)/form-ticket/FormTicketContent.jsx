@@ -117,7 +117,7 @@ export default function FormTicketContent({ locale = "id" }) {
     w.document.write(`<!doctype html>
 <html><head><meta charset="utf-8"><title>Ticket ${code}</title>
 <style>
-  body{font-family:Inter,system-ui,Arial,sans-serif;padding:24px;color:#0f172a}
+  body{font-family:"Public Sans",system-ui,Arial,sans-serif;padding:24px;color:#0f172a}
   .card{max-width:640px;margin:0 auto;border:1px solid #e5e7eb;border-radius:16px;padding:24px}
   h1{margin:0 0 8px;font-size:20px;color:#0b56c9}
   .meta{font-size:13px;color:#475569;margin-bottom:16px}

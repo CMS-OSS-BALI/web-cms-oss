@@ -145,34 +145,29 @@ export function useLandingViewModel(arg) {
 
     items: [
       {
-        id: "destinations",
-        image: "/program-destinations.svg",
-        label: t("PULUHAN NEGARA TUJUAN", "DOZENS OF DESTINATION COUNTRIES"),
+        id: "study-overseas",
+        image: "/study-overseas.svg",
+        label: t("STUDI LUAR NEGERI", "STUDY OVERSEAS"),
       },
       {
-        id: "campus",
-        image: "/program-campus.svg",
-        label: t("RATUSAN MITRA KAMPUS", "HUNDREDS OF CAMPUS PARTNERS"),
+        id: "translate-doc",
+        image: "/translate-doc.svg",
+        label: t("TERJEMAHAN DOKUMEN", "TRANSLATE DOCUMENTS"),
       },
       {
-        id: "career",
-        image: "/program-career.svg",
-        label: t("KARIER LUAR NEGERI", "OVERSEAS CAREERS"),
+        id: "eng-course",
+        image: "/eng-course.svg",
+        label: t("KURSUS BAHASA INGGRIS", "ENGLISH COURSE"),
       },
       {
-        id: "destinations-2",
-        image: "/program-destinations.svg",
-        label: t("PULUHAN NEGARA TUJUAN", "DOZENS OF DESTINATION COUNTRIES"),
+        id: "visa-apply",
+        image: "/visa-landing.svg",
+        label: t("PENGAJUAN VISA", "VISA APPLICATION"), // atau "PENGURUSAN VISA"
       },
       {
-        id: "campus-2",
-        image: "/program-campus.svg",
-        label: t("RATUSAN MITRA KAMPUS", "HUNDREDS OF CAMPUS PARTNERS"),
-      },
-      {
-        id: "career-2",
-        image: "/program-career.svg",
-        label: t("KARIER LUAR NEGERI", "OVERSEAS CAREERS"),
+        id: "accommodation",
+        image: "/accom-landing.svg",
+        label: t("AKOMODASI", "ACCOMMODATION"), // atau "TEMPAT TINGGAL"
       },
     ],
   };

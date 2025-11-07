@@ -1,4 +1,4 @@
-// app/(view)/admin/blog/BlogContent.jsx
+﻿// app/(view)/admin/blog/BlogContent.jsx
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -347,7 +347,7 @@ export default function BlogContent({ initialLocale = "id" }) {
           colorPrimary: blue,
           colorText: text,
           fontFamily:
-            '"Poppins", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
+            '"Public Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
           borderRadius: 12,
           fontSize: 13,
           controlHeight: 36,
@@ -411,7 +411,7 @@ export default function BlogContent({ initialLocale = "id" }) {
               <div style={styles.totalBadgeWrap}>
                 <div style={styles.totalBadgeLabel}>{T.totalLabel}</div>
                 <div style={styles.totalBadgeValue}>
-                  {vm.total ?? rows.length ?? "—"}
+                  {vm.total ?? rows.length ?? "â€”"}
                 </div>
               </div>
             </div>
@@ -456,7 +456,7 @@ export default function BlogContent({ initialLocale = "id" }) {
                   suffixIcon={<FilterOutlined />}
                 />
 
-                {/* Kategori dari /api/blog-categories → filter by ID */}
+                {/* Kategori dari /api/blog-categories â†’ filter by ID */}
                 <Select
                   allowClear
                   placeholder="Kategori"
@@ -1001,3 +1001,4 @@ const styles = {
   modalFooter: { marginTop: 8, display: "grid", placeItems: "center" },
   saveBtn: { minWidth: 200, height: 40, borderRadius: 12 },
 };
+

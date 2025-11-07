@@ -10,7 +10,6 @@ const fetcher = (url) =>
   });
 
 export default function useOverseasViewModel({ locale = "id" } = {}) {
-  // normalisasi 'id' | 'en'
   const lk =
     String(locale || "id")
       .slice(0, 2)
@@ -34,7 +33,6 @@ export default function useOverseasViewModel({ locale = "id" } = {}) {
         subtitle:
           "Mulai perjalanan global Anda bersama OSS—dari pemilihan kampus & jurusan, pendampingan dokumen, hingga persiapan keberangkatan—semua dalam satu layanan terpadu.",
         illustration: "/overseas.svg",
-        // optional decorations (biar komponen tidak kosong jika diset):
       },
 
       description: `<p>Overseas Study adalah layanan pendampingan bagi mereka yang ingin melanjutkan studi dan mengembangkan karier di luar negeri. Kami membantu mulai dari pemilihan universitas, pengurusan dokumen, persiapan bahasa, hingga konsultasi karier internasional. Dengan dukungan mentor berpengalaman dan jaringan global, Overseas Study menjadi jembatan untuk meraih impian, memperluas wawasan, dan membangun masa depan yang lebih cerah di kancah internasional.</p>`,
@@ -56,6 +54,12 @@ export default function useOverseasViewModel({ locale = "id" } = {}) {
         text: "Mulai pengalaman kerja internasional yang akan mengubah karier Anda! Magang luar negeri memberi kesempatan belajar langsung di perusahaan global, memperluas jaringan, dan meningkatkan keterampilan profesional.",
         mainImage: "/laptop.svg",
         subImage: "/laptop2.svg",
+        benefits: [
+          { icon: "🌍", label: "Pengalaman internasional" },
+          { icon: "💸", label: "Gaji per jam" },
+          { icon: "📈", label: "Peluang kerja" },
+          { icon: "🤝", label: "Relasi" },
+        ],
       },
 
       cta: {
@@ -72,8 +76,6 @@ export default function useOverseasViewModel({ locale = "id" } = {}) {
         subtitle:
           "Begin your global journey with OSS—university & major matching, document assistance, and pre-departure preparation in one seamless service.",
         illustration: "/overseas.svg",
-        decorationTop: "/cap-top.svg",
-        decorationBottom: "/cap-bottom.svg",
       },
 
       description: `<p>Overseas Study is a guidance service for students and professionals aiming to study and develop careers abroad. We support you end-to-end—from shortlisting universities and handling documents to language preparation and international career counseling. With experienced mentors and a global network, we help you pursue your dream, broaden horizons, and build a brighter future on the international stage.</p>`,
@@ -95,6 +97,12 @@ export default function useOverseasViewModel({ locale = "id" } = {}) {
         text: "Kickstart an international work experience that elevates your career. Learn inside global companies, expand your network, and sharpen your professional skills.",
         mainImage: "/laptop.svg",
         subImage: "/laptop2.svg",
+        benefits: [
+          { icon: "🌍", label: "International experience" },
+          { icon: "💸", label: "Hourly pay" },
+          { icon: "📈", label: "Job opportunities" },
+          { icon: "🤝", label: "Connections" },
+        ],
       },
 
       cta: {

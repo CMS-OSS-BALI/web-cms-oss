@@ -14,10 +14,12 @@ import "antd/dist/reset.css";
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const SUPABASE_BUCKET = process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "";
 const buildSupabasePublicUrl = (objectPath = "") => {
-  const path = String(objectPath).replace(/^\/+/, "");
+  const raw = String(objectPath || "").trim();
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (raw.startsWith("/")) return raw;
+  const path = raw.replace(/^\/+/, "");
   if (!path) return "";
-  if (/^https?:\/\//i.test(path)) return path;
-  if (path.startsWith("/")) return path;
   if (!SUPABASE_URL || !SUPABASE_BUCKET) return `/${path}`;
   return `${SUPABASE_URL.replace(
     /\/+$/,

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useMemo, useState } from "react";
 import Image from "next/image";
@@ -9,7 +9,7 @@ import useResetViewModel from "./useResetViewModel";
 const { Title, Text } = Typography;
 
 /* ---------- Design Tokens (match Login/Forgot) ---------- */
-const FONT_FAMILY = '"Poppins", sans-serif';
+const FONT_FAMILY = '"Public Sans", sans-serif';
 const COLORS = {
   blue: "#0B56C9",
   blueDark: "#0B3E91",
@@ -333,3 +333,4 @@ export default function ResetContent() {
     </div>
   );
 }
+

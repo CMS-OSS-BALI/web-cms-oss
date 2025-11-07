@@ -1,4 +1,4 @@
-// app/(view)/admin/testimonials/TestimonialsContent.jsx
+﻿// app/(view)/admin/testimonials/TestimonialsContent.jsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -289,7 +289,7 @@ export default function TestimonialsContent({ locale = "id" }) {
           colorPrimary: blue,
           colorText: text,
           fontFamily:
-            '"Poppins", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
+            '"Public Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
           borderRadius: 12,
           fontSize: 13,
           controlHeight: 36,
@@ -382,7 +382,7 @@ export default function TestimonialsContent({ locale = "id" }) {
               <div style={styles.totalBadgeWrap}>
                 <div style={styles.totalBadgeLabel}>{T.totalLabel}</div>
                 <div style={styles.totalBadgeValue}>
-                  {vm.total ?? rows.length ?? "—"}
+                  {vm.total ?? rows.length ?? "â€”"}
                 </div>
               </div>
             </div>
@@ -439,11 +439,11 @@ export default function TestimonialsContent({ locale = "id" }) {
                   value={ratingValue || undefined}
                   onChange={setRating}
                   options={[
-                    { value: 5, label: "★★★★★" },
-                    { value: 4, label: "★★★★☆" },
-                    { value: 3, label: "★★★☆☆" },
-                    { value: 2, label: "★★☆☆☆" },
-                    { value: 1, label: "★☆☆☆☆" },
+                    { value: 5, label: "â˜…â˜…â˜…â˜…â˜…" },
+                    { value: 4, label: "â˜…â˜…â˜…â˜…â˜†" },
+                    { value: 3, label: "â˜…â˜…â˜…â˜†â˜†" },
+                    { value: 2, label: "â˜…â˜…â˜†â˜†â˜†" },
+                    { value: 1, label: "â˜…â˜†â˜†â˜†â˜†" },
                   ]}
                 />
               </div>
@@ -481,7 +481,7 @@ export default function TestimonialsContent({ locale = "id" }) {
                     rows.map((r) => {
                       const name = r.name || "(tanpa nama)";
                       const yt = r.youtube_url;
-                      const campus = r.kampus_negara_tujuan || "—";
+                      const campus = r.kampus_negara_tujuan || "â€”";
                       const baseImg =
                         r.image_public_url || r.photo_public_url || r.photo_url;
                       const image = bust(baseImg, r.updated_at || r._v);
@@ -498,7 +498,7 @@ export default function TestimonialsContent({ locale = "id" }) {
                                   style={styles.thumbImg}
                                 />
                               ) : (
-                                <div style={styles.thumbFallback}>🙂</div>
+                                <div style={styles.thumbFallback}>ðŸ™‚</div>
                               )}
                             </div>
                             <div style={styles.nameWrap}>
@@ -518,7 +518,7 @@ export default function TestimonialsContent({ locale = "id" }) {
                           >
                             <div style={styles.colMsg}>
                               <div className="t-msg">
-                                {stripTags(r.message) || "—"}
+                                {stripTags(r.message) || "â€”"}
                               </div>
                             </div>
                           </Tooltip>
@@ -529,14 +529,14 @@ export default function TestimonialsContent({ locale = "id" }) {
                               {r.star != null ? (
                                 <Rate disabled value={Number(r.star)} />
                               ) : (
-                                "—"
+                                "â€”"
                               )}
                             </div>
                           </div>
 
                           {/* Kategori */}
                           <div style={styles.colCenter}>
-                            {r.category?.name || "—"}
+                            {r.category?.name || "â€”"}
                           </div>
 
                           {/* YouTube */}
@@ -554,7 +554,7 @@ export default function TestimonialsContent({ locale = "id" }) {
                                 </Tag>
                               </a>
                             ) : (
-                              <Tag style={styles.ytTagMuted}>—</Tag>
+                              <Tag style={styles.ytTagMuted}>â€”</Tag>
                             )}
                           </div>
 
@@ -904,7 +904,7 @@ export default function TestimonialsContent({ locale = "id" }) {
               <div>
                 <div style={styles.label}>{T.msgId}</div>
                 <div style={{ ...styles.value, whiteSpace: "pre-wrap" }}>
-                  {stripTags(detailData?.message) || "—"}
+                  {stripTags(detailData?.message) || "â€”"}
                 </div>
               </div>
 
@@ -915,7 +915,7 @@ export default function TestimonialsContent({ locale = "id" }) {
                     {detailData?.star != null ? (
                       <Rate disabled value={Number(detailData?.star)} />
                     ) : (
-                      "—"
+                      "â€”"
                     )}
                   </div>
                 </div>
@@ -924,21 +924,21 @@ export default function TestimonialsContent({ locale = "id" }) {
               <div>
                 <div style={styles.label}>{T.category}</div>
                 <div style={styles.value}>
-                  {detailData?.category?.name || "—"}
+                  {detailData?.category?.name || "â€”"}
                 </div>
               </div>
 
               <div>
                 <div style={styles.label}>{T.youtube}</div>
                 <div style={styles.value}>
-                  {detailData?.youtube_url ? "Ada" : "—"}
+                  {detailData?.youtube_url ? "Ada" : "â€”"}
                 </div>
               </div>
 
               <div>
                 <div style={styles.label}>{T.campus}</div>
                 <div style={styles.value}>
-                  {detailData?.kampus_negara_tujuan || "—"}
+                  {detailData?.kampus_negara_tujuan || "â€”"}
                 </div>
               </div>
             </div>
@@ -1184,3 +1184,4 @@ const styles = {
 
   viewGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 },
 };
+

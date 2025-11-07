@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import {
   useCallback,
@@ -121,13 +121,13 @@ const isImg = (f) =>
   );
 const tooBig = (f, mb = 10) => f.size / 1024 / 1024 > mb;
 
-// ✅ formatter & parser angka
+// âœ… formatter & parser angka
 const numFormatter = (val) => {
   if (val === undefined || val === null || val === "") return "";
   const s = String(val).replace(/\D/g, "");
   return s.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 };
-// ⬇️ parser sekarang mengembalikan NUMBER/undefined
+// â¬‡ï¸ parser sekarang mengembalikan NUMBER/undefined
 const numParser = (val) => {
   const s = String(val ?? "").replace(/\./g, "");
   if (!s) return undefined;
@@ -362,7 +362,7 @@ const RequirementsEditor = forwardRef(function RequirementsEditor(
         if (total > 0)
           notifyOk?.(
             "Requirement disinkronkan",
-            `Create ${created} • Update ${updated} • Delete ${deleted}`
+            `Create ${created} â€¢ Update ${updated} â€¢ Delete ${deleted}`
           );
       }
       return { ok: !anyError, created, updated, deleted };
@@ -623,9 +623,9 @@ export default function CollegeAContent(props) {
       out?.data?.id;
     if (newId) {
       await reqCreateRef.current?.applyChanges(String(newId));
-      ok("Berhasil", `Kampus “${v.name}” berhasil dibuat beserta requirement.`);
+      ok("Berhasil", `Kampus â€œ${v.name}â€ berhasil dibuat beserta requirement.`);
     } else {
-      ok("Berhasil", `Kampus “${v.name}” berhasil dibuat.`);
+      ok("Berhasil", `Kampus â€œ${v.name}â€ berhasil dibuat.`);
     }
 
     setCreateOpen(false);
@@ -649,7 +649,7 @@ export default function CollegeAContent(props) {
     }
     const d = data || row;
     setDetailData(d);
-    // ⬇️ isi angka murni (bukan string yang diformat)
+    // â¬‡ï¸ isi angka murni (bukan string yang diformat)
     formEdit.setFieldsValue({
       name: d.name || "",
       description: d.description || "",
@@ -706,7 +706,7 @@ export default function CollegeAContent(props) {
 
     ok(
       "Perubahan tersimpan",
-      `Data kampus “${v.name || activeRow.name}” diperbarui.`
+      `Data kampus â€œ${v.name || activeRow.name}â€ diperbarui.`
     );
     setEditOpen(false);
     formEdit.resetFields();
@@ -753,7 +753,7 @@ export default function CollegeAContent(props) {
           colorPrimary: blue,
           colorText: text,
           fontFamily:
-            '"Poppins", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
+            '"Public Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
           borderRadius: 12,
           fontSize: 13,
           controlHeight: 36,
@@ -815,7 +815,7 @@ export default function CollegeAContent(props) {
               <div style={styles.totalBadgeWrap}>
                 <div style={styles.totalBadgeLabel}>{T.totalLabel}</div>
                 <div style={styles.totalBadgeValue}>
-                  {vm.total ?? rows.length ?? "—"}
+                  {vm.total ?? rows.length ?? "â€”"}
                 </div>
               </div>
             </div>
@@ -923,14 +923,14 @@ export default function CollegeAContent(props) {
                       const price =
                         priceMin && priceMax
                           ? `${priceMin} - ${priceMax}`
-                          : priceMin || priceMax || "—";
+                          : priceMin || priceMax || "â€”";
                       const living =
                         r.living_cost_estimate != null
                           ? vm.money(
                               r.living_cost_estimate,
                               r.currency || "IDR"
                             )
-                          : "—";
+                          : "â€”";
 
                       return (
                         <div key={r.id} style={styles.row}>
@@ -943,7 +943,7 @@ export default function CollegeAContent(props) {
                                   style={styles.logoImg}
                                 />
                               ) : (
-                                <div style={styles.logoFallback}>🏫</div>
+                                <div style={styles.logoFallback}>ðŸ«</div>
                               )}
                             </div>
                             <div style={styles.nameWrap}>
@@ -957,7 +957,7 @@ export default function CollegeAContent(props) {
                           </div>
                           <div style={styles.colCenter}>{price}</div>
                           <div style={styles.colCenter}>{living}</div>
-                          <div style={styles.colCenter}>{r.jenjang || "—"}</div>
+                          <div style={styles.colCenter}>{r.jenjang || "â€”"}</div>
                           <div style={styles.colCenter}>{r.country || "-"}</div>
                           <div style={styles.colActionsCenter}>
                             <Tooltip title={T.view}>
@@ -1231,7 +1231,7 @@ export default function CollegeAContent(props) {
               <Input type="email" />
             </Form.Item>
 
-            {/* Requirements — Create */}
+            {/* Requirements â€” Create */}
             <RequirementsEditor
               ref={reqCreateRef}
               mode="create"
@@ -1408,7 +1408,7 @@ export default function CollegeAContent(props) {
                 <Input type="email" />
               </Form.Item>
 
-              {/* Requirements — Edit */}
+              {/* Requirements â€” Edit */}
               {activeRow?.id && (
                 <RequirementsEditor
                   ref={reqEditRef}
@@ -1482,7 +1482,7 @@ export default function CollegeAContent(props) {
               <div>
                 <div style={styles.label}>{T.desc}</div>
                 <div style={{ ...styles.value, whiteSpace: "pre-wrap" }}>
-                  {stripTags(detailData?.description) || "—"}
+                  {stripTags(detailData?.description) || "â€”"}
                 </div>
               </div>
 
@@ -1495,11 +1495,11 @@ export default function CollegeAContent(props) {
               >
                 <div>
                   <div style={styles.label}>{T.country}</div>
-                  <div style={styles.value}>{detailData?.country || "—"}</div>
+                  <div style={styles.value}>{detailData?.country || "â€”"}</div>
                 </div>
                 <div>
                   <div style={styles.label}>{T.city}</div>
-                  <div style={styles.value}>{detailData?.city || "—"}</div>
+                  <div style={styles.value}>{detailData?.city || "â€”"}</div>
                 </div>
               </div>
 
@@ -1512,12 +1512,12 @@ export default function CollegeAContent(props) {
               >
                 <div>
                   <div style={styles.label}>{T.state}</div>
-                  <div style={styles.value}>{detailData?.state || "—"}</div>
+                  <div style={styles.value}>{detailData?.state || "â€”"}</div>
                 </div>
                 <div>
                   <div style={styles.label}>{T.postal}</div>
                   <div style={styles.value}>
-                    {detailData?.postal_code || "—"}
+                    {detailData?.postal_code || "â€”"}
                   </div>
                 </div>
               </div>
@@ -1534,14 +1534,14 @@ export default function CollegeAContent(props) {
                       {detailData.website}
                     </a>
                   ) : (
-                    "—"
+                    "â€”"
                   )}
                 </div>
               </div>
 
               <div>
                 <div style={styles.label}>{T.address}</div>
-                <div style={styles.value}>{detailData?.address || "—"}</div>
+                <div style={styles.value}>{detailData?.address || "â€”"}</div>
               </div>
 
               <div
@@ -1559,7 +1559,7 @@ export default function CollegeAContent(props) {
                           detailData?.tuition_min,
                           detailData?.currency || "IDR"
                         )
-                      : "—"}
+                      : "â€”"}
                   </div>
                 </div>
                 <div>
@@ -1570,7 +1570,7 @@ export default function CollegeAContent(props) {
                           detailData?.tuition_max,
                           detailData?.currency || "IDR"
                         )
-                      : "—"}
+                      : "â€”"}
                   </div>
                 </div>
               </div>
@@ -1583,13 +1583,13 @@ export default function CollegeAContent(props) {
                         detailData?.living_cost_estimate,
                         detailData?.currency || "IDR"
                       )
-                    : "—"}
+                    : "â€”"}
                 </div>
               </div>
 
               <div>
                 <div style={styles.label}>{T.jenjang}</div>
-                <div style={styles.value}>{detailData?.jenjang || "—"}</div>
+                <div style={styles.value}>{detailData?.jenjang || "â€”"}</div>
               </div>
 
               <div
@@ -1602,18 +1602,18 @@ export default function CollegeAContent(props) {
                 <div>
                   <div style={styles.label}>{T.contact}</div>
                   <div style={styles.value}>
-                    {detailData?.contact_name || "—"}
+                    {detailData?.contact_name || "â€”"}
                   </div>
                 </div>
                 <div>
                   <div style={styles.label}>{T.phone}</div>
-                  <div style={styles.value}>{detailData?.no_telp || "—"}</div>
+                  <div style={styles.value}>{detailData?.no_telp || "â€”"}</div>
                 </div>
               </div>
 
               <div>
                 <div style={styles.label}>{T.email}</div>
-                <div style={styles.value}>{detailData?.email || "—"}</div>
+                <div style={styles.value}>{detailData?.email || "â€”"}</div>
               </div>
             </div>
           </Spin>
@@ -1862,3 +1862,4 @@ const styles = {
     justifyContent: "end",
   },
 };
+

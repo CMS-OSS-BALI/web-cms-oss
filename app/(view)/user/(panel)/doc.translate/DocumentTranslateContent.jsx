@@ -1,10 +1,10 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { Skeleton } from "antd";
 import { sanitizeHtml } from "@/app/utils/dompurify";
 
-const FONT_FAMILY = '"Poppins", sans-serif';
+const FONT_FAMILY = '"Public Sans", sans-serif';
 
 /* ===================== STYLES ===================== */
 const styles = {
@@ -750,3 +750,4 @@ export default function DocumentTranslateContent({
     </div>
   );
 }
+

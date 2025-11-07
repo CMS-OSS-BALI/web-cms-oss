@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -298,7 +298,7 @@ export default function ServicesContent({ locale = "id" }) {
           colorPrimary: blue,
           colorText: text,
           fontFamily:
-            '"Poppins", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
+            '"Public Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
           borderRadius: 12,
           fontSize: 13,
           controlHeight: 36,
@@ -360,7 +360,7 @@ export default function ServicesContent({ locale = "id" }) {
               <div style={styles.totalBadgeWrap}>
                 <div style={styles.totalBadgeLabel}>{T.totalLabel}</div>
                 <div style={styles.totalBadgeValue}>
-                  {vm.total ?? rows.length ?? "—"}
+                  {vm.total ?? rows.length ?? "â€”"}
                 </div>
               </div>
             </div>
@@ -479,7 +479,7 @@ export default function ServicesContent({ locale = "id" }) {
                     filteredRows.map((r) => {
                       const name = r.name || "(untitled)";
                       const price =
-                        r.price != null ? vm.money(r.price, "IDR") : "—";
+                        r.price != null ? vm.money(r.price, "IDR") : "â€”";
                       const pub = r.is_published
                         ? T.publishedYes
                         : T.publishedNo;
@@ -495,7 +495,7 @@ export default function ServicesContent({ locale = "id" }) {
                                   style={styles.thumbImg}
                                 />
                               ) : (
-                                <div style={styles.thumbFallback}>🎯</div>
+                                <div style={styles.thumbFallback}>ðŸŽ¯</div>
                               )}
                             </div>
                             <div style={styles.nameWrap}>
@@ -512,7 +512,7 @@ export default function ServicesContent({ locale = "id" }) {
                             {r.service_type || "-"}
                           </div>
                           <div style={styles.colCenter}>
-                            {r.category?.name || "—"}
+                            {r.category?.name || "â€”"}
                           </div>
                           <div style={styles.colCenter}>{price}</div>
                           <div style={styles.colCenter}>{pub}</div>
@@ -922,7 +922,7 @@ export default function ServicesContent({ locale = "id" }) {
               <div>
                 <div style={styles.label}>{T.descId}</div>
                 <div style={{ ...styles.value, whiteSpace: "pre-wrap" }}>
-                  {stripTags(detailData?.description) || "—"}
+                  {stripTags(detailData?.description) || "â€”"}
                 </div>
               </div>
 
@@ -936,13 +936,13 @@ export default function ServicesContent({ locale = "id" }) {
                 <div>
                   <div style={styles.label}>{T.serviceType}</div>
                   <div style={styles.value}>
-                    {detailData?.service_type || "—"}
+                    {detailData?.service_type || "â€”"}
                   </div>
                 </div>
                 <div>
                   <div style={styles.label}>{T.category}</div>
                   <div style={styles.value}>
-                    {detailData?.category?.name || "—"}
+                    {detailData?.category?.name || "â€”"}
                   </div>
                 </div>
               </div>
@@ -959,12 +959,12 @@ export default function ServicesContent({ locale = "id" }) {
                   <div style={styles.value}>
                     {detailData?.price != null
                       ? vm.money(detailData?.price, "IDR")
-                      : "—"}
+                      : "â€”"}
                   </div>
                 </div>
                 <div>
                   <div style={styles.label}>{T.phone}</div>
-                  <div style={styles.value}>{detailData?.phone || "—"}</div>
+                  <div style={styles.value}>{detailData?.phone || "â€”"}</div>
                 </div>
               </div>
 
@@ -1178,3 +1178,4 @@ const styles = {
   modalFooter: { marginTop: 8, display: "grid", placeItems: "center" },
   saveBtn: { minWidth: 200, height: 40, borderRadius: 12 },
 };
+

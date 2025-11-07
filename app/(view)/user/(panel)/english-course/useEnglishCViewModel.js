@@ -187,7 +187,15 @@ export default function useEnglishCViewModel({
     );
     return filtered.map((p) => {
       const ver = p.updated_at ? `?v=${new Date(p.updated_at).getTime()}` : "";
-      const imgSrc = (p.image_url || PLACEHOLDER) + ver;
+      const base =
+        p.image_resolved_url ||
+        p.image_public_url ||
+        p.image_url ||
+        PLACEHOLDER;
+      // Kalau signed URL (ada token=), jangan tambahkan ?v=
+      const imgSrc =
+        typeof base === "string" && base.includes("token=") ? base : base + ver;
+
       return {
         id: p.id,
         price: Number(p.price ?? 0),
@@ -198,7 +206,7 @@ export default function useEnglishCViewModel({
         icon: "/tutoring.svg",
         cta: {
           label: t(safeLocale, "Daftar Sekarang", "Enroll Now"),
-          href: LEAD_URL,
+          href: LEAD_URL, // arahkan semua ke /user/leads
         },
       };
     });

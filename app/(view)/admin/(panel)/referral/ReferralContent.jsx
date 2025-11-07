@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, {
   useEffect,
@@ -68,7 +68,7 @@ export default function ReferralContent({ vm }) {
     listTitle: "Data Referral",
     searchPh: "Search (nama/nik/email/wa/kode)",
     action: "Aksi",
-    addNew: "—",
+    addNew: "â€”",
   };
 
   const [api, contextHolder] = notification.useNotification();
@@ -108,18 +108,18 @@ export default function ReferralContent({ vm }) {
 
   // ===== date helper (pakai *_ts kalau ada) =====
   const fmtDateId = (dLike) => {
-    if (dLike === null || dLike === undefined || dLike === "") return "—";
+    if (dLike === null || dLike === undefined || dLike === "") return "â€”";
     try {
       const dt =
         typeof dLike === "number" ? new Date(dLike) : new Date(String(dLike));
-      if (isNaN(dt.getTime())) return "—";
+      if (isNaN(dt.getTime())) return "â€”";
       return dt.toLocaleDateString("id-ID", {
         day: "2-digit",
         month: "short",
         year: "numeric",
       });
     } catch {
-      return "—";
+      return "â€”";
     }
   };
 
@@ -187,7 +187,7 @@ export default function ReferralContent({ vm }) {
         const exists = prev.some((o) => String(o.value) === id);
         if (exists) return prev;
         const label =
-          viewModel.consultantName?.(id) || `Konsultan ${id.slice(0, 6)}…`;
+          viewModel.consultantName?.(id) || `Konsultan ${id.slice(0, 6)}â€¦`;
         return [{ value: id, label }, ...prev];
       });
     }
@@ -232,7 +232,7 @@ export default function ReferralContent({ vm }) {
           colorPrimary: blue,
           colorText: text,
           fontFamily:
-            '"Poppins", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
+            '"Public Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
           borderRadius: 12,
           fontSize: 13,
           controlHeight: 36,
@@ -280,7 +280,7 @@ export default function ReferralContent({ vm }) {
               <div style={styles.totalBadgeWrap}>
                 <div style={styles.totalBadgeLabel}>Total</div>
                 <div style={styles.totalBadgeValue}>
-                  {viewModel.total ?? rows.length ?? "—"}
+                  {viewModel.total ?? rows.length ?? "â€”"}
                 </div>
               </div>
             </div>
@@ -293,21 +293,21 @@ export default function ReferralContent({ vm }) {
                 <CheckCircleOutlined />
               </div>
               <div style={styles.statTitle}>Verified</div>
-              <div style={styles.statValue}>{viewModel.cntVerified ?? "—"}</div>
+              <div style={styles.statValue}>{viewModel.cntVerified ?? "â€”"}</div>
             </div>
             <div style={styles.statCard}>
               <div style={styles.statIconBox}>
                 <CloseCircleOutlined />
               </div>
               <div style={styles.statTitle}>Rejected</div>
-              <div style={styles.statValue}>{viewModel.cntRejected ?? "—"}</div>
+              <div style={styles.statValue}>{viewModel.cntRejected ?? "â€”"}</div>
             </div>
             <div style={styles.statCard}>
               <div style={styles.statIconBox}>
                 <span style={{ fontWeight: 800 }}>P</span>
               </div>
               <div style={styles.statTitle}>Pending</div>
-              <div style={styles.statValue}>{viewModel.cntPending ?? "—"}</div>
+              <div style={styles.statValue}>{viewModel.cntPending ?? "â€”"}</div>
             </div>
           </div>
 
@@ -388,17 +388,17 @@ export default function ReferralContent({ vm }) {
                         </div>
                         <div style={styles.colCenter}>
                           <span style={styles.cellEllipsis}>
-                            {r.nik || "—"}
+                            {r.nik || "â€”"}
                           </span>
                         </div>
                         <div style={styles.colCenter}>
                           <span style={styles.cellEllipsis}>
-                            {r.whatsapp || "—"}
+                            {r.whatsapp || "â€”"}
                           </span>
                         </div>
                         <div style={styles.colCenter}>
                           <span style={styles.cellEllipsis}>
-                            {r.gender || "—"}
+                            {r.gender || "â€”"}
                           </span>
                         </div>
                         <div style={styles.colCenter}>
@@ -406,7 +406,7 @@ export default function ReferralContent({ vm }) {
                         </div>
                         <div style={styles.colCenter}>
                           <span style={styles.cellEllipsis}>
-                            {r.code || "—"}
+                            {r.code || "â€”"}
                           </span>
                         </div>
                         <div style={styles.colActionsCenter}>
@@ -493,7 +493,7 @@ export default function ReferralContent({ vm }) {
               <div style={{ display: "grid", gap: 10 }}>
                 <div>
                   <div style={styles.label}>Nama</div>
-                  <div style={styles.value}>{detailData.full_name || "—"}</div>
+                  <div style={styles.value}>{detailData.full_name || "â€”"}</div>
                 </div>
 
                 <div
@@ -505,11 +505,11 @@ export default function ReferralContent({ vm }) {
                 >
                   <div>
                     <div style={styles.label}>NIK</div>
-                    <div style={styles.value}>{detailData.nik || "—"}</div>
+                    <div style={styles.value}>{detailData.nik || "â€”"}</div>
                   </div>
                   <div>
                     <div style={styles.label}>Gender</div>
-                    <div style={styles.value}>{detailData.gender || "—"}</div>
+                    <div style={styles.value}>{detailData.gender || "â€”"}</div>
                   </div>
                 </div>
 
@@ -522,17 +522,17 @@ export default function ReferralContent({ vm }) {
                 >
                   <div>
                     <div style={styles.label}>WhatsApp</div>
-                    <div style={styles.value}>{detailData.whatsapp || "—"}</div>
+                    <div style={styles.value}>{detailData.whatsapp || "â€”"}</div>
                   </div>
                   <div>
                     <div style={styles.label}>Email</div>
-                    <div style={styles.value}>{detailData.email || "—"}</div>
+                    <div style={styles.value}>{detailData.email || "â€”"}</div>
                   </div>
                 </div>
 
                 <div>
                   <div style={styles.label}>Pekerjaan</div>
-                  <div style={styles.value}>{detailData.pekerjaan || "—"}</div>
+                  <div style={styles.value}>{detailData.pekerjaan || "â€”"}</div>
                 </div>
 
                 <div>
@@ -540,7 +540,7 @@ export default function ReferralContent({ vm }) {
                   <div style={styles.value}>
                     {viewModel.consultantName?.(detailData.pic_consultant_id) ||
                       detailData.pic_consultant_id ||
-                      "—"}
+                      "â€”"}
                   </div>
                 </div>
 
@@ -568,7 +568,7 @@ export default function ReferralContent({ vm }) {
 
                 <div>
                   <div style={styles.label}>Kode Referral</div>
-                  <div style={styles.value}>{detailData.code || "—"}</div>
+                  <div style={styles.value}>{detailData.code || "â€”"}</div>
                 </div>
 
                 <div>
@@ -582,7 +582,7 @@ export default function ReferralContent({ vm }) {
                         style={{ maxWidth: "100%", borderRadius: 8 }}
                       />
                     ) : (
-                      "—"
+                      "â€”"
                     )}
                   </div>
                 </div>
@@ -842,3 +842,4 @@ const styles = {
     boxShadow: "0 10px 36px rgba(11,86,201,0.08)",
   },
 };
+

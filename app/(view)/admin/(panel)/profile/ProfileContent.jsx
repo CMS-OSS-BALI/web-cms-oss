@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
@@ -227,7 +227,7 @@ export default function ProfileContent({ vm }) {
           colorText: text,
           borderRadius: 16,
           fontFamily:
-            '"Poppins", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
+            '"Public Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
         },
         components: {
           Input: { controlHeight: 44, borderRadiusLG: 16 },
@@ -259,7 +259,7 @@ export default function ProfileContent({ vm }) {
                 accept="image/*"
                 showUploadList={false}
                 beforeUpload={beforeUpload}
-                // hilangkan border default Dragger → ring digambar oleh wrapper circle
+                // hilangkan border default Dragger â†’ ring digambar oleh wrapper circle
                 style={styles.dragger}
               >
                 <div
@@ -410,3 +410,4 @@ const styles = {
     justifyContent: "flex-end",
   },
 };
+

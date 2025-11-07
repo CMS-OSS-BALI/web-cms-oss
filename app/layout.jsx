@@ -1,11 +1,15 @@
 import "./globals.css";
 import LayoutClient from "./layout-client";
-import { Inter } from "next/font/google";
+import { Public_Sans } from "next/font/google";
 import PageviewTracker from "@/app/components/analytics/PageviewTracker";
 import { BASE_URL, SITE } from "./seo.config";
 import { headers, cookies } from "next/headers";
 
-const inter = Inter({ subsets: ["latin"] });
+const publicSans = Public_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  display: "swap",
+});
 
 /** Detect initial lang on the server (cookie → Accept-Language → fallback) */
 function pickInitialLang() {
@@ -58,7 +62,7 @@ export default function RootLayout({ children }) {
 
   return (
     <html lang={initialLang}>
-      <body className={inter.className}>
+      <body className={publicSans.className}>
         {/* Tracker kunjungan anonim; set true untuk skip halaman admin */}
         <PageviewTracker ignoreAdmin={true} />
         {/* (opsional) kirim initialLang ke client jika diperlukan */}

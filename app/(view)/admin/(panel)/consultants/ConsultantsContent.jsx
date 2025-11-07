@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useMemo, useState } from "react";
 import {
@@ -268,7 +268,7 @@ export default function ConsultantsContent({ vm }) {
           colorPrimary: blue,
           colorText: text,
           fontFamily:
-            '"Poppins", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
+            '"Public Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
           borderRadius: 16,
         },
         components: { Button: { borderRadius: 12 } },
@@ -317,7 +317,7 @@ export default function ConsultantsContent({ vm }) {
               <div style={styles.totalBadgeWrap}>
                 <div style={styles.totalBadgeLabel}>{t.totalLabel}</div>
                 <div style={styles.totalBadgeValue}>
-                  {vm.total ?? rows.length ?? "—"}
+                  {vm.total ?? rows.length ?? "â€”"}
                 </div>
               </div>
             </div>
@@ -1041,3 +1041,4 @@ const styles = {
   modalFooter: { marginTop: 10, display: "grid", placeItems: "center" },
   saveBtn: { minWidth: 220, height: 44, borderRadius: 14 },
 };
+

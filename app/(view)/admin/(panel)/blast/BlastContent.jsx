@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import {
   ConfigProvider,
@@ -59,7 +59,7 @@ export default function BlastContent(props) {
           colorPrimary: blue,
           colorText: text,
           fontFamily:
-            '"Poppins", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
+            '"Public Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
           borderRadius: 12,
           fontSize: 13,
           controlHeight: 36,
@@ -233,7 +233,7 @@ export default function BlastContent(props) {
                         tooltip="Subjek email yang akan diterima penerima"
                       >
                         <Input
-                          placeholder="Subjek email…"
+                          placeholder="Subjek emailâ€¦"
                           value={vm.subject}
                           onChange={(e) => vm.setSubject(e.target.value)}
                         />
@@ -258,7 +258,7 @@ export default function BlastContent(props) {
                             value={vm.html}
                             onChange={vm.setHtml}
                             minHeight={240}
-                            placeholder="Tulis konten…"
+                            placeholder="Tulis kontenâ€¦"
                           />
                         </div>
                       </Form.Item>
@@ -320,7 +320,7 @@ export default function BlastContent(props) {
                           allowClear
                           showSearch
                           filterOption={false}
-                          placeholder="Cari & pilih kampus…"
+                          placeholder="Cari & pilih kampusâ€¦"
                           value={vm.collegeIds}
                           options={vm.collegeOptions}
                           onSearch={vm.searchColleges}
@@ -382,7 +382,7 @@ export default function BlastContent(props) {
                           allowClear
                           showSearch
                           filterOption={false}
-                          placeholder="Cari & pilih Mitra Dalam Negeri…"
+                          placeholder="Cari & pilih Mitra Dalam Negeriâ€¦"
                           value={vm.mitraIds}
                           options={vm.mitraOptions}
                           onSearch={vm.searchMitras}
@@ -487,7 +487,7 @@ export default function BlastContent(props) {
                             fontSize: 12,
                           }}
                         >
-                          Total {vm.summary.total} • Sent {vm.summary.sent} •
+                          Total {vm.summary.total} â€¢ Sent {vm.summary.sent} â€¢
                           Failed {vm.summary.failed}
                         </div>
                       )}
@@ -502,28 +502,28 @@ export default function BlastContent(props) {
                           }}
                         >
                           {l.type === "start" && (
-                            <span>Start • total {l.total}</span>
+                            <span>Start â€¢ total {l.total}</span>
                           )}
                           {l.type === "progress" && (
                             <>
-                              {l.ok ? "✅" : "❌"} <b>{l.to}</b>
+                              {l.ok ? "âœ…" : "âŒ"} <b>{l.to}</b>
                               {!l.ok && (
                                 <span style={{ color: "#b91c1c" }}>
                                   {" "}
-                                  — {l.error}
+                                  â€” {l.error}
                                 </span>
                               )}
                             </>
                           )}
                           {l.type === "done" && (
                             <b>
-                              Done • sent {l.sent} / {l.total} • failed{" "}
+                              Done â€¢ sent {l.sent} / {l.total} â€¢ failed{" "}
                               {l.failed}
                             </b>
                           )}
                           {l.type === "error" && (
                             <span style={{ color: "#b91c1c" }}>
-                              ERROR • {l.message}
+                              ERROR â€¢ {l.message}
                             </span>
                           )}
                         </div>
@@ -573,7 +573,7 @@ export default function BlastContent(props) {
                               fontSize: 12,
                             }}
                           >
-                            +{vm.preview.recipients.length - 200} lagi…
+                            +{vm.preview.recipients.length - 200} lagiâ€¦
                           </div>
                         )}
                       </div>
@@ -620,3 +620,4 @@ const styles = {
     color: "#64748b",
   },
 };
+

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { ConfigProvider } from "antd";
 import ScannerContent from "./ScannerContent";
@@ -22,7 +22,7 @@ export default function ScannerPage() {
           colorPrimary: TOKENS.blue,
           colorText: TOKENS.text,
           fontFamily:
-            '"Poppins", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
+            '"Public Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
           borderRadius: 12,
           fontSize: 13,
           controlHeight: 36,
@@ -36,3 +36,4 @@ export default function ScannerPage() {
     </ConfigProvider>
   );
 }
+

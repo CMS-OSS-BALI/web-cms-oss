@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useMemo } from "react";
 
@@ -7,7 +7,7 @@ export default function useAdminTokens(overrides = {}) {
     blue: "#0b56c9",
     text: "#0f172a",
     fontFamily:
-      '"Poppins", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
+      '"Public Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
     borderRadius: 12,
     fontSize: 13,
     controlHeight: 36,
@@ -160,3 +160,4 @@ export const ADMIN_DEFAULTS = {
   blue: "#0b56c9",
   text: "#0f172a",
 };
+

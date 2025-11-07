@@ -1,4 +1,4 @@
-// app/(view)/admin/dashboard/DashboardContent.jsx
+﻿// app/(view)/admin/dashboard/DashboardContent.jsx
 "use client";
 
 import dynamic from "next/dynamic";
@@ -10,11 +10,11 @@ import Loading from "@/app/components/loading/LoadingImage";
 // ==== Dynamic imports (code splitting)
 const PieDonut = dynamic(() => import("@/app/components/charts/PieDonut"), {
   ssr: false,
-  loading: () => <Loading label="Memuat chart…" />,
+  loading: () => <Loading label="Memuat chartâ€¦" />,
 });
 const SeoSection = dynamic(() => import("@/app/components/charts/SeoSection"), {
   ssr: false,
-  loading: () => <Loading label="Memuat modul SEO…" />,
+  loading: () => <Loading label="Memuat modul SEOâ€¦" />,
 });
 
 /* ===== tokens ===== */
@@ -32,7 +32,7 @@ const PIE_COLORS = [
 ];
 
 export default function DashboardContent({ vm }) {
-  // ⤷ HAPUS instansiasi hook di sini. Kita pakai vm dari props.
+  // â¤· HAPUS instansiasi hook di sini. Kita pakai vm dari props.
   const { shellW, maxW, blue, text } = TOKENS;
 
   const yearOptions = useMemo(
@@ -67,7 +67,7 @@ export default function DashboardContent({ vm }) {
           colorPrimary: blue,
           colorText: text,
           fontFamily:
-            '"Poppins", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
+            '"Public Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
           borderRadius: 12,
           fontSize: 13,
           controlHeight: 36,
@@ -151,7 +151,7 @@ export default function DashboardContent({ vm }) {
                 </div>
 
                 {vm?.loading?.leads ? (
-                  <Loading label="Memuat ringkasan leads…" />
+                  <Loading label="Memuat ringkasan leadsâ€¦" />
                 ) : !vm?.yearA || !vm?.yearB ? (
                   <div style={{ padding: 16 }}>
                     <Empty description="Pilih kedua tahun untuk melihat perbandingan" />
@@ -248,7 +248,7 @@ export default function DashboardContent({ vm }) {
                 </div>
 
                 {vm?.loading?.leads ? (
-                  <Loading label="Memuat representative…" />
+                  <Loading label="Memuat representativeâ€¦" />
                 ) : !vm?.yearA || !vm?.yearB ? (
                   <div style={{ padding: 16 }}>
                     <Empty description="Pilih kedua tahun untuk melihat perbandingan" />
@@ -390,3 +390,4 @@ const styles = {
     fontFeatureSettings: '"tnum" 1, "lnum" 1',
   },
 };
+
