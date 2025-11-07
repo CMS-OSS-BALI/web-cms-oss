@@ -31,15 +31,15 @@ export default function useOverseasViewModel({ locale = "id" } = {}) {
       hero: {
         title: "STUDI LUAR NEGERI",
         subtitle:
-          "Mulai perjalanan global Anda bersama OSS—dari pemilihan kampus & jurusan, pendampingan dokumen, hingga persiapan keberangkatan—semua dalam satu layanan terpadu.",
+          "Mulai perjalanan global Anda bersama OSS, dan jelajahi dunia penuh peluang tanpa batas.",
         illustration: "/overseas.svg",
       },
 
-      description: `<p>Overseas Study adalah layanan pendampingan bagi mereka yang ingin melanjutkan studi dan mengembangkan karier di luar negeri. Kami membantu mulai dari pemilihan universitas, pengurusan dokumen, persiapan bahasa, hingga konsultasi karier internasional. Dengan dukungan mentor berpengalaman dan jaringan global, Overseas Study menjadi jembatan untuk meraih impian, memperluas wawasan, dan membangun masa depan yang lebih cerah di kancah internasional.</p>`,
+      description: `<p>Layanan Studi Luar Negeri di OSS Bali membantu peserta dalam merencanakan dan mengurus proses studi di luar negeri, mulai dari pemilihan kampus (College, Institute, TAFE, Polytechnic, & University), pengajuan aplikasi, hingga persiapan keberangkatan. Kami memberikan informasi lengkap mengenai berbagai program pendidikan internasional dan membantu peserta mempersiapkan segala kebutuhan administratif untuk mencapai tujuan studi mereka. Konsultasi Gratis yang kami sediakan berfokus pada profesionalitas untuk menyediakan kualitas informasi terbaik untuk siapapun.</p>`,
 
       studySection: {
         title: "STUDI LUAR NEGERI",
-        text: "Studi di luar negeri adalah langkah pertama menuju masa depan global Anda. Dapatkan pengalaman belajar di universitas internasional, kuasai bahasa, temukan budaya baru, dan buka pintu kesempatan karier tanpa batas.",
+        text: "Study di luar negeri adalah langkah pertama menuju masa depan global Anda. Dapatkan pengalaman belajar di universitas internasional, kuasai bahasa, temukan budaya baru, dan buka pintu kesempatan karier tanpa batas.",
         image: "/ngopi.svg",
         pills: [
           { id: "p1", label: "Pendidikan berkualitas", icon: "🎓" },
@@ -51,7 +51,7 @@ export default function useOverseasViewModel({ locale = "id" } = {}) {
 
       internSection: {
         title: "MAGANG LUAR NEGERI",
-        text: "Mulai pengalaman kerja internasional yang akan mengubah karier Anda! Magang luar negeri memberi kesempatan belajar langsung di perusahaan global, memperluas jaringan, dan meningkatkan keterampilan profesional.",
+        text: "Mulai pengalaman kerja internasional yang akan mengubah karier Anda! Magang luar negeri memberi kesempatan belajar langsung di perusahaan global, memperluas jaringan, dan meningkatkan skill profesional. Jangan lewatkan kesempatan untuk bersaing di level dunia.",
         mainImage: "/laptop.svg",
         subImage: "/laptop2.svg",
         benefits: [
@@ -63,9 +63,8 @@ export default function useOverseasViewModel({ locale = "id" } = {}) {
       },
 
       cta: {
-        title: "BANGUN KREDIBILITAS MELALUI TERJEMAHAN BERKUALITAS",
-        subtitle:
-          "Dengan layanan profesional kami, setiap detail diterjemahkan akurat dan siap membawa Anda melangkah lebih jauh di kancah global.",
+        title: "Mulai Perjalananmu Sekarang",
+        subtitle: "Temukan Program Luar Negeri dan Raih Kampus Impianmu.",
         button: { label: "COBA SEKARANG", href: "/user/leads" },
       },
     };
@@ -74,15 +73,15 @@ export default function useOverseasViewModel({ locale = "id" } = {}) {
       hero: {
         title: "STUDY ABROAD",
         subtitle:
-          "Begin your global journey with OSS—university & major matching, document assistance, and pre-departure preparation in one seamless service.",
+          "Start your global journey with OSS, and explore a world of unlimited opportunities.",
         illustration: "/overseas.svg",
       },
 
-      description: `<p>Overseas Study is a guidance service for students and professionals aiming to study and develop careers abroad. We support you end-to-end—from shortlisting universities and handling documents to language preparation and international career counseling. With experienced mentors and a global network, we help you pursue your dream, broaden horizons, and build a brighter future on the international stage.</p>`,
+      description: `<p>OSS Bali's Study Abroad Services assist participants in planning and managing the process of studying abroad, from choosing a campus (college, institute, TAFE, polytechnic, and university) and submitting applications to preparing for departure. We provide comprehensive information on various international education programs and help participants prepare all the administrative requirements to achieve their study goals. The free consultation we provide focuses on professionalism to deliver the best quality information to anyone.</p>`,
 
       studySection: {
         title: "STUDY ABROAD",
-        text: "Studying abroad is the first step toward a global future. Experience international universities, master new languages, discover diverse cultures, and unlock limitless career opportunities.",
+        text: "Studying abroad is the first step toward your global future. Gain experience studying at an international university, master a language, discover new cultures, and open the door to unlimited career opportunities.",
         image: "/ngopi.svg",
         pills: [
           { id: "p1", label: "High-quality education", icon: "🎓" },
@@ -94,7 +93,7 @@ export default function useOverseasViewModel({ locale = "id" } = {}) {
 
       internSection: {
         title: "OVERSEAS INTERNSHIP",
-        text: "Kickstart an international work experience that elevates your career. Learn inside global companies, expand your network, and sharpen your professional skills.",
+        text: "Start an international work experience that will transform your career! Overseas internships provide opportunities to learn directly from global companies, expand your network, and improve your professional skills. Don't miss the chance to compete at a global level.",
         mainImage: "/laptop.svg",
         subImage: "/laptop2.svg",
         benefits: [
@@ -106,9 +105,9 @@ export default function useOverseasViewModel({ locale = "id" } = {}) {
       },
 
       cta: {
-        title: "BUILD CREDIBILITY THROUGH QUALITY TRANSLATION",
+        title: "Start Your Journey Now",
         subtitle:
-          "Our professional service delivers accurate, ready-to-use results—helping you go further on the global stage.",
+          "Discover Study Abroad Programs and Achieve Your Dream Campus.",
         button: { label: "GET STARTED", href: "/user/leads" },
       },
     };

@@ -200,7 +200,8 @@ const styles = {
       overflowWrap: "anywhere",
       wordBreak: "break-word",
       hyphens: "auto",
-      maxWidth: "68ch",
+      /* NOTE: maxWidth dihapus agar selebar hero (container) */
+      // maxWidth: "68ch",
     },
     cardMobile: {
       background: "#fff",
@@ -481,7 +482,7 @@ export default function OverseasContent({ locale = "id" }) {
     [isNarrow]
   );
 
-  /* >>> NEW: Title & Text styles (Studi & Magang) untuk mobile <<< */
+  /* Title & Text (Studi & Magang) mobile tweaks */
   const studMagTitleStyle = useMemo(
     () => ({
       ...styles.study.title,
@@ -493,17 +494,13 @@ export default function OverseasContent({ locale = "id" }) {
     () => ({
       ...styles.study.text,
       ...(isNarrow
-        ? {
-            textAlign: "justify",
-            textJustify: "inter-word",
-            hyphens: "auto",
-          }
+        ? { textAlign: "justify", textJustify: "inter-word", hyphens: "auto" }
         : {}),
     }),
     [isNarrow]
   );
 
-  /* Intern layout (text kiri, gambar kanan) */
+  /* Intern layout */
   const internGrid = useMemo(
     () => ({
       display: "grid",
@@ -563,25 +560,24 @@ export default function OverseasContent({ locale = "id" }) {
     [content.internSection?.benefits]
   );
 
-  /* Description tweaks for mobile */
+  /* ===== Description styles ===== */
   const descTitleStyle = useMemo(
     () => ({ ...styles.desc.title, fontSize: isNarrow ? 30 : 44 }),
     [isNarrow]
   );
+
+  // >>>> PATCH: bikin paragraf deskripsi selebar hero/container di desktop
   const descBodyStyle = useMemo(
     () => ({
       ...styles.desc.body,
+      maxWidth: "unset", // override 68ch supaya penuh selebar container
       ...(isNarrow
-        ? {
-            textAlign: "left",
-            fontSize: 16,
-            lineHeight: 1.85,
-            maxWidth: "unset",
-          }
+        ? { textAlign: "left", fontSize: 16, lineHeight: 1.85 }
         : {}),
     }),
     [isNarrow]
   );
+
   const descBodyWrapStyle = useMemo(
     () => ({
       ...styles.desc.bodyWrap,
@@ -605,7 +601,6 @@ export default function OverseasContent({ locale = "id" }) {
     [isNarrow]
   );
 
-  /* >>> NEW: CTA button mobile adjustments <<< */
   const ctaButtonStyle = useMemo(
     () => ({
       ...styles.cta.btn,
@@ -959,7 +954,7 @@ export default function OverseasContent({ locale = "id" }) {
           transform: none;
         }
 
-        /* Konten rich di deskripsi */
+        /* Rich content */
         .desc-content p {
           margin: 10px 0 0;
         }
@@ -1020,7 +1015,6 @@ export default function OverseasContent({ locale = "id" }) {
           border-radius: 999px;
         }
 
-        /* Hover micro-interaction */
         @media (hover: hover) {
           .pill-item {
             transition: transform 0.18s ease, filter 0.18s ease;
@@ -1031,7 +1025,6 @@ export default function OverseasContent({ locale = "id" }) {
           }
         }
 
-        /* ===== Mobile tweaks ===== */
         @media (max-width: 960px) {
           .desc-content {
             text-align: left !important;
@@ -1040,7 +1033,6 @@ export default function OverseasContent({ locale = "id" }) {
             grid-template-columns: 1fr !important;
           }
         }
-
         @media (max-width: 640px) {
           .hero-cta--pulse {
             animation-duration: 3.2s;
