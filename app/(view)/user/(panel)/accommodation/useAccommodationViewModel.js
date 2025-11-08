@@ -16,77 +16,93 @@ const pickLocale = (v) =>
     ? "en"
     : "id";
 
-/* ================= i18n texts ================ */
+/* ================= i18n texts — ALIGNED TO DESIGN ================= */
 const TEXT = {
   id: {
     hero: {
-      title: "BOOKING AKOMODASI",
+      title: "Pemesanan Akomodasi",
       subtitle:
-        "Mulai perjalanan global Anda bersama Overseas Study, dan melangkah ke dunia penuh kemungkinan.",
+        "Temukan tempat tinggal terbaik untuk mendukung perjalanan studi dan karier internasional Anda dengan nyaman dan mudah.",
       illustration: "/akomodasi.svg",
     },
+
     description:
-      "<p>Booking Akomodasi adalah layanan pemesanan tempat tinggal yang membantu Anda menemukan hunian nyaman dan sesuai kebutuhan selama studi atau magang di luar negeri. Mulai dari apartemen, asrama mahasiswa, homestay, hingga penginapan jangka pendek, semua dapat dipilih dengan mudah dan praktis. Dengan dukungan tim kami, Anda tidak perlu khawatir soal kenyamanan, lokasi strategis, maupun keamanan, karena kami memastikan akomodasi terbaik untuk menunjang perjalanan dan aktivitas Anda.</p>",
+      "<p>Booking Akomodasi adalah layanan pemesanan tempat tinggal yang membantu Anda menemukan hunian nyaman dan sesuai kebutuhan selama studi dan karier di luar negeri. Mulai dari apartemen, asrama mahasiswa, homestay, hingga penginapan jangka pendek—semuanya bisa dipilih dengan mudah dan praktis. Dengan dukungan tim kami, Anda tak perlu khawatir soal kenyamanan, lokasi strategis, maupun keamanan, karena kami memastikan akomodasi terbaik untuk menunjang perjalanan dan aktivitas Anda.</p>",
+
     services: {
-      heading: "LAYANAN BOOKING AKOMODASI",
-      imageBack: "/accommodation-collage-back.jpg",
-      imageFront: "/accommodation-collage-front.jpg",
+      heading: "LAYANAN PEMESANAN AKOMODASI",
+      imageBack: "/accommodation-collage-back.svg",
+      imageFront: "/accommodation-collage-front.svg",
       items: [
         {
-          id: "s1",
+          id: "hotel",
           icon: "🏨",
-          title: "Hotel Berkualitas",
-          text: "Penyedia tepercaya dan terverifikasi.",
+          title: "Hotel berkualitas",
+          text: "Kenyamanan terbaik di hotel pilihan dengan lokasi strategis.",
         },
         {
-          id: "s2",
-          icon: "🏢",
-          title: "Apartemen",
-          text: "Lokasi strategis dengan banyak pilihan.",
+          id: "dorm",
+          icon: "🛌",
+          title: "Asrama",
+          text: "Akomodasi aman dan praktis untuk kebutuhan mahasiswa.",
         },
         {
-          id: "s3",
-          icon: "🌐",
-          title: "Student Apartment",
-          text: "Pilihan khusus mahasiswa, nyaman & aman.",
+          id: "homestay",
+          icon: "🏠",
+          title: "Homestay",
+          text: "Kenyamanan dengan sentuhan lingkungan lokal.",
         },
         {
-          id: "s4",
-          icon: "🚕",
+          id: "transport",
+          icon: "🚌",
           title: "Transportasi",
-          text: "Opsi antar-jemput & mobil sewa.",
+          text: "Layanan perjalanan efisien dan terpercaya di Bali.",
+        },
+        {
+          id: "apartment",
+          icon: "🏢",
+          title: "Apartment",
+          text: "Akomodasi modern, privat, serta akses fasilitas premium.",
+        },
+        {
+          id: "house",
+          icon: "🏡",
+          title: "Rumah",
+          text: "Ruang privat maksimal—ideal untuk kenyamanan keluarga.",
         },
       ],
     },
+
     why: {
       heading: "MENGAPA PILIH AKOMODASI DI OSS BALI?",
       reasons: [
         {
-          id: "w1",
+          id: "price",
           icon: "💲",
           title: "Harga Terjangkau",
-          sub: "Harga yang terjangkau dan ramah",
+          sub: "Harga yang terjangkau dan ramah.",
         },
         {
-          id: "w2",
+          id: "trusted",
           icon: "🤝",
-          title: "Student Apartement",
-          sub: "Sudah terpercaya dan resmi",
+          title: "Akomodasi Terpercaya",
+          sub: "Sudah terpercaya dan resmi.",
         },
         {
-          id: "w3",
+          id: "security",
           icon: "🔒",
           title: "Keamanan Data",
-          sub: "Memastikan keamanan data student",
+          sub: "Memastikan keamanan data student.",
         },
         {
-          id: "w4",
+          id: "pickup",
           icon: "🚖",
           title: "Transportasi",
-          sub: "Bekerja secara profesional",
+          sub: "Gratis penjemputan.",
         },
       ],
     },
+
     cta: {
       title: "SOLUSI AKOMODASI PROFESIONAL UNTUK KEHIDUPAN GLOBAL ANDA",
       subtitle:
@@ -97,73 +113,89 @@ const TEXT = {
 
   en: {
     hero: {
-      title: "ACCOMMODATION BOOKING",
+      title: "Accommodation Booking",
       subtitle:
-        "Begin your global journey with Overseas Study and step into a world full of possibilities.",
+        "Find the best place to stay to support your study and international career—comfortably and easily.",
       illustration: "/akomodasi.svg",
     },
+
     description:
-      "<p>Accommodation Booking helps you find comfortable housing tailored to your needs during study or internship abroad. From apartments, student dorms, homestays, to short-term stays — everything can be arranged easily. With our team, you can focus on your goals while we secure the best accommodation for you.</p>",
+      "<p>Accommodation Booking helps you find comfortable housing tailored to your needs during study or career abroad. From apartments, student dorms, homestays, to short-term stays—everything can be arranged easily and practically. With our team’s support, you won’t worry about comfort, strategic location, or security as we secure the best accommodation to support your journey and activities.</p>",
+
     services: {
-      heading: "ACCOMMODATION SERVICES",
+      heading: "ACCOMMODATION BOOKING SERVICES",
       imageBack: "/accommodation-collage-back.jpg",
       imageFront: "/accommodation-collage-front.jpg",
       items: [
         {
-          id: "s1",
+          id: "hotel",
           icon: "🏨",
           title: "Quality Hotels",
-          text: "Trusted, verified providers.",
+          text: "The best comfort at selected hotels in strategic locations.",
         },
         {
-          id: "s2",
-          icon: "🏢",
-          title: "Apartments",
-          text: "Prime locations & many options.",
+          id: "dorm",
+          icon: "🛌",
+          title: "Dormitory",
+          text: "Safe and practical housing for students' needs.",
         },
         {
-          id: "s3",
-          icon: "🌐",
-          title: "Student Apartment",
-          text: "Student-friendly, safe & comfy.",
+          id: "homestay",
+          icon: "🏠",
+          title: "Homestay",
+          text: "Comfort with a local touch.",
         },
         {
-          id: "s4",
-          icon: "🚕",
+          id: "transport",
+          icon: "🚌",
           title: "Transportation",
-          text: "Pick-up options & car rentals.",
+          text: "Efficient and reliable travel service in Bali.",
+        },
+        {
+          id: "apartment",
+          icon: "🏢",
+          title: "Apartment",
+          text: "Modern, private stays with access to premium facilities.",
+        },
+        {
+          id: "house",
+          icon: "🏡",
+          title: "House",
+          text: "Maximum private space—ideal for families.",
         },
       ],
     },
+
     why: {
       heading: "WHY CHOOSE ACCOMMODATION WITH OSS BALI?",
       reasons: [
         {
-          id: "w1",
+          id: "price",
           icon: "💲",
           title: "Affordable Price",
-          sub: "Wallet-friendly & transparent.",
+          sub: "Wallet-friendly and transparent.",
         },
         {
-          id: "w2",
+          id: "trusted",
           icon: "🤝",
-          title: "Student Apartment",
-          sub: "Trusted & officially partnered.",
+          title: "Trusted Accommodation",
+          sub: "Official and reliable partners.",
         },
         {
-          id: "w3",
+          id: "security",
           icon: "🔒",
           title: "Data Security",
           sub: "We keep student data safe.",
         },
         {
-          id: "w4",
+          id: "pickup",
           icon: "🚖",
           title: "Transportation",
-          sub: "Professionally operated.",
+          sub: "Free pick-up.",
         },
       ],
     },
+
     cta: {
       title: "PROFESSIONAL ACCOMMODATION SOLUTIONS FOR YOUR GLOBAL LIFE",
       subtitle:
@@ -180,10 +212,7 @@ export default function useAccommodationViewModel({ locale = "id" } = {}) {
   const { data, error, isLoading } = useSWR(
     `/api/accommodation?locale=${lk}`,
     fetcher,
-    {
-      revalidateOnFocus: false,
-      shouldRetryOnError: false,
-    }
+    { revalidateOnFocus: false, shouldRetryOnError: false }
   );
 
   const fallback = useMemo(() => TEXT[lk], [lk]);
@@ -193,10 +222,5 @@ export default function useAccommodationViewModel({ locale = "id" } = {}) {
     return { ...fallback, ...data };
   }, [data, error, fallback]);
 
-  return {
-    locale: lk,
-    content,
-    isLoading,
-    isError: Boolean(error),
-  };
+  return { locale: lk, content, isLoading, isError: Boolean(error) };
 }

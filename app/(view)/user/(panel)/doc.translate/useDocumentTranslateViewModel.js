@@ -21,49 +21,51 @@ export default function useDocumentTranslateViewModel({ locale = "id" } = {}) {
   const fallback = useMemo(
     () => ({
       hero: {
-        title: t(locale, "TERJEMAHAN DOKUMEN", "DOCUMENT TRANSLATION"),
+        // Title Case agar sama seperti mockup
+        title: t(locale, "Translate Document", "Translate Document"),
         subtitle: t(
           locale,
-          "Terjemahkan dokumen Anda secara akurat, cepat, dan siap pakai.",
-          "Translate your documents with accuracy and speed."
+          "Terjemahkan dokumen Anda dengan akurat dan profesional, siap pakai untuk keperluan internasional.",
+          "Translate your documents accurately and professionally—ready for official and international use."
         ),
         illustration: "/doctranslate.svg",
       },
 
+      // Copywriting disederhanakan & rapi sesuai desain
       description: t(
         locale,
-        `<p>Layanan ini menyediakan jasa penerjemahan dokumen dalam berbagai bahasa untuk Sub-District Regency/City membantu klien yang membutuhkan penerjemahan yang tersumpah dan cepat dengan provinsi jaminan bisa selesai kurang dari 24 Jam. Layanan ini mencakup dokumen resmi, akademik, bisnis, serta materi lainnya yang diperlukan untuk komunikasi internasional atau keperluan administratif.</p>`,
-        `<p>This service provides document translation in multiple languages—sworn and fast—often within 24 hours, covering official, academic, and business materials for international communication and administrative needs.</p>`
+        `<p>Layanan ini menyediakan jasa penerjemahan dokumen dalam berbagai bahasa untuk Sub-District Regency/City membantu klien yang membutuhkan penerjemahan yang tersumpah dan cepat dengan Provinc jaminan bisa selesai kurang dari 24 Jam. Layanan ini mencakup dokumen resmi, msident indes No Place Date of akademik, bisnis, serta materi lainnya yang diperlukan untuk komunikasi internasional atau keperluan administratif.</p>`,
+        `<p>This service provides document translation services in various languages for sub-districts, regencies, and cities, assisting clients who need fast, certified translations with a guarantee that they will be completed in less than 24 hours. This service covers official documents, academic transcripts, business documents, and other materials required for international communication or administrative purposes.</p>`
       ),
 
       services: {
         title: t(
           locale,
-          "OUR PRODUCT DOCUMENT TRANSLATION",
-          "OUR PRODUCT DOCUMENT TRANSLATION"
+          "Portofolio Dokumen Legal Tersertifikasi",
+          "Certified Legal Document Portfolio"
         ),
         items: [
           {
             id: "ktp",
-            title: t(locale, "KARTU PENDUDUK", "NATIONAL ID"),
+            title: t(locale, "Kartu Tanda Penduduk", "National ID"),
             icon: "/acc.svg",
             href: "/user/leads",
           },
           {
             id: "kk",
-            title: t(locale, "KARTU KELUARGA", "FAMILY CARD"),
+            title: t(locale, "Kartu Keluarga", "Family Card"),
             icon: "/kk.svg",
             href: "/user/leads",
           },
           {
             id: "transkrip",
-            title: t(locale, "TRANSKRIP NILAI", "TRANSCRIPT"),
+            title: t(locale, "Transkrip Nilai", "Transcript"),
             icon: "/nilai.svg",
             href: "/user/leads",
           },
           {
             id: "akta",
-            title: t(locale, "AKTA KELAHIRAN", "BIRTH CERTIFICATE"),
+            title: t(locale, "Akta Kelahiran", "Birth Certificate"),
             icon: "/akta.svg",
             href: "/user/leads",
           },
@@ -71,7 +73,11 @@ export default function useDocumentTranslateViewModel({ locale = "id" } = {}) {
       },
 
       why: {
-        title: t(locale, "WHY CHOOSE OUR SERVICE", "WHY CHOOSE OUR SERVICE"),
+        title: t(
+          locale,
+          "MENGAPA MEMILIH LAYANAN KAMI",
+          "WHY CHOOSE OUR SERVICE"
+        ),
         items: [
           {
             id: "fast",
@@ -82,8 +88,8 @@ export default function useDocumentTranslateViewModel({ locale = "id" } = {}) {
             ),
             desc: t(
               locale,
-              "Kami berkomitmen memberikan layanan dengan integritas, profesionalisme, dan hasil tepat waktu.",
-              "We deliver with integrity, professionalism, and on-time results."
+              "Kami Berkomitmen Memberikan Layanan Dengan Integritas, Profesionalisme, Dan Hasil Tepat Waktu.",
+              "We are committed to delivering with integrity, professionalism, and on-time results."
             ),
             icon: "/fast.svg",
           },
@@ -96,22 +102,22 @@ export default function useDocumentTranslateViewModel({ locale = "id" } = {}) {
             ),
             desc: t(
               locale,
-              "Kerahasiaan dan keamanan dokumen Anda menjadi prioritas dalam setiap tahap proses kami.",
-              "Confidentiality and security are prioritized at every step."
+              "Kerahasiaan Dan Keamanan Dokumen Anda Menjadi Prioritas Dalam Setiap Tahap Proses Kami.",
+              "The confidentiality and security of your documents are prioritized at every stage of our process."
             ),
             icon: "/secure.svg",
           },
           {
-            id: "accuracy",
+            id: "sworn", // boleh tetap "accuracy" jika ada dependensi, teks tetap sama
             title: t(
               locale,
-              "Akurasi Linguistik Berstandar Global",
-              "Global-Standard Linguistic Accuracy"
+              "Penerjeman Tersumpah (SWORN)",
+              "Sworn Translation (SWORN)"
             ),
             desc: t(
               locale,
-              "Terjemahan presisi tinggi oleh ahli berstandar internasional.",
-              "High-precision translation by internationally-qualified experts."
+              "Terjemahan Berlisensi Ahli Yang Telah Sumpah Dan Disertivikasi Oleh Lembaga Khusus",
+              "Performed by licensed experts who are sworn and certified by designated institutions."
             ),
             icon: "/accuracy.svg",
           },
@@ -124,19 +130,20 @@ export default function useDocumentTranslateViewModel({ locale = "id" } = {}) {
             ),
             desc: t(
               locale,
-              "Memenuhi standar institusi akademik dan kebutuhan legal internasional.",
-              "Meets academic institutions and international legal requirements."
+              "Dokumen Terjemahan Kami Dapat Digunakan Untuk Keperluan Nasional Maupun International",
+              "Our translations are suitable for national and international requirements."
             ),
             icon: "/check.svg",
           },
         ],
+
         images: {
           mainImage: "/landscape.svg",
           subImage: "/phone.svg",
         },
       },
 
-      // ==== CTA ====
+      // CTA (opsional)
       cta: {
         title: t(
           locale,
@@ -145,8 +152,8 @@ export default function useDocumentTranslateViewModel({ locale = "id" } = {}) {
         ),
         subtitle: t(
           locale,
-          "Dengan layanan terjemahan profesional kami, setiap detail diterjemahkan secara akurat dan siap membawa Anda melangkah lebih jauh di kancah global.",
-          "With our professional translation services, every detail is delivered accurately and ready to take you further on the global stage."
+          "Dengan layanan terjemahan profesional kami, setiap detail diterjemahkan secara akurat dan siap digunakan untuk keperluan resmi maupun internasional.",
+          "With our professional translation services, every detail is delivered accurately and ready for official and international use."
         ),
         button: {
           label: t(locale, "COBA SEKARANG", "TRY NOW"),

@@ -5,23 +5,72 @@ import { Skeleton } from "antd";
 import useAccommodationViewModel from "./useAccommodationViewModel";
 import { sanitizeHtml } from "@/app/utils/dompurify";
 
-const FONT_FAMILY = '"Public Sans", sans-serif';
+const FONT_FAMILY =
+  '"Public Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif';
 
-/* ===== utilities ===== */
 const isSvgSrc = (v) => typeof v === "string" && /\.svg(\?.*)?$/i.test(v);
 
-/* ===== styles ===== */
+/* ===== reveal ringan ===== */
+function useRevealOnScroll(deps = []) {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const prefersReduce = window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    ).matches;
+    const applyDelayVar = (el) => {
+      const d = el.getAttribute("data-rvd");
+      if (d) el.style.setProperty("--rvd", d);
+    };
+    const showAll = (nodes) =>
+      nodes.forEach((el) => {
+        applyDelayVar(el);
+        el.classList.add("is-visible");
+      });
+    if (prefersReduce) {
+      showAll(Array.from(document.querySelectorAll(".reveal")));
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            applyDelayVar(e.target);
+            e.target.classList.add("is-visible");
+            io.unobserve(e.target);
+          }
+        });
+      },
+      { threshold: 0.16, rootMargin: "0px 0px -10% 0px" }
+    );
+    const observe = () =>
+      document
+        .querySelectorAll(".reveal:not(.is-visible)")
+        .forEach((el) => io.observe(el));
+    observe();
+    const mo = new MutationObserver(observe);
+    mo.observe(document.body, { childList: true, subtree: true });
+    return () => {
+      io.disconnect();
+      mo.disconnect();
+    };
+  }, deps);
+}
+
+/* ================== Styles ================== */
 const styles = {
-  sectionInner: {
+  sectionInnerBase: {
     width: "min(1360px, 96%)",
     margin: "0 auto",
     fontFamily: FONT_FAMILY,
   },
 
-  /* ================= HERO (NO margin-top) ================= */
+  /* ========== HERO ========== */
   hero: {
     section: { padding: "0 0 24px" },
     wrapper: {
+      width: "100%",
+      maxWidth: "100%",
+      boxSizing: "border-box",
       background: "#0b56c9",
       borderRadius: 28,
       borderTopRightRadius: 120,
@@ -35,13 +84,11 @@ const styles = {
       alignItems: "center",
       color: "#fff",
       boxShadow: "0 24px 54px rgba(3,30,88,.28)",
-      width: "calc(100% - 100px)",
       overflow: "hidden",
       fontFamily: FONT_FAMILY,
     },
     left: { minWidth: 0, textAlign: "left" },
     right: { display: "flex", justifyContent: "center", alignItems: "center" },
-
     title: {
       margin: 0,
       fontSize: 54,
@@ -60,17 +107,14 @@ const styles = {
       maxWidth: 640,
       textAlign: "left",
     },
-
-    // Illustration frame is STRICT so nothing spills outside
     illFrame: {
       width: "min(500px, 92%)",
       height: 320,
       display: "grid",
       placeItems: "center",
-      overflow: "hidden", // <- penting agar tidak meluber
+      overflow: "hidden",
       borderRadius: 12,
     },
-    // For raster images
     illImg: {
       width: "100%",
       height: "100%",
@@ -80,22 +124,33 @@ const styles = {
       maxHeight: "100%",
     },
 
-    /* responsive */
+    /* mobile overrides */
     wrapperNarrow: {
       gridTemplateColumns: "1fr",
       padding: "28px 24px",
       minHeight: 340,
       borderTopRightRadius: 80,
       borderBottomLeftRadius: 96,
-      width: "100%",
       marginTop: "-6px",
     },
     titleNarrow: { fontSize: 38, lineHeight: 1.12 },
-    illFrameNarrow: { width: "100%", height: 220, marginTop: 10 },
-    illImgNarrow: { width: "100%", height: "100%" },
+    illFrameNarrow: {
+      width: "100%",
+      height: 220,
+      marginTop: 10,
+      display: "grid",
+      placeItems: "center",
+    },
+    illImgNarrow: {
+      width: "100%",
+      height: "100%",
+      objectPosition: "center",
+      margin: "0 auto",
+      display: "block",
+    },
   },
 
-  /* ================= DESCRIPTION (marginTop 75px) ================= */
+  /* ========== DESCRIPTION ========== */
   desc: {
     section: { marginTop: 75 },
     title: {
@@ -118,7 +173,7 @@ const styles = {
     },
   },
 
-  /* ================= SERVICES (marginTop 75px) ================= */
+  /* ========== SERVICES ========== */
   services: {
     section: { marginTop: 75 },
     barBleed: {
@@ -133,7 +188,11 @@ const styles = {
       fontWeight: 900,
       letterSpacing: ".02em",
       textTransform: "uppercase",
-      fontSize: "clamp(22px, 2.6vw, 38px)",
+      /* font: dipaksa satu baris di semua ukuran */
+      whiteSpace: "nowrap",
+      paddingInline: 12,
+      lineHeight: 1,
+      fontSize: "clamp(13px, 3.6vw, 28px)",
       boxShadow: "0 10px 22px rgba(11,86,201,.28)",
     },
     grid: {
@@ -184,7 +243,7 @@ const styles = {
     },
   },
 
-  /* ================= WHY (marginTop 75px) ================= */
+  /* ========== WHY ========== */
   why: {
     section: { marginTop: 75 },
     barBleed: {
@@ -199,7 +258,10 @@ const styles = {
       fontWeight: 900,
       letterSpacing: ".02em",
       textTransform: "uppercase",
-      fontSize: "clamp(22px, 2.6vw, 38px)",
+      whiteSpace: "nowrap",
+      paddingInline: 12,
+      lineHeight: 1,
+      fontSize: "clamp(13px, 3.6vw, 28px)",
       boxShadow: "0 10px 22px rgba(11,86,201,.28)",
     },
     grid: {
@@ -235,12 +297,17 @@ const styles = {
       color: "#0f172a",
     },
     sub: { margin: 0, color: "#334155", lineHeight: 1.55 },
-    gridNarrow: { gridTemplateColumns: "1fr", gap: 24 },
+    gridNarrow: {
+      gridTemplateColumns: "1fr",
+      gap: 24,
+      marginLeft: 0,
+      marginTop: 36,
+    },
     itemNarrow: { gridTemplateColumns: "56px 1fr" },
     iconNarrow: { width: 56, height: 56, fontSize: 28 },
   },
 
-  /* ================= CTA (marginTop 75px) ================= */
+  /* ========== CTA ========== */
   cta: {
     section: { marginTop: 75, padding: "0 0 48px" },
     wrap: {
@@ -299,7 +366,7 @@ const styles = {
   },
 };
 
-/* simple <img> with fallback for raster use */
+/* <img> fallback aman */
 function Img({ src, alt, style }) {
   // eslint-disable-next-line @next/next/no-img-element
   return (
@@ -310,6 +377,7 @@ function Img({ src, alt, style }) {
       }
       alt={alt || ""}
       style={style}
+      loading="lazy"
       onError={(e) => {
         e.currentTarget.onerror = null;
         e.currentTarget.src =
@@ -321,6 +389,7 @@ function Img({ src, alt, style }) {
 
 export default function AccommodationContent({ locale = "id" }) {
   const { content, isLoading } = useAccommodationViewModel({ locale });
+  useRevealOnScroll([isLoading]);
 
   const safeDesc = sanitizeHtml(content.description || "", {
     allowedTags: [
@@ -353,11 +422,13 @@ export default function AccommodationContent({ locale = "id" }) {
     };
   }, []);
 
-  /* responsive-derived styles */
+  /* container dengan gutter simetris */
   const sectionInner = useMemo(
     () => ({
-      ...styles.sectionInner,
-      width: isNarrow ? "min(100%,96%)" : "min(1360px,96%)",
+      ...styles.sectionInnerBase,
+      width: isNarrow ? "100%" : "min(1360px, 96%)",
+      paddingInline: isNarrow ? 16 : 0,
+      boxSizing: "border-box",
     }),
     [isNarrow]
   );
@@ -404,13 +475,47 @@ export default function AccommodationContent({ locale = "id" }) {
     [isNarrow]
   );
 
+  /* ==== mobile collage overrides supaya tidak luber & tidak menabrak list ==== */
+  const backImgStyle = useMemo(
+    () => ({
+      ...styles.services.backImg,
+      ...(isNarrow
+        ? {
+            left: "6%",
+            bottom: "6%",
+            width: "46%",
+            height: "58%",
+            borderRadius: 20,
+          }
+        : {}),
+    }),
+    [isNarrow]
+  );
+
+  const frontFrameStyle = useMemo(
+    () => ({
+      ...styles.services.frontFrame,
+      ...(isNarrow
+        ? {
+            left: "50%",
+            top: "6%",
+            width: "80%",
+            height: "80%", // selalu lebih kecil dari tinggi container (360px -> 288px)
+            transform: "translateX(-50%)",
+            borderWidth: 8,
+          }
+        : {}),
+    }),
+    [isNarrow]
+  );
+
   return (
     <div style={{ paddingBottom: 24, fontFamily: FONT_FAMILY }}>
-      {/* HERO */}
+      {/* ===== HERO ===== */}
       <section style={styles.hero.section}>
         <div style={sectionInner}>
-          <div style={heroWrap}>
-            <div style={styles.hero.left}>
+          <div className="reveal" data-anim="zoom" style={heroWrap}>
+            <div className="reveal" data-anim="left" style={styles.hero.left}>
               {isLoading ? (
                 <Skeleton active paragraph={{ rows: 3 }} />
               ) : (
@@ -423,12 +528,19 @@ export default function AccommodationContent({ locale = "id" }) {
               )}
             </div>
 
-            <div style={styles.hero.right}>
+            <div
+              className="reveal"
+              data-anim="right"
+              style={styles.hero.right}
+              aria-hidden
+            >
               {isLoading ? (
-                <Skeleton.Image active style={{ width: 260, height: 200 }} />
+                <Skeleton.Image
+                  active
+                  style={{ width: 260, height: 200, borderRadius: 12 }}
+                />
               ) : content.hero?.illustration ? (
                 isSvgSrc(content.hero.illustration) ? (
-                  // SVG: render as background so it never spills or distorts
                   <div
                     aria-label="Accommodation Illustration"
                     style={{
@@ -436,11 +548,10 @@ export default function AccommodationContent({ locale = "id" }) {
                       backgroundImage: `url(${content.hero.illustration})`,
                       backgroundRepeat: "no-repeat",
                       backgroundSize: "contain",
-                      backgroundPosition: "right center",
+                      backgroundPosition: isNarrow ? "center" : "right center",
                     }}
                   />
                 ) : (
-                  // Raster: keep using <img>
                   <div style={illFrameStyle}>
                     <Img
                       src={content.hero.illustration}
@@ -455,16 +566,22 @@ export default function AccommodationContent({ locale = "id" }) {
         </div>
       </section>
 
-      {/* DESCRIPTION */}
+      {/* ===== DESCRIPTION ===== */}
       <section style={styles.desc.section}>
         <div style={sectionInner}>
-          <h2 style={{ ...styles.desc.title, fontSize: isNarrow ? 30 : 44 }}>
+          <h2
+            className="reveal"
+            data-anim="down"
+            style={{ ...styles.desc.title, fontSize: isNarrow ? 30 : 44 }}
+          >
             {locale === "id" ? "Deskripsi Program" : "Program Description"}
           </h2>
           {isLoading ? (
             <Skeleton active paragraph={{ rows: 4 }} />
           ) : (
             <div
+              className="reveal desc-content"
+              data-anim="up"
               style={{
                 ...styles.desc.text,
                 fontSize: isNarrow ? 16 : 18,
@@ -476,18 +593,22 @@ export default function AccommodationContent({ locale = "id" }) {
         </div>
       </section>
 
-      {/* SERVICES */}
+      {/* ===== SERVICES ===== */}
       <section style={styles.services.section}>
-        <div style={styles.services.barBleed}>
+        <div
+          className="reveal"
+          data-anim="zoom"
+          style={styles.services.barBleed}
+        >
           {content?.services?.heading ||
             (locale === "id"
-              ? "LAYANAN BOOKING AKOMODASI"
+              ? "LAYANAN PEMESANAN AKOMODASI"
               : "ACCOMMODATION SERVICES")}
         </div>
 
         <div style={sectionInner}>
           <div style={servicesGrid}>
-            {/* collage kiri */}
+            {/* kolase kiri */}
             <div
               style={{ position: "relative", minHeight: isNarrow ? 360 : 420 }}
             >
@@ -497,14 +618,24 @@ export default function AccommodationContent({ locale = "id" }) {
                   height: isNarrow ? 360 : 420,
                 }}
               >
-                <div style={styles.services.backImg}>
+                <div
+                  className="reveal"
+                  data-anim="zoom"
+                  data-rvd="60ms"
+                  style={backImgStyle}
+                >
                   <Img
                     src={content.services?.imageBack}
                     alt="accommodation back"
                     style={styles.services.imgCover}
                   />
                 </div>
-                <div style={styles.services.frontFrame}>
+                <div
+                  className="reveal"
+                  data-anim="zoom"
+                  data-rvd="140ms"
+                  style={frontFrameStyle}
+                >
                   <Img
                     src={content.services?.imageFront}
                     alt="accommodation front"
@@ -514,8 +645,10 @@ export default function AccommodationContent({ locale = "id" }) {
               </div>
             </div>
 
-            {/* list kanan */}
+            {/* list kanan / di bawah saat mobile */}
             <div
+              className="reveal"
+              data-anim="right"
               style={{
                 ...styles.services.list,
                 gridTemplateColumns: isNarrow ? "1fr" : "repeat(2,1fr)",
@@ -523,7 +656,7 @@ export default function AccommodationContent({ locale = "id" }) {
             >
               {(content.services?.items || []).map((it) => (
                 <div key={it.id} style={styles.services.item}>
-                  <div style={styles.services.icon}>{it.icon || "â€¢"}</div>
+                  <div style={styles.services.icon}>{it.icon || "•"}</div>
                   <div>
                     <h4 style={styles.services.itemTitle}>{it.title}</h4>
                     <p style={styles.services.itemDesc}>{it.text}</p>
@@ -535,9 +668,9 @@ export default function AccommodationContent({ locale = "id" }) {
         </div>
       </section>
 
-      {/* WHY */}
+      {/* ===== WHY ===== */}
       <section style={styles.why.section}>
-        <div style={styles.why.barBleed}>
+        <div className="reveal" data-anim="zoom" style={styles.why.barBleed}>
           {content?.why?.heading ||
             (locale === "id"
               ? "MENGAPA PILIH AKOMODASI DI OSS BALI?"
@@ -546,6 +679,8 @@ export default function AccommodationContent({ locale = "id" }) {
 
         <div style={sectionInner}>
           <div
+            className="reveal"
+            data-anim="up"
             style={{
               ...styles.why.grid,
               ...(isNarrow ? styles.why.gridNarrow : {}),
@@ -565,7 +700,7 @@ export default function AccommodationContent({ locale = "id" }) {
                     ...(isNarrow ? styles.why.iconNarrow : {}),
                   }}
                 >
-                  {w.icon || "â€¢"}
+                  {w.icon || "•"}
                 </div>
                 <div>
                   <h4 style={styles.why.title}>{w.title}</h4>
@@ -577,10 +712,10 @@ export default function AccommodationContent({ locale = "id" }) {
         </div>
       </section>
 
-      {/* CTA */}
+      {/* ===== CTA ===== */}
       <section style={styles.cta.section}>
         <div style={sectionInner}>
-          <div style={styles.cta.wrap}>
+          <div className="reveal" data-anim="zoom" style={styles.cta.wrap}>
             <div style={styles.cta.shadowCard} />
             <div
               style={{
@@ -589,12 +724,22 @@ export default function AccommodationContent({ locale = "id" }) {
               }}
             >
               <div>
-                <h3 style={styles.cta.title}>{content.cta?.title}</h3>
-                <p style={styles.cta.sub}>{content.cta?.subtitle}</p>
+                <h3
+                  className="reveal"
+                  data-anim="down"
+                  style={styles.cta.title}
+                >
+                  {content.cta?.title}
+                </h3>
+                <p className="reveal" data-anim="up" style={styles.cta.sub}>
+                  {content.cta?.subtitle}
+                </p>
               </div>
               {content.cta?.button?.href && (
                 <a
                   href={content.cta.button.href}
+                  className="reveal"
+                  data-anim="left"
                   style={{
                     ...styles.cta.btn,
                     width: isNarrow ? "100%" : "auto",
@@ -608,7 +753,72 @@ export default function AccommodationContent({ locale = "id" }) {
           </div>
         </div>
       </section>
+
+      {/* ===== global anim styles ===== */}
+      <style jsx global>{`
+        ::selection {
+          background: #0b56c9;
+          color: #fff;
+        }
+        html,
+        body {
+          overflow-x: clip;
+        }
+        .reveal {
+          opacity: 0;
+          transform: var(--reveal-from, translate3d(0, 16px, 0));
+          transition: opacity 680ms ease,
+            transform 680ms cubic-bezier(0.21, 1, 0.21, 1);
+          transition-delay: var(--rvd, 0ms);
+          will-change: opacity, transform;
+        }
+        .reveal[data-anim="up"] {
+          --reveal-from: translate3d(0, 18px, 0);
+        }
+        .reveal[data-anim="down"] {
+          --reveal-from: translate3d(0, -18px, 0);
+        }
+        .reveal[data-anim="left"] {
+          --reveal-from: translate3d(-18px, 0, 0);
+        }
+        .reveal[data-anim="right"] {
+          --reveal-from: translate3d(18px, 0, 0);
+        }
+        .reveal[data-anim="zoom"] {
+          --reveal-from: scale(0.96);
+        }
+        .reveal.is-visible {
+          opacity: 1;
+          transform: none;
+        }
+        .desc-content p {
+          margin: 10px 0 0;
+        }
+        .desc-content p + p {
+          margin-top: 10px;
+        }
+        .desc-content ul,
+        .desc-content ol {
+          margin: 10px 0 0;
+          padding-left: 1.25rem;
+        }
+        .desc-content li {
+          margin: 6px 0;
+        }
+        .desc-content a {
+          color: #0b56c9;
+          text-decoration: underline;
+          text-underline-offset: 2px;
+          text-decoration-thickness: 1.5px;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .reveal {
+            transition: none !important;
+            opacity: 1 !important;
+            transform: none !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }
-

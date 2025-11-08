@@ -1,12 +1,103 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Skeleton } from "antd";
 import { sanitizeHtml } from "@/app/utils/dompurify";
 
-const FONT_FAMILY = '"Public Sans", sans-serif';
+/* ============================= */
+/* Utilities: Reveal on scroll + Parallax */
+function useRevealOnScroll(deps = []) {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
 
-/* ===================== STYLES ===================== */
+    const prefersReduce = window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    ).matches;
+
+    const applyDelayVar = (el) => {
+      const d = el.getAttribute("data-rvd");
+      if (d) el.style.setProperty("--rvd", d);
+    };
+
+    const showAll = (nodes) => {
+      nodes.forEach((el) => {
+        applyDelayVar(el);
+        el.classList.add("is-visible");
+      });
+    };
+
+    if (prefersReduce) {
+      showAll(Array.from(document.querySelectorAll(".reveal")));
+      return;
+    }
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            applyDelayVar(e.target);
+            e.target.classList.add("is-visible");
+            io.unobserve(e.target);
+          }
+        });
+      },
+      { threshold: 0.16, rootMargin: "0px 0px -10% 0px" }
+    );
+
+    const observe = () =>
+      document
+        .querySelectorAll(".reveal:not(.is-visible)")
+        .forEach((el) => io.observe(el));
+
+    observe();
+
+    const mo = new MutationObserver(observe);
+    mo.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      io.disconnect();
+      mo.disconnect();
+    };
+  }, deps);
+}
+
+function useHeroParallax(ref) {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const root = ref.current;
+    if (!root) return;
+
+    const prefersReduce = window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    ).matches;
+    const isDesktop = () => window.innerWidth >= 992;
+    if (prefersReduce || !isDesktop()) return;
+
+    const copy = root.querySelector(".js-hero-copy");
+    const onMove = (e) => {
+      const r = root.getBoundingClientRect();
+      const cx = (e.clientX - r.left) / r.width - 0.5;
+      const cy = (e.clientY - r.top) / r.height - 0.5;
+      copy &&
+        (copy.style.transform = `translate3d(${cx * 6}px, ${cy * 6}px, 0)`);
+    };
+    const onLeave = () => {
+      copy && (copy.style.transform = "");
+    };
+    root.addEventListener("mousemove", onMove);
+    root.addEventListener("mouseleave", onLeave);
+    return () => {
+      root.removeEventListener("mousemove", onMove);
+      root.removeEventListener("mouseleave", onLeave);
+    };
+  }, [ref]);
+}
+
+/* ============================= */
+/* Brand tokens */
+const FONT_FAMILY =
+  '"Public Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif';
+
 const styles = {
   sectionInner: {
     width: "min(1280px, 94%)",
@@ -14,15 +105,15 @@ const styles = {
     fontFamily: FONT_FAMILY,
   },
 
-  /* ================= HERO ================= */
+  /* ---------- HERO ---------- */
   hero: {
     section: { padding: "8px 0 28px" },
     card: {
       position: "relative",
       background: "#0B56C9",
       borderTopLeftRadius: 24,
-      borderTopRightRadius: 96,
-      borderBottomLeftRadius: 96,
+      borderTopRightRadius: 120,
+      borderBottomLeftRadius: 120,
       borderBottomRightRadius: 24,
       padding: "56px 64px",
       minHeight: 360,
@@ -39,13 +130,13 @@ const styles = {
       lineHeight: 1.08,
       fontWeight: 900,
       letterSpacing: ".01em",
-      textTransform: "uppercase",
+      textTransform: "none",
     },
     subtitle: {
       margin: "16px 0 0",
       fontSize: 16,
       lineHeight: 1.9,
-      letterSpacing: ".02em",
+      letterSpacing: ".01em",
       color: "rgba(255,255,255,.94)",
       maxWidth: 640,
     },
@@ -79,18 +170,13 @@ const styles = {
     },
   },
 
-  /* ================= DESCRIPTION ================= */
+  /* ---------- DESCRIPTION ---------- */
   desc: {
-    section: {
-      padding: "0 0 40px",
-      marginTop: 75,
-      marginLeft: -35,
-      marginRight: 40,
-    },
+    section: { padding: "46px 0 56px" },
     heading: {
       margin: 0,
       fontWeight: 900,
-      fontSize: 44,
+      fontSize: 40,
       letterSpacing: ".005em",
       color: "#0b0d12",
     },
@@ -100,19 +186,22 @@ const styles = {
       color: "#0b0d12",
       fontSize: 18,
       lineHeight: 2.0,
-      letterSpacing: ".02em",
-      wordSpacing: "0.06em",
+      letterSpacing: ".01em",
+      wordSpacing: "0.04em",
       textAlign: "justify",
       textJustify: "inter-word",
+      hyphens: "auto",
     },
   },
 
-  /* ================= OUR SERVICES ================= */
+  /* ---------- SERVICES ---------- */
   services: {
     section: { padding: "12px 0 56px" },
     band: {
       background: "#0b56c9",
-      height: 64,
+      // biar ada ruang kiri/kanan di mobile
+      paddingInline: "clamp(12px, 4vw, 28px)",
+      minHeight: 56,
       display: "grid",
       placeItems: "center",
       boxShadow: "0 8px 22px rgba(11,86,201,.28)",
@@ -126,8 +215,11 @@ const styles = {
       color: "#fff",
       fontFamily: FONT_FAMILY,
       fontWeight: 900,
-      letterSpacing: ".02em",
-      fontSize: 28,
+      letterSpacing: ".01em",
+      /* KUNCI: font fluid + tidak melipat baris */
+      fontSize: "clamp(12px, 3.6vw, 28px)",
+      whiteSpace: "nowrap",
+      lineHeight: 1.1,
       textTransform: "uppercase",
     },
     grid: {
@@ -149,14 +241,9 @@ const styles = {
       display: "grid",
       justifyItems: "center",
       textDecoration: "none",
-      transition: "transform .12s ease, box-shadow .2s ease",
+      transition: "transform .18s ease, box-shadow .22s ease, filter .22s ease",
       filter: "drop-shadow(0 18px 34px rgba(10,50,120,.20))",
       marginTop: "75px",
-    },
-    cardHover: {
-      transform: "translateY(-4px)",
-      boxShadow:
-        "0 24px 56px rgba(8,40,98,.28), 0 2px 0 0 rgba(255,255,255,.12) inset",
     },
     diamond: {
       width: 140,
@@ -188,12 +275,13 @@ const styles = {
     },
   },
 
-  /* ================= WHY CHOOSE OUR SERVICE ================= */
+  /* ---------- WHY ---------- */
   why: {
     section: { padding: "0 0 80px", marginTop: 75 },
     band: {
       background: "#0b56c9",
-      height: 64,
+      paddingInline: "clamp(12px, 4vw, 28px)",
+      minHeight: 56,
       display: "grid",
       placeItems: "center",
       boxShadow: "0 8px 22px rgba(11,86,201,.28)",
@@ -207,8 +295,10 @@ const styles = {
       color: "#fff",
       fontFamily: FONT_FAMILY,
       fontWeight: 900,
-      letterSpacing: ".02em",
-      fontSize: 28,
+      letterSpacing: ".01em",
+      fontSize: "clamp(16px,4vw, 38px)",
+      whiteSpace: "nowrap",
+      lineHeight: 1.1,
       textTransform: "uppercase",
     },
     grid: {
@@ -237,10 +327,6 @@ const styles = {
       height: 48,
       display: "grid",
       placeItems: "center",
-      background: "transparent",
-      border: 0,
-      boxShadow: "none",
-      padding: 0,
     },
     icon: { width: 44, height: 44, objectFit: "contain" },
     itemTitle: {
@@ -252,7 +338,6 @@ const styles = {
     },
     itemDesc: { margin: 0, color: "#123", lineHeight: 1.65, fontSize: 15.5 },
 
-    // collage kanan
     collageArea: { position: "relative", width: "100%", height: 420 },
     backBox: {
       position: "absolute",
@@ -263,7 +348,6 @@ const styles = {
       borderRadius: 28,
       overflow: "hidden",
       background: "#f3f4f6",
-      border: "0px solid transparent",
       boxShadow: "0 24px 44px rgba(15,23,42,.16)",
     },
     frontBox: {
@@ -284,7 +368,7 @@ const styles = {
     frontNarrow: { left: 90, top: 20, width: 280, height: 280, borderWidth: 8 },
   },
 
-  /* ================= CTA ================= */
+  /* ---------- CTA ---------- */
   cta: {
     section: { padding: "100px 0 90px" },
     wrap: {
@@ -339,8 +423,6 @@ const styles = {
       boxShadow: "0 12px 28px rgba(11,86,201,.28)",
       textTransform: "uppercase",
     },
-
-    // responsive
     innerNarrow: { gridTemplateColumns: "1fr", justifyItems: "start" },
     titleNarrow: { fontSize: 28 },
     btnNarrow: { width: "100%", textAlign: "center" },
@@ -348,13 +430,15 @@ const styles = {
 };
 
 /* -------- helper image -------- */
-function Img({ src, alt, style }) {
+function Img({ src, alt, style, className }) {
   // eslint-disable-next-line @next/next/no-img-element
   return (
     <img
       src={src}
       alt={alt || ""}
+      className={className}
       style={style}
+      loading="lazy"
       onError={(e) => {
         e.currentTarget.onerror = null;
         e.currentTarget.src =
@@ -369,7 +453,7 @@ export default function DocumentTranslateContent({
   content,
   isLoading,
 }) {
-  const hero = content?.hero || {};
+  const heroRef = useRef(null);
 
   const safeDescription = sanitizeHtml(content?.description || "", {
     allowedTags: [
@@ -416,6 +500,9 @@ export default function DocumentTranslateContent({
     };
   }, []);
 
+  useRevealOnScroll([isLoading]);
+  useHeroParallax(heroRef);
+
   /* -------- derived responsive -------- */
   const sectionInnerStyle = useMemo(
     () => ({
@@ -435,11 +522,12 @@ export default function DocumentTranslateContent({
         : "1.15fr .85fr",
       padding: isNarrow ? "28px 22px" : isTablet ? "44px 48px" : "56px 64px",
       minHeight: isNarrow ? 240 : isTablet ? 320 : 360,
-      borderTopRightRadius: isNarrow ? 56 : 96,
-      borderBottomLeftRadius: isNarrow ? 56 : 96,
+      borderTopRightRadius: isNarrow ? 72 : 120,
+      borderBottomLeftRadius: isNarrow ? 72 : 120,
     }),
     [isNarrow, isTablet]
   );
+
   const heroTitleStyle = useMemo(
     () => ({
       ...styles.hero.title,
@@ -448,6 +536,7 @@ export default function DocumentTranslateContent({
     }),
     [isNarrow, isTablet]
   );
+
   const illoWrapStyle = useMemo(
     () => ({
       ...styles.hero.illoWrap,
@@ -458,6 +547,7 @@ export default function DocumentTranslateContent({
     }),
     [isNarrow, isTablet]
   );
+
   const sunStyle = useMemo(
     () => ({
       ...styles.hero.sun,
@@ -467,6 +557,7 @@ export default function DocumentTranslateContent({
     }),
     [isNarrow, isTablet]
   );
+
   const illoStyle = useMemo(
     () => ({
       ...styles.hero.illo,
@@ -478,21 +569,9 @@ export default function DocumentTranslateContent({
     [isNarrow, isTablet]
   );
 
-  const indent = useMemo(
-    () => (isNarrow ? 12 : isTablet ? 28 : 40),
-    [isNarrow, isTablet]
-  );
   const descHeadingStyle = useMemo(
-    () => ({
-      ...styles.desc.heading,
-      fontSize: isNarrow ? 30 : 44,
-      marginLeft: indent,
-    }),
-    [isNarrow, indent]
-  );
-  const descBodyBoxStyle = useMemo(
-    () => ({ ...styles.desc.bodyBox, marginLeft: indent }),
-    [indent]
+    () => ({ ...styles.desc.heading, fontSize: isNarrow ? 30 : 40 }),
+    [isNarrow]
   );
   const descBodyStyle = useMemo(
     () => ({
@@ -518,6 +597,7 @@ export default function DocumentTranslateContent({
         : styles.why.grid,
     [isNarrow]
   );
+
   const collageArea = useMemo(
     () => ({
       ...styles.why.collageArea,
@@ -540,67 +620,77 @@ export default function DocumentTranslateContent({
     [isNarrow]
   );
 
-  // CTA responsive
-  const ctaInner = useMemo(
-    () => ({
-      ...styles.cta.inner,
-      ...(isNarrow ? styles.cta.innerNarrow : {}),
-    }),
-    [isNarrow]
-  );
-  const ctaTitle = useMemo(
-    () => ({
-      ...styles.cta.title,
-      ...(isNarrow ? styles.cta.titleNarrow : {}),
-    }),
-    [isNarrow]
-  );
-  const ctaBtn = useMemo(
-    () => ({ ...styles.cta.btn, ...(isNarrow ? styles.cta.btnNarrow : {}) }),
-    [isNarrow]
-  );
-
   return (
     <div style={{ paddingBottom: 32, fontFamily: FONT_FAMILY }}>
-      {/* ================= HERO ================= */}
+      {/* ---------- HERO ---------- */}
       <section style={styles.hero.section}>
         <div style={sectionInnerStyle}>
-          <div style={heroCardStyle}>
-            <div>
+          <div
+            ref={heroRef}
+            style={heroCardStyle}
+            className="reveal"
+            data-anim="zoom"
+          >
+            <div className="js-hero-copy">
               {isLoading ? (
                 <Skeleton active paragraph={{ rows: 3 }} />
               ) : (
                 <>
-                  <h1 style={heroTitleStyle}>{hero.title}</h1>
-                  {hero.subtitle ? (
-                    <p style={styles.hero.subtitle}>{hero.subtitle}</p>
+                  <h1
+                    className="reveal"
+                    data-anim="down"
+                    style={heroTitleStyle}
+                  >
+                    {content?.hero?.title}
+                  </h1>
+                  {content?.hero?.subtitle ? (
+                    <p
+                      className="reveal"
+                      data-anim="up"
+                      style={styles.hero.subtitle}
+                    >
+                      {content.hero.subtitle}
+                    </p>
                   ) : null}
                 </>
               )}
             </div>
-            <div style={illoWrapStyle} aria-hidden>
-              <div style={sunStyle} />
-              {isLoading ? null : hero.illustration ? (
-                <Img src={hero.illustration} alt="" style={illoStyle} />
+
+            <div
+              style={illoWrapStyle}
+              className="reveal"
+              data-anim="right"
+              aria-hidden
+            >
+              <div style={sunStyle} className="anim-sun" />
+              {isLoading ? null : content?.hero?.illustration ? (
+                <Img
+                  src={content.hero.illustration}
+                  alt=""
+                  style={illoStyle}
+                  className="anim-illo"
+                />
               ) : null}
             </div>
           </div>
         </div>
       </section>
 
-      {/* ================= DESCRIPTION ================= */}
+      {/* ---------- DESCRIPTION ---------- */}
       <section style={styles.desc.section}>
         <div style={sectionInnerStyle}>
-          <h2 style={descHeadingStyle}>
+          <h2 className="reveal" data-anim="down" style={descHeadingStyle}>
             {locale === "en" ? "Program Description" : "Deskripsi Program"}
           </h2>
         </div>
         <div style={sectionInnerStyle}>
-          <div style={descBodyBoxStyle}>
+          <div>
             {isLoading ? (
               <Skeleton active paragraph={{ rows: 5 }} />
             ) : (
               <div
+                className="reveal desc-content"
+                data-anim="up"
                 style={descBodyStyle}
                 dangerouslySetInnerHTML={{ __html: safeDescription }}
               />
@@ -609,36 +699,28 @@ export default function DocumentTranslateContent({
         </div>
       </section>
 
-      {/* ================= OUR SERVICES ================= */}
+      {/* ---------- SERVICES ---------- */}
       <section style={styles.services.section}>
-        <div style={styles.services.band}>
+        <div className="reveal" data-anim="zoom" style={styles.services.band}>
           <h3 style={styles.services.bandTitle}>
             {content?.services?.title ||
               (locale === "en"
-                ? "OUR PRODUCT DOCUMENT TRANSLATION"
-                : "OUR PRODUCT DOCUMENT TRANSLATION")}
+                ? "DOCUMENT TRANSLATION PRODUCTS"
+                : "PRODUK TERJEMAHAN DOKUMEN")}
           </h3>
         </div>
         <div style={sectionInnerStyle}>
           <div style={servicesGridStyle}>
-            {(content?.services?.items || []).map((it) => (
+            {(content?.services?.items || []).map((it, i) => (
               <a
                 key={it.id}
                 href={it.href || "#"}
                 style={styles.services.card}
-                onMouseEnter={(e) =>
-                  Object.assign(
-                    e.currentTarget.style,
-                    styles.services.cardHover
-                  )
-                }
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = "";
-                  e.currentTarget.style.boxShadow =
-                    "0 18px 42px rgba(8,40,98,.22), 0 2px 0 0 rgba(255,255,255,.08) inset";
-                }}
+                className="service-card reveal"
+                data-anim="up"
+                data-rvd={`${i * 80}ms`}
               >
-                <div style={styles.services.diamond}>
+                <div style={styles.services.diamond} className="anim-diamond">
                   <Img
                     src={it.icon}
                     alt={it.title}
@@ -652,23 +734,29 @@ export default function DocumentTranslateContent({
         </div>
       </section>
 
-      {/* ================= WHY CHOOSE OUR SERVICE ================= */}
+      {/* ---------- WHY ---------- */}
       <section style={styles.why.section}>
-        <div style={styles.why.band}>
+        <div className="reveal" data-anim="zoom" style={styles.why.band}>
           <h3 style={styles.why.bandTitle}>
             {content?.why?.title ||
               (locale === "en"
                 ? "WHY CHOOSE OUR SERVICE"
-                : "WHY CHOOSE OUR SERVICE")}
+                : "MENGAPA MEMILIH LAYANAN KAMI")}
           </h3>
         </div>
 
         <div style={sectionInnerStyle}>
           <div style={whyGridStyle}>
             {/* left list panel */}
-            <div style={styles.why.panel}>
-              {(content?.why?.items || []).map((w) => (
-                <div key={w.id} style={styles.why.item}>
+            <div className="reveal" data-anim="left" style={styles.why.panel}>
+              {(content?.why?.items || []).map((w, idx) => (
+                <div
+                  key={w.id}
+                  style={styles.why.item}
+                  className="reveal"
+                  data-anim="up"
+                  data-rvd={`${40 + idx * 80}ms`}
+                >
                   <div style={styles.why.iconWrap}>
                     <Img src={w.icon} alt="" style={styles.why.icon} />
                   </div>
@@ -685,14 +773,24 @@ export default function DocumentTranslateContent({
               style={{ position: "relative", minHeight: isNarrow ? 320 : 420 }}
             >
               <div style={collageArea}>
-                <div style={backBox}>
+                <div
+                  style={backBox}
+                  className="reveal"
+                  data-anim="zoom"
+                  data-rvd="100ms"
+                >
                   <Img
                     src={content?.why?.images?.subImage}
                     alt=""
                     style={styles.why.imgCover}
                   />
                 </div>
-                <div style={frontBox}>
+                <div
+                  style={frontBox}
+                  className="reveal"
+                  data-anim="zoom"
+                  data-rvd="200ms"
+                >
                   <Img
                     src={content?.why?.images?.mainImage}
                     alt=""
@@ -705,16 +803,25 @@ export default function DocumentTranslateContent({
         </div>
       </section>
 
-      {/* ================= CTA ================= */}
+      {/* ---------- CTA ---------- */}
       <section style={styles.cta.section}>
         <div style={sectionInnerStyle}>
-          <div style={styles.cta.wrap}>
+          <div className="reveal" data-anim="zoom" style={styles.cta.wrap}>
             <div style={styles.cta.accent} />
-            <div style={ctaInner}>
+            <div
+              style={{
+                ...styles.cta.inner,
+                ...(isNarrow ? styles.cta.innerNarrow : {}),
+              }}
+            >
               <div>
-                {/* judul boleh mengandung <br/> dari view-model */}
                 <h3
-                  style={ctaTitle}
+                  className="reveal"
+                  data-anim="down"
+                  style={{
+                    ...styles.cta.title,
+                    ...(isNarrow ? styles.cta.titleNarrow : {}),
+                  }}
                   dangerouslySetInnerHTML={{
                     __html:
                       content?.cta?.title ||
@@ -723,22 +830,23 @@ export default function DocumentTranslateContent({
                         : "BANGUN KREDIBILITAS MELALUI<br/>TERJEMAHAN BERKUALITAS"),
                   }}
                 />
-                <p style={styles.cta.sub}>
+                <p className="reveal" data-anim="up" style={styles.cta.sub}>
                   {content?.cta?.subtitle ||
                     (locale === "en"
                       ? "With our professional translation services, every detail is delivered accurately and ready to take you further on the global stage."
-                      : "Dengan layanan terjemahan profesional kami, setiap detail diterjemahkan secara akurat dan siap membawa Anda melangkah lebih jauh di kancah global.")}
+                      : "Dengan layanan terjemahan profesional kami, setiap detail diterjemahkan secara akurat dan siap digunakan untuk keperluan resmi maupun internasional.")}
                 </p>
               </div>
 
               {content?.cta?.button?.href && (
                 <a
                   href={content.cta.button.href}
-                  style={ctaBtn}
-                  onMouseEnter={(e) =>
-                    (e.currentTarget.style.transform = "translateY(-2px)")
-                  }
-                  onMouseLeave={(e) => (e.currentTarget.style.transform = "")}
+                  className="reveal"
+                  data-anim="left"
+                  style={{
+                    ...styles.cta.btn,
+                    ...(isNarrow ? styles.cta.btnNarrow : {}),
+                  }}
                 >
                   {content.cta.button.label}
                 </a>
@@ -747,7 +855,139 @@ export default function DocumentTranslateContent({
           </div>
         </div>
       </section>
+
+      {/* ---------- GLOBAL STYLES (Animations/Interactions) ---------- */}
+      <style jsx global>{`
+        /* selection */
+        ::selection {
+          background: #0b56c9;
+          color: #fff;
+        }
+        html,
+        body {
+          overflow-x: clip;
+        }
+
+        /* Reveal */
+        .reveal {
+          opacity: 0;
+          transform: var(--reveal-from, translate3d(0, 16px, 0));
+          transition: opacity 680ms ease,
+            transform 680ms cubic-bezier(0.21, 1, 0.21, 1);
+          transition-delay: var(--rvd, 0ms);
+          will-change: opacity, transform;
+        }
+        .reveal[data-anim="up"] {
+          --reveal-from: translate3d(0, 18px, 0);
+        }
+        .reveal[data-anim="down"] {
+          --reveal-from: translate3d(0, -18px, 0);
+        }
+        .reveal[data-anim="left"] {
+          --reveal-from: translate3d(-18px, 0, 0);
+        }
+        .reveal[data-anim="right"] {
+          --reveal-from: translate3d(18px, 0, 0);
+        }
+        .reveal[data-anim="zoom"] {
+          --reveal-from: scale(0.96);
+        }
+        .reveal.is-visible {
+          opacity: 1;
+          transform: none;
+        }
+
+        /* Micro-interactions */
+        .service-card:focus-visible {
+          outline: 3px solid #b9d6ff;
+          outline-offset: 2px;
+        }
+        @media (hover: hover) {
+          .service-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 24px 56px rgba(8, 40, 98, 0.28),
+              0 2px 0 0 rgba(255, 255, 255, 0.12) inset;
+            filter: saturate(1.06);
+          }
+          .anim-diamond {
+            transition: transform 220ms ease;
+          }
+          .service-card:hover .anim-diamond {
+            transform: rotate(45deg) translateY(-2px) scale(1.03);
+          }
+        }
+
+        /* Gentle float for hero visuals */
+        @keyframes floatY {
+          0% {
+            transform: translateY(0);
+          }
+          50% {
+            transform: translateY(-6px);
+          }
+          100% {
+            transform: translateY(0);
+          }
+        }
+        .anim-sun {
+          animation: floatY 6.5s ease-in-out infinite;
+        }
+        .anim-illo {
+          animation: floatY 7s ease-in-out infinite;
+        }
+
+        /* Rich content defaults */
+        .desc-content p {
+          margin: 10px 0 0;
+        }
+        .desc-content p + p {
+          margin-top: 10px;
+        }
+        .desc-content ul,
+        .desc-content ol {
+          margin: 10px 0 0;
+          padding-left: 1.25rem;
+        }
+        .desc-content li {
+          margin: 6px 0;
+        }
+        .desc-content a {
+          color: #0b56c9;
+          text-decoration: underline;
+          text-underline-offset: 2px;
+          text-decoration-thickness: 1.5px;
+        }
+        .desc-content img {
+          max-width: 100%;
+          height: auto;
+          border-radius: 12px;
+          margin: 10px 0;
+        }
+
+        /* Respect reduced motion */
+        @media (prefers-reduced-motion: reduce) {
+          .reveal {
+            transition: none !important;
+            opacity: 1 !important;
+            transform: none !important;
+          }
+          .anim-sun,
+          .anim-illo {
+            animation: none !important;
+          }
+        }
+
+        /* Responsive tweaks */
+        @media (max-width: 1024px) {
+          /* keep grid changes handled in JS memo; extra spacing if needed */
+        }
+        @media (max-width: 640px) {
+          /* enlarge tap targets for accessibility */
+          .service-card {
+            padding: 26px 18px 22px;
+          }
+        }
+      `}</style>
     </div>
   );
 }
-

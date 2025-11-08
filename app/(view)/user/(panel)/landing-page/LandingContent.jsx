@@ -22,7 +22,7 @@ const POPULAR_ROUTE_MAP = {
   "translate-doc": "/user/doc.translate",
   "study-overseas": "/user/overseas-study",
   "visa-apply": "/user/visa-apply",
-  accommodation: "/user/accomodation", // sesuai permintaan (1 m)
+  accommodation: "/user/accommodation", // sesuai permintaan (1 m)
 };
 
 /* helpers */
