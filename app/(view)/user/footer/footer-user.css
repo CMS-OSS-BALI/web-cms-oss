@@ -1,9 +1,9 @@
 ﻿/* ===== Wrapper ===== */
 .oss-footer {
-  --bg: #0b56c9; /* warna utama sesuai desain */
+  --bg: #0b56c9;
   --text: #ffffff;
   --muted: #d9e6ff;
-  --heading: #ffd382; /* judul kolom (kuning hangat di desain) */
+  --heading: #ffd382;
   --line: rgba(255, 255, 255, 0.35);
 
   color: var(--text);
@@ -12,18 +12,21 @@
     sans-serif;
 }
 
-/* Container helper */
+/* Container helper (safe-area aware) */
 .container {
   width: min(1240px, 100%);
   margin-inline: auto;
-  padding-inline: clamp(16px, 5vw, 32px);
+  /* sedikit lebih lega kiri/kanan */
+  --pad: clamp(22px, 7vw, 40px);
+  padding-left: max(env(safe-area-inset-left), var(--pad));
+  padding-right: max(env(safe-area-inset-right), var(--pad));
 }
 
 /* ===== TOP ===== */
 .oss-footer__top {
-  padding: 28px 0 24px;
+  padding: 32px 0 24px;
   display: grid;
-  grid-template-columns: minmax(260px, 1.4fr) repeat(3, minmax(180px, 1fr));
+  grid-template-columns: minmax(260px, 1.5fr) repeat(3, minmax(180px, 1fr));
   gap: 28px clamp(20px, 5vw, 40px);
   align-items: start;
 }
@@ -33,6 +36,13 @@
   flex-direction: column;
   gap: 12px;
   min-width: 0;
+  /* ⬇️ beri jarak kiri agar tidak nempel ke tepi grid */
+  padding-left: clamp(8px, 2vw, 14px);
+}
+
+/* kolom brand tetap align normal (tanpa indent ekstra) */
+.oss-footer__col--brand {
+  padding-left: 0;
 }
 
 .oss-footer__col h4 {
@@ -40,17 +50,23 @@
   color: var(--heading);
   font-weight: 800;
   letter-spacing: 0.2px;
-  font-size: clamp(16px, 1.9vw, 18px);
+  font-size: clamp(16px, 1.8vw, 18px);
 }
 
+/* Brand column: center everything */
+.oss-footer__brand {
+  display: grid;
+  place-items: center;
+}
 .oss-footer__brand img {
-  width: clamp(80px, 10vw, 120px);
+  width: clamp(100px, 38vw, 140px);
   height: auto;
   object-fit: contain;
   display: block;
+  transform: translateZ(0);
 }
 
-/* Kontak */
+/* Kontak & Links */
 .oss-footer__contact,
 .oss-footer__links {
   list-style: none;
@@ -61,12 +77,16 @@
   gap: 10px;
 }
 
+.oss-footer__contact {
+  max-width: 520px;
+}
+
 .oss-footer__contact li {
   display: grid;
   grid-template-columns: 22px 1fr;
   align-items: start;
   gap: 10px;
-  white-space: pre-line; /* biar \n di address jadi baris baru */
+  white-space: pre-line;
 }
 
 .oss-footer__contact .ico {
@@ -75,23 +95,29 @@
   display: inline-grid;
   place-items: center;
 }
-
 .oss-footer__contact .ico svg {
   width: 18px;
   fill: #fff;
+}
+.oss-footer__contact .txt {
+  line-height: 1.5;
+  color: #f5f9ff;
+  font-size: 14px;
 }
 
 .oss-footer__links a {
   color: var(--muted);
   text-decoration: none;
+  font-size: 14px;
+}
+@media (hover: hover) {
+  .oss-footer__links a:hover {
+    color: #fff;
+    text-decoration: underline;
+  }
 }
 
-.oss-footer__links a:hover {
-  color: #fff;
-  text-decoration: underline;
-}
-
-/* ===== Divider (garis putih tipis spt di desain) ===== */
+/* ===== Divider ===== */
 .oss-footer__divider {
   height: 1px;
   background: var(--line);
@@ -102,7 +128,6 @@
 .oss-footer__bottom {
   padding: 18px 0 24px;
 }
-
 .oss-footer__bottom-inner {
   display: flex;
   align-items: center;
@@ -110,7 +135,6 @@
   gap: 16px;
   flex-wrap: wrap;
 }
-
 .oss-footer__copy {
   font-size: 14px;
   color: #f0f6ff;
@@ -121,7 +145,6 @@
   display: flex;
   gap: 10px;
 }
-
 .social-btn {
   width: 36px;
   height: 36px;
@@ -133,39 +156,66 @@
   transition: transform 0.15s ease, background 0.15s ease,
     border-color 0.15s ease;
 }
-
 .social-btn svg {
   width: 18px;
   fill: #fff;
 }
-
-.social-btn:hover {
-  transform: translateY(-2px);
-  background: rgba(255, 255, 255, 0.18);
-  border-color: rgba(255, 255, 255, 0.6);
+@media (hover: hover) {
+  .social-btn:hover {
+    transform: translateY(-2px);
+    background: rgba(255, 255, 255, 0.18);
+    border-color: rgba(255, 255, 255, 0.6);
+  }
+}
+.social-btn:focus-visible {
+  outline: 3px solid #b9d6ff;
+  outline-offset: 2px;
 }
 
 /* ===== Responsive ===== */
-@media (max-width: 1080px) {
+
+/* Large tablet: 3 kolom */
+@media (max-width: 1200px) {
   .oss-footer__top {
-    grid-template-columns: repeat(2, minmax(240px, 1fr));
+    grid-template-columns: minmax(240px, 1.3fr) repeat(2, minmax(180px, 1fr));
   }
 }
 
-@media (max-width: 720px) {
+/* Tablet: 2 kolom, brand span penuh */
+@media (max-width: 920px) {
   .oss-footer__top {
-    grid-template-columns: repeat(2, minmax(160px, 1fr));
+    grid-template-columns: repeat(2, minmax(200px, 1fr));
     row-gap: 24px;
   }
-  .oss-footer__col:first-child {
+  .oss-footer__col--brand {
     grid-column: 1 / -1;
   }
 }
 
-@media (max-width: 480px) {
+/* Mobile: tetap 2 kolom; tambah indent kiri lebih besar */
+@media (max-width: 560px) {
   .oss-footer__top {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 16px;
+    row-gap: 20px;
   }
+  .oss-footer__col {
+    padding-left: 16px; /* ⬅️ margin-left effect pada isi kolom */
+  }
+  .oss-footer__col--brand {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding-left: 0; /* brand tetap center tanpa indent */
+  }
+  .oss-footer__contact {
+    margin-inline: auto;
+    text-align: left;
+  }
+  .oss-footer__contact li {
+    grid-template-columns: 20px 1fr;
+    gap: 8px;
+  }
+
   .oss-footer__bottom-inner {
     flex-direction: column;
     text-align: center;
@@ -174,4 +224,24 @@
     justify-content: center;
     width: 100%;
   }
+  .social-btn {
+    width: 42px;
+    height: 42px;
+  }
+  .social-btn svg {
+    width: 20px;
+  }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .social-btn {
+    transition: none;
+  }
+}
+
+/* Keyboard focus links */
+.oss-footer a:focus-visible {
+  outline: 3px solid #b9d6ff;
+  outline-offset: 2px;
 }

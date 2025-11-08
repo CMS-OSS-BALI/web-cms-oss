@@ -46,7 +46,6 @@ export default function useCollegeViewModel({
     p.set("locale", locale);
     p.set("fallback", "id");
     if (country) p.set("country", country);
-    // jangan kirim q ke /college — filter kampus dilakukan dari jurusan/prodi
     return `/api/college?${p.toString()}`;
   }, [locale, country, perPage]);
 
@@ -81,7 +80,6 @@ export default function useCollegeViewModel({
     revalidateOnFocus: false,
     shouldRetryOnError: false,
   });
-
   const {
     data: jurusanData,
     error: jurusanErr,
@@ -90,7 +88,6 @@ export default function useCollegeViewModel({
     revalidateOnFocus: false,
     shouldRetryOnError: false,
   });
-
   const {
     data: prodiData,
     error: prodiErr,
@@ -114,7 +111,6 @@ export default function useCollegeViewModel({
     const moneyText =
       min && max ? `${min} - ${max}` : min ? `${min}` : max ? `${max}` : "";
 
-    // jenjang (bukan "type")
     const jenjangText = (r?.jenjang || "").toString().trim();
 
     const bullets = [
@@ -145,7 +141,7 @@ export default function useCollegeViewModel({
     }));
 
   /* --------- jurusan/prodi match -> filter colleges --------- */
-  const jpMatchMap = new Map(); // college_id -> { jurusan:[], prodi:[] }
+  const jpMatchMap = new Map();
   if (Array.isArray(jurusanData?.data)) {
     for (const j of jurusanData.data) {
       const cId = j?.college_id || j?.collegeId || j?.kampus_id;
@@ -175,7 +171,19 @@ export default function useCollegeViewModel({
     ? baseUniversities.filter((u) => jpMatchMap.has(String(u.id)))
     : baseUniversities;
 
-  /* --------- recommended section copy --------- */
+  /* --------- copywriting baru untuk hero --------- */
+  const hero = {
+    // ID
+    titleLine1: t(
+      "Langkah Awal Menuju Pendidikan Global",
+      "Your First Step Toward Global Education"
+    ),
+    titleLine2: t("DI MULAI DARI SINI", "STARTS HERE"),
+    image: "/canada-hero.svg",
+    imageAlt: t("Mahasiswa wisuda", "Graduate"),
+    objectPosition: "70% 50%",
+  };
+
   const recommendedUniversity = {
     title: t("RECOMMENDED UNIVERSITY", "RECOMMENDED UNIVERSITY"),
     subtitle: t(
@@ -191,13 +199,7 @@ export default function useCollegeViewModel({
     error:
       collegeErr?.message || jurusanErr?.message || prodiErr?.message || "",
 
-    hero: {
-      titleLine1: t("KULIAH", "STUDY"),
-      titleLine2: t("DI LUAR NEGERI", "ABROAD"),
-      image: "/canada-hero.svg",
-      imageAlt: t("Mahasiswa wisuda", "Graduate"),
-      objectPosition: "40% 50%",
-    },
+    hero,
     findProgram: {
       title: t(
         "TEMUKAN PROGRAM KULIAH LUAR NEGERI TERBAIK UNTUKMU",
@@ -223,6 +225,7 @@ export default function useCollegeViewModel({
     ],
     search: {
       label: t("Pencarian", "Search"),
+      // placeholder hero diganti langsung di component (Cari Kampus / Search Campus)
       placeholder: t(
         "Cari program/jurusan atau universitas (mis. Informatika, Kanada)",
         "Find a program/major or university (e.g., Computer Science, Canada)"
@@ -232,11 +235,8 @@ export default function useCollegeViewModel({
 
     recommendedUniversity,
     universities,
-
-    // Untuk badge match di kartu kampus
     jpMatchesByCollegeId: Object.fromEntries(jpMatchMap),
 
-    // CTA Beasiswa (aman jika tak dipakai)
     scholarshipCTA: {
       title: t(
         "TEMUKAN KESEMPATAN BEASISWAMU",

@@ -1,5 +1,4 @@
 ﻿"use client";
-
 import { useMemo } from "react";
 
 function normLang(v) {
@@ -12,11 +11,8 @@ function normLang(v) {
 
 export default function useFooterUViewModel(opts = {}) {
   const lang = normLang(opts.initialLang);
-
-  // translator sederhana
   const t = (id, en) => (lang === "en" ? en : id);
 
-  // tambahkan ?lang=en jika perlu (ID tetap canonical)
   const withLang = useMemo(() => {
     return (path) => {
       if (!path) return path;
@@ -31,18 +27,14 @@ export default function useFooterUViewModel(opts = {}) {
     };
   }, [lang]);
 
-  // Ganti logo menjadi maskot sesuai desain (fallback ke loading)
   const logo = useMemo(
     () => ({
-      src:
-        "/images/mascot-oss.svg" /* ganti sesuai asetmu */ ||
-        "/images/loading.png",
+      src: "/images/mascot-oss.svg",
       alt: "OSS Bali",
     }),
     []
   );
 
-  // Kontak — sesuai teks pada desain
   const contacts = useMemo(
     () => [
       {
@@ -55,7 +47,6 @@ export default function useFooterUViewModel(opts = {}) {
     []
   );
 
-  // Section & links disusun mengikuti layout di desain
   const navSections = useMemo(
     () => [
       {
@@ -95,10 +86,8 @@ export default function useFooterUViewModel(opts = {}) {
     [t, withLang]
   );
 
-  // Ikon sosial sesuai deretan pada desain
-  // useFooterUViewModel.js
   const socials = useMemo(() => {
-    const whatsappNumber = "6287705092020"; // ganti jika perlu
+    const whatsappNumber = "6287705092020";
     return [
       {
         icon: "instagram",

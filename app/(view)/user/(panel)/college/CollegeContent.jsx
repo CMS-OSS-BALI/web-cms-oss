@@ -10,7 +10,7 @@ import "swiper/css/free-mode";
 import { Pagination } from "antd";
 import "antd/dist/reset.css";
 
-/* ---------- util kecil ---------- */
+/* ---------- utils ---------- */
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const SUPABASE_BUCKET = process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "";
 const buildSupabasePublicUrl = (objectPath = "") => {
@@ -65,7 +65,6 @@ const BulletIcon = ({ type }) => {
         <path d="M6 12v4c3 2 9 2 12 0v-4" />
       </svg>
     );
-  // default generic
   return (
     <svg viewBox="0 0 24 24" {...p}>
       <circle cx="12" cy="12" r="9" />
@@ -73,7 +72,7 @@ const BulletIcon = ({ type }) => {
   );
 };
 
-/* ---------- constants swiper ---------- */
+/* ---------- swiper ---------- */
 const RELEVANT_CAMPUS_SWIPER_CLASS = "college-relevant-campus-swiper";
 const MARQUEE_SPEED = 6000;
 const marqueeAutoplay = {
@@ -83,159 +82,134 @@ const marqueeAutoplay = {
 };
 const marqueeFreeMode = { enabled: true, momentum: false, sticky: false };
 
-/* ================== styles (ringkas) ================== */
+/* ---------- reveal on scroll ---------- */
+function useRevealOnScroll(deps = []) {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const prefersReduce = window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    ).matches;
+    const markVisible = (els) =>
+      els.forEach((el) => el.classList.add("is-visible"));
+
+    if (prefersReduce) {
+      markVisible(Array.from(document.querySelectorAll(".reveal")));
+      return;
+    }
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            e.target.classList.add("is-visible");
+            io.unobserve(e.target);
+          }
+        });
+      },
+      { threshold: 0.16, rootMargin: "0px 0px -10% 0px" }
+    );
+
+    const observeAll = () => {
+      document
+        .querySelectorAll(".reveal:not(.is-visible)")
+        .forEach((el) => io.observe(el));
+    };
+
+    observeAll();
+    const mo = new MutationObserver(observeAll);
+    mo.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      io.disconnect();
+      mo.disconnect();
+    };
+  }, deps);
+}
+
+/* ================== styles ================== */
 const styles = {
+  /* HERO */
   hero: { marginTop: "calc(-1 * clamp(48px, 8vw, 84px))", background: "#fff" },
-  heroBleed: { width: "100vw", marginLeft: "calc(50% - 50vw)" },
+  heroBleed: {
+    width: "100vw",
+    marginLeft: "calc(50% - 50vw)",
+    marginRight: "calc(50% - 50vw)",
+    marginBottom: "-12px",
+  },
   heroImgFrame: {
     position: "relative",
     width: "100vw",
-    height: "clamp(720px, 100vh, 1280px)",
+    height: "calc(100vh - var(--nav-h, 88px))",
+    minHeight: "calc(100svh - var(--nav-h, 88px))",
+    paddingBottom: "clamp(24px, 5vw, 72px)",
     background: "#e8f0ff",
     overflow: "hidden",
-    boxShadow: "0 24px 48px rgba(15,23,42,.14)",
   },
   heroOverlay: {
     position: "absolute",
     inset: 0,
     background:
-      "linear-gradient(100deg, rgba(11,35,76,.55) 0%, rgba(11,35,76,.35) 35%, rgba(11,35,76,.18) 60%, rgba(11,35,76,0) 85%)",
+      "linear-gradient(180deg, rgba(15,38,82,.65) 0%, rgba(15,38,82,.55) 40%, rgba(15,38,82,.45) 70%, rgba(15,38,82,.35) 100%)",
     zIndex: 1,
   },
-  heroContentLeft: {
+  heroContent: {
     position: "absolute",
-    left: "max(24px, 6vw)",
-    top: "50%",
-    transform: "translateY(-50%)",
-    maxWidth: 720,
-    textAlign: "left",
+    inset: 0,
     zIndex: 2,
+    display: "grid",
+    gridTemplateRows: "1fr auto",
+    alignItems: "center",
+    padding: "clamp(16px, 4vw, 40px)",
   },
-  heroTitle: {
-    margin: 0,
-    color: "#2456b7",
-    lineHeight: 1.02,
-    fontWeight: 800,
-    letterSpacing: ".6px",
-    textTransform: "uppercase",
-    fontSize: "clamp(36px, 6.2vw, 96px)",
-  },
-
-  findBleed: {
-    width: "100vw",
-    marginLeft: "calc(50% - 50vw)",
-    marginRight: "calc(50% - 50vw)",
-    background: "linear-gradient(90deg, #E6F3FF 0%, #F5FAFF 35%, #FFFFFF 70%)",
-  },
-  findSection: {
-    position: "relative",
-    padding: "clamp(32px, 6vw, 80px) 16px",
-    overflow: "hidden",
-  },
-  findInner: {
-    width: "min(1180px, 92%)",
+  heroText: {
+    alignSelf: "center",
+    width: "min(1140px, 92%)",
     margin: "0 auto",
-    textAlign: "center",
+    color: "#fff",
   },
-  findTitle: {
+  heroTitleLine1: {
     margin: 0,
-    lineHeight: 1.1,
+    fontWeight: 600,
+    letterSpacing: ".02em",
+    fontSize: "clamp(20px, 3.2vw, 38px)",
+    lineHeight: 1.2,
+  },
+  heroTitleLine2: {
+    margin: "8px 0 0",
     fontWeight: 900,
-    letterSpacing: ".06em",
     textTransform: "uppercase",
-    fontSize: "clamp(22px, 4.6vw, 54px)",
-    backgroundImage: "linear-gradient(180deg, #1F4EA3 0%, #69A9FF 100%)",
-    WebkitBackgroundClip: "text",
-    backgroundClip: "text",
-    color: "transparent",
+    letterSpacing: ".08em",
+    fontSize: "clamp(26px, 5.2vw, 60px)",
+    lineHeight: 1.02,
+  },
+  heroSearchWrap: {
+    alignSelf: "end",
+    width: "min(1140px, 92%)",
+    margin: "0 auto clamp(18px, 3vw, 36px)",
+  },
+  heroSearchRow: {
+    display: "flex",
+    gap: 18,
+    alignItems: "center",
+    justifyContent: "space-between",
   },
 
-  majors: {
-    section: { position: "relative", padding: "40px 0 36px" },
-    inner: { width: "min(1180px, 92%)", margin: "0 auto" },
-    heading: {
-      margin: 0,
-      color: "#0B2F74",
-      fontWeight: 900,
-      letterSpacing: ".04em",
-      textTransform: "uppercase",
-      fontSize: "clamp(22px, 3.2vw, 34px)",
-    },
-    underline: {
-      width: 120,
-      height: 6,
-      background: "#1F4EA3",
-      borderRadius: 8,
-      marginTop: 10,
-    },
-    grid: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 24 },
-    card: {
-      background: "#fff",
-      borderRadius: 20,
-      padding: "26px 22px 20px",
-      boxShadow: "0 12px 28px rgba(15,23,42,.12)",
-      display: "grid",
-      placeItems: "center",
-      gap: 16,
-      transition: "transform .18s ease, box-shadow .18s ease",
-    },
-
-    iconPlain: { width: 140, height: 140, objectFit: "contain" },
-
-    majorTitle: {
-      margin: 0,
-      color: "#0B2F74",
-      fontWeight: 900,
-      letterSpacing: ".04em",
-      textTransform: "uppercase",
-      fontSize: 18,
-    },
-  },
-
-  rec: {
-    block: {
-      width: "min(1180px, 96%)",
-      margin: "0 auto 12px",
-      textAlign: "center",
-    },
-    title: {
-      margin: 0,
-      lineHeight: 1.1,
-      fontWeight: 900,
-      letterSpacing: ".06em",
-      textTransform: "uppercase",
-      fontSize: "clamp(22px, 4.2vw, 44px)",
-      backgroundImage: "linear-gradient(180deg, #1F4EA3 0%, #69A9FF 100%)",
-      WebkitBackgroundClip: "text",
-      backgroundClip: "text",
-      color: "transparent",
-    },
-    subtitle: {
-      marginTop: 8,
-      color: "#1F4EA3",
-      fontWeight: 700,
-      letterSpacing: ".02em",
-      fontSize: "clamp(14px, 1.8vw, 20px)",
-    },
-  },
-
+  /* Search pills */
   search: {
-    wrap: { width: "min(1180px, 96%)", margin: "50px auto 36px" },
-    row: { display: "flex", gap: 16, alignItems: "center" },
     shell: {
       position: "relative",
       display: "grid",
       alignItems: "center",
       gridTemplateColumns: "48px 1fr",
-      gap: 0,
       height: 62,
       flex: 1,
-      borderRadius: 999,
-      background: "#fff",
-      border: "2px solid #1962BF",
-      boxShadow:
-        "0 10px 24px rgba(15,23,42,.10), inset 0 -3px 0 rgba(25,98,191,.15)",
+      borderRadius: 16,
+      background: "rgba(255,255,255,.96)",
+      border: "2px solid rgba(255,255,255,.5)",
+      boxShadow: "0 12px 26px rgba(0,0,0,.18)",
       padding: "0 6px",
+      backdropFilter: "saturate(1.3) blur(2px)",
     },
     input: {
       width: "100%",
@@ -252,24 +226,23 @@ const styles = {
       placeItems: "center",
       width: 48,
       height: 48,
-      borderRadius: "50%",
-      background: "transparent",
       border: "none",
+      background: "transparent",
       cursor: "pointer",
     },
     icon: { width: 24, height: 24 },
     filterPill: {
       height: 62,
-      minWidth: 180,
+      minWidth: 190,
       display: "flex",
       alignItems: "center",
       position: "relative",
       padding: "0 18px",
-      borderRadius: 999,
-      background: "#fff",
-      border: "2px solid #1962BF",
-      boxShadow:
-        "0 10px 24px rgba(15,23,42,.10), inset 0 -3px 0 rgba(25,98,191,.15)",
+      borderRadius: 16,
+      background: "rgba(255,255,255,.96)",
+      border: "2px solid rgba(255,255,255,.5)",
+      boxShadow: "0 12px 26px rgba(0,0,0,.18)",
+      backdropFilter: "saturate(1.3) blur(2px)",
     },
     countrySelect: {
       width: "100%",
@@ -292,9 +265,11 @@ const styles = {
       width: 16,
       height: 16,
       pointerEvents: "none",
+      opacity: 0.9,
     },
   },
 
+  /* LIST */
   uni: {
     section: { width: "min(1180px, 96%)", margin: "0 auto 80px" },
     list: { display: "grid", gap: 24 },
@@ -303,11 +278,12 @@ const styles = {
       display: "grid",
       gridTemplateColumns: "180px 1fr",
       gap: 18,
-      padding: "18px 18px 48px",
+      padding: "18px 18px 56px",
       background: "#fff",
       borderRadius: 14,
       border: "1px solid rgba(13,38,78,.08)",
       boxShadow: "0 10px 28px rgba(15,23,42,.10)",
+      transition: "transform .2s ease, box-shadow .2s ease",
     },
     logoWrap: {
       position: "relative",
@@ -325,7 +301,7 @@ const styles = {
       fontWeight: 900,
       letterSpacing: ".04em",
       textTransform: "uppercase",
-      fontSize: "clamp(20px, 2.6vw, 26px)",
+      fontSize: "clamp(18px, 2.6vw, 24px)",
     },
     excerpt: { margin: 0, color: "#3a4c74", lineHeight: 1.6, fontSize: 14 },
     bullets: {
@@ -350,12 +326,13 @@ const styles = {
       border: "1px solid rgba(13,38,78,.18)",
       background: "#f7fbff",
       color: "#0B2F74",
-      padding: "8px 14px",
+      padding: "10px 16px",
       borderRadius: 999,
-      fontWeight: 700,
+      fontWeight: 800,
       fontSize: 12,
       textDecoration: "none",
       boxShadow: "0 6px 16px rgba(15,23,42,.10)",
+      transition: "transform .16s ease, box-shadow .16s ease",
     },
     empty: {
       padding: "28px 18px",
@@ -368,6 +345,7 @@ const styles = {
     },
   },
 
+  /* RELEVANT CAMPUS */
   relevant: {
     section: { padding: "12px 0 88px", background: "#fff" },
     inner: { width: "min(1180px, 96%)", margin: "0 auto" },
@@ -378,7 +356,7 @@ const styles = {
       fontWeight: 900,
       letterSpacing: ".06em",
       textTransform: "uppercase",
-      fontSize: "clamp(24px,4.6vw,48px)",
+      fontSize: "clamp(22px,4.6vw,46px)",
     },
     underline: {
       width: 220,
@@ -407,61 +385,14 @@ const styles = {
       placeItems: "center",
     },
   },
-
-  cta: {
-    section: { padding: "10px 0 110px", background: "#fff" },
-    container: { width: "min(1180px, 96%)", margin: "0 auto" },
-    card: {
-      background: "#0B56B8",
-      color: "#fff",
-      padding: "32px clamp(18px,3vw,40px) 40px",
-      borderRadius: "24px 120px 20px 80px",
-      boxShadow: "0 20px 44px rgba(11,86,184,.25)",
-    },
-    title: {
-      margin: 0,
-      fontWeight: 900,
-      textTransform: "uppercase",
-      letterSpacing: ".06em",
-      fontSize: "clamp(24px,4.6vw,48px)",
-    },
-    body: {
-      margin: "14px 0 26px",
-      maxWidth: 900,
-      fontSize: "clamp(14px,2.1vw,20px)",
-      lineHeight: 1.75,
-      letterSpacing: ".02em",
-      opacity: 0.98,
-    },
-    btn: {
-      display: "inline-flex",
-      alignItems: "center",
-      gap: 12,
-      height: 48,
-      padding: "0 22px",
-      background: "#fff",
-      color: "#0B56B8",
-      border: "2px solid #CFE0FF",
-      borderRadius: 999,
-      fontWeight: 800,
-      fontSize: 16,
-      textDecoration: "none",
-      boxShadow:
-        "0 10px 22px rgba(10,40,110,.18), inset 0 -3px 0 rgba(10,40,110,.06)",
-      transition: "transform .18s ease, box-shadow .18s ease",
-    },
-    btnHover: {
-      transform: "translateY(-2px)",
-      boxShadow:
-        "0 14px 28px rgba(10,40,110,.22), inset 0 -3px 0 rgba(10,40,110,.06)",
-    },
-    btnIcon: { width: 20, height: 20 },
-  },
 };
 
 /* ================== Component ================== */
 export default function CollegeContent({ locale = "id" }) {
-  // search state (jurusan / program)
+  /* init reveal on scroll */
+  useRevealOnScroll([]);
+
+  /* search state */
   const [query, setQuery] = useState("");
   const [country, setCountry] = useState("");
   const [qApplied, setQApplied] = useState("");
@@ -496,21 +427,16 @@ export default function CollegeContent({ locale = "id" }) {
 
   const {
     hero,
-    findProgram,
-    popularMajors,
     search,
     recommendedUniversity = {},
     universities = [],
     jpMatchesByCollegeId = {},
-    scholarshipCTA = null,
   } = useCollegeViewModel({
     locale,
     q: qApplied,
     country: countryApplied,
     perPage: 100,
   });
-
-  const t = (id, en) => (locale === "en" ? en : id);
 
   /* relevant campus */
   const relevantCampus = useMemo(
@@ -536,6 +462,7 @@ export default function CollegeContent({ locale = "id" }) {
     return arr.slice(start, start + PAGE_SIZE);
   }, [universities, page]);
 
+  /* country list */
   const inferCountry = (u) => {
     if (u.country) return String(u.country).trim();
     const pinText = (u.bullets || []).find((b) => b.icon === "pin")?.text || "";
@@ -555,10 +482,10 @@ export default function CollegeContent({ locale = "id" }) {
 
   return (
     <>
-      {/* HERO */}
+      {/* ============== HERO ============== */}
       <section style={styles.hero}>
         <div style={styles.heroBleed}>
-          <div style={styles.heroImgFrame}>
+          <div className="hero-frame" style={styles.heroImgFrame}>
             <Image
               src={normalizeImgSrc(hero.image)}
               alt={hero.imageAlt || "Study Abroad"}
@@ -567,193 +494,175 @@ export default function CollegeContent({ locale = "id" }) {
               sizes="100vw"
               style={{
                 objectFit: "cover",
-                objectPosition: hero.objectPosition || "40% 50%",
-                filter: "saturate(0.98) contrast(1)",
+                objectPosition: hero.objectPosition || "70% 50%",
+                filter: "saturate(0.98) contrast(1.02)",
               }}
             />
             <div style={styles.heroOverlay} />
-            <div style={styles.heroContentLeft}>
-              <h1 style={styles.heroTitle}>
-                {hero.titleLine1}
-                <br />
-                {hero.titleLine2}
-              </h1>
-            </div>
-          </div>
-        </div>
-      </section>
 
-      {/* FIND PROGRAM */}
-      <div style={styles.findBleed}>
-        <section style={styles.findSection}>
-          <div style={styles.findInner}>
-            <h2 style={styles.findTitle}>{findProgram.title}</h2>
-          </div>
-        </section>
-      </div>
-
-      {/* POPULAR MAJORS */}
-      <section style={styles.majors.section}>
-        <div style={styles.majors.inner}>
-          <div style={{ marginBottom: 28 }}>
-            <h3 style={styles.majors.heading}>
-              {locale === "en" ? "POPULAR MAJORS" : "JURUSAN POPULER"}
-            </h3>
-            <div style={styles.majors.underline} />
-          </div>
-
-          <div className="majors-grid" style={styles.majors.grid}>
-            {(popularMajors || []).map((m) => (
-              <article
-                key={m.id}
-                style={styles.majors.card}
-                onMouseEnter={(e) =>
-                  Object.assign(e.currentTarget.style, {
-                    transform: "translateY(-2px)",
-                    boxShadow: "0 16px 36px rgba(15,23,42,.16)",
-                  })
-                }
-                onMouseLeave={(e) =>
-                  Object.assign(e.currentTarget.style, {
-                    transform: "",
-                    boxShadow: "0 12px 28px rgba(15,23,42,.12)",
-                  })
-                }
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={m.icon}
-                  alt={m.title}
-                  style={styles.majors.iconPlain}
-                />
-
-                <h4 style={styles.majors.majorTitle}>
-                  {(m.title || "").toUpperCase()}
-                </h4>
-              </article>
-            ))}
-          </div>
-        </div>
-
-        {/* responsif grid */}
-        <style>{`
-          @media (max-width: 1024px) { .majors-grid { grid-template-columns: repeat(2, 1fr); } }
-          @media (max-width: 640px)  { .majors-grid { grid-template-columns: 1fr; } }
-        `}</style>
-      </section>
-
-      {/* HEADING + SEARCH */}
-      <section style={{ paddingBottom: 0 }}>
-        <div style={styles.rec.block}>
-          <h2 style={styles.rec.title}>
-            {recommendedUniversity?.title ||
-              (locale === "en"
-                ? "RECOMMENDED UNIVERSITY"
-                : "RECOMMENDED UNIVERSITY")}
-          </h2>
-          <p style={styles.rec.subtitle}>
-            {recommendedUniversity?.subtitle ||
-              (locale === "en"
-                ? "Find Your Path At Leading Universities Worldwide"
-                : "Temukan jalurmu di universitas-universitas terkemuka dunia")}
-          </p>
-        </div>
-
-        <div style={styles.search.wrap}>
-          <div className="search-row-stack" style={styles.search.row}>
-            <div style={styles.search.shell}>
-              <button
-                type="button"
-                aria-label="Search"
-                style={styles.search.iconBtn}
-                onClick={doSearch}
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  style={styles.search.icon}
-                  fill="none"
-                  stroke="#0B4DA6"
-                  strokeWidth="2"
+            <div style={styles.heroContent}>
+              <div style={styles.heroText}>
+                <p
+                  className="reveal"
+                  data-anim="down"
+                  style={{ ...styles.heroTitleLine1, ["--rvd"]: "80ms" }}
                 >
-                  <circle cx="11" cy="11" r="7" />
-                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                </svg>
-              </button>
+                  {hero.titleLine1}
+                </p>
+                <p
+                  className="reveal"
+                  data-anim="up"
+                  style={{ ...styles.heroTitleLine2, ["--rvd"]: "160ms" }}
+                >
+                  {hero.titleLine2}
+                </p>
+              </div>
 
-              <input
-                ref={inputRef}
-                type="text"
-                placeholder={search.placeholder}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && doSearch()}
-                style={styles.search.input}
-                aria-label={search.label}
-              />
+              <div
+                className="reveal"
+                data-anim="up"
+                style={{ ...styles.heroSearchWrap, ["--rvd"]: "240ms" }}
+              >
+                <div className="hero-search-row" style={styles.heroSearchRow}>
+                  <div className="hs-search" style={styles.search.shell}>
+                    <button
+                      type="button"
+                      aria-label="Search"
+                      style={styles.search.iconBtn}
+                      onClick={doSearch}
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        style={styles.search.icon}
+                        fill="none"
+                        stroke="#0B4DA6"
+                        strokeWidth="2"
+                      >
+                        <circle cx="11" cy="11" r="7" />
+                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                      </svg>
+                    </button>
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      placeholder={
+                        locale === "en" ? "Search Campus" : "Cari Kampus"
+                      }
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && doSearch()}
+                      style={styles.search.input}
+                      aria-label={search.label}
+                    />
+                  </div>
+
+                  <div className="hs-filter" style={styles.search.filterPill}>
+                    <select
+                      aria-label={
+                        locale === "en" ? "Filter country" : "Filter negara"
+                      }
+                      value={country}
+                      onChange={(e) => {
+                        setCountry(e.target.value);
+                        setCountryApplied(e.target.value);
+                        if (typeof window !== "undefined") {
+                          const url = new URL(window.location.href);
+                          e.target.value
+                            ? url.searchParams.set("country", e.target.value)
+                            : url.searchParams.delete("country");
+                          window.history.replaceState({}, "", url.toString());
+                        }
+                      }}
+                      style={styles.search.countrySelect}
+                    >
+                      <option value="">
+                        {locale === "en" ? "All Countries" : "Semua Negara"}
+                      </option>
+                      {countries.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                    <svg
+                      viewBox="0 0 24 24"
+                      style={styles.search.chevron}
+                      fill="none"
+                      stroke="#1962BF"
+                      strokeWidth="2"
+                    >
+                      <path d="M6 9l6 6 6-6" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <div style={styles.search.filterPill}>
-              <select
-                aria-label={
-                  locale === "en" ? "Filter country" : "Filter negara"
-                }
-                value={country}
-                onChange={(e) => {
-                  setCountry(e.target.value);
-                  setCountryApplied(e.target.value);
-                  if (typeof window !== "undefined") {
-                    const url = new URL(window.location.href);
-                    e.target.value
-                      ? url.searchParams.set("country", e.target.value)
-                      : url.searchParams.delete("country");
-                    window.history.replaceState({}, "", url.toString());
-                  }
-                }}
-                style={styles.search.countrySelect}
-              >
-                <option value="">
-                  {locale === "en" ? "All Countries" : "Semua Negara"}
-                </option>
-                {countries.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-              <svg
-                viewBox="0 0 24 24"
-                style={styles.search.chevron}
-                fill="none"
-                stroke="#1962BF"
-                strokeWidth="2"
-              >
-                <path d="M6 9l6 6 6-6" />
-              </svg>
-            </div>
+            {/* responsive helpers (tanpa override layout mobile) */}
+            <style>{`
+              @supports (height: 100dvh) {
+                .hero-frame { height: calc(100dvh - var(--nav-h, 88px)); }
+              }
+              @supports (height: 100svh) {
+                .hero-frame { min-height: calc(100svh - var(--nav-h, 88px)); }
+              }
+            `}</style>
           </div>
         </div>
-
-        <style>{`@media (max-width: 640px){ .search-row-stack { flex-direction: column; gap: 12px; } }`}</style>
       </section>
 
-      {/* UNIVERSITY LIST */}
+      {/* ========== UNIVERSITY LIST ========== */}
       <section ref={listRef} style={styles.uni.section}>
         <style>{`
-          @media (max-width: 860px) {
-            .uni-card { grid-template-columns: 1fr; padding-bottom: 56px; }
-            .uni-logo { height: 120px; aspect-ratio: auto; }
+          .uni-card:focus-within,
+          .uni-card:focus {
+            outline: 3px solid #5aa8ff;
+            outline-offset: 2px;
+          }
+          @media (hover:hover){
+            .uni-card:hover{
+              transform: translateY(-3px);
+              box-shadow: 0 16px 36px rgba(15,23,42,.14);
+            }
+            .uni-card:hover a { transform: translateY(-1px); }
+          }
+
+          /* MOBILE: logo di atas, deskripsi di bawah */
+          @media (max-width: 900px) {
+            .uni-card { 
+              grid-template-columns: 1fr !important;
+              padding-bottom: 56px; 
+            }
+            .uni-logo{
+              width: 100%;
+              aspect-ratio: 3 / 1;
+              border-radius: 12px;
+              background: #f6f7fb;
+            }
+            .uni-footer{ 
+              position: static !important; 
+              margin-top: 12px; 
+              justify-content: flex-end; 
+            }
+          }
+          @media (max-width: 520px) {
+            .uni-card { gap: 12px; padding: 14px 14px 20px; }
           }
         `}</style>
 
         {(universities || []).length === 0 ? (
-          <div style={styles.uni.empty}>
+          <div
+            className="reveal"
+            data-anim="zoom"
+            style={{ ...styles.uni.empty, ["--rvd"]: "60ms" }}
+          >
             {locale === "en"
               ? `No university found for “${qApplied || countryApplied || ""}”.`
               : `Tidak ada kampus untuk “${qApplied || countryApplied || ""}”.`}
           </div>
         ) : (
           <div style={styles.uni.list}>
-            {pageItems.map((u) => {
+            {pageItems.map((u, idx) => {
               const src = normalizeImgSrc(u.logo_url);
               const external = /^https?:\/\//i.test(src);
               const jpMatch = jpMatchesByCollegeId[String(u.id)] || null;
@@ -763,15 +672,19 @@ export default function CollegeContent({ locale = "id" }) {
               return (
                 <article
                   key={u.id}
-                  className="uni-card"
-                  style={styles.uni.card}
+                  className="uni-card reveal"
+                  data-anim="up"
+                  style={{
+                    ...styles.uni.card,
+                    ["--rvd"]: `${(idx % 6) * 70}ms`,
+                  }}
                 >
                   <div className="uni-logo" style={styles.uni.logoWrap}>
                     <Image
                       src={src}
                       alt={`${u.name} logo`}
                       fill
-                      sizes="(max-width: 860px) 40vw, 180px"
+                      sizes="(max-width: 900px) 90vw, 180px"
                       style={{ objectFit: "contain" }}
                       unoptimized={external}
                     />
@@ -784,18 +697,32 @@ export default function CollegeContent({ locale = "id" }) {
                     <p style={styles.uni.excerpt}>{u.excerpt || ""}</p>
                     <div style={styles.uni.bullets}>
                       {(u.bullets || []).map((b, i) => (
-                        <div key={i} style={styles.uni.bulletItem}>
+                        <div
+                          key={i}
+                          className="reveal"
+                          data-anim="left"
+                          style={{
+                            ...styles.uni.bulletItem,
+                            ["--rvd"]: `${(i % 5) * 50}ms`,
+                          }}
+                        >
                           <BulletIcon type={b.icon} />
                           <span>{b.text}</span>
                         </div>
                       ))}
                       {matchCount > 0 && (
                         <div
-                          style={styles.uni.bulletItem}
-                          title={t(
-                            "Jumlah kecocokan program/jurusan berdasarkan pencarian",
-                            "Number of program/major matches from your search"
-                          )}
+                          className="reveal"
+                          data-anim="left"
+                          style={{
+                            ...styles.uni.bulletItem,
+                            ["--rvd"]: "180ms",
+                          }}
+                          title={
+                            locale === "en"
+                              ? "Number of program/major matches from your search"
+                              : "Jumlah kecocokan program/jurusan berdasarkan pencarian"
+                          }
                         >
                           <BulletIcon />
                           <span>
@@ -808,8 +735,19 @@ export default function CollegeContent({ locale = "id" }) {
                     </div>
                   </div>
 
-                  <div style={styles.uni.footer}>
-                    <a href={u.href || "#"} style={styles.uni.viewMore}>
+                  <div className="uni-footer" style={styles.uni.footer}>
+                    <a
+                      href={u.href || "#"}
+                      style={styles.uni.viewMore}
+                      onMouseEnter={(e) =>
+                        (e.currentTarget.style.boxShadow =
+                          "0 10px 24px rgba(15,23,42,.16)")
+                      }
+                      onMouseLeave={(e) =>
+                        (e.currentTarget.style.boxShadow =
+                          "0 6px 16px rgba(15,23,42,.10)")
+                      }
+                    >
                       {locale === "en" ? "View More" : "Selengkapnya"}
                     </a>
                   </div>
@@ -823,16 +761,19 @@ export default function CollegeContent({ locale = "id" }) {
       {/* Pagination */}
       {(universities || []).length > 0 && (
         <div
+          className="reveal"
+          data-anim="up"
           style={{
             width: "min(1180px, 96%)",
-            margin: "-75px auto 36px",
+            margin: "-70px auto 36px",
             display: "flex",
             justifyContent: "center",
+            ["--rvd"]: "80ms",
           }}
         >
           <Pagination
             current={page}
-            pageSize={3}
+            pageSize={PAGE_SIZE}
             total={(universities || []).length}
             showSizeChanger={false}
             onChange={(p) => {
@@ -847,10 +788,14 @@ export default function CollegeContent({ locale = "id" }) {
         </div>
       )}
 
-      {/* RELEVANT CAMPUS (marquee) */}
+      {/* ========== RELEVANT CAMPUS (marquee) ========== */}
       <section style={styles.relevant.section}>
         <div style={styles.relevant.inner}>
-          <div style={styles.relevant.titleWrap}>
+          <div
+            className="reveal"
+            data-anim="down"
+            style={{ ...styles.relevant.titleWrap, ["--rvd"]: "40ms" }}
+          >
             <h2 style={styles.relevant.title}>
               {locale === "en" ? "RELEVANT CAMPUS" : "KAMPUS RELEVAN"}
             </h2>
@@ -860,7 +805,9 @@ export default function CollegeContent({ locale = "id" }) {
           {relevantCampus.length > 0 ? (
             <>
               <Swiper
-                className={RELEVANT_CAMPUS_SWIPER_CLASS}
+                className={`${RELEVANT_CAMPUS_SWIPER_CLASS} reveal`}
+                data-anim="zoom"
+                style={{ ["--rvd"]: "100ms" }}
                 modules={[Autoplay, FreeMode]}
                 loop={hasMultipleRelevantCampus}
                 speed={MARQUEE_SPEED}
@@ -919,7 +866,7 @@ export default function CollegeContent({ locale = "id" }) {
 
               <style>{`
                 .${RELEVANT_CAMPUS_SWIPER_CLASS} { overflow: visible; padding: 6px 2px; }
-                .${RELEVANT_CAMPUS_SWIPER_CLASS} .swiper-wrapper { align-items: stretch; }
+                .${RELEVANT_CAMPUS_SWIPER_CLASS} .swiper-wrapper { align-items: stretch; transition-timing-function: linear !important; }
                 .${RELEVANT_CAMPUS_SWIPER_CLASS} .swiper-slide { height: auto; display: flex; align-items: stretch; }
                 .${RELEVANT_CAMPUS_SWIPER_CLASS} .swiper-pagination,
                 .${RELEVANT_CAMPUS_SWIPER_CLASS} .swiper-button-next,
@@ -927,7 +874,11 @@ export default function CollegeContent({ locale = "id" }) {
               `}</style>
             </>
           ) : (
-            <div style={styles.uni.empty}>
+            <div
+              className="reveal"
+              data-anim="zoom"
+              style={{ ...styles.uni.empty, ["--rvd"]: "60ms" }}
+            >
               {locale === "en"
                 ? "No relevant campus yet."
                 : "Belum ada kampus relevan."}
@@ -936,41 +887,47 @@ export default function CollegeContent({ locale = "id" }) {
         </div>
       </section>
 
-      {/* ====== SCHOLARSHIP CTA ====== */}
-      {scholarshipCTA?.title && (
-        <section style={styles.cta.section}>
-          <div style={styles.cta.container}>
-            <article style={styles.cta.card}>
-              <h2 style={styles.cta.title}>{scholarshipCTA.title}</h2>
-              <p style={styles.cta.body}>{scholarshipCTA.body}</p>
+      {/* ==== GLOBAL ANIMATION & RESPONSIVE TIDY ==== */}
+      <style>{`
+        /* Reveal animation */
+        .reveal {
+          opacity: 0;
+          transform: var(--reveal-from, translate3d(0, 16px, 0));
+          transition: opacity 680ms ease,
+            transform 680ms cubic-bezier(0.21, 1, 0.21, 1);
+          transition-delay: var(--rvd, 0ms);
+          will-change: opacity, transform;
+        }
+        .reveal[data-anim="up"] { --reveal-from: translate3d(0, 18px, 0); }
+        .reveal[data-anim="down"] { --reveal-from: translate3d(0, -18px, 0); }
+        .reveal[data-anim="left"] { --reveal-from: translate3d(-18px, 0, 0); }
+        .reveal[data-anim="right"] { --reveal-from: translate3d(18px, 0, 0); }
+        .reveal[data-anim="zoom"] { --reveal-from: scale(0.96); }
+        .reveal.is-visible { opacity: 1; transform: none; }
+        @media (prefers-reduced-motion: reduce) {
+          .reveal { transition: none !important; opacity: 1 !important; transform: none !important; }
+        }
 
-              <a
-                href={scholarshipCTA.href}
-                style={styles.cta.btn}
-                onMouseEnter={(e) =>
-                  Object.assign(e.currentTarget.style, styles.cta.btnHover)
-                }
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = "";
-                  e.currentTarget.style.boxShadow = styles.cta.btn.boxShadow;
-                }}
-              >
-                {scholarshipCTA.ctaLabel}
-                <svg
-                  viewBox="0 0 24 24"
-                  style={styles.cta.btnIcon}
-                  fill="none"
-                  stroke="#4A76C8"
-                  strokeWidth="2"
-                >
-                  <path d="M5 12h14" />
-                  <path d="m13 6 6 6-6 6" />
-                </svg>
-              </a>
-            </article>
-          </div>
-        </section>
-      )}
+        html, body { overflow-x: clip; }
+
+        /* <=768px: search & filter STACK (kembali ke semula) */
+        @media (max-width: 768px){
+          :root { --nav-h: 72px; }
+          .hero-search-row{
+            flex-direction: column;
+            gap: 12px;
+            width: 100%;
+          }
+          .hero-search-row .hs-search,
+          .hero-search-row .hs-filter{
+            height: 56px !important;
+            width: 100%;
+            min-width: 0;
+          }
+          .hero-search-row .hs-filter{ padding: 0 18px !important; }
+          .ant-pagination { font-size: 12px; }
+        }
+      `}</style>
     </>
   );
 }
