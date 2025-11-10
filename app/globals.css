@@ -22,6 +22,22 @@
   --sidebar-transition: transform 0.3s ease-out; /* BARU: untuk transisi mobile */
 }
 
+/* === Global sizing reset (mencegah padding menambah lebar) === */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* Media aman: tidak meluber */
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+  height: auto;
+}
+
 /* @media (prefers-color-scheme: dark) {
   :root {
     --bg: #0b1220;
@@ -40,7 +56,7 @@ body {
   margin: 0;
   padding: 0;
   height: 100%;
-  overflow-x: hidden;
+  /* ❌ overflow-x: hidden dihapus; sekarang tidak diperlukan */
 }
 
 body {
@@ -221,8 +237,6 @@ body {
   }
 }
 
-/* ... (Kode untuk .card-dark, .vis-card, .user-shell, dll. tidak berubah) ... */
-
 /* ================================
   Card gelap (AntD Card)
 ================================ */
@@ -342,21 +356,31 @@ body {
 
 .user-content {
   flex: 1;
+  /* semula: width: min(1280px, 100%); margin: 0 auto; */
   width: min(1280px, 100%);
   margin: 0 auto;
   padding-block: clamp(48px, 8vw, 84px) clamp(32px, 6vw, 64px);
-  /* padding-inline: clamp(20px, 6vw, 48px); */
   display: flex;
   flex-direction: column;
   gap: clamp(32px, 5vw, 64px);
 }
 
+/* ✅ Override bila subtree menandai data-shell="full"
+   - Hilangkan batas global (width & margin)
+   - Nolkan padding-inline agar anak bisa full-bleed bermodal 100svw di dalamnya
+*/
+/* Override shell user saat halaman menandai data-shell="full" */
 @supports selector(:has(*)) {
   .user-content:has([data-shell="full"]) {
+    width: 100%;
+    margin: 0;
     padding-inline: 0;
+    padding-block: 0; /* ⬅ hilangkan jarak putih atas & bawah */
+    gap: 0; /* ⬅ hilangkan celah antar section tingkat atas */
   }
 }
 
+/* Mobile padding vertical tetap berlaku seperti sebelumnya */
 @media (max-width: 768px) {
   .user-content {
     padding-top: clamp(32px, 10vw, 60px);

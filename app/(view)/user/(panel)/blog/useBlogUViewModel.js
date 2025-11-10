@@ -5,8 +5,46 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/lib/swr/fetcher";
 
-/* -------------------- helpers -------------------- */
+/* ===================== COPY / i18n ===================== */
+const COPY = {
+  id: {
+    heroTitle: "Jelajahi Dunia Mulai Dari Cerita Mereka",
+    heroSubtitle:
+      "Temukan Semua Yang Anda Butuhkan Untuk Mewujudkan Studi Dan Karier Impian Anda. Mulai Dari Tips Tuntas, Kegiatan Menarik, Panduan Proses Dari A–Z, Kisah Perjalanan Nyata Langsung Dari Mahasiswa Yang Telah Mewujudkan Mimpi Kuliah Di Luar Negeri. OSS Bali Hadir Untuk Menjawab Semua Tantangan Calon Mahasiswa Yang Ingin Melanjutkan Langkah Awal Dengan Eksplorasi Artikel Inspiratif Kami! #Wemakeyourpriority",
+    searchPlaceholder: "Cari judul berita",
+    filter: "Filter",
+    allCategories: "Semua Kategori",
+    mainSection: "BERITA TERKINI",
+    mostLiked: "PALING DISUKAI",
+    mostRecent: "TERBARU",
+    like: "Suka",
+    alreadyLiked: "Anda sudah menyukai",
+    categoryFallback: "Kategori",
+    errorPrefix: "Terjadi kesalahan",
+  },
+  en: {
+    heroTitle: "GLOBAL INSIGHTS, BOUNDLESS OPPORTUNITIES",
+    heroSubtitle:
+      "Discover inspiration and the latest news from top universities worldwide.",
+    searchPlaceholder: "Search blog title",
+    filter: "Filter",
+    allCategories: "All Categories",
+    mainSection: "LATEST NEWS",
+    mostLiked: "MOST LIKED",
+    mostRecent: "MOST RECENT",
+    like: "Like",
+    alreadyLiked: "You already liked this",
+    categoryFallback: "Category",
+    errorPrefix: "Something went wrong",
+  },
+};
+const tOf = (locale) => {
+  const key = (locale || "id").toLowerCase();
+  const dict = COPY[key] || COPY.en;
+  return (k) => dict[k] ?? COPY.en[k] ?? k;
+};
 
+/* -------------------- helpers -------------------- */
 // slugify ringan utk bandingkan nama kategori ke slug
 const slugify = (s = "") =>
   String(s)
@@ -33,7 +71,6 @@ function buildUrl({
   p.set("fallback", fallback);
   if (q?.trim()) p.set("q", q.trim());
 
-  // kirim berbagai kemungkinan key agar kompatibel
   if (categoryId) {
     p.set("categoryId", String(categoryId));
     p.set("category_id", String(categoryId));
@@ -162,14 +199,6 @@ const getCatName = (r) =>
   );
 
 /* -------------------- main hook -------------------- */
-/**
- * useBlogUViewModel
- * @param {"id"|"en"}   locale
- * @param {number}      perPage
- * @param {string}      q                search judul
- * @param {string}      categoryId       filter kategori by id
- * @param {string}      categorySlug     filter kategori by slug
- */
 export function useBlogUViewModel({
   locale = "id",
   perPage = 6,
@@ -177,6 +206,9 @@ export function useBlogUViewModel({
   categoryId = "",
   categorySlug = "",
 } = {}) {
+  // expose translator
+  const t = useMemo(() => tOf(locale), [locale]);
+
   // like-once
   const [likedSet, setLikedSet] = useState(() => new Set());
   useEffect(() => setLikedSet(loadLikedIds()), []);
@@ -230,10 +262,8 @@ export function useBlogUViewModel({
   const popular = useMemo(() => {
     let rows = (popularJson?.data ?? []).slice();
 
-    // filter kategori (client-side fallback)
     rows = rows.filter(matchesCategory);
 
-    // urut terbaru
     rows.sort((a, b) => {
       const ta =
         toDate(
@@ -246,7 +276,6 @@ export function useBlogUViewModel({
       return tb - ta;
     });
 
-    // search by title only
     if (nameQuery) {
       rows = rows.filter((r) =>
         String(r?.name || "")
@@ -370,7 +399,6 @@ export function useBlogUViewModel({
     async (id) => {
       if (likedSet.has(id)) return;
 
-      // optimistic update untuk popular
       mutatePopular((prev) => {
         if (!prev?.data) return prev;
         return {
@@ -402,6 +430,7 @@ export function useBlogUViewModel({
   /* -------------- return -------------- */
   return {
     locale,
+    t, // ⬅ expose translator
 
     // data
     popular,

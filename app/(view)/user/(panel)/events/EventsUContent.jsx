@@ -1,187 +1,219 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import useEventsUViewModel from "./useEventsUViewModel";
-import { Pagination, ConfigProvider } from "antd";
+import { Pagination, ConfigProvider, Modal, Radio } from "antd";
 
-/* ===== Tokens ===== */
-const CONTAINER = { width: "92%", maxWidth: 1220, margin: "0 auto" };
+/* ===== Tokens (full-bleed shell + readable center) ===== */
 const BLUE = "#0b56c9";
 const TEXT = "#0f172a";
 const PAGE_SIZE = 3;
-const Z = { heroBase: 0, heroDecor: 1, heroCopy: 2, topSection: 10 };
+const PAGE_TOP_PADDING = "clamp(48px, 8vw, 84px)";
+const Z = { heroBase: 0, heroCopy: 2, topSection: 10 };
+
+/** Shell full-bleed + gutter sisi */
+const CONTAINER = {
+  width: "100%",
+  maxWidth: "100%",
+  margin: 0,
+  padding: "0 clamp(20px, 4vw, 48px)",
+};
+/** Batas lebar konten nyaman dibaca */
+const CONTENT_MAX = 1200;
+const CENTER = { maxWidth: CONTENT_MAX, margin: "0 auto" };
 
 /* ===== Utils ===== */
-const safeText = (v) => {
-  if (v == null) return "";
-  if (typeof v === "string" || typeof v === "number") return String(v);
-  if (typeof v === "boolean") return v ? "true" : "false";
-  try {
-    return String(v);
-  } catch {
-    return "";
-  }
-};
+const safeText = (v) => (v == null ? "" : String(v));
 
-/* ===== Hero ===== */
+/* ===== Reveal on scroll ===== */
+function useRevealOnScroll(deps = []) {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const prefersReduce = window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    ).matches;
+    const markVisible = (els) =>
+      els.forEach((el) => el.classList.add("is-visible"));
+    if (prefersReduce) {
+      markVisible(Array.from(document.querySelectorAll(".reveal")));
+      return;
+    }
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            e.target.classList.add("is-visible");
+            io.unobserve(e.target);
+          }
+        });
+      },
+      { threshold: 0.16, rootMargin: "0px 0px -10% 0px" }
+    );
+
+    const observeAll = () => {
+      document
+        .querySelectorAll(".reveal:not(.is-visible)")
+        .forEach((el) => io.observe(el));
+    };
+
+    observeAll();
+    const mo = new MutationObserver(observeAll);
+    mo.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      io.disconnect();
+      mo.disconnect();
+    };
+  }, deps);
+}
+
+/* ===== Subtle hero parallax ===== */
+function useHeroParallax(ref) {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const root = ref.current;
+    if (!root) return;
+    const prefersReduce = window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    ).matches;
+    const isDesktop = () => window.innerWidth >= 992;
+    if (prefersReduce || !isDesktop()) return;
+
+    const copy = root.querySelector(".js-hero-copy");
+    if (!copy) return;
+
+    const onMove = (e) => {
+      const r = root.getBoundingClientRect();
+      const cx = (e.clientX - r.left) / r.width - 0.5;
+      const cy = (e.clientY - r.top) / r.height - 0.5;
+      copy.style.transform = `translate3d(${cx * 6}px, ${cy * 6}px, 0)`;
+    };
+    const onLeave = () => {
+      copy.style.transform = "";
+    };
+    root.addEventListener("mousemove", onMove);
+    root.addEventListener("mouseleave", onLeave);
+    return () => {
+      root.removeEventListener("mousemove", onMove);
+      root.removeEventListener("mouseleave", onLeave);
+    };
+  }, [ref]);
+}
+
+/* ===== HERO (clean + gradient) ===== */
 const hero = {
   section: {
     width: "100vw",
+    maxWidth: "100vw",
     marginLeft: "calc(50% - 50vw)",
     marginRight: "calc(50% - 50vw)",
-    marginTop: -90, // flush ke header
+    marginTop: `calc(${PAGE_TOP_PADDING} * -1)`,
     overflow: "hidden",
-    color: "#0B3E91",
     position: "relative",
     zIndex: Z.heroBase,
+    background:
+      "linear-gradient(180deg, #f7faff 0%, #eef5ff 55%, #ffffff 100%)",
   },
   inner: {
     position: "relative",
     isolation: "isolate",
-    width: "100vw",
-    marginLeft: "calc(50% - 50vw)",
-    marginRight: "calc(50% - 50vw)",
-    minHeight: 560,
-    paddingTop: 24,
-    paddingBottom: 48,
+    width: "100%",
+    minHeight: "clamp(380px, 56vw, 560px)",
+    padding: "clamp(72px, 8vw, 96px) 24px clamp(36px, 6vw, 64px)",
     display: "grid",
-    placeItems: "start center",
+    placeItems: "center",
+    boxSizing: "border-box",
+    scrollMarginTop: "var(--header-h, 72px)",
     background:
-      "linear-gradient(180deg, #f8fbff 0%, #edf4ff 42%, #e5efff 70%, #f9fbff 100%)",
-  },
-  glowLeft: {
-    position: "absolute",
-    top: -140,
-    left: -220,
-    width: 640,
-    height: 640,
-    borderRadius: "50%",
-    background:
-      "radial-gradient(closest-side, rgba(155,202,255,.55), rgba(155,202,255,0))",
-    filter: "blur(22px)",
-    opacity: 0.9,
-    zIndex: Z.heroDecor,
-    pointerEvents: "none",
-  },
-  glowRight: {
-    position: "absolute",
-    top: -20,
-    right: -200,
-    width: 540,
-    height: 540,
-    borderRadius: "50%",
-    background:
-      "radial-gradient(closest-side, rgba(120,182,255,.45), rgba(120,182,255,0))",
-    filter: "blur(18px)",
-    opacity: 0.9,
-    zIndex: Z.heroDecor,
-    pointerEvents: "none",
-  },
-  centerHalo: {
-    position: "absolute",
-    top: 120,
-    left: "50%",
-    transform: "translateX(-50%)",
-    width: 980,
-    height: 520,
-    borderRadius: "50%",
-    background:
-      "radial-gradient(closest-side, rgba(255,255,255,.9), rgba(255,255,255,0))",
-    filter: "blur(8px)",
-    opacity: 0.9,
-    zIndex: Z.heroDecor,
-    pointerEvents: "none",
-  },
-  sheenDiag: {
-    position: "absolute",
-    inset: 0,
-    background:
-      "linear-gradient(135deg, rgba(90,155,255,.12) 0%, rgba(90,155,255,0) 45%)",
-    zIndex: Z.heroDecor,
-    pointerEvents: "none",
-  },
-  vignetteSides: {
-    position: "absolute",
-    inset: 0,
-    background:
-      "radial-gradient(220% 100% at 50% 50%, rgba(0,0,0,0) 60%, rgba(0,52,128,.08) 100%)",
-    mixBlendMode: "multiply",
-    opacity: 0.35,
-    zIndex: Z.heroDecor,
-    pointerEvents: "none",
-  },
-  bottomFade: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 140,
-    background: "linear-gradient(180deg, rgba(255,255,255,0) 0%, #fff 70%)",
-    zIndex: Z.heroDecor,
-    pointerEvents: "none",
+      "radial-gradient(1200px 600px at 10% 0%, rgba(11,86,201,0.10) 0%, rgba(11,86,201,0.00) 60%)," +
+      "radial-gradient(900px 480px at 95% 30%, rgba(11,86,201,0.08) 0%, rgba(11,86,201,0.00) 65%)," +
+      "linear-gradient(180deg, #f7faff 0%, #eef5ff 55%, #ffffff 100%)",
   },
   copy: {
     position: "relative",
     zIndex: Z.heroCopy,
-    width: "92%",
-    maxWidth: 980,
+    width: "min(980px, 92%)",
     textAlign: "center",
     display: "flex",
     flexDirection: "column",
     gap: 16,
-    paddingInline: 24,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  title2: {
+  titleMain: {
     margin: 0,
-    fontSize: 56,
-    lineHeight: 1.06,
-    marginTop: 75,
-    fontWeight: 800,
-    letterSpacing: "0.06em",
-    textTransform: "uppercase",
     color: BLUE,
-    textShadow: "0 10px 28px rgba(0,48,128,.14), 0 2px 0 rgba(255,255,255,.35)",
+    textAlign: "center",
+    fontWeight: 800,
+    lineHeight: 1.08,
+    letterSpacing: ".01em",
+    fontSize: "clamp(26px, 5.2vw, 48px)",
+  },
+  sub: {
+    margin: "2px auto 8px",
+    color: "#334155",
+    maxWidth: 720,
+    textAlign: "center",
+    fontWeight: 600,
+    lineHeight: 1.6,
+    fontSize: "clamp(13px, 1.6vw, 16px)",
   },
 };
 
-/* ===== Countdown panel ===== */
+/* ===== COUNTDOWN ===== */
 const panel = {
   shell: {
+    ...CENTER,
     width: "100%",
-    maxWidth: 920,
-    margin: "28px auto 0",
-    padding: "20px 24px",
-    borderRadius: 28,
-    background: "linear-gradient(180deg, #eef6ff 0%, #e6f0ff 100%)",
-    border: "1px solid rgba(11,79,183,.06)",
+    margin: "clamp(40px, 10vw, 150px) auto 0",
+    padding: "22px 18px 26px",
+    borderRadius: 24,
+    background: "#f4f7ff",
+    border: "1px solid rgba(11,79,183,.08)",
     boxShadow:
-      "0 12px 26px rgba(15,23,42,.06), inset 0 1px 0 rgba(255,255,255,.6)",
+      "0 8px 18px rgba(15,23,42,.06), inset 0 1px 0 rgba(255,255,255,.6)",
     textAlign: "center",
+    boxSizing: "border-box",
   },
   title: {
     margin: 0,
-    fontSize: 16,
-    fontWeight: 800,
-    color: "#0B4FB7",
-    letterSpacing: ".8px",
-    textTransform: "uppercase",
-    marginBottom: 12,
-  },
-  row: { display: "flex", justifyContent: "center", gap: 28, flexWrap: "wrap" },
-  pill: {
-    display: "inline-block",
-    padding: "12px 20px",
-    borderRadius: 16,
-    background: "linear-gradient(180deg, #e8f1ff 0%, #dcebff 100%)",
-    border: "1px solid #cfe1ff",
-    boxShadow: "0 6px 14px rgba(11,86,201,.12)",
-    fontSize: 28,
+    fontSize: "clamp(18px, 2vw, 22px)",
     fontWeight: 900,
-    color: BLUE,
+    color: "#0B3E91",
+    letterSpacing: ".01em",
+    marginBottom: 14,
+  },
+  row: {
+    display: "grid",
+    gridTemplateColumns: "repeat(4, minmax(120px, 1fr))",
+    gap: 18,
+    justifyItems: "center",
+  },
+  pill: {
+    display: "grid",
+    placeItems: "center",
+    height: "clamp(56px, 6vw, 70px)",
+    width: "clamp(120px, 14vw, 140px)",
+    borderRadius: 14,
+    background: BLUE,
+    border: "1px solid #0a49a8",
+    boxShadow: "0 10px 22px rgba(11,86,201,.18)",
+    fontSize: "clamp(24px, 3.2vw, 34px)",
+    fontWeight: 900,
+    color: "#fff",
     lineHeight: 1,
   },
-  label: { marginTop: 8, fontSize: 14, fontWeight: 700, color: "#305899" },
+  label: {
+    marginTop: 8,
+    fontSize: "clamp(12px, 1.6vw, 14px)",
+    fontWeight: 800,
+    color: "#305899",
+    letterSpacing: ".02em",
+  },
 };
 
 function Chip({ value, label }) {
@@ -190,36 +222,40 @@ function Chip({ value, label }) {
     [value]
   );
   return (
-    <div style={{ minWidth: 120, textAlign: "center" }} aria-live="polite">
+    <div className="cd-chip" aria-live="polite" style={{ textAlign: "center" }}>
       <div style={panel.pill}>{v}</div>
       <div style={panel.label}>{safeText(label)}</div>
     </div>
   );
 }
 
-/* ===== Section title bar ===== */
+/* ===== STUDENT BAR (full-bleed) ===== */
 const sectionBar = {
-  bar: {
+  shell: {
     width: "100vw",
     marginLeft: "calc(50% - 50vw)",
     marginRight: "calc(50% - 50vw)",
     marginTop: 90,
-    background: BLUE,
-    color: "#fff",
-    display: "grid",
-    placeItems: "center",
-    height: 68,
-    fontWeight: 900,
-    letterSpacing: ".03em",
-    fontSize: 28,
-    textTransform: "uppercase",
-    boxShadow: "0 14px 26px rgba(11,86,201,.25)",
     position: "relative",
     zIndex: Z.topSection,
   },
+  bar: {
+    height: "clamp(54px, 7vw, 68px)",
+    background: BLUE,
+    borderRadius: 12,
+    display: "grid",
+    placeItems: "center",
+    boxShadow: "0 14px 26px rgba(11,86,201,.20)",
+  },
+  text: {
+    color: "#fff",
+    fontWeight: 900,
+    letterSpacing: ".02em",
+    fontSize: "clamp(18px, 2.2vw, 24px)",
+  },
 };
 
-/* ===== Card ===== */
+/* ===== CARD (Student list) ===== */
 const cardCss = {
   wrap: {
     ...CONTAINER,
@@ -229,25 +265,32 @@ const cardCss = {
     zIndex: Z.topSection,
   },
   card: {
+    ...CENTER,
     display: "grid",
-    gridTemplateColumns: "520px 1fr",
-    gridTemplateRows: "1fr auto",
-    gap: 26,
+    gridTemplateColumns: "minmax(320px, 520px) 1fr",
+    gridTemplateRows: "auto auto auto auto",
+    gridTemplateAreas: `
+      "poster title"
+      "poster desc"
+      "meta meta"
+      "cta cta"
+    `,
+    columnGap: 22,
+    rowGap: 8,
     alignItems: "stretch",
     background: "#fff",
-    borderRadius: 18,
-    padding: "22px 22px",
+    borderRadius: 20,
+    padding: "clamp(18px, 2vw, 26px)",
     border: "1px solid rgba(14,56,140,.06)",
     boxShadow:
-      "0 6px 16px rgba(15,23,42,.08), 0 16px 42px rgba(15,23,42,.10), inset 0 1px 0 rgba(255,255,255,.6)",
+      "0 8px 20px rgba(15,23,42,.08), 0 18px 48px rgba(15,23,42,.10), inset 0 1px 0 rgba(255,255,255,.7)",
     transition: "box-shadow 220ms ease, transform 220ms ease",
-    marginTop: 26,
   },
   poster: {
-    gridRow: "1 / 2",
+    gridArea: "poster",
     width: "100%",
-    height: 310,
-    borderRadius: 14,
+    height: "clamp(220px, 24vw, 300px)",
+    borderRadius: 16,
     overflow: "hidden",
     background: "#f1f5ff",
     border: "1px solid rgba(14,56,140,.08)",
@@ -258,49 +301,54 @@ const cardCss = {
     objectFit: "cover",
     display: "block",
   },
-  copy: {
-    gridRow: "1 / 2",
-    display: "flex",
-    flexDirection: "column",
-    minHeight: 310,
-  },
   title: {
+    gridArea: "title",
     margin: 0,
     color: BLUE,
     fontWeight: 900,
-    fontSize: 36,
-    lineHeight: 1.12,
+    fontSize: "clamp(20px, 2.2vw, 30px)",
+    lineHeight: 1.15,
     letterSpacing: ".02em",
     textTransform: "uppercase",
+    alignSelf: "flex-end",
+    paddingRight: "clamp(0px, 1.2vw, 12px)",
   },
   desc: {
-    margin: "12px 0 0",
+    gridArea: "desc",
+    margin: "10px 0 0",
     color: "#0f172a",
     opacity: 0.9,
-    fontSize: 15.5,
+    fontSize: "clamp(14px, 1.3vw, 15.5px)",
     lineHeight: 1.7,
-    maxWidth: 700,
+    maxWidth: 820,
+    paddingRight: "clamp(0px, 1.2vw, 12px)",
   },
   metaRow: {
-    gridRow: "2 / 3",
-    gridColumn: "1 / -1",
+    gridArea: "meta",
     display: "grid",
-    gridTemplateColumns: "1fr 1fr 1fr auto",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
     alignItems: "center",
-    gap: 18,
+    gap: 0,
     paddingTop: 16,
     borderTop: "1px solid #eef2ff",
   },
-  metaItem: { display: "flex", alignItems: "center", gap: 10 },
+  metaItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "10px 18px",
+    position: "relative",
+  },
   metaIcon: {
-    width: 30,
-    height: 30,
+    width: 28,
+    height: 28,
     borderRadius: 8,
     display: "grid",
     placeItems: "center",
     background: "#eef4ff",
     color: BLUE,
     fontWeight: 800,
+    flex: "0 0 28px",
   },
   metaText: { lineHeight: 1.1 },
   metaLabel: {
@@ -312,14 +360,17 @@ const cardCss = {
   },
   metaValue: { margin: "2px 0 0", fontWeight: 800, color: "#0b2e76" },
   cta: {
-    justifySelf: "end",
+    gridArea: "cta",
+    justifySelf: "center",
+    alignSelf: "center",
     background: BLUE,
     color: "#fff",
-    padding: "12px 18px",
-    borderRadius: 12,
+    padding: "12px 20px",
+    borderRadius: 999,
     fontWeight: 900,
     textDecoration: "none",
-    boxShadow: "0 12px 26px rgba(11,86,201,.25)",
+    boxShadow: "0 12px 26px rgba(11,86,201,.18)",
+    marginTop: 16,
   },
 };
 
@@ -334,11 +385,20 @@ function EventCard({
   priceLabel = "Price",
   ctaText = "Ambil tiketmu",
   ctaHref = "#",
+  revealDelay = "0ms",
 }) {
   return (
     <section style={cardCss.wrap}>
-      <div className="events-card" style={cardCss.card} tabIndex={0}>
-        <div style={cardCss.poster}>
+      <div
+        className="ev-card reveal"
+        data-anim="up"
+        style={{ ...cardCss.card, ["--rvd"]: revealDelay }}
+        tabIndex={0}
+      >
+        <h2 className="ev-title" style={cardCss.title}>
+          {safeText(title)}
+        </h2>
+        <div className="ev-poster" style={cardCss.poster}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={poster}
@@ -352,64 +412,110 @@ function EventCard({
           />
         </div>
 
-        <div style={cardCss.copy}>
-          <h2 style={cardCss.title}>{safeText(title)}</h2>
-          <p style={cardCss.desc}>{safeText(desc)}</p>
-        </div>
+        <p className="ev-desc" style={cardCss.desc}>
+          {safeText(desc)}
+        </p>
 
-        <div className="events-meta" style={cardCss.metaRow}>
-          <div style={cardCss.metaItem}>
+        <div className="ev-meta" style={cardCss.metaRow}>
+          <div className="meta-item" style={cardCss.metaItem}>
             <div style={cardCss.metaIcon}>📍</div>
-            <div style={cardCss.metaText}>
+            <div className="meta-text" style={cardCss.metaText}>
               <p style={cardCss.metaLabel}>Location</p>
               <p style={cardCss.metaValue}>{safeText(location)}</p>
             </div>
           </div>
-          <div style={cardCss.metaItem}>
-            <div style={cardCss.metaIcon}>💳</div>
-            <div style={cardCss.metaText}>
+          <div className="meta-item" style={cardCss.metaItem}>
+            <div style={cardCss.metaIcon}>🎫</div>
+            <div className="meta-text" style={cardCss.metaText}>
               <p style={cardCss.metaLabel}>{safeText(priceLabel)}</p>
               <p style={cardCss.metaValue}>{safeText(price)}</p>
             </div>
           </div>
-          <div style={cardCss.metaItem}>
+          <div className="meta-item meta-last" style={cardCss.metaItem}>
             <div style={cardCss.metaIcon}>🗓️</div>
-            <div style={cardCss.metaText}>
+            <div className="meta-text" style={cardCss.metaText}>
               <p style={cardCss.metaLabel}>{safeText(dateLabel)}</p>
               <p style={cardCss.metaValue}>{safeText(dateLong)}</p>
             </div>
           </div>
-          <Link href={ctaHref} style={cardCss.cta} prefetch={false}>
-            {safeText(ctaText)}
-          </Link>
         </div>
+        <Link
+          href={ctaHref}
+          className="cta-btn hero-cta--pulse"
+          style={cardCss.cta}
+          prefetch={false}
+        >
+          {safeText(ctaText)}
+        </Link>
       </div>
 
       <style jsx>{`
-        @media (max-width: 1000px) {
-          .events-card {
+        /* divider antar-meta di desktop */
+        .ev-meta .meta-item:not(.meta-last)::after {
+          content: "";
+          position: absolute;
+          right: 0;
+          top: 50%;
+          transform: translateY(-50%);
+          height: 28px;
+          width: 1px;
+          background: #e6edff;
+        }
+
+        @media (max-width: 1200px) {
+          .ev-card {
             grid-template-columns: 1fr !important;
-            grid-template-rows: auto auto auto !important;
+            grid-template-areas:
+              "title"
+              "poster"
+              "desc"
+              "meta"
+              "cta" !important;
+            row-gap: 18px !important;
+          }
+          .ev-title,
+          .ev-desc {
+            text-align: center;
+            padding-right: 0 !important;
+          }
+          .cta-btn {
+            justify-self: center !important;
+            align-self: center !important;
+          }
+          .ev-meta {
+            padding-top: 0 !important;
+          }
+          .ev-meta .meta-item:not(.meta-last)::after {
+            display: none;
           }
         }
-        @media (max-width: 900px) {
-          .events-meta {
-            grid-template-columns: 1fr !important;
-            gap: 12px !important;
+
+        @media (max-width: 768px) {
+          .ev-card {
+            padding: 16px !important;
           }
-        }
-        .events-card:hover,
-        .events-card:focus-within {
-          transform: translateY(-2px);
-          box-shadow: 0 10px 24px rgba(11, 86, 201, 0.1),
-            0 26px 60px rgba(11, 86, 201, 0.14),
-            inset 0 1px 0 rgba(255, 255, 255, 0.6) !important;
-        }
-        .events-card:active {
-          transform: translateY(-1px);
-          box-shadow: 0 8px 20px rgba(11, 86, 201, 0.1),
-            0 20px 48px rgba(11, 86, 201, 0.12),
-            inset 0 1px 0 rgba(255, 255, 255, 0.6) !important;
+          .ev-poster {
+            height: clamp(220px, 60vw, 340px) !important;
+          }
+          .ev-meta {
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 8px !important;
+            border-top: none !important;
+          }
+          .meta-item {
+            gap: 6px !important;
+            padding: 10px !important;
+            background: #f8fbff;
+            border-radius: 12px;
+          }
+          .meta-item .meta-text {
+            width: 100%;
+          }
+          .cta-btn {
+            width: min(320px, 100%) !important;
+            justify-self: center !important;
+            text-align: center;
+          }
         }
       `}</style>
     </section>
@@ -426,11 +532,14 @@ function SectionPager({ current, total, onChange }) {
       }}
     >
       <section
+        className="reveal"
+        data-anim="up"
         style={{
           ...CONTAINER,
+          ...CENTER,
           display: "flex",
           justifyContent: "center",
-          margin: "32px auto 24px",
+          margin: "24px auto 36px",
         }}
       >
         <Pagination
@@ -459,10 +568,10 @@ function SectionPager({ current, total, onChange }) {
         .events-mini-pagination .ant-pagination-item,
         .events-mini-pagination .ant-pagination-prev .ant-pagination-item-link,
         .events-mini-pagination .ant-pagination-next .ant-pagination-item-link {
-          height: 26px;
-          min-width: 26px;
-          padding: 0 6px;
-          border-radius: 8px;
+          height: 32px;
+          min-width: 32px;
+          padding: 0 8px;
+          border-radius: 999px;
           border: 1px solid #d4e2ff;
           background: #fff;
           box-shadow: 0 3px 8px rgba(11, 86, 201, 0.06);
@@ -471,7 +580,7 @@ function SectionPager({ current, total, onChange }) {
         .events-mini-pagination .ant-pagination-item {
           display: grid;
           place-items: center;
-          margin-inline: 4px;
+          margin-inline: 6px;
           font-weight: 800;
           line-height: 1;
         }
@@ -524,11 +633,12 @@ function SectionPager({ current, total, onChange }) {
   );
 }
 
-/* ===== Why v2 ===== */
-const why2 = {
+/* ===== WHY ===== */
+const why = {
   wrap: {
     ...CONTAINER,
-    marginTop: 100,
+    ...CENTER,
+    marginTop: 90,
     marginBottom: 44,
     position: "relative",
     zIndex: Z.topSection,
@@ -538,13 +648,13 @@ const why2 = {
     fontWeight: 900,
     textTransform: "uppercase",
     color: "#0b3e91",
-    fontSize: 56,
+    fontSize: "clamp(24px, 3vw, 36px)",
     letterSpacing: ".02em",
     textAlign: "center",
   },
   grid: {
     display: "grid",
-    gridTemplateColumns: "repeat(3, 1fr)",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
     gap: 22,
     marginTop: 26,
   },
@@ -553,86 +663,355 @@ const why2 = {
     borderRadius: 20,
     border: "1px solid #edf2ff",
     boxShadow: "0 18px 40px rgba(11,86,201,.08)",
-    padding: "26px 28px",
+    padding: "clamp(16px, 2vw, 24px) clamp(16px, 2vw, 24px)",
     textAlign: "center",
   },
   img: {
-    width: 110,
-    height: 110,
+    width: "clamp(72px, 7vw, 100px)",
+    height: "clamp(72px, 7vw, 100px)",
     objectFit: "contain",
     display: "block",
-    margin: "0 auto 14px",
+    margin: "0 auto 12px",
     filter: "saturate(1.05)",
   },
-  iconFallback: {
-    fontSize: 54,
-    lineHeight: 1,
-    marginBottom: 12,
-    color: "#0b56c9",
-  },
+  iconFallback: { fontSize: 50, lineHeight: 1, marginBottom: 10, color: BLUE },
   titleSmall: {
     margin: 0,
     color: "#0a3a86",
     fontWeight: 800,
-    fontSize: 18,
+    fontSize: "clamp(15px, 1.5vw, 18px)",
     lineHeight: 1.35,
   },
-  desc: { marginTop: 10, color: "#476aa4", fontSize: 14, lineHeight: 1.7 },
+  desc: {
+    marginTop: 8,
+    color: "#476aa4",
+    fontSize: "clamp(13px, 1.3vw, 14px)",
+    lineHeight: 1.7,
+  },
 };
 
-/* ===== Empty state ===== */
-const emptyCss = {
-  wrap: {
-    ...CONTAINER,
-    marginTop: 40,
-    marginBottom: 80,
-    padding: "32px 24px",
-    borderRadius: 20,
-    border: "1px dashed #cfe1ff",
-    background: "linear-gradient(180deg, #f6faff 0%, #f9fbff 100%)",
-    display: "grid",
-    placeItems: "center",
-    textAlign: "center",
-  },
-  big: { fontSize: 64, lineHeight: 1, marginBottom: 12 },
-  title: {
-    margin: "8px 0 6px",
-    fontWeight: 900,
-    color: "#0b3e91",
-    fontSize: 28,
-  },
-  sub: { color: "#476aa4", maxWidth: 640, margin: "0 auto" },
-};
-
-function NoEvents({ locale = "id" }) {
-  const t = (id, en) => (locale === "en" ? en : id);
+function WhySection({ vm }) {
   return (
-    <section style={emptyCss.wrap}>
-      <div style={emptyCss.big}>🗓️</div>
-      <h3 style={emptyCss.title}>
-        {t("Belum ada event yang tersedia", "No events available yet")}
-      </h3>
-      <p style={emptyCss.sub}>
-        {t(
-          "Pantau halaman ini secara berkala; event baru akan segera hadir.",
-          "Check back soon—new events are on the way."
-        )}
-      </p>
+    <section style={why.wrap}>
+      <h2
+        className="reveal"
+        data-anim="down"
+        style={{ ...why.title, ["--rvd"]: "40ms" }}
+      >
+        {safeText(vm.why2Title)}
+      </h2>
+      <div className="why-grid" style={why.grid}>
+        {vm.why2Cards.map((c, i) => (
+          <div
+            key={i}
+            className="reveal"
+            data-anim="up"
+            style={{ ...why.card, ["--rvd"]: `${(i % 6) * 70}ms` }}
+          >
+            {c.img ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={c.img}
+                alt={safeText(c.title)}
+                style={why.img}
+                onError={(e) => (e.currentTarget.style.display = "none")}
+              />
+            ) : (
+              <div style={why.iconFallback}>{safeText(c.icon || "🎓")}</div>
+            )}
+            <h3 style={why.titleSmall}>{safeText(c.title)}</h3>
+            <p style={why.desc}>{safeText(c.desc)}</p>
+          </div>
+        ))}
+      </div>
+
+      <style jsx>{`
+        @media (max-width: 1024px) {
+          .why-grid {
+            grid-template-columns: repeat(2, 1fr) !important;
+          }
+        }
+        @media (max-width: 768px) {
+          .why-grid {
+            gap: 16px !important;
+          }
+        }
+        @media (max-width: 560px) {
+          .why-grid {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
     </section>
   );
 }
 
-/* ===== Page ===== */
+/* ===== REP CTA ===== */
+const repCta = {
+  shell: {
+    width: "100%",
+    background: "#fff",
+    borderTop: "1px solid #e3ecff",
+    borderBottom: "1px solid #e3ecff",
+    padding: "36px 0 44px",
+  },
+  inner: { ...CONTAINER, ...CENTER, textAlign: "center" },
+  title: {
+    margin: "6px 0 18px",
+    color: "#0b3e91",
+    fontWeight: 800,
+    fontSize: "clamp(20px,3vw,28px)",
+    lineHeight: 1.25,
+  },
+  collage: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr 1fr",
+    gap: 18,
+    maxWidth: 1080,
+    margin: "0 auto 18px",
+    alignItems: "stretch",
+  },
+  stackCol: { display: "grid", gridTemplateRows: "1fr 1fr", gap: 18 },
+  tile: {
+    position: "relative",
+    width: "100%",
+    borderRadius: 18,
+    overflow: "hidden",
+    background: "#f2f6ff",
+    boxShadow: "0 12px 24px rgba(11,86,201,.08)",
+  },
+  tileTall: { aspectRatio: "3 / 4" },
+  tileMid: { aspectRatio: "16 / 10" },
+  img: {
+    position: "absolute",
+    inset: 0,
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+  },
+  btn: {
+    display: "inline-block",
+    marginTop: 10,
+    background: BLUE,
+    color: "#fff",
+    padding: "12px 22px",
+    borderRadius: 999,
+    fontWeight: 800,
+    textDecoration: "none",
+    boxShadow: "0 10px 22px rgba(11,86,201,.18)",
+  },
+};
+
+function RepCTA({ title, images = [], options = [], locale = "id" }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [picked, setPicked] = useState(null);
+
+  const onConfirm = () => {
+    if (!picked) return;
+    router.push(`/user/events/rep?id=${picked}&lang=${locale}`);
+  };
+
+  const imgs = [...images];
+  while (imgs.length < 4)
+    imgs.push({ src: "/placeholder.jpg", alt: "Representative" });
+
+  return (
+    <>
+      <section style={repCta.shell}>
+        <div style={repCta.inner}>
+          <h3
+            className="reveal"
+            data-anim="down"
+            style={{ ...repCta.title, ["--rvd"]: "40ms" }}
+          >
+            {safeText(title)}
+          </h3>
+
+          <div
+            className="rep-collage reveal"
+            data-anim="zoom"
+            style={{ ...repCta.collage, ["--rvd"]: "100ms" }}
+          >
+            <div
+              className="rep-tile rep-tall"
+              style={{ ...repCta.tile, ...repCta.tileTall }}
+            >
+              <img
+                src={imgs[0]?.src}
+                alt={safeText(imgs[0]?.alt || "Representative 1")}
+                style={repCta.img}
+                onError={(e) => {
+                  e.currentTarget.onerror = null;
+                  e.currentTarget.src =
+                    "https://images.unsplash.com/photo-1522071820081-009f0129c71c?q=80&w=1200&auto=format&fit=crop";
+                }}
+              />
+            </div>
+
+            <div className="rep-stack" style={repCta.stackCol}>
+              <div
+                className="rep-tile rep-mid"
+                style={{ ...repCta.tile, ...repCta.tileMid }}
+              >
+                <img
+                  src={imgs[1]?.src}
+                  alt={safeText(imgs[1]?.alt || "Representative 2")}
+                  style={repCta.img}
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src =
+                      "https://images.unsplash.com/photo-1522071820081-009f0129c71c?q=80&w=1200&auto=format&fit=crop";
+                  }}
+                />
+              </div>
+              <div
+                className="rep-tile rep-mid"
+                style={{ ...repCta.tile, ...repCta.tileMid }}
+              >
+                <img
+                  src={imgs[2]?.src}
+                  alt={safeText(imgs[2]?.alt || "Representative 3")}
+                  style={repCta.img}
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src =
+                      "https://images.unsplash.com/photo-1522071820081-009f0129c71c?q=80&w=1200&auto=format&fit=crop";
+                  }}
+                />
+              </div>
+            </div>
+
+            <div
+              className="rep-tile rep-tall"
+              style={{ ...repCta.tile, ...repCta.tileTall }}
+            >
+              <img
+                src={imgs[3]?.src}
+                alt={safeText(imgs[3]?.alt || "Representative 4")}
+                style={repCta.img}
+                onError={(e) => {
+                  e.currentTarget.onerror = null;
+                  e.currentTarget.src =
+                    "https://images.unsplash.com/photo-1522071820081-009f0129c71c?q=80&w=1200&auto=format&fit=crop";
+                }}
+              />
+            </div>
+          </div>
+
+          <button
+            className="reveal hero-cta--bob"
+            data-anim="up"
+            style={{ ...repCta.btn, ["--rvd"]: "160ms" }}
+            onClick={() => setOpen(true)}
+          >
+            {locale === "en" ? "Booking Booth" : "Booking Booth"}
+          </button>
+        </div>
+      </section>
+
+      <ConfigProvider
+        theme={{
+          token: { colorPrimary: BLUE, borderRadius: 12, colorText: TEXT },
+          components: { Modal: { contentBg: "#fff" } },
+        }}
+      >
+        <Modal
+          open={open}
+          onCancel={() => setOpen(false)}
+          onOk={onConfirm}
+          okText={locale === "en" ? "Continue" : "Lanjutkan"}
+          cancelText={locale === "en" ? "Cancel" : "Batal"}
+          okButtonProps={{ disabled: !picked, style: { fontWeight: 800 } }}
+          title={
+            locale === "en"
+              ? "Choose Event to Book a Booth"
+              : "Pilih Event untuk Booking Booth"
+          }
+        >
+          {options.length === 0 ? (
+            <p style={{ margin: 0, color: "#64748b" }}>
+              {locale === "en"
+                ? "No representative events are available yet."
+                : "Belum ada event untuk perwakilan."}
+            </p>
+          ) : (
+            <Radio.Group
+              onChange={(e) => setPicked(e.target.value)}
+              value={picked}
+              style={{ width: "100%" }}
+            >
+              {options.map((o) => (
+                <Radio
+                  key={o.value}
+                  value={o.value}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "12px 14px",
+                    border: "1px solid #e6efff",
+                    borderRadius: 10,
+                    marginBottom: 10,
+                    width: "100%",
+                    fontWeight: 700,
+                    color: "#0a3a86",
+                  }}
+                >
+                  {o.label}
+                </Radio>
+              ))}
+            </Radio.Group>
+          )}
+        </Modal>
+      </ConfigProvider>
+
+      <style jsx>{`
+        /* Tablet: 2 kolom */
+        @media (max-width: 900px) {
+          .rep-collage {
+            grid-template-columns: 1fr 1fr !important;
+          }
+          .rep-stack {
+            order: 3;
+            grid-column: span 2;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: none;
+          }
+        }
+        /* Mobile: 1 kolom & ratio lebih landai */
+        @media (max-width: 560px) {
+          .rep-collage {
+            grid-template-columns: 1fr !important;
+          }
+          .rep-stack {
+            grid-column: auto;
+            grid-template-columns: 1fr;
+            gap: 14px !important;
+          }
+          .rep-tall {
+            aspect-ratio: 4 / 3 !important;
+          }
+          .rep-mid {
+            aspect-ratio: 16 / 11 !important;
+          }
+        }
+      `}</style>
+    </>
+  );
+}
+
+/* ===== PAGE ===== */
 export default function EventsUContent({ locale = "id" }) {
   const vm = useEventsUViewModel({ locale });
 
+  const heroRef = useRef(null);
+  useRevealOnScroll([vm.studentEvents.length, vm.repEvents.length]);
+  useHeroParallax(heroRef);
+
   const [pageStu, setPageStu] = useState(1);
-  const [pageRep, setPageRep] = useState(1);
-
   const stuStart = (pageStu - 1) * PAGE_SIZE;
-  const repStart = (pageRep - 1) * PAGE_SIZE;
 
-  // inject CTA target
   const stuItems = vm.studentEvents
     .slice(stuStart, stuStart + PAGE_SIZE)
     .map((e) => ({
@@ -640,143 +1019,124 @@ export default function EventsUContent({ locale = "id" }) {
       ctaHref: `/user/events/peserta?id=${e.id}&lang=${locale}`,
     }));
 
-  const repItems = vm.repEvents
-    .slice(repStart, repStart + PAGE_SIZE)
-    .map((e) => {
-      const baseId = String(e.id).replace(/-rep$/, "");
-      return { ...e, ctaHref: `/user/events/rep?id=${baseId}&lang=${locale}` };
-    });
+  const hasStudent = vm.studentEvents.length > 0;
+  const hasRep = vm.repEvents.length > 0;
+  const hasAny = hasStudent || hasRep;
 
-  const hasAny =
-    (vm.studentEvents?.length || 0) > 0 || (vm.repEvents?.length || 0) > 0;
+  const heroTitle = useMemo(() => {
+    const t1 = safeText(vm.titleLine1);
+    const t2 = safeText(vm.titleLine2);
+    const both = [t1, t2].filter(Boolean).join(" ").trim();
+    return both || "Temukan Event Terdekatmu";
+  }, [vm.titleLine1, vm.titleLine2]);
+
+  const heroSub =
+    safeText(vm.heroSub) ||
+    "Bergabunglah dalam acara kami dan rasakan pengalaman inspiratif menuju dunia global.";
 
   return (
-    <main style={{ position: "relative", zIndex: 0 }}>
+    <main
+      className="events-page"
+      data-shell="full"
+      style={{ position: "relative", zIndex: 0, background: "#fff" }}
+    >
       {/* HERO */}
-      <section style={hero.section}>
-        <div style={hero.inner}>
-          <div style={hero.glowLeft} />
-          <div style={hero.glowRight} />
-          <div style={hero.centerHalo} />
-          <div style={hero.sheenDiag} />
-          <div style={hero.vignetteSides} />
-          <div style={hero.bottomFade} />
+      <section className="hero-section" style={hero.section}>
+        <div className="hero-inner" style={hero.inner} ref={heroRef}>
+          {/* Decorative gradient layer */}
+          <div className="hero-bg" aria-hidden>
+            <span className="h-blob h-blob--tl" />
+            <span className="h-blob h-blob--br" />
+            <span className="h-dots" />
+          </div>
 
-          <div style={hero.copy}>
-            <h1 style={hero.title2}>
-              <span>{safeText(vm.titleLine1)}</span>
-              <br />
-              <span>{safeText(vm.titleLine2)}</span>
+          <div className="hero-copy js-hero-copy">
+            <h1
+              className="reveal"
+              data-anim="down"
+              style={{ ...hero.titleMain, ["--rvd"]: "60ms" }}
+            >
+              {heroTitle}
             </h1>
+            <p
+              className="reveal"
+              data-anim="up"
+              style={{ ...hero.sub, ["--rvd"]: "140ms" }}
+            >
+              {heroSub}
+            </p>
 
-            <div style={panel.shell}>
-              <div style={panel.title}>{safeText(vm.panelTitle)}</div>
-              <div style={panel.row}>
-                <Chip value={vm.countdown.days} label={vm.labels.days} />
-                <Chip value={vm.countdown.hours} label={vm.labels.hours} />
-                <Chip value={vm.countdown.minutes} label={vm.labels.minutes} />
-                <Chip value={vm.countdown.seconds} label={vm.labels.seconds} />
+            <div
+              className="reveal"
+              data-anim="zoom"
+              style={{ ...panel.shell, ["--rvd"]: "200ms" }}
+            >
+              <div style={panel.title}>
+                {safeText(vm.panelTitle || "Event Terdekat")}
+              </div>
+              <div className="cd-row" style={panel.row}>
+                <div
+                  className="reveal"
+                  data-anim="up"
+                  style={{ ["--rvd"]: "0ms" }}
+                >
+                  <Chip value={vm.countdown.days} label={vm.labels.days} />
+                </div>
+                <div
+                  className="reveal"
+                  data-anim="up"
+                  style={{ ["--rvd"]: "80ms" }}
+                >
+                  <Chip value={vm.countdown.hours} label={vm.labels.hours} />
+                </div>
+                <div
+                  className="reveal"
+                  data-anim="up"
+                  style={{ ["--rvd"]: "160ms" }}
+                >
+                  <Chip
+                    value={vm.countdown.minutes}
+                    label={vm.labels.minutes}
+                  />
+                </div>
+                <div
+                  className="reveal"
+                  data-anim="up"
+                  style={{ ["--rvd"]: "240ms" }}
+                >
+                  <Chip
+                    value={vm.countdown.seconds}
+                    label={vm.labels.seconds}
+                  />
+                </div>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* BENEFITS */}
-      <section
-        style={{
-          ...CONTAINER,
-          marginTop: -100,
-          marginBottom: 28,
-          position: "relative",
-          zIndex: Z.topSection,
-        }}
-      >
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
-            gap: 18,
-          }}
-        >
-          {vm.benefits.map((b, i) => (
-            <div
-              key={i}
-              style={{
-                background: "#fff",
-                borderRadius: 22,
-                border: "1px solid rgba(14,56,140,.08)",
-                boxShadow: "0 16px 40px rgba(15,23,42,.08)",
-                padding: "18px 20px",
-                textAlign: "center",
-              }}
-            >
-              <div style={{ fontSize: 30, lineHeight: 1, marginBottom: 8 }}>
-                {safeText(b.icon)}
-              </div>
-              <div
-                style={{
-                  fontWeight: 800,
-                  color: "#0a3a86",
-                  marginBottom: 6,
-                  fontSize: 16,
-                }}
-              >
-                {safeText(b.title)}
-              </div>
-              <div style={{ color: "#476aa4", fontSize: 13, lineHeight: 1.5 }}>
-                {safeText(b.desc)}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* UPCOMING */}
-      <section
-        style={{
-          ...CONTAINER,
-          marginTop: 36,
-          marginBottom: 24,
-          textAlign: "center",
-          position: "relative",
-          zIndex: Z.topSection,
-        }}
-      >
-        <h2
-          style={{
-            marginTop: 70,
-            fontWeight: 900,
-            textTransform: "uppercase",
-            color: "#0b3e91",
-            fontSize: 48,
-            letterSpacing: ".02em",
-          }}
-        >
-          {safeText(vm.upcomingTitle)}
-        </h2>
-        <p
-          style={{
-            marginTop: -20,
-            color: "#164a8a",
-            fontWeight: 600,
-            lineHeight: 1.6,
-            fontSize: 16,
-          }}
-        >
-          {safeText(vm.upcomingSub)}
-        </p>
-      </section>
-
       {/* EMPTY */}
       {!hasAny && <NoEvents locale={locale} />}
 
-      {/* STUDENT */}
-      {vm.studentEvents.length > 0 && (
+      {/* STUDENT LIST */}
+      {hasStudent && (
         <>
-          <div style={sectionBar.bar}>{safeText(stuItems[0]?.barTitle)}</div>
-          {stuItems.map((it) => (
-            <EventCard key={it.id} {...it} />
+          <section style={sectionBar.shell}>
+            <div
+              className="reveal"
+              data-anim="down"
+              style={{ ...sectionBar.bar, ["--rvd"]: "40ms" }}
+            >
+              <div style={sectionBar.text}>
+                {safeText(
+                  stuItems[0]?.barTitle || "Gabung Event Kita Sebagai Student"
+                )}
+              </div>
+            </div>
+          </section>
+
+          {stuItems.map((it, i) => (
+            <EventCard key={it.id} {...it} revealDelay={`${(i % 3) * 80}ms`} />
           ))}
           <SectionPager
             current={pageStu}
@@ -786,44 +1146,269 @@ export default function EventsUContent({ locale = "id" }) {
         </>
       )}
 
-      {/* REP */}
-      {vm.repEvents.length > 0 && (
-        <>
-          <div style={sectionBar.bar}>{safeText(repItems[0]?.barTitle)}</div>
-          {repItems.map((it) => (
-            <EventCard key={it.id} {...it} />
-          ))}
-          <SectionPager
-            current={pageRep}
-            total={vm.repEvents.length}
-            onChange={setPageRep}
-          />
-        </>
+      {/* REP CTA */}
+      {hasRep && (
+        <RepCTA
+          title={vm.repCtaTitle}
+          images={vm.repCtaImages}
+          options={vm.repEventOptions}
+          locale={locale}
+        />
       )}
 
       {/* WHY */}
-      <section style={why2.wrap}>
-        <h2 style={why2.title}>{safeText(vm.why2Title)}</h2>
-        <div style={why2.grid}>
-          {vm.why2Cards.map((c, i) => (
-            <div key={i} style={why2.card}>
-              {c.img ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={c.img}
-                  alt={safeText(c.title)}
-                  style={why2.img}
-                  onError={(e) => (e.currentTarget.style.display = "none")}
-                />
-              ) : (
-                <div style={why2.iconFallback}>{safeText(c.icon || "🎓")}</div>
-              )}
-              <h3 style={why2.titleSmall}>{safeText(c.title)}</h3>
-              <p style={why2.desc}>{safeText(c.desc)}</p>
-            </div>
-          ))}
-        </div>
-      </section>
+      <WhySection vm={vm} />
+
+      <style jsx>{`
+        /* Countdown grid clamp */
+        @media (max-width: 900px) {
+          .cd-row {
+            grid-template-columns: repeat(2, minmax(120px, 1fr)) !important;
+            gap: 14px !important;
+          }
+        }
+        @media (max-width: 520px) {
+          .cd-row {
+            grid-template-columns: repeat(2, minmax(100px, 1fr)) !important;
+            gap: 10px !important;
+          }
+          .cd-chip div:first-child {
+            width: 120px !important;
+            height: 62px !important;
+            font-size: 28px !important;
+          }
+        }
+
+        /* Anti horizontal scroll */
+        .events-page {
+          overflow-x: hidden;
+        }
+        @supports (overflow: clip) {
+          .events-page {
+            overflow-x: clip;
+          }
+        }
+      `}</style>
+
+      {/* ===== GLOBAL ANIM & HERO DECOR STYLES ===== */}
+      <style jsx global>{`
+        /* Reveal utilities */
+        .reveal {
+          opacity: 0;
+          transform: var(--reveal-from, translate3d(0, 16px, 0));
+          transition: opacity 700ms ease,
+            transform 700ms cubic-bezier(0.21, 1, 0.21, 1);
+          transition-delay: var(--rvd, 0ms);
+          will-change: opacity, transform;
+        }
+        .reveal[data-anim="up"] {
+          --reveal-from: translate3d(0, 18px, 0);
+        }
+        .reveal[data-anim="down"] {
+          --reveal-from: translate3d(0, -18px, 0);
+        }
+        .reveal[data-anim="left"] {
+          --reveal-from: translate3d(-18px, 0, 0);
+        }
+        .reveal[data-anim="right"] {
+          --reveal-from: translate3d(18px, 0, 0);
+        }
+        .reveal[data-anim="zoom"] {
+          --reveal-from: scale(0.96);
+        }
+        .reveal.is-visible {
+          opacity: 1;
+          transform: none;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .reveal {
+            transition: none !important;
+            opacity: 1 !important;
+            transform: none !important;
+          }
+          .hero-cta--bob,
+          .hero-cta--pulse {
+            animation: none !important;
+          }
+        }
+
+        /* Micro-motions for CTAs */
+        @keyframes y-bob {
+          0%,
+          100% {
+            transform: translateY(0);
+          }
+          50% {
+            transform: translateY(-4px);
+          }
+        }
+        .hero-cta--bob {
+          animation: y-bob 3s ease-in-out infinite;
+        }
+        @keyframes pulse-soft {
+          0%,
+          100% {
+            box-shadow: 0 14px 28px rgba(11, 86, 201, 0.28);
+          }
+          50% {
+            box-shadow: 0 18px 36px rgba(11, 86, 201, 0.34);
+          }
+        }
+        .hero-cta--pulse {
+          animation: pulse-soft 2.8s ease-in-out infinite;
+        }
+        .cta-btn:focus-visible {
+          outline: 3px solid #5aa8ff;
+          outline-offset: 3px;
+          border-radius: 999px;
+        }
+
+        /* Hover lift for cards */
+        @media (hover: hover) {
+          .ev-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 14px 28px rgba(15, 23, 42, 0.12),
+              0 28px 60px rgba(15, 23, 42, 0.12),
+              inset 0 1px 0 rgba(255, 255, 255, 0.7);
+          }
+        }
+
+        /* ===== Hero decorative gradients ===== */
+        .hero-inner {
+          position: relative;
+        }
+        .hero-bg {
+          position: absolute;
+          inset: 0;
+          z-index: 0;
+          pointer-events: none;
+          overflow: hidden;
+        }
+
+        .h-blob {
+          position: absolute;
+          border-radius: 50%;
+          filter: blur(18px);
+          opacity: 0.75;
+          will-change: transform, opacity;
+          animation: blobFloat 14s ease-in-out infinite;
+        }
+        .h-blob--tl {
+          width: clamp(220px, 28vw, 420px);
+          height: clamp(220px, 28vw, 420px);
+          left: max(-60px, -6vw);
+          top: max(-40px, -4vw);
+          background: radial-gradient(
+            circle at 50% 50%,
+            rgba(11, 86, 201, 0.3) 0%,
+            rgba(11, 86, 201, 0.18) 35%,
+            rgba(11, 86, 201, 0) 70%
+          );
+          animation-delay: 0s;
+        }
+        .h-blob--br {
+          width: clamp(260px, 32vw, 520px);
+          height: clamp(260px, 32vw, 520px);
+          right: max(-80px, -8vw);
+          bottom: max(-70px, -6vw);
+          background: radial-gradient(
+            circle at 50% 50%,
+            rgba(11, 86, 201, 0.24) 0%,
+            rgba(11, 86, 201, 0.14) 40%,
+            rgba(11, 86, 201, 0) 72%
+          );
+          animation-delay: 1.2s;
+        }
+
+        /* subtle dots grid */
+        .h-dots {
+          position: absolute;
+          inset: 0;
+          background-image: radial-gradient(
+            rgba(11, 86, 201, 0.12) 1px,
+            transparent 1px
+          );
+          background-size: 18px 18px;
+          opacity: 0.12;
+          mask-image: radial-gradient(
+            1200px 600px at 50% 30%,
+            #000 0%,
+            transparent 70%
+          );
+        }
+
+        @keyframes blobFloat {
+          0%,
+          100% {
+            transform: translate3d(0, 0, 0) scale(1);
+            opacity: 0.75;
+          }
+          50% {
+            transform: translate3d(0, -10px, 0) scale(1.03);
+            opacity: 0.9;
+          }
+        }
+
+        @media (max-width: 640px) {
+          .h-blob--tl,
+          .h-blob--br {
+            opacity: 0.6;
+            filter: blur(20px);
+          }
+          .h-dots {
+            opacity: 0.1;
+            background-size: 16px 16px;
+          }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .h-blob {
+            animation: none !important;
+          }
+        }
+      `}</style>
     </main>
+  );
+}
+
+/* ===== Empty state ===== */
+function NoEvents({ locale = "id" }) {
+  const t = (id, en) => (locale === "en" ? en : id);
+  return (
+    <section
+      className="reveal"
+      data-anim="zoom"
+      style={{
+        ...CONTAINER,
+        ...CENTER,
+        marginTop: 40,
+        marginBottom: 80,
+        padding: "32px clamp(20px, 4vw, 48px)",
+        borderRadius: 20,
+        border: "1px dashed #cfe1ff",
+        background: "#fff",
+        display: "grid",
+        placeItems: "center",
+        textAlign: "center",
+        ["--rvd"]: "40ms",
+      }}
+    >
+      <div style={{ fontSize: 64, lineHeight: 1, marginBottom: 12 }}>🗓️</div>
+      <h3
+        style={{
+          margin: "8px 0 6px",
+          fontWeight: 900,
+          color: "#0b3e91",
+          fontSize: 28,
+        }}
+      >
+        {t("Belum ada event yang tersedia", "No events available yet")}
+      </h3>
+      <p style={{ color: "#476aa4", maxWidth: 640, margin: "0 auto" }}>
+        {t(
+          "Pantau halaman ini secara berkala; event baru akan segera hadir.",
+          "Check back soon—new events are on the way."
+        )}
+      </p>
+    </section>
   );
 }

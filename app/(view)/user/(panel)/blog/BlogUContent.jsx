@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
   useCallback,
+  memo,
 } from "react";
 import useSWR from "swr";
 import Link from "next/link";
@@ -26,45 +27,6 @@ import useBlogUViewModel from "./useBlogUViewModel";
 
 const { Title, Text, Paragraph } = Typography;
 
-/* -------------------- i18n -------------------- */
-const DICT = {
-  id: {
-    heroTitle: "WAWASAN INTERNASIONAL, PELUANG TANPA BATAS",
-    heroSubtitle:
-      "Temukan inspirasi dan berita terkini dari universitas terkemuka dunia.",
-    searchPlaceholder: "Cari Judul Blog",
-    filter: "Filter",
-    allCategories: "Semua Kategori",
-    mainSection: "BERITA TERKINI",
-    mostLiked: "PALING DISUKAI",
-    mostRecent: "TERBARU",
-    like: "Suka",
-    alreadyLiked: "Anda sudah menyukai",
-    categoryFallback: "Kategori",
-    errorPrefix: "Terjadi kesalahan",
-  },
-  en: {
-    heroTitle: "GLOBAL INSIGHTS, BOUNDLESS OPPORTUNITIES",
-    heroSubtitle:
-      "Discover inspiration and the latest news from top universities worldwide.",
-    searchPlaceholder: "Search Blog Title",
-    filter: "Filter",
-    allCategories: "All Categories",
-    mainSection: "LATEST NEWS",
-    mostLiked: "MOST LIKED",
-    mostRecent: "MOST RECENT",
-    like: "Like",
-    alreadyLiked: "You already liked this",
-    categoryFallback: "Category",
-    errorPrefix: "Something went wrong",
-  },
-};
-const tOf = (locale) => {
-  const key = (locale || "id").toLowerCase();
-  const dict = DICT[key] || DICT.en;
-  return (k) => dict[k] ?? DICT.en[k] ?? k;
-};
-
 /* -------------------- shared helpers -------------------- */
 const PLACEHOLDER =
   "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=1200&auto=format&fit=crop";
@@ -75,7 +37,56 @@ const swrFetcher = (url) =>
     return r.json();
   });
 
-const Img = React.memo(function Img({ src, alt, style }) {
+/* ================== ANIMATION HOOKS (reveal + hero bob) ================== */
+function useRevealOnScroll(deps = []) {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const prefersReduce = window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    ).matches;
+
+    const markVisible = (els) =>
+      els.forEach((el) => el.classList.add("is-visible"));
+
+    if (prefersReduce) {
+      markVisible(Array.from(document.querySelectorAll(".reveal")));
+      return;
+    }
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            e.target.classList.add("is-visible");
+            io.unobserve(e.target);
+          }
+        });
+      },
+      { threshold: 0.16, rootMargin: "0px 0px -10% 0px" }
+    );
+
+    const observeAll = () => {
+      document
+        .querySelectorAll(".reveal:not(.is-visible)")
+        .forEach((el) => io.observe(el));
+    };
+
+    observeAll();
+
+    // SWR / pagination menambah DOM -> observe lagi
+    const mo = new MutationObserver(observeAll);
+    mo.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      io.disconnect();
+      mo.disconnect();
+    };
+  }, deps);
+}
+
+/* -------------------- image, card, like button -------------------- */
+const Img = memo(function Img({ src, alt, style }) {
   // eslint-disable-next-line @next/next/no-img-element
   return (
     <img
@@ -90,10 +101,12 @@ const Img = React.memo(function Img({ src, alt, style }) {
   );
 });
 
-const CardBox = React.memo(function CardBox({ children }) {
+const CardBox = memo(function CardBox({ children, className, style, ...rest }) {
   return (
     <Card
       hoverable
+      className={className}
+      {...rest}
       style={{
         height: "100%",
         display: "flex",
@@ -101,6 +114,7 @@ const CardBox = React.memo(function CardBox({ children }) {
         borderRadius: 16,
         border: "1px solid #e6edf8",
         boxShadow: "0 12px 28px rgba(8,42,116,.08)",
+        ...style,
       }}
       styles={{
         body: {
@@ -116,7 +130,7 @@ const CardBox = React.memo(function CardBox({ children }) {
   );
 });
 
-const LikeButton = React.memo(function LikeButton({
+const LikeButton = memo(function LikeButton({
   liked,
   count = 0,
   onClick,
@@ -139,6 +153,7 @@ const LikeButton = React.memo(function LikeButton({
       aria-label={liked ? labels.alreadyLiked : labels.like}
       title={liked ? labels.alreadyLiked : labels.like}
       disabled={liked}
+      className="like-btn"
       style={{
         background: "transparent",
         border: "none",
@@ -161,12 +176,13 @@ const LikeButton = React.memo(function LikeButton({
   );
 });
 
-const PopularItem = React.memo(function PopularItem({
+const PopularItem = memo(function PopularItem({
   it,
   onView,
   onLike,
   hasLiked,
-  t, // translator
+  t,
+  rvd = "0ms",
 }) {
   const liked = hasLiked?.(it.id);
   const href = `/user/blog/${it.id}?menu=blog`;
@@ -176,7 +192,11 @@ const PopularItem = React.memo(function PopularItem({
     (it.category_id ? t("categoryFallback") : "");
 
   return (
-    <CardBox>
+    <CardBox
+      className="reveal blog-card"
+      data-anim="zoom"
+      style={{ ["--rvd"]: rvd }}
+    >
       <div
         style={{
           position: "relative",
@@ -285,10 +305,18 @@ const PopularItem = React.memo(function PopularItem({
   );
 });
 
-/* ------------------------ Search + Filter (UI) ------------------------ */
+/** brand tokens */
+const BRAND = {
+  blueDark: "#0b3e91",
+  blueHero: "#004A9E",
+  blueSoft: "#e9f1ff",
+  ink: "#0f172a",
+  white: "#ffffff",
+};
+
 const SUI = {
   wrap: {
-    width: "min(1140px, 92%)",
+    width: "min(1220px, 92%)",
     margin: "0 auto 24px",
     display: "flex",
     gap: 12,
@@ -301,9 +329,10 @@ const SUI = {
     gridTemplateColumns: "44px 1fr 44px",
     alignItems: "center",
     borderRadius: 999,
-    background: "#e9f1ff",
-    border: "3px solid #0b3e91",
+    background: BRAND.blueSoft,
+    border: `3px solid ${BRAND.blueDark}`,
     padding: "0 4px",
+    minWidth: 0,
   },
   iconBtn: {
     width: 44,
@@ -322,8 +351,9 @@ const SUI = {
     background: "transparent",
     fontSize: 16,
     padding: "0 6px",
-    color: "#0b3e91",
+    color: BRAND.blueDark,
     fontWeight: 600,
+    minWidth: 0,
   },
   filterBtn: {
     height: 48,
@@ -334,11 +364,14 @@ const SUI = {
     justifyContent: "space-between",
     gap: 10,
     borderRadius: 999,
-    background: "#0b3e91",
-    color: "#fff",
-    border: "3px solid #0b3e91",
+    background: BRAND.white,
+    color: BRAND.blueDark,
+    border: `3px solid ${BRAND.blueDark}`,
+    boxShadow: "0 8px 18px rgba(11,62,145,.15)",
     cursor: "pointer",
     userSelect: "none",
+    whiteSpace: "nowrap",
+    flexShrink: 0,
   },
   ddWrap: { position: "relative", flex: "0 0 auto" },
   dd: {
@@ -364,7 +397,7 @@ const SUI = {
     borderRadius: 10,
     cursor: "pointer",
     fontWeight: 700,
-    color: "#0b3e91",
+    color: BRAND.blueDark,
   },
 };
 
@@ -382,8 +415,8 @@ function useIsNarrow(breakpoint = 768) {
   return isNarrow;
 }
 
-function SearchAndFilter({ locale = "id", onApplied }) {
-  const t = useMemo(() => tOf(locale), [locale]);
+/* ---------- Search + Filter (FULL with state/effects) ---------- */
+function SearchAndFilter({ locale = "id", onApplied, t }) {
   const router = useRouter();
   const [q, setQ] = useState("");
   const [catId, setCatId] = useState("");
@@ -391,7 +424,6 @@ function SearchAndFilter({ locale = "id", onApplied }) {
   const [catName, setCatName] = useState("");
   const [open, setOpen] = useState(false);
   const boxRef = useRef(null);
-  const isNarrow = useIsNarrow(768);
 
   // init from URL
   useEffect(() => {
@@ -432,7 +464,7 @@ function SearchAndFilter({ locale = "id", onApplied }) {
     if (!catId && !catSlug) return setCatName("");
     const found =
       categories.find((c) => c.id === String(catId)) ||
-      categories.find((c) => c.slug === String(catSlug).toLowerCase());
+      categories.find((c) => c.slug === String(catSlug || "").toLowerCase());
     setCatName(found?.name || "");
   }, [catId, catSlug, categories]);
 
@@ -446,7 +478,7 @@ function SearchAndFilter({ locale = "id", onApplied }) {
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  // apply (kirim id & slug supaya pasti nyangkut)
+  // apply query (notify parent & update URL)
   const apply = useCallback(
     (overrides = {}) => {
       const nextQ = overrides.q ?? q;
@@ -459,7 +491,6 @@ function SearchAndFilter({ locale = "id", onApplied }) {
           categoryId: nextCatId,
           categorySlug: nextCatSlug,
         });
-        return;
       }
 
       if (typeof window !== "undefined") {
@@ -496,48 +527,62 @@ function SearchAndFilter({ locale = "id", onApplied }) {
     apply({ categoryId: "", categorySlug: "" });
   }, [apply]);
 
-  /* === one-line in mobile: keep row, no wrap, shrink heights/widths === */
+  // responsive & no-wrap line
+  const isNarrow = useIsNarrow(768);
+  const isTiny = useIsNarrow(380);
+
   const wrapStyle = {
     ...SUI.wrap,
     flexWrap: "nowrap",
-    ...(isNarrow
-      ? { gap: 8, alignItems: "stretch" } // tetap satu baris
-      : null),
+    gap: isTiny ? 6 : isNarrow ? 8 : 12,
+    alignItems: "center",
+    minWidth: 0,
   };
+
   const shellStyle = {
     ...SUI.shell,
-    flex: "1 1 0%",
+    flex: "1 1 auto",
     minWidth: 0,
     ...(isNarrow
       ? {
           height: 44,
-          border: "2px solid #0b3e91",
-          gridTemplateColumns: "40px 1fr 12px", // kolom ikon lebih kecil
+          border: `2px solid ${BRAND.blueDark}`,
+          gridTemplateColumns: isTiny ? "36px 1fr 0px" : "40px 1fr 8px",
         }
       : null),
   };
+
   const filterBtnStyle = {
     ...SUI.filterBtn,
-    ...(isNarrow
-      ? {
-          height: 44,
-          minWidth: 100, // diperkecil agar muat di 360px
-          padding: "0 14px",
-          justifyContent: "center",
-        }
+    ...(isTiny
+      ? { height: 40, minWidth: 78, padding: "0 10px", gap: 6, fontSize: 14 }
+      : isNarrow
+      ? { height: 44, minWidth: 100, padding: "0 14px", gap: 8 }
       : null),
   };
+
   const ddStyle = {
     ...SUI.dd,
-    ...(isNarrow
+    ...(isTiny
+      ? { width: "min(360px, 92vw)", left: 0, right: "auto" }
+      : isNarrow
       ? { width: "min(420px, 96vw)", right: "auto", left: 0 }
       : null),
   };
 
   return (
-    <div style={wrapStyle} ref={boxRef}>
+    <div
+      style={wrapStyle}
+      ref={boxRef}
+      className="reveal"
+      data-anim="down"
+      // stagger kecil saat masuk
+      css-module-ignore=""
+      // eslint-disable-next-line react/no-unknown-property
+      style={{ ...wrapStyle, ["--rvd"]: "40ms" }}
+    >
       {/* Search pill */}
-      <div style={shellStyle}>
+      <div className="search-pill" style={shellStyle}>
         <button
           type="button"
           aria-label={t("searchPlaceholder")}
@@ -546,10 +591,10 @@ function SearchAndFilter({ locale = "id", onApplied }) {
         >
           <svg
             viewBox="0 0 24 24"
-            width="22"
-            height="22"
+            width={isTiny ? 18 : 22}
+            height={isTiny ? 18 : 22}
             fill="none"
-            stroke="#0b3e91"
+            stroke={BRAND.blueDark}
             strokeWidth="2"
           >
             <circle cx="11" cy="11" r="7" />
@@ -562,7 +607,7 @@ function SearchAndFilter({ locale = "id", onApplied }) {
           onKeyDown={(e) => e.key === "Enter" && apply()}
           placeholder={t("searchPlaceholder")}
           aria-label={t("searchPlaceholder")}
-          style={SUI.input}
+          style={{ ...SUI.input, fontSize: isTiny ? 14 : 16 }}
         />
         <div />
       </div>
@@ -575,16 +620,17 @@ function SearchAndFilter({ locale = "id", onApplied }) {
           onClick={() => setOpen((v) => !v)}
           aria-haspopup="listbox"
           aria-expanded={open}
+          className="filter-pill"
         >
           <span style={{ fontWeight: 900, letterSpacing: ".02em" }}>
             {catName || t("filter")}
           </span>
           <svg
             viewBox="0 0 24 24"
-            width="18"
-            height="18"
+            width={isTiny ? 16 : 18}
+            height={isTiny ? 16 : 18}
             fill="none"
-            stroke="#fff"
+            stroke={BRAND.blueDark}
             strokeWidth="2"
             style={{ marginLeft: 8 }}
           >
@@ -593,7 +639,7 @@ function SearchAndFilter({ locale = "id", onApplied }) {
         </button>
 
         {open && (
-          <div role="listbox" style={ddStyle}>
+          <div role="listbox" style={ddStyle} className="dropdown-zoom-in">
             <button
               style={{ ...SUI.ddItem, color: "#0f172a" }}
               onClick={clearCategory}
@@ -628,7 +674,7 @@ function SearchAndFilter({ locale = "id", onApplied }) {
 }
 
 /* ----------------------------- rails components ----------------------------- */
-const RailNumber = React.memo(function RailNumber({ n }) {
+const RailNumber = memo(function RailNumber({ n }) {
   return (
     <div
       style={{
@@ -646,7 +692,7 @@ const RailNumber = React.memo(function RailNumber({ n }) {
   );
 });
 
-const TopLikeItem = React.memo(function TopLikeItem({
+const TopLikeItem = memo(function TopLikeItem({
   it,
   i,
   onView,
@@ -656,66 +702,78 @@ const TopLikeItem = React.memo(function TopLikeItem({
 }) {
   const liked = hasLiked?.(it.id);
   return (
-    <div style={{ display: "flex", gap: 12, padding: "12px 0" }}>
-      <RailNumber n={String(i + 1).padStart(2, "0")} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <Link
-          href={`/user/blog/${it.id}?menu=blog`}
-          onClick={() => onView?.(it.id)}
-        >
-          <Text strong style={{ display: "block", marginBottom: 4 }}>
-            {it.name}
-          </Text>
-        </Link>
-        <Paragraph
-          type="secondary"
-          ellipsis={{ rows: 2, tooltip: false }}
-          style={{ margin: 0, fontSize: 12, lineHeight: 1.5 }}
-        >
-          {it.excerpt || ""}
-        </Paragraph>
-        <Space size={8} style={{ marginTop: 6 }}>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            {it.time_ago || "-"}
-          </Text>
-          <span style={{ marginLeft: "auto" }} />
-          <LikeButton
-            liked={liked}
-            count={it.likes_count ?? 0}
-            onClick={() => onLike?.(it.id)}
-            labels={{ like: t("like"), alreadyLiked: t("alreadyLiked") }}
-          />
-        </Space>
+    <div
+      className="reveal"
+      data-anim="up"
+      style={{ ["--rvd"]: `${(i % 6) * 70}ms` }}
+    >
+      <div style={{ display: "flex", gap: 12, padding: "12px 0" }}>
+        <RailNumber n={String(i + 1).padStart(2, "0")} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Link
+            href={`/user/blog/${it.id}?menu=blog`}
+            onClick={() => onView?.(it.id)}
+          >
+            <Text strong style={{ display: "block", marginBottom: 4 }}>
+              {it.name}
+            </Text>
+          </Link>
+          <Paragraph
+            type="secondary"
+            ellipsis={{ rows: 2, tooltip: false }}
+            style={{ margin: 0, fontSize: 12, lineHeight: 1.5 }}
+          >
+            {it.excerpt || ""}
+          </Paragraph>
+          <Space size={8} style={{ marginTop: 6 }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {it.time_ago || "-"}
+            </Text>
+            <span style={{ marginLeft: "auto" }} />
+            <LikeButton
+              liked={liked}
+              count={it.likes_count ?? 0}
+              onClick={() => onLike?.(it.id)}
+              labels={{ like: t("like"), alreadyLiked: t("alreadyLiked") }}
+            />
+          </Space>
+        </div>
       </div>
     </div>
   );
 });
 
-const LatePostItem = React.memo(function LatePostItem({ it, i, onView }) {
+const LatePostItem = memo(function LatePostItem({ it, i, onView }) {
   return (
-    <div style={{ display: "flex", gap: 12, padding: "12px 0" }}>
-      <RailNumber n={String(i + 1).padStart(2, "0")} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <Link
-          href={`/user/blog/${it.id}?menu=blog`}
-          onClick={() => onView?.(it.id)}
-        >
-          <Text strong style={{ display: "block", marginBottom: 4 }}>
-            {it.name}
-          </Text>
-        </Link>
-        <Paragraph
-          type="secondary"
-          ellipsis={{ rows: 2, tooltip: false }}
-          style={{ margin: 0, fontSize: 12, lineHeight: 1.5 }}
-        >
-          {it.excerpt || ""}
-        </Paragraph>
-        <Space size={8} style={{ marginTop: 6 }}>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            {it.time_ago || "-"}
-          </Text>
-        </Space>
+    <div
+      className="reveal"
+      data-anim="up"
+      style={{ ["--rvd"]: `${(i % 6) * 70}ms` }}
+    >
+      <div style={{ display: "flex", gap: 12, padding: "12px 0" }}>
+        <RailNumber n={String(i + 1).padStart(2, "0")} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Link
+            href={`/user/blog/${it.id}?menu=blog`}
+            onClick={() => onView?.(it.id)}
+          >
+            <Text strong style={{ display: "block", marginBottom: 4 }}>
+              {it.name}
+            </Text>
+          </Link>
+          <Paragraph
+            type="secondary"
+            ellipsis={{ rows: 2, tooltip: false }}
+            style={{ margin: 0, fontSize: 12, lineHeight: 1.5 }}
+          >
+            {it.excerpt || ""}
+          </Paragraph>
+          <Space size={8} style={{ marginTop: 6 }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {it.time_ago || "-"}
+            </Text>
+          </Space>
+        </div>
       </div>
     </div>
   );
@@ -737,7 +795,6 @@ function useIsLg() {
 
 /* --------------------------------- page --------------------------------- */
 export default function BlogUContent({ locale = "id" }) {
-  const t = useMemo(() => tOf(locale), [locale]);
   const router = useRouter();
   const isLg = useIsLg();
   const isNarrow = useIsNarrow(768);
@@ -756,6 +813,7 @@ export default function BlogUContent({ locale = "id" }) {
   }, []);
 
   const {
+    t,
     popular,
     topLikes,
     latePosts,
@@ -763,7 +821,6 @@ export default function BlogUContent({ locale = "id" }) {
     error,
     page,
     total,
-    totalPages,
     goTo,
     setPage,
     onView,
@@ -793,62 +850,153 @@ export default function BlogUContent({ locale = "id" }) {
     [router, setPage]
   );
 
+  /* ====== INIT REVEAL OBSERVER ====== */
+  useRevealOnScroll([
+    popular.length,
+    topLikes.length,
+    latePosts.length,
+    page,
+    q,
+    categoryId,
+    categorySlug,
+  ]);
+
+  /* ================= HERO ================= */
+  const HERO = {
+    section: {
+      width: "100%",
+      background: BRAND.blueHero,
+      color: "#ffffff",
+      position: "relative",
+      overflow: "hidden",
+      marginBottom: "clamp(28px, 5vw, 50px)",
+    },
+    wrap: {
+      width: "min(1220px, 92%)",
+      margin: "0 auto",
+      paddingTop: "clamp(14px, 2.8vw, 22px)",
+      paddingBottom: isNarrow ? 26 : 36,
+      position: "relative",
+      zIndex: 1,
+    },
+    grid: {
+      display: "grid",
+      gridTemplateColumns: isNarrow ? "1fr" : "1.15fr 0.85fr",
+      alignItems: "center",
+      gap: isNarrow ? 14 : 24,
+      minHeight: isNarrow ? 260 : 380,
+    },
+    copy: {
+      maxWidth: 740,
+      paddingRight: isNarrow ? 0 : 12,
+      zIndex: 2,
+    },
+    title: {
+      margin: 0,
+      marginBottom: 10,
+      fontWeight: 900,
+      lineHeight: 1.15,
+      fontSize: "clamp(26px, 5.2vw, 44px)",
+      color: "#fff",
+    },
+    subtitle: {
+      marginTop: 6,
+      marginBottom: 0,
+      color: "rgba(255,255,255,.92)",
+      fontSize: "clamp(13px, 2.2vw, 16px)",
+      lineHeight: 1.9,
+      letterSpacing: ".01em",
+    },
+    mascotCol: {
+      position: "relative",
+      display: "grid",
+      alignItems: "center",
+      justifyItems: "end",
+      minHeight: isNarrow ? 160 : 300,
+      paddingRight: isNarrow ? 0 : 8,
+    },
+    mascot: {
+      width: isNarrow ? "78%" : "92%",
+      maxWidth: 540,
+      height: "auto",
+      objectFit: "contain",
+      pointerEvents: "none",
+      userSelect: "none",
+      transform: isNarrow ? "translateY(4px)" : "translate(2px, 6px)",
+    },
+  };
+
   return (
-    <div style={{ width: "100%", background: "#fff" }}>
+    <div
+      data-shell="full"
+      data-page="blog"
+      style={{ width: "100%", background: "#fff" }}
+    >
       {/* HERO */}
-      <section
-        style={{
-          width: "min(1140px, 92%)",
-          margin: "0 auto",
-          textAlign: "center",
-          padding: "28px 0 16px",
-          marginBottom: 10,
-          marginTop: isLg ? -50 : 0,
-        }}
-      >
-        <Title
-          level={2}
-          style={{
-            margin: 0,
-            marginBottom: 6,
-            fontWeight: 900,
-            fontSize: "clamp(22px, 4.6vw, 32px)",
-            lineHeight: 1.2,
-          }}
-        >
-          {t("heroTitle")}
-        </Title>
-        <Paragraph
-          style={{
-            marginTop: 4,
-            marginBottom: 0,
-            color: "#334155",
-            fontSize: "clamp(13px, 2.8vw, 15px)",
-          }}
-        >
-          {t("heroSubtitle")}
-        </Paragraph>
+      <section style={HERO.section}>
+        <div style={HERO.wrap}>
+          <SearchAndFilter locale={locale} onApplied={handleApplied} t={t} />
+
+          <div style={HERO.grid}>
+            <div style={HERO.copy}>
+              <Title
+                level={2}
+                className="reveal"
+                data-anim="down"
+                style={{ ...HERO.title, ["--rvd"]: "40ms" }}
+              >
+                {t("heroTitle")}
+              </Title>
+              <Paragraph
+                className="reveal"
+                data-anim="up"
+                style={{ ...HERO.subtitle, ["--rvd"]: "120ms" }}
+              >
+                {t("heroSubtitle")}
+              </Paragraph>
+            </div>
+
+            <div style={HERO.mascotCol} aria-hidden="true">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/maskot-terbang.svg"
+                alt=""
+                className="hero-mascot--bob reveal"
+                data-anim="right"
+                style={{ ...HERO.mascot, ["--rvd"]: "160ms" }}
+                loading="eager"
+              />
+            </div>
+          </div>
+        </div>
       </section>
 
-      {/* SEARCH + FILTER */}
-      <SearchAndFilter locale={locale} onApplied={handleApplied} />
-
       {/* LISTS */}
-      <section style={{ width: "min(1140px, 92%)", margin: "0 auto 40px" }}>
+      <section
+        style={{
+          width: "min(1220px, 92%)",
+          margin: "0 auto clamp(28px, 5vw, 40px)",
+        }}
+      >
         <Row gutter={[16, 16]}>
           {/* Popular */}
           <Col xs={24} lg={18}>
             <Title
               level={3}
+              className="reveal"
+              data-anim="left"
               style={{
                 margin: "0 0 8px",
                 fontWeight: 900,
                 fontSize: "clamp(18px, 4.4vw, 24px)",
+                ["--rvd"]: "40ms",
               }}
             >
               {t("mainSection")}
             </Title>
             <div
+              className="reveal"
+              data-anim="right"
               style={{
                 width: isNarrow ? 140 : 180,
                 height: 3,
@@ -856,6 +1004,7 @@ export default function BlogUContent({ locale = "id" }) {
                   "linear-gradient(90deg, #0b3e91 0%, #5aa6ff 60%, transparent 100%)",
                 borderRadius: 999,
                 marginBottom: 16,
+                ["--rvd"]: "80ms",
               }}
             />
             <Row gutter={[16, 16]}>
@@ -867,7 +1016,7 @@ export default function BlogUContent({ locale = "id" }) {
                       </div>
                     </Col>
                   ))
-                : popular.map((it) => (
+                : popular.map((it, idx) => (
                     <Col
                       key={it.id}
                       xs={24}
@@ -881,6 +1030,7 @@ export default function BlogUContent({ locale = "id" }) {
                           onLike={onLike}
                           hasLiked={hasLiked}
                           t={t}
+                          rvd={`${(idx % 6) * 60}ms`}
                         />
                       </div>
                     </Col>
@@ -888,10 +1038,13 @@ export default function BlogUContent({ locale = "id" }) {
             </Row>
 
             <div
+              className="reveal"
+              data-anim="up"
               style={{
                 marginTop: 18,
                 display: "flex",
                 justifyContent: "center",
+                ["--rvd"]: "120ms",
               }}
             >
               <Pagination
@@ -908,12 +1061,15 @@ export default function BlogUContent({ locale = "id" }) {
           <Col xs={24} lg={6}>
             <Card
               hoverable={false}
+              className="reveal"
+              data-anim="left"
               style={{
                 borderRadius: 16,
                 border: "1px solid #e6edf8",
                 boxShadow: "0 12px 28px rgba(8,42,116,.06)",
                 marginBottom: 16,
                 marginTop: isLg ? 54 : 0,
+                ["--rvd"]: "80ms",
               }}
               styles={{ body: { padding: 16 } }}
             >
@@ -963,10 +1119,13 @@ export default function BlogUContent({ locale = "id" }) {
 
             <Card
               hoverable={false}
+              className="reveal"
+              data-anim="left"
               style={{
                 borderRadius: 16,
                 border: "1px solid #e6edf8",
                 boxShadow: "0 12px 28px rgba(8,42,116,.06)",
+                ["--rvd"]: "120ms",
               }}
               styles={{ body: { padding: 16 } }}
             >
@@ -1015,6 +1174,107 @@ export default function BlogUContent({ locale = "id" }) {
           </div>
         ) : null}
       </section>
+
+      {/* ========== GLOBAL ANIMATION STYLES ========== */}
+      <style jsx global>{`
+        /* Reveal utilities */
+        .reveal {
+          opacity: 0;
+          transform: var(--reveal-from, translate3d(0, 14px, 0));
+          transition: opacity 700ms ease,
+            transform 700ms cubic-bezier(0.21, 1, 0.21, 1);
+          transition-delay: var(--rvd, 0ms);
+          will-change: opacity, transform;
+        }
+        .reveal[data-anim="up"] {
+          --reveal-from: translate3d(0, 18px, 0);
+        }
+        .reveal[data-anim="down"] {
+          --reveal-from: translate3d(0, -18px, 0);
+        }
+        .reveal[data-anim="left"] {
+          --reveal-from: translate3d(-18px, 0, 0);
+        }
+        .reveal[data-anim="right"] {
+          --reveal-from: translate3d(18px, 0, 0);
+        }
+        .reveal[data-anim="zoom"] {
+          --reveal-from: scale(0.96);
+        }
+        .reveal.is-visible {
+          opacity: 1;
+          transform: none;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .reveal {
+            transition: none !important;
+            opacity: 1 !important;
+            transform: none !important;
+          }
+          .hero-mascot--bob {
+            animation: none !important;
+          }
+        }
+
+        /* Micro-motion */
+        @keyframes y-bob {
+          0%,
+          100% {
+            transform: translateY(0);
+          }
+          50% {
+            transform: translateY(-4px);
+          }
+        }
+        .hero-mascot--bob {
+          animation: y-bob 3.5s ease-in-out infinite;
+          will-change: transform;
+        }
+
+        /* Cards hover delight */
+        .blog-card {
+          transition: transform 0.18s ease, box-shadow 0.18s ease;
+          will-change: transform;
+        }
+        @media (hover: hover) {
+          .blog-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 16px 34px rgba(8, 42, 116, 0.14);
+          }
+          .like-btn:not([disabled]):hover {
+            transform: translateY(-1px);
+          }
+        }
+        .like-btn:active {
+          transform: scale(0.96);
+        }
+
+        /* Dropdown appear */
+        .dropdown-zoom-in {
+          animation: dropdownIn 180ms ease;
+          transform-origin: top right;
+        }
+        @keyframes dropdownIn {
+          from {
+            opacity: 0;
+            transform: scale(0.96);
+          }
+          to {
+            opacity: 1;
+            transform: none;
+          }
+        }
+
+        /* Search/Filter focus ring */
+        .search-pill:focus-within {
+          box-shadow: 0 0 0 3px rgba(90, 166, 255, 0.35);
+        }
+        .filter-pill:focus-visible {
+          outline: 3px solid #5aa8ff;
+          outline-offset: 3px;
+          border-radius: 999px;
+        }
+      `}</style>
     </div>
   );
 }

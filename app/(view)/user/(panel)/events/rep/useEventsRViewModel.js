@@ -153,81 +153,84 @@ export default function useEventsRViewModel({ locale = "id", eventId } = {}) {
       support: "/stuvis.svg",
     };
 
+    /* =======================
+       BENEFITS COPY (match design)
+    ======================= */
     const idBenefits = [
-      {
-        icon: icon.network,
-        iconType: "svg",
-        title: "Jaringan & Eksposur",
-        desc: "Temui langsung calon mahasiswa & partner institusi.",
-      },
-      {
-        icon: icon.lead,
-        iconType: "svg",
-        title: "Lead Berkualitas",
-        desc: "Kumpulkan data prospek yang siap di-follow up.",
-      },
       {
         icon: icon.branding,
         iconType: "svg",
-        title: "Branding Booth",
-        desc: "Posisi strategis dan materi promosi on-site.",
+        title: "Peningkatan Branding",
+        desc: "Perkuat personal branding dengan seluruh peserta",
       },
       {
-        icon: icon.lounge,
+        icon: icon.network,
         iconType: "svg",
-        title: "Fasilitas Booth Nyaman",
-        desc: "Meja, kursi, listrik, snack & drink tersedia.",
-      },
-      {
-        icon: icon.talk,
-        iconType: "svg",
-        title: "Slot Sesi/Talk",
-        desc: "Opsional sesi presentasi untuk highlight program.",
+        title: "Kesempatan Berjejaring",
+        desc: "Peluang membangun kerjasama international",
       },
       {
         icon: icon.support,
         iconType: "svg",
-        title: "Dukungan Tim",
-        desc: "On-ground support membantu operasional booth.",
+        title: "Keuntungan Setelah Acara",
+        desc: "Kesempatan dijadikan highlight di media sosial penyelenggara event",
+      },
+      {
+        icon: icon.lead,
+        iconType: "svg",
+        title: "Keterlibatan Mahasiswa Langsung",
+        desc: "Berinteraksi langsung dengan student yang ingin ke luar negeri",
+      },
+      {
+        icon: icon.talk,
+        iconType: "svg",
+        title: "Insight Eksklusif Dari Leads Potensial",
+        desc: "Mendapat leads student potensial (prospective student leads)",
+      },
+      {
+        icon: icon.lounge,
+        iconType: "svg",
+        title: "Optimalisasi Reputasi Global Kampus",
+        desc: "Tingkatkan daya tarik melalui promosi program internasional.",
       },
     ];
 
     const enBenefits = [
       {
-        icon: icon.network,
-        iconType: "svg",
-        title: "Network & Exposure",
-        desc: "Meet prospective students and institutional partners.",
-      },
-      {
-        icon: icon.lead,
-        iconType: "svg",
-        title: "Qualified Leads",
-        desc: "Collect prospects ready for follow-ups.",
-      },
-      {
         icon: icon.branding,
         iconType: "svg",
-        title: "Booth Branding",
-        desc: "Strategic placement & on-site promo materials.",
+        title: "Stronger Branding",
+        desc: "Reinforce your brand with all attendees.",
       },
       {
-        icon: icon.lounge,
+        icon: icon.network,
         iconType: "svg",
-        title: "Comfort Facilities",
-        desc: "Table, chairs, power, snacks & drinks provided.",
-      },
-      {
-        icon: icon.talk,
-        iconType: "svg",
-        title: "Talk Slot",
-        desc: "Optional session to highlight your programs.",
+        title: "Networking Opportunities",
+        desc: "Build international collaborations.",
       },
       {
         icon: icon.support,
         iconType: "svg",
-        title: "On-ground Support",
-        desc: "Local team assists your booth operations.",
+        title: "Post-Event Benefits",
+        desc: "Chance to be highlighted on the organizer’s social media.",
+      },
+      {
+        icon: icon.lead,
+        iconType: "svg",
+        title: "Direct Student Engagement",
+        desc: "Interact directly with students pursuing study abroad.",
+      },
+      {
+        icon: icon.talk,
+        iconType: "svg",
+        title: "Exclusive Insights From Potential Leads",
+        desc: "Gain prospective student leads for follow-ups.",
+      },
+      {
+        icon: icon.lounge,
+        iconType: "svg",
+        title: "Enhanced Global Reputation",
+        desc: "Increase appeal via international program promotion.",
       },
     ];
 
@@ -236,9 +239,10 @@ export default function useEventsRViewModel({ locale = "id", eventId } = {}) {
       errorMessage: error?.message || "",
       item,
       benefits: isEN ? enBenefits : idBenefits,
-      benefitTitle: isEN
-        ? "REPRESENTATIVE BENEFITS"
-        : "BENEFIT UNTUK REPRESENTATIVE",
+      benefitTitle: isEN ? "EXCLUSIVE BENEFITS" : "Benefit Ekslusif",
+      benefitSubtitle: isEN
+        ? "Get direct exposure to thousands of visitors, prospective student databases, media coverage, and exclusive booth facilities!"
+        : "Dapat Exposure Langsung Ke Ribuan Pengunjung, Database Calon Mahasiswa, Media Coverage, Dan Fasilitas Booth Eksklusif!",
       emptyTitle: isEN ? "Event not found" : "Event tidak ditemukan",
       emptySub: isEN
         ? "Please check the link or choose another event."

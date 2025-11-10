@@ -1,12 +1,12 @@
 // CareerContent.jsx
 "use client";
 
-import React, { useCallback } from "react";
-import { Card, Row, Col, Typography, Button, Carousel, Avatar } from "antd";
+import React, { useCallback, useMemo, useRef, useState } from "react";
+import { Typography, Button } from "antd";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 
-const { Title, Paragraph, Text } = Typography;
+const { Title, Paragraph } = Typography;
 
 /* ===== media hook ===== */
 function useIsNarrow(breakpoint = 900) {
@@ -22,16 +22,36 @@ function useIsNarrow(breakpoint = 900) {
   return n;
 }
 
+/* ===== helpers: youtube ===== */
+function toYouTubeId(input = "") {
+  try {
+    const u = new URL(input);
+    if (u.hostname.includes("youtu.be")) return u.pathname.replace("/", "");
+    return u.searchParams.get("v") || "";
+  } catch {
+    return "";
+  }
+}
+const toEmbed = (url) => {
+  const id = toYouTubeId(url);
+  return id
+    ? `https://www.youtube.com/embed/${id}?rel=0&modestbranding=1&autoplay=1`
+    : "";
+};
+const toThumb = (url) => {
+  const id = toYouTubeId(url);
+  return id
+    ? `https://i.ytimg.com/vi/${id}/maxresdefault.jpg`
+    : "/images/loading.png";
+};
+
 /* ===== constants ===== */
-const HEADER_H = "clamp(48px, 8vw, 84px)"; // tinggi header global
+const HEADER_H = "clamp(48px, 8vw, 84px)";
 
 /* ===== styles ===== */
 const styles = {
-  // HERO
-  hero: {
-    marginTop: `calc(-1 * ${HEADER_H})`,
-    background: "#fff",
-  },
+  /* HERO */
+  hero: { marginTop: `calc(-1 * ${HEADER_H})`, background: "#fff" },
   heroBleed: { width: "100vw", marginLeft: "calc(50% - 50vw)" },
   heroImgFrame: {
     position: "relative",
@@ -40,7 +60,14 @@ const styles = {
     background: "#e8f0ff",
     overflow: "hidden",
   },
-
+  heroGradOverlay: {
+    position: "absolute",
+    inset: 0,
+    zIndex: 1,
+    pointerEvents: "none",
+    background:
+      "radial-gradient(1200px 420px at 50% 12%, rgba(255,255,255,0.78) 0%, rgba(255,255,255,0.42) 38%, rgba(255,255,255,0.12) 58%, rgba(255,255,255,0) 74%), linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.04) 42%, rgba(255,255,255,0) 70%)",
+  },
   heroTextTopCenter: {
     position: "absolute",
     left: "50%",
@@ -70,7 +97,7 @@ const styles = {
     textShadow: "0 1px 6px rgba(0,0,0,.10)",
   },
 
-  // SECTIONS
+  /* SECTION WRAPPER */
   section: { width: "min(1180px, 92%)", margin: "84px auto 108px" },
   sectionTitle: {
     textAlign: "center",
@@ -85,228 +112,201 @@ const styles = {
     height: 6,
     borderRadius: 6,
     background: "#2265B3",
-    margin: "12px auto 36px",
+    margin: "12px auto 24px",
   },
-
-  // BENEFITS (desktop defaults; mobile diatur via CSS di bawah)
-  benefitRow: { marginTop: 6 },
-  benefitCard: {
-    background: "#fff",
-    border: 0,
-    borderRadius: 20,
-    boxShadow: "0 14px 34px rgba(13, 28, 62, 0.08)",
-    height: "100%",
-  },
-  benefitBody: { padding: 24 },
-  benefitIconBox: { width: 104, height: 104, display: "grid", placeItems: "center" },
-  benefitIcon: { width: 88, height: 88, display: "block" },
-  benefitTitle: {
-    fontWeight: 900,
-    color: "#0b2a53",
-    marginBottom: 10,
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
-    fontSize: "clamp(14px, 1.6vw, 18px)",
-  },
-  benefitList: {
-    margin: "6px 0 0",
-    paddingLeft: 18,
-    listStyle: "disc",
-    textTransform: "uppercase",
-    color: "#0f172a",
-    letterSpacing: 0.2,
-    lineHeight: 1.9,
-    fontSize: "clamp(12px, 1.4vw, 14px)",
-  },
-
-  // CULTURE
-  cultureGrid: { marginTop: 8 },
-  cultureLeftWrap: {
-    position: "relative",
-    borderRadius: 16,
-    overflow: "hidden",
-    boxShadow: "0 18px 42px rgba(15,23,42,0.18)",
-  },
-  cultureLeftImg: { width: "100%", height: "auto", display: "block" },
-  cultureLeftFade: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: "40%",
-    background:
-      "linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.35) 50%, rgba(0,0,0,0.6) 100%)",
-  },
-  cultureLeftBadge: {
-    position: "absolute",
-    left: 14,
-    bottom: 14,
-    color: "#fff",
-    fontWeight: 900,
-    letterSpacing: 0.6,
-    fontSize: "clamp(18px, 2.4vw, 28px)",
-    textTransform: "uppercase",
-    textShadow: "0 3px 14px rgba(0,0,0,0.45)",
-  },
-  cultureLeftHeading: {
-    marginTop: 14,
-    fontWeight: 900,
-    color: "#0b2a53",
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
-    fontSize: "clamp(16px, 2vw, 22px)",
-  },
-  cultureLeftDesc: { color: "#111827", marginTop: 6, lineHeight: 1.7 },
-
-  cultureRow: { marginBottom: 18 },
-  cultureThumbWrap: {
-    position: "relative",
-    borderRadius: 16,
-    overflow: "hidden",
-    height: 150,
-    boxShadow: "0 10px 26px rgba(15,23,42,0.12)",
-  },
-  cultureThumbImg: { width: "100%", height: "100%", objectFit: "cover", display: "block" },
-  cultureThumbFade: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: "55%",
-    background:
-      "linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.35) 55%, rgba(0,0,0,0.65) 100%)",
-  },
-  cultureThumbLabel: {
-    position: "absolute",
-    left: 14,
-    bottom: 12,
-    color: "#fff",
-    fontWeight: 900,
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-    fontSize: "clamp(12px, 1.6vw, 18px)",
-    textShadow: "0 3px 12px rgba(0,0,0,0.45)",
-  },
-  cultureRightTitle: {
-    fontWeight: 900,
-    color: "#0b2a53",
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-    marginBottom: 6,
-    fontSize: "clamp(14px, 1.6vw, 18px)",
-  },
-  cultureRightText: { color: "#334155", lineHeight: 1.7, margin: 0 },
-
-  // TESTIMONIALS
-  testimonialWrap: {
-    borderRadius: 16,
-    border: "1px solid #e6eefc",
-    background: "#fff",
-    boxShadow: "0 12px 28px rgba(14,116,233,0.08)",
-    padding: 16,
-  },
-
-  // CTA
-  ctaSectionTitle: {
-    textAlign: "center",
-    fontWeight: 900,
-    color: "#0b2a53",
-    letterSpacing: 0.6,
-    marginBottom: 10,
-    textTransform: "uppercase",
-    fontSize: "clamp(22px, 3.2vw, 32px)",
-  },
-  ctaSubtitle: {
+  sectionSub: {
     textAlign: "center",
     maxWidth: 720,
-    margin: "18px auto 26px",
+    margin: "0 auto 26px",
     color: "#0b2a53",
-    lineHeight: 1.5,
-    fontWeight: 800,
-    fontStyle: "italic",
-    fontSize: "clamp(18px, 3.2vw, 28px)",
+    lineHeight: 1.45,
+    fontWeight: 700,
+    fontSize: "clamp(15px, 2.2vw, 18px)",
   },
+
+  /* CTA buttons */
   ctaButtonsRow: {
     display: "flex",
-    gap: 16,
+    gap: 22,
     justifyContent: "center",
     flexWrap: "wrap",
-    marginTop: 12,
-    marginBottom: 32,
+    marginTop: 22,
+    marginBottom: 36,
   },
-  ctaBtn: {
-    background: "#0B56B8",
+  pillWrap: {
+    position: "relative",
+    filter: "drop-shadow(0 18px 32px rgba(11,86,184,0.25))",
+  },
+  pillBtn: {
+    background: "linear-gradient(180deg,#0B56C9 0%,#084A94 100%)",
     border: "none",
     color: "#fff",
-    height: "clamp(48px, 7vw, 64px)",
-    minWidth: "clamp(140px, 42vw, 280px)",
-    padding: "0 clamp(18px, 3.2vw, 34px)",
+    height: "clamp(52px, 7vw, 64px)",
+    minWidth: "clamp(180px, 40vw, 380px)",
+    padding: "0 clamp(22px, 4vw, 36px)",
     borderRadius: 9999,
     fontWeight: 900,
-    letterSpacing: 0.6,
-    fontSize: "clamp(14px, 2.2vw, 18px)",
-    textTransform: "uppercase",
-    boxShadow: "0 12px 20px rgba(11,86,184,0.28)",
+    letterSpacing: 0.4,
+    fontSize: "clamp(15px, 2.3vw, 18px)",
+    textTransform: "none",
   },
-  ctaBtnGhost: {
-    background: "#0B56B8",
-    border: "none",
-    color: "#fff",
-    height: "clamp(48px, 7vw, 64px)",
-    minWidth: "clamp(140px, 42vw, 280px)",
-    padding: "0 clamp(18px, 3.2vw, 34px)",
-    borderRadius: 9999,
-    fontWeight: 900,
-    letterSpacing: 0.6,
-    fontSize: "clamp(14px, 2.2vw, 18px)",
-    textTransform: "uppercase",
-    boxShadow: "0 12px 20px rgba(11,86,184,0.28)",
-  },
+
+  /* CTA visual */
   ctaVisual: {
     position: "relative",
-    width: "clamp(220px, 68vw, 420px)",
-    aspectRatio: "1/1",
-    margin: "36px auto 0",
+    width: "clamp(240px, 68vw, 440px)",
+    margin: "10px auto 0",
   },
-  ctaBgCircle: {
-    position: "absolute",
-    inset: 0,
-    borderRadius: "50%",
-    background: "#F0B12D",
-    zIndex: 1,
+
+  /* LOWONGAN (tanpa wrapper pemotong) */
+  vacOuter: {
+    width: "min(1180px, 92%)",
+    margin: "0 auto 84px",
+    /* supaya scrollIntoView memberi jarak dengan header */
+    scrollMarginTop: `calc(${HEADER_H} + 16px)`,
   },
-  ctaImgCircle: {
-    position: "absolute",
-    inset: 0,
-    borderRadius: "50%",
+  vacTitle: {
+    margin: 0,
+    color: "#0B56B8",
+    fontWeight: 900,
+    fontSize: "clamp(22px, 3vw, 40px)",
+    letterSpacing: ".02em",
+  },
+  vacBody: {
+    marginTop: 14,
+    color: "#0f172a",
+    lineHeight: 1.9,
+    fontSize: "clamp(14px, 2.2vw, 16px)",
+    opacity: 0.92,
+  },
+  vacBtn: {
+    marginTop: 18,
+    background: "linear-gradient(180deg,#0B56C9 0%,#084A94 100%)",
+    border: "none",
+    color: "#fff",
+    height: "clamp(50px, 7vw, 60px)",
+    minWidth: "clamp(200px, 36vw, 420px)",
+    borderRadius: 999,
+    fontWeight: 800,
+    fontSize: "clamp(15px, 2.3vw, 18px)",
+    letterSpacing: 0.2,
+    boxShadow: "0 18px 36px rgba(11,86,184,.25)",
+  },
+  vacImgBox: { width: "100%", background: "#f4f7ff" },
+  vacImgEl: { width: "100%", height: "auto", display: "block" },
+
+  /* ===== REFERRAL SECTION ===== */
+  refWrap: {
+    width: "min(1180px, 92%)",
+    margin: "0 auto 100px",
+    scrollMarginTop: `calc(${HEADER_H} + 16px)`,
+  },
+  refTitle: {
+    margin: 0,
+    textAlign: "center",
+    color: "#0B56C9",
+    fontWeight: 900,
+    letterSpacing: 0.4,
+    fontSize: "clamp(22px, 3.4vw, 38px)",
+  },
+  refDesc: {
+    margin: "10px auto 20px",
+    textAlign: "center",
+    maxWidth: 940,
+    color: "#0f172a",
+    lineHeight: 1.9,
+    fontSize: "clamp(14px, 2.2vw, 16px)",
+  },
+  refVideoOuter: { display: "flex", justifyContent: "center" },
+  refVideoBox: {
+    position: "relative",
+    width: "min(860px, 92%)",
+    aspectRatio: "16 / 9",
+    borderRadius: 16,
     overflow: "hidden",
-    boxShadow: "0 18px 42px rgba(15,23,42,0.18)",
-    zIndex: 2,
+    boxShadow: "0 18px 40px rgba(8,42,116,.16)",
+    background: "#E7F0FF",
+  },
+  refThumb: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    display: "block",
+  },
+  refPlayBtn: {
+    position: "absolute",
+    inset: 0,
+    display: "grid",
+    placeItems: "center",
+    cursor: "pointer",
+    background: "linear-gradient(180deg, rgba(0,0,0,.08), rgba(0,0,0,.22))",
+  },
+  refPlayIcon: {
+    width: 78,
+    height: 78,
+    borderRadius: "50%",
+    background: "#0B56C9",
+    boxShadow: "0 12px 26px rgba(11,86,201,.35)",
+    position: "relative",
+  },
+  refPlayTri: {
+    position: "absolute",
+    left: "50%",
+    top: "50%",
+    transform: "translate(-38%,-50%)",
+    width: 0,
+    height: 0,
+    borderLeft: "20px solid #fff",
+    borderTop: "12px solid transparent",
+    borderBottom: "12px solid transparent",
   },
 };
 
 export default function CareerContent({
   hero,
-  benefits,
-  culture,
-  testimonials,
+  cta, // { title, subtitle, btnJobs, btnReferral }
+  vacancy, // { title, image, body, btnLabel }
+  referral, // { title, leadBold, desc, youtube }
   onCTATeam,
   onCTAReferral,
+  onSendCV,
   ctaImage,
 }) {
   const router = useRouter();
   const isNarrow = useIsNarrow(900);
+  const [play, setPlay] = useState(false);
 
-  const handleTeam = useCallback(() => {
-    if (onCTATeam) return onCTATeam();
-  }, [onCTATeam]);
+  /* === Refs untuk target scroll === */
+  const vacRef = useRef(null);
+  const refRef = useRef(null);
 
-  const handleReferral = useCallback(() => {
-    if (onCTAReferral) return onCTAReferral();
-    router.push("/user/referral?menu=about");
-  }, [onCTAReferral, router]);
+  /* === Scroll helpers === */
+  const scrollToRef = useCallback((r) => {
+    if (typeof window === "undefined") return;
+    const el = r?.current;
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+
+  /* === CTA handlers === */
+  const handleScrollVacancy = useCallback(() => {
+    // scroll ke Lowongan; fallback ke onCTATeam jika ref tak ada
+    if (vacRef.current) scrollToRef(vacRef);
+    else if (onCTATeam) onCTATeam();
+  }, [scrollToRef, onCTATeam]);
+
+  const handleScrollReferral = useCallback(() => {
+    // scroll ke Sahabat Referral; fallback ke onCTAReferral jika ref tak ada
+    if (refRef.current) scrollToRef(refRef);
+    else if (onCTAReferral) onCTAReferral();
+  }, [scrollToRef, onCTAReferral]);
+
+  const handleSendCV = useCallback(() => {
+    if (onSendCV) return onSendCV();
+    router.push("/career/apply");
+  }, [onSendCV, router]);
 
   const ctaImg = ctaImage || "/cta-girl.svg";
+  const vacImg = vacancy?.image || "/images/loading.png";
 
   const heroFrameStyle = {
     ...styles.heroImgFrame,
@@ -315,6 +315,22 @@ export default function CareerContent({
       : `calc(100vh + ${HEADER_H} + 1px)`,
     background: isNarrow ? "transparent" : styles.heroImgFrame.background,
   };
+
+  const vacGrid = {
+    display: "grid",
+    gridTemplateColumns: isNarrow ? "1fr" : "1.15fr 1fr",
+    gap: isNarrow ? 16 : 32,
+    alignItems: "center",
+  };
+
+  const embedUrl = useMemo(
+    () => toEmbed(referral?.youtube || ""),
+    [referral?.youtube]
+  );
+  const thumbUrl = useMemo(
+    () => toThumb(referral?.youtube || ""),
+    [referral?.youtube]
+  );
 
   return (
     <div>
@@ -328,248 +344,23 @@ export default function CareerContent({
               fill
               priority
               sizes="100vw"
-              style={{ objectFit: "cover", objectPosition: hero.objectPosition || "50% 45%" }}
+              style={{
+                objectFit: "cover",
+                objectPosition: hero.objectPosition || "50% 45%",
+              }}
             />
+            <div style={styles.heroGradOverlay} aria-hidden />
             <div style={styles.heroTextTopCenter}>
               <h1 style={styles.heroH1}>{hero.title}</h1>
-              {hero.quote ? <div style={styles.heroSub}>&quot;{hero.quote}&quot;</div> : null}
+              {hero.quote ? (
+                <div style={styles.heroSub}>{hero.quote}</div>
+              ) : null}
             </div>
           </div>
         </div>
       </section>
 
-      {/* BENEFITS */}
-      <section
-        style={{
-          ...styles.section,
-          margin: isNarrow ? "48px auto 72px" : styles.section.margin,
-        }}
-      >
-        <Title level={2} style={styles.sectionTitle}>
-          BENEFIT JOIN WITH US
-        </Title>
-        <div style={styles.sectionUnderline} />
-
-        <Row gutter={[24, 24]} style={styles.benefitRow}>
-          {benefits.map((b) => (
-            <Col key={b.key} xs={24} md={12} style={{ display: "flex" }}>
-              <Card
-                className="benefit-card"
-                style={styles.benefitCard}
-                bodyStyle={{ ...styles.benefitBody, width: "100%" }}
-              >
-                {/* grid khusus responsive agar mirip desain */}
-                <div className="benefit-grid">
-                  <div className="benefit-icon-box">
-                    <Image
-                      src={b.icon}
-                      alt={b.title}
-                      width={88}
-                      height={88}
-                      className="benefit-icon"
-                      style={styles.benefitIcon}
-                    />
-                  </div>
-                  <div className="benefit-content">
-                    <Text className="benefit-title" style={styles.benefitTitle}>
-                      {b.title}
-                    </Text>
-                    <ul className="benefit-list" style={styles.benefitList}>
-                      {b.points.map((p, i) => (
-                        <li key={i}>{p}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              </Card>
-            </Col>
-          ))}
-        </Row>
-
-        {/* ==== CSS responsive untuk section Benefit ==== */}
-        <style jsx global>{`
-          /* Grid layout agar ikon di kiri & konten di kanan saat mobile */
-          .benefit-grid {
-            display: grid;
-            grid-template-columns: 104px 1fr;
-            align-items: start;
-            gap: 14px;
-          }
-          .benefit-icon-box {
-            width: 104px;
-            height: 104px;
-            display: grid;
-            place-items: center;
-          }
-          .benefit-title {
-            display: block;
-            margin-bottom: 10px;
-            text-transform: uppercase;
-            font-weight: 900;
-            letter-spacing: 0.6px;
-          }
-          .benefit-list {
-            margin: 6px 0 0;
-            padding-left: 18px;
-            list-style: disc;
-            text-transform: uppercase;
-            letter-spacing: 0.2px;
-            line-height: 1.9;
-          }
-          /* warna peluru sesuai brand */
-          .benefit-list li::marker {
-            color: #0b56b8;
-          }
-
-          /* ====== Responsive (<= 900px) agar mirip desain mobile ====== */
-          @media (max-width: 900px) {
-            .benefit-card {
-              border-radius: 16px !important;
-              box-shadow: 0 10px 26px rgba(13, 28, 62, 0.08) !important;
-              min-height: 210px; /* tinggi konsisten per kartu */
-            }
-            .benefit-grid {
-              grid-template-columns: 72px 1fr; /* ikon lebih kecil */
-              gap: 12px;
-            }
-            .benefit-icon-box {
-              width: 72px;
-              height: 72px;
-            }
-            .benefit-icon {
-              width: 60px !important;
-              height: 60px !important;
-            }
-            .benefit-title {
-              font-size: 15px !important;
-              margin-bottom: 8px;
-            }
-            .benefit-list {
-              font-size: 13.5px !important;
-              line-height: 1.85;
-              padding-left: 16px;
-            }
-          }
-
-          /* ====== Tablet Landscape up to small desktop (901–1200px) ====== */
-          @media (min-width: 901px) and (max-width: 1200px) {
-            .benefit-grid {
-              grid-template-columns: 88px 1fr;
-            }
-            .benefit-icon-box {
-              width: 88px;
-              height: 88px;
-            }
-            .benefit-icon {
-              width: 72px !important;
-              height: 72px !important;
-            }
-          }
-        `}</style>
-      </section>
-
-      {/* CORPORATE CULTURE */}
-      <section
-        style={{
-          ...styles.section,
-          margin: isNarrow ? "48px auto 72px" : styles.section.margin,
-        }}
-      >
-        <Title level={2} style={styles.sectionTitle}>
-          CORPORATE CULTURE
-        </Title>
-        <div style={styles.sectionUnderline} />
-
-        <Row gutter={[20, 20]} style={styles.cultureGrid}>
-          {/* Left big image */}
-          <Col xs={24} lg={13}>
-            <div style={styles.cultureLeftWrap}>
-              <Image
-                src={culture.leftImage}
-                alt="Weekly meeting"
-                width={1280}
-                height={860}
-                style={styles.cultureLeftImg}
-              />
-              <div style={styles.cultureLeftFade} />
-              <div style={styles.cultureLeftBadge}>WEEKLY MEETING</div>
-            </div>
-
-            <div style={styles.cultureLeftHeading}>KOMUNIKASI TERBUKA DAN TRANSARAN</div>
-            <Paragraph style={styles.cultureLeftDesc}>
-              Transparansi bukan hanya nilai, tapi cara kami bekerja. Bersama,
-              kita ciptakan ruang kerja yang inspiratif dan inklusif.
-            </Paragraph>
-          </Col>
-
-          {/* Right rows */}
-          <Col xs={24} lg={11}>
-            {culture.items.map((c) => (
-              <Row gutter={16} key={c.key} style={styles.cultureRow} wrap={isNarrow}>
-                <Col flex={isNarrow ? "100%" : "220px"}>
-                  <div
-                    style={{
-                      ...styles.cultureThumbWrap,
-                      ...(isNarrow ? { height: 180, marginBottom: 8 } : null),
-                    }}
-                  >
-                    <Image src={c.image} alt={c.title} width={400} height={260} style={styles.cultureThumbImg} />
-                    <div style={styles.cultureThumbFade} />
-                    <span style={styles.cultureThumbLabel}>{c.label || c.title}</span>
-                  </div>
-                </Col>
-                <Col flex="auto">
-                  <div>
-                    <div style={styles.cultureRightTitle}>{c.title}</div>
-                    <Paragraph style={styles.cultureRightText}>{c.body}</Paragraph>
-                  </div>
-                </Col>
-              </Row>
-            ))}
-          </Col>
-        </Row>
-      </section>
-
-      {/* TESTIMONIALS */}
-      <section
-        style={{
-          ...styles.section,
-          margin: isNarrow ? "48px auto 72px" : styles.section.margin,
-        }}
-      >
-        <Title level={3} style={styles.sectionTitle}>
-          YOUR SUCCESS STORY BEGINS WITH US
-        </Title>
-        <div style={styles.sectionUnderline} />
-        <div style={styles.testimonialWrap}>
-          <Carousel autoplay dots>
-            {testimonials.map((t) => (
-              <div key={t.id}>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: isNarrow ? "48px 1fr" : "56px 1fr",
-                    gap: 12,
-                    alignItems: "center",
-                    maxWidth: 820,
-                    margin: "0 auto",
-                  }}
-                >
-                  <Avatar size={isNarrow ? 48 : 56} src={t.avatar} />
-                  <div>
-                    <Text strong>
-                      {t.name} <Text type="secondary">— {t.role}</Text>
-                    </Text>
-                    <Paragraph style={{ marginTop: 6, color: "#334155" }}>{t.quote}</Paragraph>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </Carousel>
-        </div>
-      </section>
-
-      {/* CTA */}
+      {/* CTA SECTION */}
       <section
         style={{
           ...styles.section,
@@ -577,41 +368,122 @@ export default function CareerContent({
           margin: isNarrow ? "48px auto 72px" : styles.section.margin,
         }}
       >
-        <Title level={3} style={styles.ctaSectionTitle}>
-          CAREER WITH US
+        <Title level={3} style={styles.sectionTitle}>
+          {cta?.title}
         </Title>
         <div style={styles.sectionUnderline} />
-
-        <Paragraph style={styles.ctaSubtitle}>
-          <strong>
-            <em>
-              “Grow Your Career, Unlock New Opportunities,
-              <br />
-              And Create Impact Together.”
-            </em>
-          </strong>
-        </Paragraph>
+        <Paragraph style={styles.sectionSub}>{cta?.subtitle}</Paragraph>
 
         <div style={styles.ctaButtonsRow}>
-          <Button size="large" style={styles.ctaBtn} onClick={handleTeam}>
-            TEAM MEMBER
-          </Button>
-          <Button size="large" style={styles.ctaBtnGhost} onClick={handleReferral}>
-            REFERRAL
-          </Button>
+          {/* Lowongan → scroll ke Lowongan */}
+          <div style={styles.pillWrap}>
+            <Button
+              size="large"
+              style={styles.pillBtn}
+              onClick={handleScrollVacancy}
+            >
+              {cta?.btnJobs}
+            </Button>
+          </div>
+
+          {/* Sahabat Referral → scroll ke Referral */}
+          <div style={styles.pillWrap}>
+            <Button
+              size="large"
+              style={styles.pillBtn}
+              onClick={handleScrollReferral}
+            >
+              {cta?.btnReferral}
+            </Button>
+          </div>
         </div>
 
         <div style={styles.ctaVisual}>
-          <div style={styles.ctaBgCircle} />
-          <div style={styles.ctaImgCircle}>
+          <Image
+            src={ctaImg}
+            alt="Career visual"
+            width={1200}
+            height={1200}
+            style={{
+              width: "100%",
+              height: "auto",
+              objectFit: "contain",
+              display: "block",
+            }}
+            priority
+          />
+        </div>
+      </section>
+
+      {/* LOWONGAN */}
+      <section id="lowongan" ref={vacRef} style={styles.vacOuter}>
+        <div style={vacGrid}>
+          <div style={styles.vacImgBox}>
             <Image
-              src={ctaImg}
-              alt="Career CTA"
-              width={1200}
-              height={1200}
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-              priority
+              src={vacImg}
+              alt="Team atmosphere"
+              width={1600}
+              height={900}
+              sizes="(max-width: 900px) 92vw, 560px"
+              style={styles.vacImgEl}
+              unoptimized={false}
             />
+          </div>
+
+          <div>
+            <h2 style={styles.vacTitle}>{vacancy?.title}</h2>
+            <Paragraph style={styles.vacBody}>{vacancy?.body}</Paragraph>
+            <Button style={styles.vacBtn} onClick={handleSendCV}>
+              {vacancy?.btnLabel}
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      {/* SAHABAT REFERRAL */}
+      <section id="referral" ref={refRef} style={styles.refWrap}>
+        <h3 style={styles.refTitle}>{referral?.title}</h3>
+        <Paragraph style={styles.refDesc}>
+          <strong>{referral?.leadBold}</strong> {referral?.desc}
+        </Paragraph>
+
+        <div style={styles.refVideoOuter}>
+          <div style={styles.refVideoBox}>
+            {play && embedUrl ? (
+              <iframe
+                src={embedUrl}
+                title="Sahabat Referral Video"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  width: "100%",
+                  height: "100%",
+                  border: 0,
+                }}
+              />
+            ) : (
+              <>
+                <img
+                  src={thumbUrl}
+                  alt="Sahabat Referral"
+                  style={styles.refThumb}
+                  onError={(e) => (e.currentTarget.src = "/images/loading.png")}
+                  loading="lazy"
+                />
+                <div
+                  style={styles.refPlayBtn}
+                  role="button"
+                  aria-label="Putar video"
+                  onClick={() => setPlay(true)}
+                >
+                  <div style={styles.refPlayIcon}>
+                    <span style={styles.refPlayTri} />
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </section>

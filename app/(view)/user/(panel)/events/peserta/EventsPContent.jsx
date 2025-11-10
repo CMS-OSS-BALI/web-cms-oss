@@ -8,7 +8,7 @@ import useEventsPViewModel from "./useEventsPViewModel";
 const CONTAINER = { width: "92%", maxWidth: 1220, margin: "0 auto" };
 const BLUE = "#0b56c9";
 
-/* Meta sizing */
+/* Meta sizing (desktop baseline) */
 const META_ROW_H = 38;
 const META_GAP = 12;
 const META_ROWS = 3;
@@ -31,7 +31,7 @@ const hero = {
   title: {
     margin: 0,
     textAlign: "center",
-    fontSize: 56,
+    fontSize: "clamp(28px, 5vw, 56px)",
     lineHeight: 1.04,
     fontWeight: 900,
     color: BLUE,
@@ -131,7 +131,7 @@ const benefitsCss = {
   title: {
     margin: 0,
     textAlign: "center",
-    fontSize: 56,
+    fontSize: "clamp(26px, 5vw, 56px)",
     lineHeight: 1.04,
     fontWeight: 900,
     color: BLUE,
@@ -162,7 +162,7 @@ const benefitsCss = {
     height: 40,
     display: "block",
     objectFit: "contain",
-    filter: "grayscale(100%)", // mengikuti nuansa desain
+    filter: "grayscale(100%)",
   },
   emoji: { fontSize: 40, lineHeight: 1, filter: "grayscale(100%)" },
   h: {
@@ -197,7 +197,7 @@ const cta = {
     fontWeight: 900,
     textTransform: "uppercase",
     letterSpacing: ".02em",
-    fontSize: 44,
+    fontSize: "clamp(22px, 3.4vw, 44px)",
     lineHeight: 1.08,
   },
   sub: { marginTop: 16, color: "#12233f", opacity: 0.9, lineHeight: 1.7 },
@@ -267,14 +267,13 @@ export default function EventsPContent({ locale = "id" }) {
   const ctaBtn =
     locale === "en" ? "GET YOUR TICKET, HERE" : "AMBIL TIKETMU, DISINI";
 
-  // Href form-ticket → otomatis bawa event id & locale
+  // Href form-ticket
   const formTicketHref = eventId
     ? `/user/form-ticket?id=${encodeURIComponent(
         eventId
       )}&lang=${encodeURIComponent(locale)}`
     : `/user/form-ticket?lang=${encodeURIComponent(locale)}`;
 
-  // Maskot dari /public
   const mascotSrc = "/images/loading.png";
 
   return (
@@ -283,7 +282,10 @@ export default function EventsPContent({ locale = "id" }) {
       <section style={hero.wrap}>
         <h1 style={hero.title}>{safeText(it.title)}</h1>
 
-        <div data-hero-grid style={{ ...hero.grid, ["--poster-h"]: "340px" }}>
+        <div
+          className="hero-grid"
+          style={{ ...hero.grid, ["--poster-h"]: "340px" }}
+        >
           {/* Poster */}
           <div style={hero.poster}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -300,36 +302,42 @@ export default function EventsPContent({ locale = "id" }) {
           </div>
 
           {/* Right column */}
-          <div style={hero.right}>
+          <div className="hero-right" style={hero.right}>
             {it.description && (
-              <div style={hero.descWrap}>
+              <div className="desc-wrap" style={hero.descWrap}>
                 <p style={hero.lead}>{safeText(it.description)}</p>
                 {showTrimIndicators && (
                   <>
-                    <div style={hero.descFade} />
-                    <div style={hero.skeleton} />
+                    <div className="desc-fade" style={hero.descFade} />
+                    <div className="skeleton" style={hero.skeleton} />
                   </>
                 )}
               </div>
             )}
 
-            <div style={hero.metaBox}>
+            <div className="meta-box" style={hero.metaBox}>
               <div style={hero.metaRow}>
-                <div style={hero.iconBox}>🗓️</div>
+                <div className="icon-box" style={hero.iconBox}>
+                  🗓️
+                </div>
                 <div style={hero.metaTextWrap}>
                   <p style={hero.metaStrong}>{safeText(it.date)}</p>
                 </div>
               </div>
 
               <div style={hero.metaRow}>
-                <div style={hero.iconBox}>⏱️</div>
+                <div className="icon-box" style={hero.iconBox}>
+                  ⏱️
+                </div>
                 <div style={hero.metaTextWrap}>
                   <p style={hero.metaSmall}>{safeText(it.time)}</p>
                 </div>
               </div>
 
               <div style={hero.metaRow}>
-                <div style={hero.iconBox}>📍</div>
+                <div className="icon-box" style={hero.iconBox}>
+                  📍
+                </div>
                 <div style={hero.metaTextWrap}>
                   <p style={hero.metaStrong}>{safeText(it.location)}</p>
                 </div>
@@ -340,18 +348,67 @@ export default function EventsPContent({ locale = "id" }) {
 
         {/* responsive + shimmer */}
         <style jsx>{`
+          @media (max-width: 1200px) {
+            .hero-grid {
+              grid-template-columns: minmax(0, 520px) 1fr !important;
+              --poster-h: 300px;
+            }
+          }
           @media (max-width: 1024px) {
-            [data-hero-grid] {
+            .hero-grid {
               grid-template-columns: 1fr !important;
               --poster-h: 260px;
             }
+            /* kolom kanan tidak fixed height, biarkan mengalir */
+            .hero-right {
+              height: auto !important;
+              overflow: visible !important;
+              position: static !important;
+              margin-top: 12px;
+            }
+            /* deskripsi tidak dipotong pada mobile/tablet */
+            .desc-wrap {
+              max-height: none !important;
+              overflow: visible !important;
+              padding-right: 0 !important;
+            }
+            /* meta kini ikut flow normal */
+            .meta-box {
+              position: static !important;
+              height: auto !important;
+              gap: 10px !important;
+              margin-top: 14px;
+            }
+            /* efek fade & shimmer disembunyikan */
+            .desc-fade,
+            .skeleton {
+              display: none !important;
+            }
+            /* ikon sedikit mengecil */
+            .icon-box {
+              width: 34px !important;
+              height: 34px !important;
+              font-size: 14px;
+            }
           }
+          @media (max-width: 640px) {
+            .hero-grid {
+              --poster-h: 220px;
+              gap: 20px !important;
+            }
+          }
+
           @keyframes shimmer {
             0% {
               background-position: 200% 0;
             }
             100% {
               background-position: -200% 0;
+            }
+          }
+          @media (prefers-reduced-motion: reduce) {
+            .skeleton {
+              animation: none !important;
             }
           }
         `}</style>
@@ -394,11 +451,14 @@ export default function EventsPContent({ locale = "id" }) {
             @media (max-width: 1024px) {
               .benefits-grid {
                 grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+                column-gap: 28px !important;
+                row-gap: 32px !important;
               }
             }
             @media (max-width: 640px) {
               .benefits-grid {
                 grid-template-columns: 1fr !important;
+                row-gap: 26px !important;
               }
             }
           `}</style>
@@ -413,7 +473,6 @@ export default function EventsPContent({ locale = "id" }) {
             <h3 style={cta.title}>{ctaTitle}</h3>
             <p style={cta.sub}>{ctaSub}</p>
 
-            {/* Arahkan ke /user/form-ticket dengan event id + lang */}
             <Link href={formTicketHref} prefetch={false} style={cta.btn}>
               {ctaBtn}
             </Link>
@@ -439,6 +498,7 @@ export default function EventsPContent({ locale = "id" }) {
           @media (max-width: 1024px) {
             .cta-grid {
               grid-template-columns: 1fr !important;
+              row-gap: 24px !important;
             }
           }
         `}</style>

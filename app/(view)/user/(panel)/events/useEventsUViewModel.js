@@ -57,9 +57,9 @@ function pickNearestFutureStart(rows = []) {
   const now = Date.now();
   let nearest = null;
   for (const e of rows) {
-    const t = new Date(e?.start_at ?? "").getTime();
-    if (!Number.isFinite(t) || t <= now) continue;
-    if (nearest === null || t < nearest) nearest = t;
+    const tms = new Date(e?.start_at ?? "").getTime();
+    if (!Number.isFinite(tms) || tms <= now) continue;
+    if (nearest === null || tms < nearest) nearest = tms;
   }
   return nearest ? new Date(nearest).toISOString() : makeFallbackStart();
 }
@@ -85,7 +85,6 @@ function useCountdown(startAtISO) {
    Hook
 ========================= */
 export default function useEventsUViewModel({ locale = "id" } = {}) {
-  // Ambil event publish & upcoming (urut terdekat dari API tetap ok, tapi countdown tidak bergantung urutan)
   const sp = new URLSearchParams();
   sp.set("is_published", "1");
   sp.set("status", "upcoming");
@@ -101,7 +100,7 @@ export default function useEventsUViewModel({ locale = "id" } = {}) {
 
   const rows = Array.isArray(data?.data) ? data.data : [];
 
-  // Countdown → ke event paling dekat yang belum mulai (fallback 30 hari bila kosong)
+  // Countdown → ke event paling dekat
   const nearestStartISO = pickNearestFutureStart(rows);
   const cd = useCountdown(nearestStartISO);
 
@@ -130,13 +129,12 @@ export default function useEventsUViewModel({ locale = "id" } = {}) {
     const FALLBACK_POSTER =
       "https://images.unsplash.com/photo-1551836022-d5d88e9218df?q=80&w=1200&auto=format&fit=crop";
 
-    // Mapper: API -> props EventCard untuk STUDENT (tanggal diambil dari start_at)
-    const mapStudent = (e) => {
+    // STUDENT map
+    const studentEvents = rows.map((e) => {
       const isFree = String(e.pricing_type).toUpperCase() === "FREE";
       const priceText = isFree
         ? t(locale, "FREE untuk masuk", "FREE for entry")
         : fmtIDR(e.ticket_price);
-
       return {
         id: e.id,
         barTitle: studentBarTitle,
@@ -146,23 +144,19 @@ export default function useEventsUViewModel({ locale = "id" } = {}) {
         price: priceText,
         priceLabel: t(locale, "Harga", "Price"),
         dateLabel: t(locale, "Tanggal", "Date"),
-        dateLong: fmtDateLong(e.start_at, locale), // <-- dari start_at
+        dateLong: fmtDateLong(e.start_at, locale),
         ctaText: isFree
           ? t(locale, "Ambil tiketmu", "Get Ticket")
           : t(locale, "Beli tiket", "Buy Ticket"),
         ctaHref: `/user/events/${e.id}`,
         poster: e.banner_url || FALLBACK_POSTER,
       };
-    };
+    });
 
-    // Mapper: API -> props EventCard untuk REPRESENTATIVE (Booth) — tanggal dari start_at
-    const mapRep = (e) => {
-      const boothEnabled =
-        e.booth_quota !== null &&
-        e.booth_quota !== undefined &&
-        Number(e.booth_quota) > 0;
-
-      return {
+    // REP map (hanya event yang punya booth)
+    const repEvents = rows
+      .filter((e) => e.booth_quota != null && Number(e.booth_quota) > 0)
+      .map((e) => ({
         id: `${e.id}-rep`,
         barTitle: repBarTitle,
         title: e.title || "(no title)",
@@ -174,81 +168,32 @@ export default function useEventsUViewModel({ locale = "id" } = {}) {
             "Open your booth, expand your network, and meet quality students."
           ),
         location: e.location || "-",
-        price: boothEnabled
-          ? fmtIDR(e.booth_price || 0)
-          : t(locale, "Hubungi kami", "Contact us"),
+        price:
+          e.booth_quota != null && Number(e.booth_quota) > 0
+            ? fmtIDR(e.booth_price || 0)
+            : t(locale, "Hubungi kami", "Contact us"),
         priceLabel: t(locale, "Biaya Booth", "Booth Fee"),
         dateLabel: t(locale, "Tanggal", "Date"),
-        dateLong: fmtDateLong(e.start_at, locale), // <-- dari start_at
+        dateLong: fmtDateLong(e.start_at, locale),
         ctaText: t(locale, "Booking Booth", "Book a Booth"),
         ctaHref: `/user/events/${e.id}#booth`,
         poster: e.banner_url || FALLBACK_POSTER,
-      };
-    };
+      }));
 
-    const studentEvents = rows.map(mapStudent);
-
-    const repEvents = rows
-      .filter((e) => {
-        const q = e.booth_quota;
-        return q !== null && q !== undefined && Number(q) > 0;
-      })
-      .map(mapRep);
-
-    const benefits = [
-      {
-        icon: "🌍",
-        title: t(
-          locale,
-          "Menjadi Bagian Dunia Global",
-          "Be Part of the Global World"
-        ),
-        desc: t(
-          locale,
-          "Ikuti kegiatan interaktif yang mempertemukan Anda dengan peluang baru.",
-          "Join interactive sessions that connect you with new opportunities."
-        ),
-      },
-      {
-        icon: "🎓",
-        title: t(
-          locale,
-          "Insight dari Ahli & Alumni",
-          "Insights from Experts & Alumni"
-        ),
-        desc: t(
-          locale,
-          "Temukan arahan tepat dari pakar dan alumni berpengalaman.",
-          "Get guidance from experienced experts and alumni."
-        ),
-      },
-      {
-        icon: "🧭",
-        title: t(
-          locale,
-          "Pengalaman Studi Internasional",
-          "International Study Experience"
-        ),
-        desc: t(
-          locale,
-          "Jelajahi universitas terbaik dan destinasi studi unggulan.",
-          "Explore top universities and study destinations."
-        ),
-      },
-    ];
-
+    /* ===== WHY (copywriting disesuaikan) ===== */
     const why2Title = t(
       locale,
       "MENGAPA ANDA TIDAK BOLEH MELEWATKANNYA?",
       "WHY YOU SHOULDN'T MISS IT?"
     );
+
     const why2Cards = [
       {
         title: t(locale, "Peluang Global", "Global Opportunities"),
         desc: t(
           locale,
           "Temui perwakilan universitas secara langsung dan pelajari program studi serta peluang beasiswa terbaik.",
-          "Meet university representatives directly and learn about programs and scholarships."
+          "Talk directly with university reps and discover programs and scholarships that fit your study plan."
         ),
         img: "/kiri.svg",
       },
@@ -260,8 +205,8 @@ export default function useEventsUViewModel({ locale = "id" } = {}) {
         ),
         desc: t(
           locale,
-          "Dapatkan wawasan mendalam mengenai program studi dan proses penerimaan.",
-          "Get deep insights into programs and admissions."
+          "Temui perwakilan universitas dan dapatkan wawasan mendalam mengenai program studi dan proses penerimaan.",
+          "Meet university representatives and gain in-depth insights into study programs and the admission process."
         ),
         img: "/tengah.svg",
       },
@@ -270,44 +215,59 @@ export default function useEventsUViewModel({ locale = "id" } = {}) {
         desc: t(
           locale,
           "Bangun hubungan dengan pendidik, mahasiswa, dan pemimpin industri dari seluruh dunia.",
-          "Build relationships with educators, students, and industry leaders worldwide."
+          "Build relationships with educators, students, and industry leaders from around the world."
         ),
         img: "/kanan.svg",
       },
     ];
 
     return {
-      // hero copy
+      // HERO
       titleLine1: t(
         locale,
-        "JELAJAHI PENDIDIKAN GLOBAL",
-        "EXPLORE GLOBAL EDUCATION"
+        "TEMUKAN EVENT TERDEKATMU",
+        "FIND YOUR NEAREST EVENT"
       ),
-      titleLine2: t(
-        locale,
-        "BENTUK MASA DEPANMU TANPA BATAS",
-        "SHAPE YOUR FUTURE WITHOUT LIMITS"
-      ),
-      panelTitle: t(locale, "MULAI EVENT", "EVENT STARTS IN"),
-      countdown: cd, // <-- countdown ke event terdekat
-      labels,
-
-      benefits,
-
-      upcomingTitle: t(locale, "EVENT AKAN BERLANGSUNG", "UPCOMING EVENTS"),
-      upcomingSub: t(
+      titleLine2: "",
+      heroSub: t(
         locale,
         "Bergabunglah dalam acara kami dan rasakan pengalaman inspiratif menuju dunia global.",
-        "Join our events and experience inspiring journeys to the global world."
+        "Join our events and experience inspiring journeys toward the global world."
       ),
+      panelTitle: t(locale, "Event Terdekat", "Nearest Event"),
 
+      countdown: cd,
+      labels,
+
+      // DATA LIST
       studentEvents,
       repEvents,
 
+      // REP CTA
+      repCtaTitle: t(
+        locale,
+        "Apakah Kamu Dari Perwakilan Kampus Luar Negeri?",
+        "Are You a Representative from an Overseas University?"
+      ),
+      repCtaImages: [
+        { src: "/rep/1.jpg", alt: "Representative 1" },
+        { src: "/rep/2.jpg", alt: "Representative 2" },
+        { src: "/rep/3.jpg", alt: "Representative 3" },
+        { src: "/rep/4.jpg", alt: "Representative 4" },
+      ],
+      repEventOptions: repEvents.map((e) => {
+        const baseId = String(e.id).replace(/-rep$/, "");
+        const label = `${e.title || "(no title)"} — ${
+          e.dateLong || t(locale, "TBA", "TBA")
+        }`;
+        return { value: baseId, label };
+      }),
+
+      // WHY
       why2Title,
       why2Cards,
 
-      // optional flags
+      // flags
       ready: !error && !!data,
       errorMessage: error?.message || (data?.error?.message ?? ""),
     };

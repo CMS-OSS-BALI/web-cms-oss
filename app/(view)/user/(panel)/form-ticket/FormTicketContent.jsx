@@ -104,59 +104,15 @@ export default function FormTicketContent({ locale = "id" }) {
       : "");
   const qrSrc = qrPrimary ? appendBuster(qrPrimary) : "";
 
-  // OPTIONAL: print receipt (tetap ada jika perlu)
-  const onPrintReceipt = () => {
-    const code = ticketCode;
-    const qr = qrSrc;
-    const name = safe(vm.model.full_name);
-    const email = safe(vm.model.email);
-
-    const w = window.open("", "_blank", "noopener,noreferrer,width=720");
-    if (!w) return;
-
-    w.document.write(`<!doctype html>
-<html><head><meta charset="utf-8"><title>Ticket ${code}</title>
-<style>
-  body{font-family:"Public Sans",system-ui,Arial,sans-serif;padding:24px;color:#0f172a}
-  .card{max-width:640px;margin:0 auto;border:1px solid #e5e7eb;border-radius:16px;padding:24px}
-  h1{margin:0 0 8px;font-size:20px;color:#0b56c9}
-  .meta{font-size:13px;color:#475569;margin-bottom:16px}
-  .qrwrap{display:grid;place-items:center;background:#fff;border:1px solid #eef2ff;border-radius:16px;box-shadow:0 10px 28px rgba(15,23,42,.06);padding:18px}
-  .qr{width:360px;height:360px;object-fit:contain}
-  .kv{display:flex;gap:10px;margin-top:12px;font-size:14px}
-  .k{width:120px;color:#64748b}
-  .v{font-weight:700}
-  @media print {.btn{display:none}}
-</style></head>
-<body>
-  <div class="card">
-    <h1>OSS Event Ticket</h1>
-    <div class="meta">${T.lblCode}: <strong>${code}</strong></div>
-    <div class="qrwrap"><img class="qr" src="${qr}" alt="QR Ticket"/></div>
-    <div class="kv"><div class="k">Name</div><div class="v">${name}</div></div>
-    <div class="kv"><div class="k">Email</div><div class="v">${email}</div></div>
-  </div>
-  <div class="btn" style="text-align:center;margin-top:16px">
-    <button onclick="window.print()" style="padding:10px 16px;border-radius:10px;background:#0b56c9;color:#fff;border:none;font-weight:700">Print</button>
-  </div>
-</body></html>`);
-    w.document.close();
-    w.onload = () => w.print();
-  };
-
-  // === Download QR as PDF with centered logo (auto download) ===
   async function onDownloadQrPdf() {
     const code = ticketCode?.trim();
     if (!code) {
       alert("QR belum tersedia.");
       return;
     }
-
-    // Pakai endpoint internal agar bebas CORS
     const pdfQrUrl = `/api/tickets/qr?code=${encodeURIComponent(code)}`;
     const logoUrl = `/images/loading.png`;
 
-    // helper: fetch -> dataURL via FileReader (tanpa canvas)
     async function fetchAsDataURL(url) {
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) throw new Error(`Fetch failed (${res.status}) for ${url}`);
@@ -186,35 +142,26 @@ export default function FormTicketContent({ locale = "id" }) {
       const pageW = doc.internal.pageSize.getWidth();
       const pageH = doc.internal.pageSize.getHeight();
 
-      // Lebar QR di PDF
       const qW = Math.min(pageW - 40, Math.max(100, pageW * 0.7));
       const x = (pageW - qW) / 2;
       const y = (pageH - qW) / 2;
 
-      // Quiet zone di sekitar QR
       doc.setFillColor(255, 255, 255);
       doc.rect(x - 6, y - 6, qW + 12, qW + 12, "F");
-
-      // Gambar QR
       doc.addImage(qrDataUrl, "PNG", x, y, qW, qW, undefined, "FAST");
 
-      // Logo di tengah (dengan background putih kecil agar tetap scannable)
       const cx = x + qW / 2;
       const cy = y + qW / 2;
-
       const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
-      const logoW = clamp(qW * 0.22, 18, 42); // 22% dari QR, min 18mm, max 42mm
-      const bg = logoW + 6; // padding putih
+      const logoW = clamp(qW * 0.22, 18, 42);
+      const bg = logoW + 6;
 
-      // Background putih di belakang logo
       doc.setFillColor(255, 255, 255);
       if (typeof doc.roundedRect === "function") {
         doc.roundedRect(cx - bg / 2, cy - bg / 2, bg, bg, 3, 3, "F");
       } else {
         doc.rect(cx - bg / 2, cy - bg / 2, bg, bg, "F");
       }
-
-      // Tempel logo
       doc.addImage(
         logoDataUrl,
         "PNG",
@@ -225,14 +172,10 @@ export default function FormTicketContent({ locale = "id" }) {
         undefined,
         "FAST"
       );
-
-      // Simpan → auto download
       doc.save(`Ticket_${code}.pdf`);
     } catch (err) {
       console.error(err);
-      alert(
-        "Gagal membuat PDF. Pastikan 'jspdf' terpasang dan file logo ada di /public/images/loading.png"
-      );
+      alert("Gagal membuat PDF. Pastikan 'jspdf' terpasang dan logo tersedia.");
     }
   }
 
@@ -248,15 +191,19 @@ export default function FormTicketContent({ locale = "id" }) {
           <h1 className="hero-title">{T.heroTitle}</h1>
           <p className="hero-sub">{T.heroSub}</p>
 
-          {/* ===== Antd Steps (default) ===== */}
-          <div style={{ maxWidth: 860, margin: "22px auto 0" }}>
-            <Steps
-              current={currentStep}
-              items={[
-                { title: T.step1.t, description: T.step1.s },
-                { title: T.step2.t, description: T.step2.s },
-              ]}
-            />
+          <div
+            className="steps-scroll"
+            style={{ maxWidth: 860, margin: "22px auto 0" }}
+          >
+            <div className="steps-inner">
+              <Steps
+                current={currentStep}
+                items={[
+                  { title: T.step1.t, description: T.step1.s },
+                  { title: T.step2.t, description: T.step2.s },
+                ]}
+              />
+            </div>
           </div>
         </section>
 
@@ -342,7 +289,6 @@ export default function FormTicketContent({ locale = "id" }) {
                 <p className="done-sub">{T.doneSub}</p>
 
                 <div className="qr-card" id="qr-receipt">
-                  {/* QR + CENTER LOGO OVERLAY (display) */}
                   <div className="qr-wrap">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
@@ -412,8 +358,8 @@ export default function FormTicketContent({ locale = "id" }) {
           .hero-title {
             margin: 0;
             text-align: center;
-            font-size: 54px;
-            line-height: 1.04;
+            font-size: clamp(28px, 6vw, 54px);
+            line-height: 1.08;
             font-weight: 900;
             color: ${BLUE};
             text-transform: uppercase;
@@ -423,8 +369,30 @@ export default function FormTicketContent({ locale = "id" }) {
             margin: 10px auto 0;
             text-align: center;
             color: #334155;
-            font-size: 18px;
-            max-width: 760px;
+            font-size: clamp(13px, 2.2vw, 18px);
+            max-width: min(92vw, 760px);
+          }
+
+          .steps-scroll {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+            padding: 0 2px;
+          }
+          .steps-scroll::-webkit-scrollbar {
+            display: none;
+          }
+          .steps-inner {
+            min-width: 560px;
+          }
+          :global(.ant-steps-item-title) {
+            white-space: nowrap;
+            font-size: clamp(12px, 1.8vw, 14px);
+          }
+          @media (max-width: 520px) {
+            :global(.ant-steps-item-description) {
+              display: none;
+            }
           }
 
           .card {
@@ -433,13 +401,13 @@ export default function FormTicketContent({ locale = "id" }) {
             border: 1px solid rgba(14, 56, 140, 0.08);
             box-shadow: 0 16px 36px rgba(15, 23, 42, 0.06),
               0 46px 100px rgba(15, 23, 42, 0.07);
-            padding: 30px 30px 36px;
+            padding: clamp(18px, 3.2vw, 30px);
           }
           .form-title {
             margin: 0;
             text-align: center;
-            font-size: 32px;
-            line-height: 1.1;
+            font-size: clamp(18px, 3.6vw, 32px);
+            line-height: 1.12;
             font-weight: 900;
             letter-spacing: 0.02em;
             color: ${BLUE};
@@ -449,16 +417,23 @@ export default function FormTicketContent({ locale = "id" }) {
             margin-top: 6px;
             text-align: center;
             color: #7c8fb4;
-            font-size: 12px;
+            font-size: clamp(11px, 2vw, 12px);
           }
           .form {
-            margin-top: 18px;
+            margin-top: clamp(12px, 2.2vw, 18px);
           }
+
           .grid {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 18px 16px;
           }
+          @media (max-width: 920px) {
+            .grid {
+              grid-template-columns: 1fr;
+            }
+          }
+
           .alert {
             margin-top: 12px;
             background: #fff4f4;
@@ -479,15 +454,15 @@ export default function FormTicketContent({ locale = "id" }) {
             font-weight: 900;
             letter-spacing: 0.02em;
             text-transform: uppercase;
-            padding: 14px 22px;
+            padding: 12px 18px;
             border-radius: 14px;
             border: none;
             cursor: pointer;
             box-shadow: 0 12px 28px rgba(11, 86, 201, 0.3);
-            min-width: 240px;
+            min-width: clamp(180px, 46vw, 240px);
           }
           .primary-btn.slim {
-            min-width: 180px;
+            min-width: clamp(150px, 40vw, 180px);
           }
           .primary-btn[disabled] {
             opacity: 0.7;
@@ -502,12 +477,13 @@ export default function FormTicketContent({ locale = "id" }) {
             margin: 0;
             color: #0a3a86;
             font-weight: 800;
-            font-size: 20px;
+            font-size: clamp(16px, 2.6vw, 20px);
           }
           .done-sub {
             margin: 8px auto 18px;
             color: #27446f;
-            max-width: 760px;
+            max-width: min(92vw, 760px);
+            font-size: clamp(12px, 2.2vw, 14px);
           }
           .qr-card {
             width: 100%;
@@ -517,16 +493,14 @@ export default function FormTicketContent({ locale = "id" }) {
             border: 1px solid #eef2ff;
             border-radius: 16px;
             box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
-            padding: 18px;
+            padding: clamp(14px, 2.8vw, 18px);
             margin: 0 auto 16px;
             max-width: 720px;
           }
-
-          /* QR wrapper to allow centered logo overlay */
           .qr-wrap {
             position: relative;
-            width: clamp(260px, 80vw, 420px);
-            aspect-ratio: 1 / 1;
+            width: clamp(240px, 80vw, 420px);
+            aspect-ratio: 1/1;
             display: grid;
             place-items: center;
           }
@@ -541,7 +515,7 @@ export default function FormTicketContent({ locale = "id" }) {
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            width: clamp(52px, 22%, 96px);
+            width: clamp(48px, 22%, 96px);
             height: auto;
             background: #ffffff;
             padding: 6px;
@@ -568,7 +542,9 @@ export default function FormTicketContent({ locale = "id" }) {
           .codebox .v {
             color: #0b2e76;
             font-weight: 900;
+            word-break: break-all;
           }
+
           .action-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -590,13 +566,7 @@ export default function FormTicketContent({ locale = "id" }) {
           }
 
           @media (max-width: 920px) {
-            .hero-title {
-              font-size: 42px;
-            }
             .action-row {
-              grid-template-columns: 1fr;
-            }
-            .grid {
               grid-template-columns: 1fr;
             }
           }
@@ -608,6 +578,7 @@ export default function FormTicketContent({ locale = "id" }) {
 
 /* ------- Field component ------- */
 function Field({ label, name, value, onChange, placeholder, error }) {
+  const BLUE = "#0b56c9";
   return (
     <div className="field">
       <label className="label" htmlFor={name}>

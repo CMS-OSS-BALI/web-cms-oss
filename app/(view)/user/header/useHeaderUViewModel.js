@@ -86,7 +86,7 @@ const NAV_ID = [
   },
   {
     id: "partners",
-    label: "Mitra Dalam Negeri",
+    label: "Mitra",
     href: "/user/mitra-dalam-negeri",
     matchers: [
       "/user/mitra-dalam-negeri",

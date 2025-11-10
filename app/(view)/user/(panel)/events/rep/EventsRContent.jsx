@@ -8,7 +8,7 @@ import useEventsRViewModel from "./useEventsRViewModel";
 const CONTAINER = { width: "92%", maxWidth: 1220, margin: "0 auto" };
 const BLUE = "#0b56c9";
 
-/* Meta sizing */
+/* Meta sizing (desktop baseline) */
 const META_ROW_H = 38;
 const META_GAP = 12;
 const META_ROWS = 4; // Date, Time, Location, Price
@@ -31,7 +31,7 @@ const hero = {
   title: {
     margin: 0,
     textAlign: "center",
-    fontSize: 56,
+    fontSize: "clamp(28px, 5vw, 56px)",
     lineHeight: 1.04,
     fontWeight: 900,
     color: BLUE,
@@ -131,12 +131,22 @@ const benefitsCss = {
   title: {
     margin: 0,
     textAlign: "center",
-    fontSize: 56,
+    fontSize: "clamp(26px, 5vw, 56px)",
     lineHeight: 1.04,
     fontWeight: 900,
     color: BLUE,
     textTransform: "uppercase",
     letterSpacing: ".02em",
+  },
+  subTitle: {
+    marginTop: 12,
+    textAlign: "center",
+    color: "#0f172a",
+    fontSize: "clamp(16px, 2.6vw, 28px)",
+    lineHeight: 1.6,
+    maxWidth: 1000,
+    marginLeft: "auto",
+    marginRight: "auto",
   },
   grid: {
     marginTop: 56,
@@ -197,7 +207,7 @@ const cta = {
     fontWeight: 900,
     textTransform: "uppercase",
     letterSpacing: ".02em",
-    fontSize: 44,
+    fontSize: "clamp(22px, 3.4vw, 44px)",
     lineHeight: 1.08,
   },
   sub: { marginTop: 16, color: "#12233f", opacity: 0.9, lineHeight: 1.7 },
@@ -258,7 +268,6 @@ export default function EventsRContent({ locale = "id" }) {
   const it = vm.item;
   const showTrimIndicators = (it.description || "").length > 260;
 
-  // Copy CTA (ID/EN) untuk Representative/Booth
   const ctaTitle = locale === "en" ? "BOOK YOUR BOOTH" : "BOOKING BOOTH ANDA";
   const ctaSub =
     locale === "en"
@@ -266,15 +275,12 @@ export default function EventsRContent({ locale = "id" }) {
       : "Bergabung sebagai representative, tampilkan program Anda, dan temui calon mahasiswa berkualitas.";
   const ctaBtn = locale === "en" ? "BOOK A BOOTH" : "BOOKING BOOTH";
 
-  // Href CTA → gunakan dari VM (mengarah ke section booth di halaman event)
-  // arahkan ke halaman form-rep, lengkap dengan event id & locale
   const boothHref = eventId
     ? `/user/form-rep?id=${encodeURIComponent(
         eventId
       )}&lang=${encodeURIComponent(locale)}`
     : `/user/form-rep?lang=${encodeURIComponent(locale)}`;
 
-  // Maskot dari /public
   const mascotSrc = "/images/loading.png";
 
   return (
@@ -283,7 +289,10 @@ export default function EventsRContent({ locale = "id" }) {
       <section style={hero.wrap}>
         <h1 style={hero.title}>{safeText(it.title)}</h1>
 
-        <div data-hero-grid style={{ ...hero.grid, ["--poster-h"]: "340px" }}>
+        <div
+          className="hero-grid"
+          style={{ ...hero.grid, ["--poster-h"]: "340px" }}
+        >
           {/* Poster */}
           <div style={hero.poster}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -300,44 +309,51 @@ export default function EventsRContent({ locale = "id" }) {
           </div>
 
           {/* Right column */}
-          <div style={hero.right}>
+          <div className="hero-right" style={hero.right}>
             {it.description && (
-              <div style={hero.descWrap}>
+              <div className="desc-wrap" style={hero.descWrap}>
                 <p style={hero.lead}>{safeText(it.description)}</p>
                 {showTrimIndicators && (
                   <>
-                    <div style={hero.descFade} />
-                    <div style={hero.skeleton} />
+                    <div className="desc-fade" style={hero.descFade} />
+                    <div className="skeleton" style={hero.skeleton} />
                   </>
                 )}
               </div>
             )}
 
-            <div style={hero.metaBox}>
+            <div className="meta-box" style={hero.metaBox}>
               <div style={hero.metaRow}>
-                <div style={hero.iconBox}>🗓️</div>
+                <div className="icon-box" style={hero.iconBox}>
+                  🗓️
+                </div>
                 <div style={hero.metaTextWrap}>
                   <p style={hero.metaStrong}>{safeText(it.date)}</p>
                 </div>
               </div>
 
               <div style={hero.metaRow}>
-                <div style={hero.iconBox}>⏱️</div>
+                <div className="icon-box" style={hero.iconBox}>
+                  ⏱️
+                </div>
                 <div style={hero.metaTextWrap}>
                   <p style={hero.metaSmall}>{safeText(it.time)}</p>
                 </div>
               </div>
 
               <div style={hero.metaRow}>
-                <div style={hero.iconBox}>📍</div>
+                <div className="icon-box" style={hero.iconBox}>
+                  📍
+                </div>
                 <div style={hero.metaTextWrap}>
                   <p style={hero.metaStrong}>{safeText(it.location)}</p>
                 </div>
               </div>
 
-              {/* PRICE ROW (perbedaan dengan PContent) */}
               <div style={hero.metaRow}>
-                <div style={hero.iconBox}>💰</div>
+                <div className="icon-box" style={hero.iconBox}>
+                  💰
+                </div>
                 <div style={hero.metaTextWrap}>
                   <p style={hero.metaSmall}>{safeText(it.priceLabel)}</p>
                   <p style={hero.metaStrong}>{safeText(it.priceText)}</p>
@@ -349,10 +365,49 @@ export default function EventsRContent({ locale = "id" }) {
 
         {/* responsive + shimmer */}
         <style jsx>{`
+          @media (max-width: 1200px) {
+            .hero-grid {
+              grid-template-columns: minmax(0, 520px) 1fr !important;
+              --poster-h: 300px;
+            }
+          }
           @media (max-width: 1024px) {
-            [data-hero-grid] {
+            .hero-grid {
               grid-template-columns: 1fr !important;
               --poster-h: 260px;
+              gap: 22px !important;
+            }
+            .hero-right {
+              height: auto !important;
+              overflow: visible !important;
+              position: static !important;
+              margin-top: 4px;
+            }
+            .desc-wrap {
+              max-height: none !important;
+              overflow: visible !important;
+              padding-right: 0 !important;
+            }
+            .meta-box {
+              position: static !important;
+              height: auto !important;
+              gap: 10px !important;
+              margin-top: 14px;
+            }
+            .desc-fade,
+            .skeleton {
+              display: none !important;
+            }
+            .icon-box {
+              width: 34px !important;
+              height: 34px !important;
+              font-size: 14px;
+            }
+          }
+          @media (max-width: 640px) {
+            .hero-grid {
+              --poster-h: 220px;
+              gap: 18px !important;
             }
           }
           @keyframes shimmer {
@@ -363,6 +418,11 @@ export default function EventsRContent({ locale = "id" }) {
               background-position: -200% 0;
             }
           }
+          @media (prefers-reduced-motion: reduce) {
+            .skeleton {
+              animation: none !important;
+            }
+          }
         `}</style>
       </section>
 
@@ -370,6 +430,9 @@ export default function EventsRContent({ locale = "id" }) {
       {vm.benefits?.length ? (
         <section style={benefitsCss.wrap}>
           <h2 style={benefitsCss.title}>{safeText(vm.benefitTitle)}</h2>
+          {vm.benefitSubtitle ? (
+            <p style={benefitsCss.subTitle}>{safeText(vm.benefitSubtitle)}</p>
+          ) : null}
 
           <div className="benefits-grid" style={benefitsCss.grid}>
             {vm.benefits.map((b, i) => {
@@ -403,11 +466,14 @@ export default function EventsRContent({ locale = "id" }) {
             @media (max-width: 1024px) {
               .benefits-grid {
                 grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+                column-gap: 28px !important;
+                row-gap: 32px !important;
               }
             }
             @media (max-width: 640px) {
               .benefits-grid {
                 grid-template-columns: 1fr !important;
+                row-gap: 26px !important;
               }
             }
           `}</style>
@@ -447,6 +513,7 @@ export default function EventsRContent({ locale = "id" }) {
           @media (max-width: 1024px) {
             .cta-grid {
               grid-template-columns: 1fr !important;
+              row-gap: 24px !important;
             }
           }
         `}</style>

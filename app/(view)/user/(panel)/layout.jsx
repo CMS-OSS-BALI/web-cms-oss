@@ -15,7 +15,6 @@ function pickLocale(source) {
 export function generateMetadata({ searchParams }) {
   const lang = pickLocale(searchParams?.lang);
   return {
-    // Boleh pakai relative URLs — Next akan prefix path segment saat render
     alternates: {
       canonical: `?lang=${lang}`,
       languages: {
@@ -37,20 +36,15 @@ export default function PanelLayout({ children, searchParams }) {
   const accept = headers().get("accept-language") || "";
   const acceptLang = accept.split(",")?.[0]?.split("-")?.[0];
 
-  // 4) Bahasa final (SSR) — ini yang dipakai untuk first paint
+  // 4) Bahasa final (SSR)
   const initialLang = pickLocale(spLang || cookieLang || acceptLang);
 
   return (
-    // Provider client akan meneruskan lang ke seluruh subtree, tapi first paint sudah benar dari server
     <LangProvider initialLang={initialLang}>
-      {/* Header/ Footer client menerima initialLang via props agar tidak baca localStorage di awal */}
       <Header initialLang={initialLang} />
-
-      {/* Set atribut lang di container (html lang idealnya di root layout; ini membantu a11y sementara) */}
       <main className="user-main" lang={initialLang} data-lang={initialLang}>
         <div className="user-content">{children}</div>
       </main>
-
       <Footer initialLang={initialLang} />
     </LangProvider>
   );

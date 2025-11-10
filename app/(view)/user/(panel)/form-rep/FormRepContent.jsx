@@ -129,14 +129,19 @@ export default function FormRepContent({ locale = "id" }) {
           <h1 className="hero-title">{T.heroTitle}</h1>
           <p className="hero-sub">{T.heroSub}</p>
 
-          <div style={{ maxWidth: 860, margin: "22px auto 0" }}>
-            <Steps
-              current={currentStep}
-              items={[
-                { title: T.step1.t, description: T.step1.s },
-                { title: T.step2.t, description: T.step2.s },
-              ]}
-            />
+          <div
+            className="steps-scroll"
+            style={{ maxWidth: 860, margin: "22px auto 0" }}
+          >
+            <div className="steps-inner">
+              <Steps
+                current={currentStep}
+                items={[
+                  { title: T.step1.t, description: T.step1.s },
+                  { title: T.step2.t, description: T.step2.s },
+                ]}
+              />
+            </div>
           </div>
         </section>
 
@@ -335,22 +340,49 @@ export default function FormRepContent({ locale = "id" }) {
               )
               no-repeat;
           }
+
           .hero-title {
             margin: 0;
             text-align: center;
-            font-size: 54px;
-            line-height: 1.04;
+            font-size: clamp(28px, 6vw, 54px);
+            line-height: 1.08;
             font-weight: 900;
             color: ${BLUE};
             text-transform: uppercase;
             letter-spacing: 0.02em;
+            word-break: break-word;
           }
           .hero-sub {
             margin: 10px auto 0;
             text-align: center;
             color: #334155;
-            font-size: 18px;
-            max-width: 760px;
+            font-size: clamp(13px, 2.2vw, 18px);
+            max-width: min(92vw, 760px);
+          }
+
+          .steps-scroll {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+            padding: 0 2px;
+          }
+          .steps-scroll::-webkit-scrollbar {
+            display: none;
+          }
+          .steps-inner {
+            min-width: 560px;
+          }
+          :global(.ant-steps) {
+            max-width: 100%;
+          }
+          :global(.ant-steps-item-title) {
+            white-space: nowrap;
+            font-size: clamp(12px, 1.8vw, 14px);
+          }
+          @media (max-width: 520px) {
+            :global(.ant-steps-item-description) {
+              display: none;
+            }
           }
 
           .card {
@@ -359,13 +391,13 @@ export default function FormRepContent({ locale = "id" }) {
             border: 1px solid rgba(14, 56, 140, 0.08);
             box-shadow: 0 16px 36px rgba(15, 23, 42, 0.06),
               0 46px 100px rgba(15, 23, 42, 0.07);
-            padding: 30px 30px 36px;
+            padding: clamp(18px, 3.2vw, 30px);
           }
           .form-title {
             margin: 0;
             text-align: center;
-            font-size: 32px;
-            line-height: 1.1;
+            font-size: clamp(18px, 3.6vw, 32px);
+            line-height: 1.12;
             font-weight: 900;
             letter-spacing: 0.02em;
             color: ${BLUE};
@@ -375,17 +407,24 @@ export default function FormRepContent({ locale = "id" }) {
             margin-top: 6px;
             text-align: center;
             color: #7c8fb4;
-            font-size: 12px;
+            font-size: clamp(11px, 2vw, 12px);
           }
           .form {
-            margin-top: 18px;
+            margin-top: clamp(12px, 2.2vw, 18px);
           }
-          /* 1 field = 1 baris */
+
+          /* Grid: mobile 1 kolom, >=920px 2 kolom */
           .grid {
             display: grid;
             grid-template-columns: 1fr;
             gap: 18px 16px;
           }
+          @media (min-width: 920px) {
+            .grid {
+              grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+          }
+
           .alert {
             margin-top: 12px;
             background: #fff4f4;
@@ -406,15 +445,15 @@ export default function FormRepContent({ locale = "id" }) {
             font-weight: 900;
             letter-spacing: 0.02em;
             text-transform: uppercase;
-            padding: 14px 22px;
+            padding: 12px 18px;
             border-radius: 14px;
             border: none;
             cursor: pointer;
             box-shadow: 0 12px 28px rgba(11, 86, 201, 0.3);
-            min-width: 280px;
+            min-width: clamp(180px, 46vw, 280px);
           }
           .primary-btn.slim {
-            min-width: 180px;
+            min-width: clamp(150px, 40vw, 180px);
           }
           .primary-btn[disabled] {
             opacity: 0.7;
@@ -428,12 +467,12 @@ export default function FormRepContent({ locale = "id" }) {
             text-align: center;
           }
           .big-check {
-            width: 128px;
-            height: 128px;
+            width: clamp(84px, 14vw, 128px);
+            height: clamp(84px, 14vw, 128px);
             border-radius: 999px;
             display: grid;
             place-items: center;
-            font-size: 64px;
+            font-size: clamp(42px, 8vw, 64px);
             margin: 6px auto 8px;
             border: 2px solid #d5e5ff;
             color: ${BLUE};
@@ -442,7 +481,7 @@ export default function FormRepContent({ locale = "id" }) {
           .detail-title {
             margin: 6px 0 18px;
             color: ${BLUE};
-            font-size: 22px;
+            font-size: clamp(16px, 2.6vw, 22px);
             font-weight: 900;
             text-transform: uppercase;
             letter-spacing: 0.02em;
@@ -478,12 +517,13 @@ export default function FormRepContent({ locale = "id" }) {
           .v {
             color: #0a2b69;
             font-weight: 700;
+            word-break: break-all;
           }
           .v.mono {
             font-family: ui-monospace, Menlo, monospace;
           }
           .v.strong {
-            font-size: 18px;
+            font-size: clamp(16px, 2.6vw, 18px);
           }
           .badge {
             display: inline-block;
@@ -548,9 +588,6 @@ export default function FormRepContent({ locale = "id" }) {
           }
 
           @media (max-width: 920px) {
-            .hero-title {
-              font-size: 42px;
-            }
             .pay-row {
               grid-template-columns: 1fr;
             }
