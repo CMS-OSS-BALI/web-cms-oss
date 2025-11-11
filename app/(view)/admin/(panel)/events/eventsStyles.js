@@ -102,10 +102,16 @@ const styles = {
     display: "grid",
     gridTemplateColumns: "repeat(8, minmax(0, 1fr))",
     gap: 10,
-    height: 180,
-    alignItems: "end",
+    height: 220, // fixed height so percentage-based bars can resolve
+    alignItems: "stretch",
   },
-  barItem: { display: "grid", gap: 6, justifyItems: "center" },
+  barItem: {
+    display: "grid",
+    gridTemplateRows: "minmax(0, 1fr) auto",
+    gap: 6,
+    justifyItems: "center",
+    height: "100%",
+  },
   barCol: {
     width: "100%",
     height: "100%",

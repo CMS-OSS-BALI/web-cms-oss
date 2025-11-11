@@ -89,6 +89,20 @@ function useEventsViewModel() {
     return "/api/events?" + p.toString();
   }, [qDebounced, page, perPage, categoryId, year]);
 
+  /** Build query params for /api/events/summary */
+  const buildSummaryParams = useCallback(() => {
+    const p = new URLSearchParams();
+    if (qDebounced) p.set("q", qDebounced);
+    if (categoryId) p.set("category_id", String(categoryId));
+    if (year) {
+      p.set("from", toISODate(year, 1, 1));
+      p.set("to", toISODate(year, 12, 31));
+    }
+    p.set("limit", "8"); // batas item untuk chart
+    p.set("_", String(Date.now()));
+    return p;
+  }, [qDebounced, categoryId, year]);
+
   /** Load supporting lookups */
   const loadCategories = useCallback(async () => {
     try {
@@ -109,7 +123,7 @@ function useEventsViewModel() {
     }
   }, []);
 
-  // Optional: distinct years endpoint (jika tersedia)
+  // Optional: distinct years endpoint (kalau ada, pakai; kalau tidak ada, tidak masalah)
   const loadDistinctYears = useCallback(async () => {
     try {
       const res = await fetch("/api/events/years?distinct=1&_=" + Date.now(), {
@@ -132,71 +146,7 @@ function useEventsViewModel() {
     }
   }, []);
 
-  /** Try aggregated charts endpoint (if your backend provides it) */
-  const loadChartsAggregated = useCallback(async () => {
-    setChartLoading(true);
-    try {
-      const p = new URLSearchParams();
-      if (qDebounced) p.set("q", qDebounced);
-      if (categoryId) p.set("category_id", String(categoryId));
-      if (year) {
-        p.set("from", toISODate(year, 1, 1));
-        p.set("to", toISODate(year, 12, 31));
-      }
-      p.set("limit", "8");
-      p.set("_", String(Date.now()));
-
-      // Example endpoints (ubah sesuai backend kamu)
-      const [repRes, stuRes] = await Promise.all([
-        fetch(`/api/events/summary/booth?` + p.toString(), {
-          cache: "no-store",
-        }),
-        fetch(`/api/events/summary/students?` + p.toString(), {
-          cache: "no-store",
-        }),
-      ]);
-
-      if (!repRes.ok || !stuRes.ok)
-        throw new Error("summary endpoint not available");
-
-      const repJs = await repRes.json();
-      const stuJs = await stuRes.json();
-
-      const repItems = (repJs?.data || []).slice(0, 8);
-      const maxRep = Math.max(1, ...repItems.map((i) => Number(i.value || 0)));
-      setChartRep(
-        repItems.map((it) => ({
-          id: it.id,
-          label: it.label,
-          short:
-            it.label?.length > 10
-              ? it.label.slice(0, 9).trim() + "…"
-              : it.label,
-          value: Number(it.value || 0),
-          percent: (Number(it.value || 0) / maxRep) * 100,
-        }))
-      );
-
-      const stuItems = (stuJs?.data || []).slice(0, 8);
-      const maxStu = Math.max(1, ...stuItems.map((i) => Number(i.value || 0)));
-      setChartStudent(
-        stuItems.map((it) => ({
-          id: it.id,
-          label: it.label,
-          short:
-            it.label?.length > 10
-              ? it.label.slice(0, 9).trim() + "…"
-              : it.label,
-          value: Number(it.value || 0),
-          percent: (Number(it.value || 0) / maxStu) * 100,
-        }))
-      );
-    } finally {
-      setChartLoading(false);
-    }
-  }, [qDebounced, categoryId, year]);
-
-  /** Fallback: hitung student chart per event (hanya untuk subset/top) */
+  /** Hitung chart “Student” dari /api/tickets per event (subset/top) */
   const loadStudentCounts = useCallback(async (eventRows) => {
     setChartLoading(true);
     try {
@@ -204,29 +154,36 @@ function useEventsViewModel() {
         const p = new URLSearchParams();
         p.set("event_id", String(ev.id));
         p.set("status", "CONFIRMED");
-        p.set("perPage", "1");
+        p.set("perPage", "1"); // ringan; ambil total dari response.total
         p.set("_", String(Date.now()));
         const r = await fetch(`/api/tickets?` + p.toString(), {
           cache: "no-store",
         });
-        const j = await r.json();
+        const j = await r.json().catch(() => ({}));
+        const total =
+          Number(j?.meta?.total) ?? Number(j?.total) ?? Number(j?.count) ?? 0;
         return {
           id: ev.id,
           title: ev.title || ev.title_id || "Event",
-          total: j?.total || 0,
+          total: Number.isFinite(total) ? total : 0,
         };
       });
       const items = await Promise.all(promises);
-      const max = Math.max(1, ...items.map((i) => i.total));
+      const max = Math.max(1, ...items.map((i) => Number(i.total || 0)));
       setChartStudent(
-        items.map((i) => ({
-          id: i.id,
-          label: i.title,
-          short:
-            i.title.length > 10 ? i.title.slice(0, 9).trim() + "…" : i.title,
-          value: i.total,
-          percent: (i.total / max) * 100,
-        }))
+        items.map((i) => {
+          const label = i.title || "Event";
+          const short =
+            label.length > 10 ? label.slice(0, 9).trim() + "…" : label;
+          const v = Number(i.total || 0);
+          return {
+            id: i.id,
+            label,
+            short,
+            value: v,
+            percent: (v / max) * 100,
+          };
+        })
       );
     } catch (e) {
       console.error("[Events] load student counts err:", e);
@@ -235,6 +192,156 @@ function useEventsViewModel() {
       setChartLoading(false);
     }
   }, []);
+
+  const loadTotalsAndChartsSmart = useCallback(
+    async ({ currentRows }) => {
+      setChartLoading(true);
+      setTotalStudentsLoading(true);
+      try {
+        const sp = buildSummaryParams();
+        const res = await fetch(`/api/events/summary?${sp.toString()}`, {
+          cache: "no-store",
+        });
+
+        let usedFallback = false;
+
+        if (res.ok) {
+          const j = await res.json().catch(() => ({}));
+          const data = j?.data ?? j ?? {};
+          const totals = data?.totals ?? {};
+          const charts = data?.charts ?? {};
+
+          // totals (langsung dari summary)
+          const students = totals.students ?? totals.total_students ?? null;
+          const reps = totals.reps ?? totals.total_reps ?? 0;
+          const revenue = totals.revenue ?? totals.total_revenue ?? 0;
+
+          setTotalStudents(
+            Number.isFinite(Number(students)) ? Number(students) : null
+          );
+          setTotalReps(Number.isFinite(Number(reps)) ? Number(reps) : 0);
+          setTotalRevenue(
+            Number.isFinite(Number(revenue)) ? Number(revenue) : 0
+          );
+
+          // normalisasi sisi klien
+          const studentsRaw =
+            charts.student ||
+            charts.students ||
+            data.student ||
+            data.students ||
+            [];
+          const repsRaw =
+            charts.rep || charts.reps || data.rep || data.reps || [];
+
+          const normBars = (arr) => {
+            const list = Array.isArray(arr) ? arr : [];
+            const max = Math.max(
+              1,
+              ...list.map((i) => Number(i.value ?? i.count ?? 0))
+            );
+            return list.slice(0, 8).map((it, idx) => {
+              const label = it.label || it.title || it.name || "Event";
+              const value = Number(it.value ?? it.count ?? 0) || 0;
+              return {
+                id: it.id || it.event_id || `${label}-${idx}`,
+                label,
+                short:
+                  label.length > 10 ? label.slice(0, 9).trim() + "…" : label,
+                value,
+                percent: (value / max) * 100,
+              };
+            });
+          };
+
+          const stuBars = normBars(studentsRaw);
+          const repBars = normBars(repsRaw);
+
+          // jika summary 200 tapi kosong → fallback lokal
+          if (
+            stuBars.length === 0 &&
+            repBars.length === 0 &&
+            (currentRows || []).length
+          ) {
+            usedFallback = true;
+          } else {
+            setChartStudent(stuBars);
+            setChartRep(repBars);
+          }
+        } else {
+          usedFallback = true;
+        }
+
+        if (usedFallback) {
+          const top = (currentRows || []).slice(0, 8);
+
+          // Rep dari booth_sold_count
+          const maxRep = Math.max(
+            1,
+            ...top.map((r) => Number(r?.booth_sold_count || 0))
+          );
+          setChartRep(
+            top.map((r) => {
+              const label = r.title || r.title_id || "Event";
+              const short =
+                label.length > 10 ? label.slice(0, 9).trim() + "…" : label;
+              const v = Number(r?.booth_sold_count || 0);
+              return {
+                id: r.id,
+                label,
+                short,
+                value: v,
+                percent: (v / maxRep) * 100,
+              };
+            })
+          );
+
+          // Student per event (hitung via /api/tickets)
+          await loadStudentCounts(top);
+
+          // Totals fallback
+          try {
+            const tRes = await fetch(
+              `/api/tickets?status=CONFIRMED&perPage=1&_=${Date.now()}`,
+              { cache: "no-store" }
+            );
+            const tJs = await tRes.json().catch(() => ({}));
+            const tTotal =
+              Number(tJs?.meta?.total) ??
+              Number(tJs?.total) ??
+              Number(tJs?.count) ??
+              null;
+            setTotalStudents(
+              Number.isFinite(Number(tTotal)) ? Number(tTotal) : null
+            );
+          } catch {
+            setTotalStudents(null);
+          }
+          const repSum = (currentRows || []).reduce(
+            (acc, r) => acc + Number(r?.booth_sold_count || 0),
+            0
+          );
+          setTotalReps(repSum);
+          const rev = (currentRows || []).reduce(
+            (acc, r) =>
+              acc +
+              Number(r?.booth_sold_count || 0) *
+                Math.max(0, Number(r?.booth_price || 0)),
+            0
+          );
+          setTotalRevenue(rev);
+        }
+      } catch (e) {
+        console.error("[Events] summary load error:", e);
+        setChartStudent([]);
+        setChartRep([]);
+      } finally {
+        setChartLoading(false);
+        setTotalStudentsLoading(false);
+      }
+    },
+    [buildSummaryParams, loadStudentCounts]
+  );
 
   /** Core loader — server-side filtering + pagination */
   const loadEvents = useCallback(async () => {
@@ -249,25 +356,13 @@ function useEventsViewModel() {
 
       const rows = js?.data || [];
       setEvents(rows);
-      setTotal(js?.meta?.total ?? js?.total ?? rows.length ?? 0);
-      setTotalPages(js?.meta?.totalPages ?? js?.totalPages ?? 1);
 
-      // derive metrics from current page (or rely on summary endpoint below)
-      const reps = rows.reduce(
-        (acc, r) => acc + Number(r?.booth_sold_count || 0),
-        0
-      );
-      setTotalReps(reps);
-      const revenueEst = rows.reduce(
-        (acc, r) =>
-          acc +
-          Number(r?.booth_sold_count || 0) *
-            Math.max(0, Number(r?.booth_price || 0)),
-        0
-      );
-      setTotalRevenue(revenueEst);
+      // meta total & totalPages yang benar
+      const meta = js?.meta || {};
+      setTotal(Number(meta.total ?? js?.total ?? rows.length ?? 0));
+      setTotalPages(Number(meta.totalPages ?? js?.totalPages ?? 1));
 
-      // Infer year options from current page if distinct endpoint unavailable
+      // Tahun dari rows (fallback kalau /events/years tidak ada)
       const years = new Set(
         rows
           .map((r) => {
@@ -289,52 +384,32 @@ function useEventsViewModel() {
         });
       }
 
-      // Charts: try aggregated endpoint first (better for big data)
-      await loadChartsAggregated().catch(async () => {
-        // Fallback: compute from this page only (cheap)
-        const top = rows.slice(0, 8);
-        const maxRep = Math.max(
-          1,
-          ...top.map((r) => Number(r?.booth_sold_count || 0))
-        );
-        setChartRep(
-          top.map((r) => {
-            const label = r.title || r.title_id || "Event";
-            const short =
-              label.length > 10 ? label.slice(0, 9).trim() + "…" : label;
-            const v = Number(r?.booth_sold_count || 0);
-            return {
-              id: r.id,
-              label,
-              short,
-              value: v,
-              percent: (v / maxRep) * 100,
-            };
-          })
-        );
-        await loadStudentCounts(top);
-      });
+      // ===== Summary-first charts & metrics =====
+      await loadTotalsAndChartsSmart({ currentRows: rows });
     } catch (e) {
       if (e?.name !== "AbortError") console.error("[Events] load error:", e);
     } finally {
       if (!signal.aborted) setLoading(false);
     }
-  }, [buildQuery, loadChartsAggregated, loadStudentCounts]);
+  }, [buildQuery, loadTotalsAndChartsSmart]);
 
+  // (Opsional legacy) Global total students via tickets — tetap disimpan sebagai fallback callable
   const loadTotalStudents = useCallback(async () => {
     setTotalStudentsLoading(true);
     try {
-      // Prefer endpoint count khusus jika tersedia
-      // const res = await fetch("/api/tickets/count?status=CONFIRMED&_=" + Date.now(), { cache: "no-store" });
-      // const js = await res.json();
-      // setTotalStudents(js?.data?.count ?? js?.count ?? null);
-
       const res = await fetch(
         "/api/tickets?status=CONFIRMED&perPage=1&_=" + Date.now(),
         { cache: "no-store" }
       );
-      const js = await res.json();
-      setTotalStudents(js?.total ?? null);
+      const js = await res.json().catch(() => ({}));
+      const totalVal =
+        Number(js?.meta?.total) ??
+        Number(js?.total) ??
+        Number(js?.count) ??
+        null;
+      setTotalStudents(
+        Number.isFinite(totalVal) && totalVal >= 0 ? totalVal : null
+      );
     } catch {
       setTotalStudents(null);
     } finally {
@@ -343,15 +418,16 @@ function useEventsViewModel() {
   }, []);
 
   const loadRevenue = useCallback(async () => {
-    // Opsional: sediakan endpoint agregasi total revenue global
+    // (Opsional) Jika nanti ada endpoint agregasi global revenue, isi di sini.
     return;
   }, []);
 
   const refresh = useCallback(async () => {
-    await Promise.all([loadEvents(), loadTotalStudents(), loadRevenue()]);
-  }, [loadEvents, loadTotalStudents, loadRevenue]);
+    // Summary sudah dipanggil dari loadEvents
+    await loadEvents();
+  }, [loadEvents]);
 
-  // refetch saat filter berubah (server akan handle pagination & filter)
+  // refetch saat filter berubah
   useEffect(() => {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -360,7 +436,7 @@ function useEventsViewModel() {
   // initial lookups
   useEffect(() => {
     loadCategories();
-    loadDistinctYears(); // opsional, enrich dropdown tahun
+    loadDistinctYears(); // optional; aman bila 404
   }, [loadCategories, loadDistinctYears]);
 
   // Revalidate on focus/visibility
@@ -383,7 +459,7 @@ function useEventsViewModel() {
       setOpLoading(true);
       try {
         const res = await fetch(`/api/events/${id}`, { method: "DELETE" });
-        const js = await res.json();
+        const js = await res.json().catch(() => ({}));
         if (!res.ok) return { ok: false, error: js?.error?.message || "Gagal" };
         await sleep(250);
         await loadEvents();
@@ -430,7 +506,7 @@ function useEventsViewModel() {
             error: j?.error?.message || "Gagal membuat event",
           };
 
-        ensureYearOptionFromFD(fd); // inject tahun baru bila perlu
+        ensureYearOptionFromFD(fd);
         await refresh();
         return { ok: true, data: j?.data };
       } catch (e) {
@@ -457,7 +533,7 @@ function useEventsViewModel() {
             error: j?.error?.message || "Gagal memperbarui event",
           };
 
-        ensureYearOptionFromFD(fd); // update tahun filter jika berubah
+        ensureYearOptionFromFD(fd);
         await refresh();
         return { ok: true, data: j?.data };
       } catch (e) {
@@ -469,10 +545,29 @@ function useEventsViewModel() {
     [refresh, ensureYearOptionFromFD]
   );
 
+  /** ===== READ helper buat modal View/Edit (dipakai di EventsContent) ===== */
+  const getEvent = useCallback(async (id, { includeCategory = true } = {}) => {
+    try {
+      const url =
+        `/api/events/${id}?` +
+        new URLSearchParams({
+          include_category: includeCategory ? "1" : "0",
+          _: String(Date.now()),
+        }).toString();
+      const r = await fetch(url, { cache: "no-store" });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok)
+        return { ok: false, error: j?.error?.message || "Gagal memuat data" };
+      return { ok: true, data: j?.data };
+    } catch (e) {
+      return { ok: false, error: e?.message || "Gagal memuat data" };
+    }
+  }, []);
+
   /** ===== CSV download ===== */
   const downloadCSV = useCallback(async () => {
     try {
-      // 1) Coba server-side export
+      // 1) Coba server-side export (kalau belum ada, otomatis fallback)
       const p = new URLSearchParams();
       p.set("perPage", String(perPage || 10));
       p.set("page", String(page || 1));
@@ -500,7 +595,7 @@ function useEventsViewModel() {
         return;
       }
 
-      // 2) Fallback: generate dari rows saat ini (terbatas pada page aktif)
+      // 2) Fallback: generate dari rows saat ini
       const headers = [
         "Event ID",
         "Judul",
@@ -605,11 +700,12 @@ function useEventsViewModel() {
     goCreate,
     goEdit,
     goScanner,
-    refetch: refresh,
+    refetch: loadEvents, // refresh sudah memanggil summary di dalamnya
 
     // CRUD helpers
     createEvent,
     updateEvent,
+    getEvent,
   };
 }
 

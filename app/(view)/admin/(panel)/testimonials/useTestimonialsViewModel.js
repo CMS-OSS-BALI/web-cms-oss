@@ -5,21 +5,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /** util: GET JSON (with credentials) */
 async function getJson(url, init = {}) {
-  try {
-    const res = await fetch(url, { credentials: "include", ...init });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const msg = data?.error?.message || data?.message || res.statusText;
-      const e = new Error(msg);
-      e.status = res.status;
-      e.data = data;
-      throw e;
-    }
-    return data;
-  } catch (e) {
-    if (e?.name === "AbortError") throw e;
+  const res = await fetch(url, { credentials: "include", ...init });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = data?.error?.message || data?.message || res.statusText;
+    const e = new Error(msg);
+    e.status = res.status;
+    e.data = data;
     throw e;
   }
+  return data;
 }
 
 /** util: POST/PUT/DELETE (json atau form) */
@@ -119,7 +114,6 @@ export default function useTestimonialsViewModel({
     try {
       const url = buildListUrl({ locale, categoryId });
       const json = await getJson(url, { signal: ctrl.signal });
-
       if (ctrl.signal.aborted || abortRef.current !== ctrl) return;
 
       const list = Array.isArray(json?.data) ? json.data : [];
@@ -217,7 +211,24 @@ export default function useTestimonialsViewModel({
     [allCategories]
   );
 
-  // ========== CRUD (client crop 9:16 sebelum upload) ==========
+  // ======= Client crop 9:16 (portrait) sebelum upload (best-effort) =======
+  const maybeClientCrop9x16 = async (file) => {
+    try {
+      const mod = await import("@/app/utils/cropper");
+      if (typeof mod.cropCenterAndResize9x16 === "function") {
+        // target panjang sisi terpanjang ~1280px (portrait → tinggi)
+        return await mod.cropCenterAndResize9x16(file, 1280);
+      }
+      if (typeof mod.cropTo9x16Webp === "function") {
+        return await mod.cropTo9x16Webp(file, { height: 1280, quality: 0.9 });
+      }
+      return file; // fallback, biar server yang crop
+    } catch {
+      return file;
+    }
+  };
+
+  // ========== CRUD ==========
   const getTestimonial = useCallback(
     async (id) => {
       try {
@@ -248,14 +259,7 @@ export default function useTestimonialsViewModel({
       try {
         let body;
         if (file) {
-          let processed = file;
-          try {
-            const mod = await import("@/app/utils/cropper");
-            processed = await mod.cropCenterAndResize9x16(file, 1280);
-          } catch {
-            /* noop */
-          }
-
+          const processed = await maybeClientCrop9x16(file); // 9:16
           const fd = new FormData();
           fd.append("file", processed);
           fd.append("name", name || "");
@@ -314,13 +318,7 @@ export default function useTestimonialsViewModel({
       try {
         let body;
         if (file) {
-          let processed = file;
-          try {
-            const mod = await import("@/app/utils/cropper");
-            processed = await mod.cropCenterAndResize9x16(file, 1280);
-          } catch {
-            /* noop */
-          }
+          const processed = await maybeClientCrop9x16(file); // 9:16
           const fd = new FormData();
           fd.append("locale", locale || "id");
           fd.append("file", processed);

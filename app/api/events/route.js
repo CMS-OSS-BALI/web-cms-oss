@@ -97,7 +97,7 @@ export async function GET(req) {
       }),
       ...(category_id ? { category_id } : {}),
       ...(category_slug ? { category: { slug: category_slug } } : {}),
-      events_translate: { some: { locale: { in: locales } } }, // must have at least one of locales
+      events_translate: { some: { locale: { in: locales } } },
     };
 
     const [total, rows] = await Promise.all([
@@ -261,22 +261,15 @@ export async function POST(req) {
     const { adminId } = await assertAdmin(req);
     const { body, file } = await readBodyAndFile(req);
 
+    // === Generate id lebih awal agar folder upload pakai <eventId>
+    const id = randomUUID();
+
     // Upload banner (opsional)
     let banner_url = "";
     if (file) {
       try {
-        banner_url = await uploadEventBanner(file);
+        banner_url = await uploadEventBanner(file, id); // return PUBLIC URL
       } catch (e) {
-        if (e?.message === "SUPABASE_BUCKET_NOT_CONFIGURED")
-          return json(
-            {
-              error: {
-                code: "CONFIG_ERROR",
-                message: "Konfigurasi bucket Supabase belum disetel.",
-              },
-            },
-            { status: 500 }
-          );
         if (e?.message === "PAYLOAD_TOO_LARGE")
           return json(
             {
@@ -420,21 +413,17 @@ export async function POST(req) {
         try {
           await Promise.all(tasks);
         } catch (e) {
-          // Kalau translasi gagal, tetap lanjut simpan data utama
-          console.warn(
-            "Auto-translate failed, continuing without EN text:",
-            e?.message || e
-          );
+          console.warn("Auto-translate failed, continue:", e?.message || e);
         }
       }
     }
 
-    const id = randomUUID();
     const created = await prisma.$transaction(async (tx) => {
       const parent = await tx.events.create({
         data: {
           id,
           admin_users: { connect: { id: adminId } },
+          // simpan URL publik langsung (atau key lama tetap akan dinormalisasi saat read)
           banner_url: banner_url || null,
           is_published: !!is_published,
           start_at,

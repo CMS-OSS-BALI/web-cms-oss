@@ -48,11 +48,10 @@ export default function useCareerViewModel({ locale = "id" } = {}) {
     [locale]
   );
 
-  /* ===== REFERRAL SECTION (copy sesuai desain) ===== */
+  /* ===== REFERRAL SECTION ===== */
   const referral = useMemo(
     () => ({
       title: L("Sahabat Referral", "Referral Buddy"),
-      // bagian pertama ditebalkan di UI
       leadBold: L(
         "Ingin Mendapatkan Penghasilan Tanpa Terikat Kontrak?",
         "Want to Earn Without Binding Contracts?"
@@ -62,7 +61,48 @@ export default function useCareerViewModel({ locale = "id" } = {}) {
         "Join as an OSS Bali Referral Buddy! Recommend prospective students planning to study abroad and earn incentives and bonuses for every successful referral. Together, we help more young people realize their global dreams!"
       ),
       youtube: "https://youtu.be/He1MkQ7tgRc?si=W10S57vT9YyUnFEC",
+      benefitsTitle: L(
+        "Manfaat Bergabung Dalam Program Sahabat Referral OSS Bali",
+        "Benefits of Joining the OSS Bali Referral Program"
+      ),
     }),
+    [locale]
+  );
+
+  /* ===== BENEFITS (sesuai desain 6 item) ===== */
+  const benefits = useMemo(
+    () => [
+      {
+        title: L("Penghasilan Tambahan Tanpa Batas", "Unlimited Extra Income"),
+        icon: "/icons/benefit-income.svg",
+      },
+      {
+        title: L(
+          "Berperan Dalam Mewujudkan Impian Global",
+          "Help Realize Global Dreams"
+        ),
+        icon: "/icons/benefit-global.svg",
+      },
+      {
+        title: L("Tanpa Kontrak Atau Target", "No Contracts or Targets"),
+        icon: "/icons/benefit-no-contract.svg",
+      },
+      {
+        title: L("Transparan Dan Profesional", "Transparent and Professional"),
+        icon: "/icons/benefit-transparent.svg",
+      },
+      {
+        title: L(
+          "Akses Informasi Dan Pelatihan Eksklusif",
+          "Access to Exclusive Info & Training"
+        ),
+        icon: "/icons/benefit-training.svg",
+      },
+      {
+        title: L("Bekerja Dari Rumah Atau Cafe", "Work From Home or Café"),
+        icon: "/icons/benefit-remote.svg",
+      },
+    ],
     [locale]
   );
 
@@ -88,6 +128,7 @@ export default function useCareerViewModel({ locale = "id" } = {}) {
     cta,
     vacancy,
     referral,
+    benefits, // NEW
     onCTATeam,
     onCTAReferral,
     onSendCV,

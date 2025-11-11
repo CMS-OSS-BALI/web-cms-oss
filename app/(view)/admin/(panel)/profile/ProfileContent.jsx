@@ -1,4 +1,5 @@
-﻿"use client";
+﻿// ProfileContent.jsx
+"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
@@ -33,7 +34,7 @@ export default function ProfileContent({ vm }) {
   const [preview, setPreview] = useState("");
   const [file, setFile] = useState(null);
   const [dirty, setDirty] = useState(false);
-  const [ringHover, setRingHover] = useState(false); // <-- untuk hover warna ring
+  const [ringHover, setRingHover] = useState(false);
 
   const initialRef = useRef({
     name: "",
@@ -63,6 +64,8 @@ export default function ProfileContent({ vm }) {
       try {
         const res = await fetch(api.me, {
           cache: "no-store",
+          credentials: "include",
+          headers: { Pragma: "no-cache" },
           signal: ctrl.signal,
         });
         const data = await res.json().catch(() => ({}));
@@ -70,11 +73,12 @@ export default function ProfileContent({ vm }) {
           notifyError("Gagal memuat profil", data?.error?.message);
           return;
         }
+        const photo = data?.image_public_url || data?.profile_photo || ""; // endpoint baru selalu URL publik
         const init = {
           name: data?.name || "",
           email: data?.email || "",
           no_whatsapp: data?.no_whatsapp || "",
-          photo: data?.profile_photo || "",
+          photo,
         };
         initialRef.current = init;
         form.setFieldsValue({
@@ -146,9 +150,14 @@ export default function ProfileContent({ vm }) {
       fd.append("no_whatsapp", values.no_whatsapp || "");
       fd.append("email", (values.email || "").trim());
       fd.append("size", String(AVATAR_SIZE));
-      if (file) fd.append("avatar", file);
+      if (file) fd.append("avatar", file); // field disesuaikan dg endpoint baru
 
-      const res = await fetch(api.update, { method: "PATCH", body: fd });
+      const res = await fetch(api.update, {
+        method: "PATCH",
+        body: fd,
+        credentials: "include",
+        headers: { Pragma: "no-cache" },
+      });
       const out = await res.json().catch(() => ({}));
 
       if (!res.ok) {
@@ -163,11 +172,14 @@ export default function ProfileContent({ vm }) {
         return;
       }
 
+      const photo =
+        out?.image_public_url || out?.profile_photo || preview || "";
+
       const nextInit = {
         name: out?.name ?? values.name,
         email: out?.email ?? values.email,
         no_whatsapp: out?.no_whatsapp ?? values.no_whatsapp,
-        photo: out?.profile_photo || preview,
+        photo,
       };
       initialRef.current = nextInit;
 
@@ -181,7 +193,7 @@ export default function ProfileContent({ vm }) {
         if (preview && preview.startsWith("blob:"))
           URL.revokeObjectURL(preview);
       } catch {}
-      setPreview(out?.profile_photo || preview);
+      setPreview(photo);
       setFile(null);
       setDirty(false);
 
@@ -259,7 +271,6 @@ export default function ProfileContent({ vm }) {
                 accept="image/*"
                 showUploadList={false}
                 beforeUpload={beforeUpload}
-                // hilangkan border default Dragger â†’ ring digambar oleh wrapper circle
                 style={styles.dragger}
               >
                 <div
@@ -278,7 +289,7 @@ export default function ProfileContent({ vm }) {
                         width: "100%",
                         height: "100%",
                         objectFit: "cover",
-                        borderRadius: "50%", // pastikan clip bulat
+                        borderRadius: "50%",
                         display: "block",
                       }}
                     />
@@ -341,7 +352,7 @@ export default function ProfileContent({ vm }) {
   );
 }
 
-const AVATAR_SIZE_PX = 136; // gampang diatur dari satu tempat
+const AVATAR_SIZE_PX = 136;
 
 const styles = {
   card: {
@@ -359,7 +370,6 @@ const styles = {
     marginTop: 8,
     marginBottom: 12,
   },
-  // Dragger dibuat transparan & tanpa border; drop area tetap berfungsi
   dragger: {
     width: AVATAR_SIZE_PX,
     height: AVATAR_SIZE_PX,
@@ -367,7 +377,6 @@ const styles = {
     background: "transparent",
     padding: 0,
   },
-  // Lingkaran dengan border dashed (ring)
   circle: {
     width: "100%",
     height: "100%",
@@ -410,4 +419,3 @@ const styles = {
     justifyContent: "flex-end",
   },
 };
-

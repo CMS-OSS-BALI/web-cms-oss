@@ -3,13 +3,9 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-
-const BUCKET =
-  process.env.SUPABASE_BUCKET || process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "";
 
 const ok = (b, i) => NextResponse.json(b, i);
 
@@ -26,13 +22,54 @@ function parseId(raw) {
   const s = String(raw ?? "").trim();
   return s || null;
 }
-function stripBucket(p) {
-  if (!p) return null;
-  return String(p)
-    .replace(new RegExp(`^${BUCKET}/`), "")
-    .replace(/^\/+/, "");
+
+/* =========================
+   URL -> storage key (lihat penjelasan di file [id]/route.js)
+========================= */
+function toStorageKey(u) {
+  if (!u) return null;
+  const s = String(u).trim();
+  if (!/^https?:\/\//i.test(s)) return s.replace(/^\/+/, "");
+  const idx = s.indexOf("/public/");
+  if (idx >= 0) return s.slice(idx + "/public/".length).replace(/^\/+/, "");
+  return null;
 }
 
+/* =========================
+   Best-effort remover (batch)
+========================= */
+async function removeStorageObjects(urlsOrKeys = []) {
+  const keys = urlsOrKeys.map(toStorageKey).filter(Boolean);
+  if (!keys.length) return;
+
+  const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return;
+
+  try {
+    const res = await fetch(`${base}/api/storage/remove`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": process.env.OSS_STORAGE_API_KEY || "",
+      },
+      body: JSON.stringify({ keys }),
+    });
+    if (!res.ok) {
+      await fetch(`${base}/api/storage/delete`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": process.env.OSS_STORAGE_API_KEY || "",
+        },
+        body: JSON.stringify({ keys }),
+      }).catch(() => {});
+    }
+  } catch (_) {}
+}
+
+/* =========================
+   DELETE /api/consultants/:id/program-images/:imageId
+========================= */
 export async function DELETE(_req, { params }) {
   try {
     await requireAdmin();
@@ -42,29 +79,30 @@ export async function DELETE(_req, { params }) {
 
   const consultantId = parseId(params?.id);
   const imageId = parseId(params?.imageId);
-  if (!consultantId || !imageId)
+  if (!consultantId || !imageId) {
     return ok({ error: { code: "BAD_ID" } }, { status: 400 });
+  }
 
-  // ambil dulu path utk dihapus dari storage
+  // Ambil dulu URL untuk dibersihkan setelah DB sukses dihapus
   const row = await prisma.consultant_program_images.findFirst({
     where: { id: imageId, id_consultant: consultantId },
     select: { image_url: true },
   });
-  if (!row) return ok({ error: { code: "NOT_FOUND" } }, { status: 404 });
+  if (!row) {
+    return ok({ error: { code: "NOT_FOUND" } }, { status: 404 });
+  }
 
+  // Hapus row + reindex sort di satu transaksi
   await prisma.$transaction(async (tx) => {
-    // hapus row
-    await tx.consultant_program_images.delete({
-      where: { id: imageId },
-    });
+    await tx.consultant_program_images.delete({ where: { id: imageId } });
 
-    // rapikan sort
     const rest = await tx.consultant_program_images.findMany({
       where: { id_consultant: consultantId },
       orderBy: [{ sort: "asc" }, { id: "asc" }],
       select: { id: true },
     });
-    // reindex
+
+    // Reindex sederhana & jelas
     for (let i = 0; i < rest.length; i++) {
       await tx.consultant_program_images.update({
         where: { id: rest[i].id },
@@ -73,14 +111,12 @@ export async function DELETE(_req, { params }) {
     }
   });
 
-  // hapus file dari storage (best-effort)
+  // Bersihkan file di storage (best-effort, non-blocking)
   try {
-    if (supabaseAdmin && BUCKET) {
-      await supabaseAdmin.storage
-        .from(BUCKET)
-        .remove([stripBucket(row.image_url)]);
-    }
-  } catch {}
+    await removeStorageObjects([row.image_url]);
+  } catch {
+    // abaikan error cleanup
+  }
 
   return new NextResponse(null, { status: 204 });
 }

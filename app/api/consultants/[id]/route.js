@@ -5,26 +5,122 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
 import { randomUUID } from "crypto";
 import { translate } from "@/app/utils/geminiTranslator";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+
+// === Storage client (baru, pakai utils kamu)
+import storageClient from "@/app/utils/storageClient";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const BUCKET =
-  process.env.SUPABASE_BUCKET || process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "";
-const SUPA_URL = (
-  process.env.SUPABASE_URL ||
-  process.env.NEXT_PUBLIC_SUPABASE_URL ||
-  ""
-).replace(/\/+$/, "");
-
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_UPLOAD_SIZE = 10 * 1024 * 1024;
 
+// Secara default kamu mau prefix "cms-oss" di jalur publik
+const PUBLIC_PREFIX = "cms-oss";
+
+/* =========================
+   Public URL normalizer
+   - Simpan apa adanya kalau sudah URL.
+   - Kalau masih "key/path", kita bentuk:
+     {CDN}/public/<maybe cms-oss/>key
+   - CDN diestimasi dari OSS_STORAGE_BASE_URL
+     (ganti 'storage.' -> 'cdn.')
+========================= */
+function computePublicBase() {
+  const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return "";
+  try {
+    const u = new URL(base);
+    const host = u.host.replace(/^storage\./, "cdn.");
+    return `${u.protocol}//${host}`;
+  } catch {
+    // fallback: langsung pakai base (bukan CDN)
+    return base;
+  }
+}
+
+function ensurePrefixedKey(key) {
+  const clean = String(key || "").replace(/^\/+/, "");
+  return clean.startsWith(PUBLIC_PREFIX + "/")
+    ? clean
+    : `${PUBLIC_PREFIX}/${clean}`;
+}
+
+function toPublicUrl(keyOrUrl) {
+  if (!keyOrUrl) return null;
+  const s = String(keyOrUrl).trim();
+  if (/^https?:\/\//i.test(s)) return s;
+  const cdn = computePublicBase();
+  const path = ensurePrefixedKey(s);
+  const base =
+    cdn || (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return `/${path}`;
+  return `${base}/public/${path}`;
+}
+
+/* =========================
+   URL -> storage key
+   - Ambil bagian setelah "/public/"
+   - Kalau bukan URL, anggap sudah key
+========================= */
+function toStorageKey(u) {
+  if (!u) return null;
+  const s = String(u).trim();
+  if (!/^https?:\/\//i.test(s)) {
+    // sudah berupa key/path
+    return s.replace(/^\/+/, "");
+  }
+  const idx = s.indexOf("/public/");
+  if (idx >= 0) {
+    return s.slice(idx + "/public/".length).replace(/^\/+/, "");
+  }
+  return null; // tidak dikenali → jangan dihapus (aman)
+}
+
+/* =========================
+   Best-effort remover (batch)
+   - call gateway POST /api/storage/remove { keys: [...] }
+========================= */
+async function removeStorageObjects(urlsOrKeys = []) {
+  const keys = urlsOrKeys.map(toStorageKey).filter(Boolean);
+  if (!keys.length) return;
+  const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return;
+
+  try {
+    const res = await fetch(`${base}/api/storage/remove`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": process.env.OSS_STORAGE_API_KEY || "",
+      },
+      body: JSON.stringify({ keys }),
+    });
+    // boleh gagal, non-blocking
+    if (!res.ok) {
+      // fallback: coba endpoint lain jika gateway berbeda
+      await fetch(`${base}/api/storage/delete`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": process.env.OSS_STORAGE_API_KEY || "",
+        },
+        body: JSON.stringify({ keys }),
+      }).catch(() => {});
+    }
+  } catch (_) {
+    // diamkan
+  }
+}
+
+/* =========================
+   Helpers respons & auth
+========================= */
 const ok = (b, i) => NextResponse.json(sanitize(b), i);
 function sanitize(v) {
   if (v == null) return v;
   if (typeof v === "bigint") return v.toString();
+  if (v instanceof Date) return v.toISOString();
   if (Array.isArray(v)) return v.map(sanitize);
   if (typeof v === "object") {
     const o = {};
@@ -33,6 +129,7 @@ function sanitize(v) {
   }
   return v;
 }
+
 async function requireAdmin() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
@@ -66,88 +163,44 @@ function pickTrans(list, primary, fallback) {
   const by = (loc) => list.find((t) => t.locale === loc);
   return by(primary) || by(fallback) || list[0] || null;
 }
-function getPublicUrl(path) {
-  if (!path) return null;
-  if (/^https?:\/\//i.test(path)) return path;
-  const clean = String(path).replace(/^\/+/, "");
 
-  if (supabaseAdmin && BUCKET) {
-    const { data, error } = supabaseAdmin.storage
-      .from(BUCKET)
-      .getPublicUrl(clean);
-    if (!error && data?.publicUrl) return data.publicUrl;
-  }
-  if (SUPA_URL) {
-    const withBucket =
-      BUCKET && !clean.startsWith(`${BUCKET}/`) ? `${BUCKET}/${clean}` : clean;
-    return `${SUPA_URL}/storage/v1/object/public/${withBucket}`;
-  }
-  return null;
+/* =========================
+   Upload helpers (pakai storageClient)
+========================= */
+async function assertImageFileOrThrow(file) {
+  const type = file?.type || "";
+  if (!ALLOWED_IMAGE_TYPES.has(type)) throw new Error("UNSUPPORTED_TYPE");
+
+  const size =
+    typeof file?.size === "number"
+      ? file.size
+      : (await file.arrayBuffer()).byteLength;
+  if (size > MAX_UPLOAD_SIZE) throw new Error("PAYLOAD_TOO_LARGE");
 }
-function extFromType(t) {
-  if (t === "image/jpeg") return "jpg";
-  if (t === "image/png") return "png";
-  if (t === "image/webp") return "webp";
-  return "bin";
-}
+
 async function uploadConsultantProgramImage(file, id) {
-  if (!supabaseAdmin || !BUCKET)
-    throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
-  const type = file.type || "";
-  if (!ALLOWED_IMAGE_TYPES.has(type)) throw new Error("UNSUPPORTED_TYPE");
-  const buf = Buffer.from(await file.arrayBuffer());
-  if (buf.length > MAX_UPLOAD_SIZE) throw new Error("PAYLOAD_TOO_LARGE");
-
-  const key = `consultants/${id}/${randomUUID()}.${extFromType(type)}`;
-  const { error } = await supabaseAdmin.storage.from(BUCKET).upload(key, buf, {
-    contentType: type,
-    cacheControl: "31536000",
-    upsert: false,
+  await assertImageFileOrThrow(file);
+  const res = await storageClient.uploadBufferWithPresign(file, {
+    // simpan di cms-oss/consultants/<id> agar URL publik sesuai keinginanmu
+    folder: `${PUBLIC_PREFIX}/consultants/${id}`,
+    isPublic: true,
   });
-  if (error) throw error;
-  return key;
+  // simpan URL publik; DB akan langsung berisi URL final
+  return res.publicUrl || null;
 }
+
 async function uploadConsultantProfileImage(file, id) {
-  if (!supabaseAdmin || !BUCKET)
-    throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
-  const type = file.type || "";
-  if (!ALLOWED_IMAGE_TYPES.has(type)) throw new Error("UNSUPPORTED_TYPE");
-  const buf = Buffer.from(await file.arrayBuffer());
-  if (buf.length > MAX_UPLOAD_SIZE) throw new Error("PAYLOAD_TOO_LARGE");
-
-  const key = `consultants/${id}/profile-${randomUUID()}.${extFromType(type)}`;
-  const { error } = await supabaseAdmin.storage.from(BUCKET).upload(key, buf, {
-    contentType: type,
-    cacheControl: "31536000",
-    upsert: false,
+  await assertImageFileOrThrow(file);
+  const res = await storageClient.uploadBufferWithPresign(file, {
+    folder: `${PUBLIC_PREFIX}/consultants/${id}`,
+    isPublic: true,
   });
-  if (error) throw error;
-  return key;
+  return res.publicUrl || null;
 }
 
-// ---- helpers utk hapus file dari public URL / path ----
-function toBucketRelPath(u) {
-  if (!u) return null;
-  const s = String(u).trim();
-  if (/^https?:\/\//i.test(s)) {
-    const m = s.match(/\/object\/public\/([^/]+)\/(.+)$/);
-    if (m) {
-      const b = m[1];
-      const p = m[2];
-      if (BUCKET && b === BUCKET) return p;
-      return null; // beda bucket, abaikan
-    }
-    return null;
-  }
-  return s.replace(new RegExp(`^${BUCKET}/`), "").replace(/^\/+/, "");
-}
-async function removeStorageObjects(paths = []) {
-  const rel = paths.map(toBucketRelPath).filter(Boolean);
-  if (!rel.length || !supabaseAdmin || !BUCKET) return;
-  await supabaseAdmin.storage.from(BUCKET).remove(rel);
-}
-
-/* PII policy */
+/* =========================
+   PII policy
+========================= */
 async function canIncludePII(req, isPublic) {
   if (isPublic) return false;
   if (req.headers.get("x-ssr") !== "1") return false;
@@ -204,8 +257,7 @@ export async function GET(req, { params }) {
     id: row.id,
     email: includePII ? row.email ?? null : null,
     whatsapp: includePII ? row.whatsapp ?? null : null,
-    profile_image_url: row.profile_image_url,
-    profile_image_public_url: getPublicUrl(row.profile_image_url),
+    profile_image_url: toPublicUrl(row.profile_image_url),
     created_at: row.created_at,
     updated_at: row.updated_at,
     name: t?.name ?? null,
@@ -213,8 +265,7 @@ export async function GET(req, { params }) {
     locale_used: t?.locale ?? null,
     program_images: (row.program_images || []).map((pi) => ({
       id: pi.id,
-      image_url: pi.image_url,
-      image_public_url: getPublicUrl(pi.image_url),
+      image_url: toPublicUrl(pi.image_url),
       sort: pi.sort ?? 0,
     })),
   };
@@ -239,6 +290,13 @@ export async function PATCH(req, { params }) {
 
   const id = parseIdString(params?.id);
   if (!id) return ok({ error: { code: "BAD_ID" } }, { status: 400 });
+
+  // Snapshot existing
+  let existing = await prisma.consultants.findUnique({
+    where: { id },
+    select: { id: true, profile_image_url: true },
+  });
+  if (!existing) return ok({ error: { code: "NOT_FOUND" } }, { status: 404 });
 
   const ct = req.headers.get("content-type") || "";
   let payload = {};
@@ -300,9 +358,19 @@ export async function PATCH(req, { params }) {
     parentData.profile_image_url = payload.profile_image_url;
   if (Object.keys(parentData).length) parentData.updated_at = new Date();
 
-  if (Object.keys(parentData).length) {
+  // Cleanup plan for avatar
+  let postCleanupProfileUrl = null;
+
+  if (Object.keys(parentData).length && !profileFile) {
+    const prev = existing.profile_image_url || null;
+    const next = parentData.profile_image_url ?? prev;
+
     try {
       await prisma.consultants.update({ where: { id }, data: parentData });
+      if (prev && next && prev !== next) {
+        postCleanupProfileUrl = prev;
+      }
+      existing = { ...existing, profile_image_url: next };
     } catch (e) {
       if (e?.code === "P2002") {
         const field = e?.meta?.target?.join?.(", ") || "unique";
@@ -315,12 +383,9 @@ export async function PATCH(req, { params }) {
         return ok({ error: { code: "NOT_FOUND" } }, { status: 404 });
       throw e;
     }
-  } else {
-    const exists = await prisma.consultants.findUnique({ where: { id } });
-    if (!exists) return ok({ error: { code: "NOT_FOUND" } }, { status: 404 });
   }
 
-  // Upsert translations (sama seperti sebelumnya) …
+  // Upsert translations
   const ops = [];
   if (payload.name_id !== undefined || payload.description_id !== undefined) {
     ops.push(
@@ -409,14 +474,20 @@ export async function PATCH(req, { params }) {
     }
   }
 
+  // New avatar file upload
   if (profileFile) {
-    const path = await uploadConsultantProfileImage(profileFile, id);
+    const newPublicUrl = await uploadConsultantProfileImage(profileFile, id);
+    const current = existing.profile_image_url || null;
+    if (current && current !== newPublicUrl) {
+      postCleanupProfileUrl = current;
+    }
     ops.push(
       prisma.consultants.update({
         where: { id },
-        data: { profile_image_url: path, updated_at: new Date() },
+        data: { profile_image_url: newPublicUrl, updated_at: new Date() },
       })
     );
+    existing = { ...existing, profile_image_url: newPublicUrl };
   }
 
   // -------- Program images (CRUD) --------
@@ -426,44 +497,51 @@ export async function PATCH(req, { params }) {
         .filter(Boolean)
     : [];
 
-  let uploadedPaths = [];
-  if (uploadFiles.length) {
+  let uploadedPublicUrls = [];
+  if (Array.isArray(uploadFiles) && uploadFiles.length) {
     for (const f of uploadFiles) {
-      const p = await uploadConsultantProgramImage(f, id);
-      uploadedPaths.push(p);
+      const pub = await uploadConsultantProgramImage(f, id);
+      if (pub) uploadedPublicUrls.push(pub);
     }
   }
-  const toInsert = [...stringImages, ...uploadedPaths];
+
+  // Pastikan semua yang mau dimasukin sudah berbentuk URL publik
+  const toInsertPublic = [
+    ...stringImages.map(toPublicUrl),
+    ...uploadedPublicUrls,
+  ].filter(Boolean);
 
   if (
     imagesMode === "replace" &&
-    (toInsert.length ||
+    (toInsertPublic.length ||
       payload?.program_images !== undefined ||
-      uploadFiles.length)
+      (Array.isArray(uploadFiles) && uploadFiles.length))
   ) {
-    // Ambil existing utk tau mana yg perlu dihapus dari storage
-    const existing = await prisma.consultant_program_images.findMany({
+    const existingImgs = await prisma.consultant_program_images.findMany({
       where: { id_consultant: id },
       select: { image_url: true },
     });
 
-    // set path yang dipertahankan
-    const keepSet = new Set(toInsert.map(toBucketRelPath).filter(Boolean));
-    const removePaths = existing
-      .map((e) => toBucketRelPath(e.image_url))
-      .filter((p) => p && !keepSet.has(p));
+    // Hitung file mana yang harus dibersihkan dari storage
+    const keepSet = new Set(
+      toInsertPublic.map((u) => toStorageKey(u)).filter(Boolean)
+    );
+    const removeKeys = existingImgs
+      .map((e) => toStorageKey(e.image_url))
+      .filter((k) => k && !keepSet.has(k));
 
-    ops.push(
+    // Replace: hapus semua rows lama lalu create ulang berurutan
+    const txOps = [
       prisma.consultant_program_images.deleteMany({
         where: { id_consultant: id },
-      })
-    );
-    if (toInsert.length) {
-      ops.push(
+      }),
+    ];
+    if (toInsertPublic.length) {
+      txOps.push(
         prisma.consultant_program_images.createMany({
-          data: toInsert.map((path, idx) => ({
+          data: toInsertPublic.map((url, idx) => ({
             id_consultant: id,
-            image_url: path,
+            image_url: url,
             sort: idx,
             created_at: new Date(),
             updated_at: new Date(),
@@ -472,33 +550,48 @@ export async function PATCH(req, { params }) {
       );
     }
 
-    await prisma.$transaction(ops);
-    // Hapus file-file yang sudah tidak dipakai
+    await prisma.$transaction(txOps);
+
+    // cleanup (best-effort, non-blocking)
     try {
-      await removeStorageObjects(removePaths);
+      const bundle = postCleanupProfileUrl
+        ? [postCleanupProfileUrl, ...removeKeys]
+        : removeKeys;
+      await removeStorageObjects(bundle);
     } catch {}
   } else {
-    // append saja
-    if (toInsert.length) {
+    // Append
+    if (toInsertPublic.length) {
       const last = await prisma.consultant_program_images.findFirst({
         where: { id_consultant: id },
         orderBy: [{ sort: "desc" }, { id: "desc" }],
         select: { sort: true },
       });
       let start = Number(last?.sort ?? -1) + 1;
-      ops.push(
-        prisma.consultant_program_images.createMany({
-          data: toInsert.map((path, i) => ({
-            id_consultant: id,
-            image_url: path,
-            sort: start + i,
-            created_at: new Date(),
-            updated_at: new Date(),
-          })),
-        })
-      );
+      await prisma.consultant_program_images.createMany({
+        data: toInsertPublic.map((url, i) => ({
+          id_consultant: id,
+          image_url: url,
+          sort: start + i,
+          created_at: new Date(),
+          updated_at: new Date(),
+        })),
+      });
     }
-    if (ops.length) await prisma.$transaction(ops);
+
+    if (ops.length) {
+      await prisma.$transaction(ops);
+      if (postCleanupProfileUrl) {
+        try {
+          await removeStorageObjects([postCleanupProfileUrl]);
+        } catch {}
+      }
+    } else if (postCleanupProfileUrl) {
+      // Kalau hanya ganti avatar
+      try {
+        await removeStorageObjects([postCleanupProfileUrl]);
+      } catch {}
+    }
   }
 
   const resp = ok({ data: { id } });
@@ -518,7 +611,6 @@ export async function DELETE(_req, { params }) {
   const id = parseIdString(params?.id);
   if (!id) return ok({ error: { code: "BAD_ID" } }, { status: 400 });
 
-  // ambil semua path sebelum delete
   const rows = await prisma.consultant_program_images.findMany({
     where: { id_consultant: id },
     select: { image_url: true },
@@ -536,7 +628,7 @@ export async function DELETE(_req, { params }) {
     return ok({ error: { code: "SERVER_ERROR" } }, { status: 500 });
   }
 
-  // bersihkan storage (best-effort)
+  // cleanup best-effort
   try {
     const paths = [
       ...rows.map((r) => r.image_url),

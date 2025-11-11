@@ -121,10 +121,10 @@
   transition: color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
 }
 .user-header__link:hover {
-  color: #0b65e3;
+  color: #004a9e;
 }
 .user-header__link.is-active {
-  background: linear-gradient(135deg, #0b65e3 0%, #0f7de8 100%);
+  background: linear-gradient(135deg, #004a9e 0%, #0f7de8 100%);
   color: #ffffff;
   box-shadow: 0 10px 25px rgba(11, 101, 227, 0.25);
 }
@@ -218,7 +218,7 @@
   }
   .user-header__link.is-active {
     background: transparent;
-    color: #0b65e3;
+    color: #004a9e;
     box-shadow: none;
   }
 

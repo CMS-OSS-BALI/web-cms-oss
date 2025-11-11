@@ -5,7 +5,9 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
 import { randomUUID } from "crypto";
 import { translate } from "@/app/utils/geminiTranslator";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+
+// === Storage client (pakai utils kamu, hanya 2 ENV)
+import storageClient from "@/app/utils/storageClient";
 
 /* =========================
    Runtime & Defaults
@@ -17,24 +19,57 @@ const DEFAULT_ORDER = [{ created_at: "desc" }];
 const MAX_PUBLIC_PER_PAGE = 12;
 const MAX_ADMIN_PER_PAGE = 100;
 
-const BUCKET =
-  process.env.SUPABASE_BUCKET || process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "";
-const SUPA_URL = (
-  process.env.SUPABASE_URL ||
-  process.env.NEXT_PUBLIC_SUPABASE_URL ||
-  ""
-).replace(/\/+$/, "");
-
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
-const MAX_UPLOAD_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_UPLOAD_SIZE = 10 * 1024 * 1024;
+
+// Simpan di jalur publik dengan prefix ini
+const PUBLIC_PREFIX = "cms-oss";
 
 /* =========================
-   Small Utils
+   Public URL helpers
+   - Jika DB berisi key/path lama, kita bentuk URL publik:
+     {CDN}/public/<cms-oss/>key
+   - CDN diestimasi dari OSS_STORAGE_BASE_URL (ganti 'storage.' -> 'cdn.')
+========================= */
+function computePublicBase() {
+  const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return "";
+  try {
+    const u = new URL(base);
+    const host = u.host.replace(/^storage\./, "cdn.");
+    return `${u.protocol}//${host}`;
+  } catch {
+    return base; // fallback: pakai base apa adanya
+  }
+}
+
+function ensurePrefixedKey(key) {
+  const clean = String(key || "").replace(/^\/+/, "");
+  return clean.startsWith(PUBLIC_PREFIX + "/")
+    ? clean
+    : `${PUBLIC_PREFIX}/${clean}`;
+}
+
+function toPublicUrl(keyOrUrl) {
+  if (!keyOrUrl) return null;
+  const s = String(keyOrUrl).trim();
+  if (/^https?:\/\//i.test(s)) return s;
+  const cdn = computePublicBase();
+  const path = ensurePrefixedKey(s);
+  const base =
+    cdn || (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return `/${path}`;
+  return `${base}/public/${path}`;
+}
+
+/* =========================
+   Helpers umum
 ========================= */
 const ok = (body, init) => NextResponse.json(sanitize(body), init);
 function sanitize(v) {
   if (v == null) return v;
   if (typeof v === "bigint") return v.toString();
+  if (v instanceof Date) return v.toISOString();
   if (Array.isArray(v)) return v.map(sanitize);
   if (typeof v === "object") {
     const o = {};
@@ -88,89 +123,8 @@ function normalizeOrder(sort) {
 }
 
 /* =========================
-   Public URL Helper
+   PII policy
 ========================= */
-function getPublicUrl(path) {
-  if (!path) return null;
-  if (/^https?:\/\//i.test(path)) return path;
-  const clean = String(path).replace(/^\/+/, "");
-
-  if (supabaseAdmin && BUCKET) {
-    const { data, error } = supabaseAdmin.storage
-      .from(BUCKET)
-      .getPublicUrl(clean);
-    if (!error && data?.publicUrl) return data.publicUrl;
-  }
-  if (SUPA_URL) {
-    const withBucket =
-      BUCKET && !clean.startsWith(`${BUCKET}/`) ? `${BUCKET}/${clean}` : clean;
-    return `${SUPA_URL}/storage/v1/object/public/${withBucket}`;
-  }
-  return null;
-}
-
-/* =========================
-   Upload Helpers (Supabase)
-========================= */
-function extFromType(t) {
-  if (t === "image/jpeg") return "jpg";
-  if (t === "image/png") return "png";
-  if (t === "image/webp") return "webp";
-  return "bin";
-}
-
-async function uploadConsultantProgramImage(file, consultantId) {
-  if (!supabaseAdmin || !BUCKET)
-    throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
-
-  const type = file.type || "";
-  if (!ALLOWED_IMAGE_TYPES.has(type)) throw new Error("UNSUPPORTED_TYPE");
-  const buf = Buffer.from(await file.arrayBuffer());
-  if (buf.length > MAX_UPLOAD_SIZE) throw new Error("PAYLOAD_TOO_LARGE");
-
-  const ext = extFromType(type);
-  const key = `consultants/${consultantId}/${randomUUID()}.${ext}`;
-
-  const { error } = await supabaseAdmin.storage.from(BUCKET).upload(key, buf, {
-    cacheControl: "31536000",
-    contentType: type,
-    upsert: false,
-  });
-  if (error) throw error;
-  return key; // DB simpan PATH
-}
-
-async function uploadConsultantProfileImage(file, consultantId) {
-  // Single avatar upload -> simpan ke consultants.profile_image_url
-  if (!supabaseAdmin || !BUCKET)
-    throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
-
-  const type = file.type || "";
-  if (!ALLOWED_IMAGE_TYPES.has(type)) throw new Error("UNSUPPORTED_TYPE");
-  const buf = Buffer.from(await file.arrayBuffer());
-  if (buf.length > MAX_UPLOAD_SIZE) throw new Error("PAYLOAD_TOO_LARGE");
-
-  const ext = extFromType(type);
-  const key = `consultants/${consultantId}/profile-${randomUUID()}.${ext}`;
-
-  const { error } = await supabaseAdmin.storage.from(BUCKET).upload(key, buf, {
-    cacheControl: "31536000",
-    contentType: type,
-    upsert: false,
-  });
-  if (error) throw error;
-  return key;
-}
-
-/* =========================
-   PII policy (very important)
-========================= */
-/**
- * Kirim PII (email, whatsapp) hanya jika:
- * - bukan public=1
- * - ada header x-ssr=1
- * - user admin terautentikasi
- */
 async function canIncludePII(req, isPublic) {
   if (isPublic) return false;
   if (req.headers.get("x-ssr") !== "1") return false;
@@ -180,6 +134,60 @@ async function canIncludePII(req, isPublic) {
   } catch {
     return false;
   }
+}
+
+/* =========================
+   Upload helpers (pakai storageClient)
+========================= */
+async function assertImageFileOrThrow(file) {
+  const type = file?.type || "";
+  if (!ALLOWED_IMAGE_TYPES.has(type)) throw new Error("UNSUPPORTED_TYPE");
+  const size =
+    typeof file?.size === "number"
+      ? file.size
+      : (await file.arrayBuffer()).byteLength;
+  if (size > MAX_UPLOAD_SIZE) throw new Error("PAYLOAD_TOO_LARGE");
+}
+
+async function uploadConsultantProgramImage(file, consultantId) {
+  await assertImageFileOrThrow(file);
+  const res = await storageClient.uploadBufferWithPresign(file, {
+    folder: `${PUBLIC_PREFIX}/consultants/${consultantId}`,
+    isPublic: true,
+  });
+  return res.publicUrl || null;
+}
+async function uploadConsultantProfileImage(file, consultantId) {
+  await assertImageFileOrThrow(file);
+  const res = await storageClient.uploadBufferWithPresign(file, {
+    folder: `${PUBLIC_PREFIX}/consultants/${consultantId}`,
+    isPublic: true,
+  });
+  return res.publicUrl || null;
+}
+
+/* =========================
+   Serializer
+========================= */
+function serializeConsultant(row, { locale, fallback, includePII }) {
+  const t = pickTrans(row.consultants_translate, locale, fallback);
+  return {
+    id: row.id,
+    email: includePII ? row.email ?? null : null,
+    whatsapp: includePII ? row.whatsapp ?? null : null,
+    // Always return single public URL
+    profile_image_url: toPublicUrl(row.profile_image_url),
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    name: t?.name ?? null,
+    description: t?.description ?? null,
+    locale_used: t?.locale ?? null,
+    program_images: (row.program_images || []).map((pi) => ({
+      id: pi.id,
+      image_url: toPublicUrl(pi.image_url),
+      sort: pi.sort ?? 0,
+    })),
+  };
 }
 
 /* =========================
@@ -230,7 +238,7 @@ export async function GET(req) {
     ? { ...baseSelect, email: true, whatsapp: true }
     : baseSelect;
 
-  // Shortcut by ID
+  // By ID (single)
   if (idFilter) {
     const row = await prisma.consultants.findUnique({
       where: { id: idFilter },
@@ -329,22 +337,20 @@ export async function POST(req) {
     body = {
       email: form.get("email"),
       whatsapp: form.get("whatsapp"),
-      profile_image_url: form.get("profile_image_url"), // optional string
-      name_id: form.get("name_id"),
+      profile_image_url: form.get("profile_image_url"), // optional (bisa URL publik)
+      name_id: form.get("name_id") ?? form.get("name"),
       description_id: form.has("description_id")
         ? form.get("description_id")
-        : null,
+        : form.get("description"),
       name_en: form.get("name_en"),
       description_en: form.get("description_en"),
       autoTranslate:
         String(form.get("autoTranslate") ?? "true").toLowerCase() !== "false",
     };
 
-    // avatar file
     const pf = form.get("profile_file");
     if (pf && typeof pf !== "string") profileFile = pf;
 
-    // kumpulkan program images
     const strImages = [
       ...form.getAll("images"),
       ...form.getAll("images[]"),
@@ -362,7 +368,6 @@ export async function POST(req) {
     body = await req.json().catch(() => ({}));
   }
 
-  // Validate minimal
   const name_id = String(body?.name_id ?? "").trim();
   if (!name_id || name_id.length < 2) {
     return ok(
@@ -382,7 +387,7 @@ export async function POST(req) {
   const email = body?.email ? String(body.email).trim() || null : null;
   const whatsapp = body?.whatsapp ? String(body.whatsapp).trim() || null : null;
 
-  const profile_image_url =
+  const profile_image_url_in =
     body?.profile_image_url && String(body.profile_image_url).trim()
       ? String(body.profile_image_url).trim()
       : null;
@@ -403,7 +408,12 @@ export async function POST(req) {
     const created = await prisma.$transaction(async (tx) => {
       // 1) create parent (tanpa avatar dulu)
       const parent = await tx.consultants.create({
-        data: { email, whatsapp, profile_image_url: profile_image_url || null },
+        data: {
+          email,
+          whatsapp,
+          // Jika user kirim string: bisa URL publik atau key/path -> simpan apa adanya dulu
+          profile_image_url: profile_image_url_in || null,
+        },
         select: {
           id: true,
           profile_image_url: true,
@@ -427,15 +437,11 @@ export async function POST(req) {
         try {
           if (!name_en && name_id)
             name_en = await translate(name_id, "id", "en");
-        } catch (e) {
-          console.error("auto-translate name (consultant) failed:", e);
-        }
+        } catch {}
         try {
           if (!description_en && description_id)
             description_en = await translate(description_id, "id", "en");
-        } catch (e) {
-          console.error("auto-translate description (consultant) failed:", e);
-        }
+        } catch {}
       }
 
       if (name_en || description_en) {
@@ -450,30 +456,38 @@ export async function POST(req) {
         });
       }
 
-      // 3) upload avatar jika ada file
-      if (profileFile && !profile_image_url) {
-        const path = await uploadConsultantProfileImage(profileFile, parent.id);
+      // 3) upload avatar jika ada file dan belum ada URL string
+      if (profileFile && !profile_image_url_in) {
+        const publicUrl = await uploadConsultantProfileImage(
+          profileFile,
+          parent.id
+        );
         await tx.consultants.update({
           where: { id: parent.id },
-          data: { profile_image_url: path, updated_at: new Date() },
+          data: { profile_image_url: publicUrl, updated_at: new Date() },
         });
-        parent.profile_image_url = path;
+        parent.profile_image_url = publicUrl;
       }
 
-      // 4) Upload program images (opsional)
-      let uploadedPaths = [];
-      if (uploadFiles.length) {
+      // 4) Upload program images (opsional) -> simpan sebagai URL publik
+      const uploadedUrls = [];
+      if (Array.isArray(uploadFiles) && uploadFiles.length) {
         for (const f of uploadFiles) {
-          const p = await uploadConsultantProgramImage(f, parent.id);
-          uploadedPaths.push(p);
+          const url = await uploadConsultantProgramImage(f, parent.id);
+          if (url) uploadedUrls.push(url);
         }
       }
-      const allImages = [...strProgramImages, ...uploadedPaths];
+      // String images dari body: bisa URL atau key/path -> normalisasi ke URL publik
+      const normalizedFromBody = strProgramImages
+        .map(toPublicUrl)
+        .filter(Boolean);
+      const allImages = [...normalizedFromBody, ...uploadedUrls];
+
       if (allImages.length) {
         await tx.consultant_program_images.createMany({
-          data: allImages.map((path, idx) => ({
+          data: allImages.map((url, idx) => ({
             id_consultant: parent.id,
-            image_url: path,
+            image_url: url, // simpan URL publik langsung
             sort: idx,
             created_at: new Date(),
             updated_at: new Date(),
@@ -484,12 +498,11 @@ export async function POST(req) {
       return parent;
     });
 
-    // response TANPA PII
     const resp = ok(
       {
         data: {
           id: created.id,
-          profile_image_url: created.profile_image_url,
+          profile_image_url: toPublicUrl(created.profile_image_url),
           created_at: created.created_at,
           updated_at: created.updated_at,
         },
@@ -504,11 +517,6 @@ export async function POST(req) {
       return ok({ message: "Maksimal 10MB" }, { status: 413 });
     if (err?.message === "UNSUPPORTED_TYPE")
       return ok({ message: "Format harus JPEG/PNG/WebP" }, { status: 415 });
-    if (err?.message === "SUPABASE_BUCKET_NOT_CONFIGURED")
-      return ok(
-        { message: "Supabase bucket belum dikonfigurasi" },
-        { status: 500 }
-      );
     if (err?.code === "P2002") {
       const field = err?.meta?.target?.join?.(", ") || "unique";
       return ok(
@@ -519,31 +527,6 @@ export async function POST(req) {
     console.error("POST /api/consultants error:", err);
     return ok({ error: { code: "SERVER_ERROR" } }, { status: 500 });
   }
-}
-
-/* =========================
-   Serializer & Caching
-========================= */
-function serializeConsultant(row, { locale, fallback, includePII }) {
-  const t = pickTrans(row.consultants_translate, locale, fallback);
-  return {
-    id: row.id,
-    email: includePII ? row.email ?? null : null,
-    whatsapp: includePII ? row.whatsapp ?? null : null,
-    profile_image_url: row.profile_image_url,
-    profile_image_public_url: getPublicUrl(row.profile_image_url),
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-    name: t?.name ?? null,
-    description: t?.description ?? null,
-    locale_used: t?.locale ?? null,
-    program_images: (row.program_images || []).map((pi) => ({
-      id: pi.id,
-      image_url: pi.image_url,
-      image_public_url: getPublicUrl(pi.image_url),
-      sort: pi.sort ?? 0,
-    })),
-  };
 }
 
 function decorateCaching(resp, { isPublic, includePII }) {

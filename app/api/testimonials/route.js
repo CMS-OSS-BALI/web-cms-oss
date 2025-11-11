@@ -1,16 +1,71 @@
-﻿import { NextResponse } from "next/server";
+﻿// app/api/testimonials/route.js
+import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
 import { randomUUID } from "crypto";
 import { translate } from "@/app/utils/geminiTranslator";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { cropFileTo16x9Webp } from "@/app/utils/cropper";
+
+// === Storage client (baru, mengikuti pola consultants)
+import storageClient from "@/app/utils/storageClient";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-/* ===================== Auth & Helpers ===================== */
+/* =========================
+   Konstanta & batasan
+========================= */
+const MAX_NAME_LENGTH = 191;
+const MAX_TEXT_LENGTH = 10000;
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MAX_UPLOAD_SIZE = 10 * 1024 * 1024;
+
+// Prefix publik default -> semua file testimonial masuk ke sini
+const PUBLIC_PREFIX = "cms-oss/testimonials";
+
+/* =========================
+   Helpers: URL publik (CDN)
+   - Mendukung data lama (path relatif) & URL penuh
+   - Basis diambil dari OSS_STORAGE_BASE_URL
+   - Ganti host `storage.` -> `cdn.` jika ada
+========================= */
+function computePublicBase() {
+  const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return "";
+  try {
+    const u = new URL(base);
+    const host = u.host.replace(/^storage\./, "cdn.");
+    return `${u.protocol}//${host}`;
+  } catch {
+    return base;
+  }
+}
+
+/** Pastikan path diawali prefix publik */
+function ensurePrefixedKey(key) {
+  const clean = String(key || "").replace(/^\/+/, "");
+  return clean.startsWith(PUBLIC_PREFIX + "/")
+    ? clean
+    : `${PUBLIC_PREFIX}/${clean}`;
+}
+
+/** Normalisasi ke URL publik (tetap melewatkan URL penuh apa adanya) */
+function toPublicUrl(keyOrUrl) {
+  if (!keyOrUrl) return null;
+  const s = String(keyOrUrl).trim();
+  if (/^https?:\/\//i.test(s)) return s;
+  const cdn = computePublicBase();
+  const base =
+    cdn || (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  const path = ensurePrefixedKey(s);
+  if (!base) return `/${path}`;
+  return `${base}/public/${path}`;
+}
+
+/* =========================
+   Helpers: umum
+========================= */
 async function assertAdmin() {
   const session = await getServerSession(authOptions);
   const email = session?.user?.email;
@@ -20,99 +75,32 @@ async function assertAdmin() {
   return admin;
 }
 
-const MAX_NAME_LENGTH = 191;
-const MAX_TEXT_LENGTH = 10000;
-const BUCKET = process.env.SUPABASE_BUCKET;
+function trimOrNull(v, max = 255) {
+  if (typeof v !== "string") return null;
+  const s = v.trim();
+  return s ? s.slice(0, max) : null;
+}
 
-function isHttpUrl(path) {
-  return typeof path === "string" && /^https?:\/\//i.test(path);
+function parseStar(input) {
+  if (input === undefined) return undefined;
+  if (input === null || input === "") return null;
+  const n = Number(input);
+  if (!Number.isFinite(n)) return null;
+  const i = Math.trunc(n);
+  return i >= 1 && i <= 5 ? i : null;
 }
-function normalizeImageUrl(path) {
-  if (!path) return null;
-  if (isHttpUrl(path)) return path;
-  return path.startsWith("/") ? path : `/${path}`;
-}
-function pickExtFromMime(type) {
-  if (!type) return null;
-  if (/image\/webp/i.test(type)) return "webp";
-  if (/image\/png/i.test(type)) return "png";
-  if (/image\/jpe?g/i.test(type)) return "jpg";
-  return null;
-}
-function extFromName(name) {
-  if (typeof name !== "string") return null;
-  const match = /\.([a-z0-9]+)$/i.exec(name);
-  return match ? match[1].toLowerCase() : null;
-}
-function getPublicUrl(path) {
-  if (!path) return null;
-  if (isHttpUrl(path)) return path;
-  if (!BUCKET) return normalizeImageUrl(path);
+
+function normalizeYoutubeUrl(u) {
+  if (u === undefined) return undefined;
+  const s = trimOrNull(u, 255);
+  if (!s) return null;
   try {
-    if (!supabaseAdmin?.storage) return normalizeImageUrl(path);
-    const { data, error } = supabaseAdmin.storage
-      .from(BUCKET)
-      .getPublicUrl(path);
-    if (error) return normalizeImageUrl(path);
-    return data?.publicUrl || normalizeImageUrl(path);
+    const url = new URL(s);
+    if (!/^https?:/.test(url.protocol)) return null;
+    return url.toString().slice(0, 255);
   } catch {
-    return normalizeImageUrl(path);
+    return null;
   }
-}
-
-async function uploadTestimonialImage16x9(file) {
-  if (typeof File === "undefined" || !(file instanceof File))
-    throw new Error("NO_FILE");
-  if (!BUCKET) throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
-
-  // Validasi input file (sebelum di-convert)
-  const MAX = 10 * 1024 * 1024;
-  const allowed = ["image/jpeg", "image/png", "image/webp"];
-  const size = file.size || 0;
-  const type = file.type || "";
-  if (size > MAX) throw new Error("PAYLOAD_TOO_LARGE");
-  if (type && !allowed.includes(type)) throw new Error("UNSUPPORTED_TYPE");
-
-  // ⚙️ Crop + resize ke 16:9 (1280x720) & convert ke WebP
-  const processed = await cropFileTo16x9Webp(file, {
-    width: 1280,
-    height: 720,
-    quality: 90,
-  });
-
-  let { buffer, contentType, ext } = processed || {};
-
-  if (!buffer) {
-    const original = await file.arrayBuffer();
-    buffer = Buffer.from(original);
-  } else if (buffer instanceof ArrayBuffer) {
-    buffer = Buffer.from(buffer);
-  } else if (ArrayBuffer.isView(buffer)) {
-    buffer = Buffer.from(buffer.buffer);
-  }
-  if (!Buffer.isBuffer(buffer)) {
-    buffer = Buffer.from(buffer);
-  }
-  if (!buffer?.length) throw new Error("EMPTY_FILE_BUFFER");
-
-  const fallbackType = file.type || "application/octet-stream";
-  contentType = (contentType || fallbackType || "").toString() || fallbackType;
-  ext = (ext && String(ext).trim()) || pickExtFromMime(contentType) || extFromName(file.name) || "bin";
-
-  const safe = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-  const objectPath = `testimonials/${new Date()
-    .toISOString()
-    .slice(0, 10)}/${safe}`;
-
-  const { error } = await supabaseAdmin.storage
-    .from(BUCKET)
-    .upload(objectPath, buffer, {
-      contentType,
-      upsert: false,
-      cacheControl: "3600",
-    });
-  if (error) throw new Error(error.message);
-  return objectPath; // simpan PATH
 }
 
 function getLocaleFromReq(req) {
@@ -146,8 +134,7 @@ function getCategoryFilterFromReq(req) {
 }
 function parseFields(req) {
   try {
-    const url = new URL(req.url);
-    const s = (url.searchParams.get("fields") || "").toLowerCase();
+    const s = (new URL(req.url).searchParams.get("fields") || "").toLowerCase();
     return new Set(
       s
         .split(",")
@@ -158,30 +145,66 @@ function parseFields(req) {
     return new Set();
   }
 }
-function trimOrNull(v, max = 255) {
-  if (typeof v !== "string") return null;
-  const s = v.trim();
-  return s ? s.slice(0, max) : null;
-}
-function parseStar(input) {
-  if (input === null || input === undefined || input === "") return null;
-  const n = Number(input);
-  if (!Number.isFinite(n)) return null;
-  const i = Math.trunc(n);
-  return i >= 1 && i <= 5 ? i : null;
-}
-function normalizeYoutubeUrl(u) {
-  if (u === undefined) return undefined;
-  const s = trimOrNull(u, 255);
-  if (!s) return null;
-  try {
-    const url = new URL(s);
-    if (!/^https?:/.test(url.protocol)) return null;
-    return url.toString().slice(0, 255);
-  } catch {
-    return null;
+
+/* =========================
+   Upload helper (pakai storageClient)
+   - Crop 16:9 ke WebP
+   - Upload ke folder publik
+   - Return URL publik siap pakai
+========================= */
+async function uploadTestimonialImage16x9(file) {
+  if (typeof File === "undefined" || !(file instanceof File)) {
+    throw new Error("NO_FILE");
   }
+  const type = file?.type || "";
+  if (!ALLOWED_IMAGE_TYPES.has(type)) throw new Error("UNSUPPORTED_TYPE");
+  const size =
+    typeof file?.size === "number"
+      ? file.size
+      : (await file.arrayBuffer()).byteLength;
+  if (size > MAX_UPLOAD_SIZE) throw new Error("PAYLOAD_TOO_LARGE");
+
+  const processed = await cropFileTo16x9Webp(file, {
+    width: 1280,
+    height: 720,
+    quality: 90,
+  });
+
+  // pastikan berupa Buffer
+  let { buffer, contentType } = processed || {};
+  if (!buffer) {
+    const ab = await file.arrayBuffer();
+    buffer = Buffer.from(ab);
+  } else if (buffer instanceof ArrayBuffer) {
+    buffer = Buffer.from(buffer);
+  } else if (ArrayBuffer.isView(buffer)) {
+    buffer = Buffer.from(buffer.buffer);
+  }
+  if (!Buffer.isBuffer(buffer)) buffer = Buffer.from(buffer);
+  if (!buffer?.length) throw new Error("EMPTY_FILE_BUFFER");
+
+  const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.webp`;
+  const folder = `${PUBLIC_PREFIX}/${new Date().toISOString().slice(0, 10)}`;
+
+  // Gunakan File (Node 18+ tersedia) agar signature konsisten dengan utils
+  const blobFile = new File([buffer], filename, {
+    type: contentType || "image/webp",
+  });
+
+  const res = await storageClient.uploadBufferWithPresign(blobFile, {
+    folder,
+    isPublic: true,
+  });
+
+  // Simpan URL publik langsung (konsisten dengan consultants)
+  const publicUrl = res?.publicUrl || null;
+  if (!publicUrl) throw new Error("UPLOAD_FAILED");
+  return publicUrl;
 }
+
+/* =========================
+   Category resolver
+========================= */
 async function resolveCategoryId({ category_id, category_slug }) {
   if (category_id === null || category_id === "") return null;
   if (category_slug === null || category_slug === "") return null;
@@ -280,7 +303,7 @@ export async function GET(req) {
     if (minimalOnly) {
       const data = rows.map((r) => {
         const t = pick.get(r.id);
-        const image_public_url = getPublicUrl(r.photo_url);
+        const image_public_url = toPublicUrl(r.photo_url);
         return {
           id: r.id,
           ...(fields.has("image") ? { image: image_public_url } : {}),
@@ -335,11 +358,11 @@ export async function GET(req) {
         r.category_id && categoriesById.size
           ? categoriesById.get(r.category_id) || null
           : null;
-      const image_public_url = getPublicUrl(r.photo_url);
+      const image_public_url = toPublicUrl(r.photo_url);
       return {
         id: r.id,
-        photo_url: r.photo_url,
-        photo_public_url: image_public_url,
+        photo_url: r.photo_url, // bisa URL publik (baru) atau key lama
+        photo_public_url: image_public_url, // selalu URL publik
         image_public_url,
         star: r.star ?? null,
         youtube_url: r.youtube_url ?? null,
@@ -363,7 +386,7 @@ export async function GET(req) {
 /* ===================== POST (create) ===================== */
 export async function POST(req) {
   try {
-    const admin = await assertAdmin();
+    await assertAdmin();
 
     const contentType = (req.headers.get("content-type") || "").toLowerCase();
     const isMultipart = contentType.startsWith("multipart/form-data");
@@ -471,11 +494,11 @@ export async function POST(req) {
         throw err;
       }
 
-      let storedPhotoPath = trimOrNull(body.photo_url, 255);
+      // Upload file → simpan URL publik. Jika user kirim string URL, simpan apa adanya.
+      let storedPhotoUrl = trimOrNull(body.photo_url, 255);
       if (file && typeof File !== "undefined" && file instanceof File) {
         try {
-          // ⬇️ crop 16:9 sebelum upload
-          storedPhotoPath = await uploadTestimonialImage16x9(file);
+          storedPhotoUrl = await uploadTestimonialImage16x9(file); // URL publik
         } catch (e) {
           if (e?.message === "PAYLOAD_TOO_LARGE")
             return NextResponse.json(
@@ -486,11 +509,6 @@ export async function POST(req) {
             return NextResponse.json(
               { message: "Format harus JPEG/PNG/WebP" },
               { status: 415 }
-            );
-          if (e?.message === "SUPABASE_BUCKET_NOT_CONFIGURED")
-            return NextResponse.json(
-              { message: "Supabase bucket belum dikonfigurasi" },
-              { status: 500 }
             );
           console.error("uploadTestimonialImage error:", e);
           return NextResponse.json(
@@ -505,8 +523,7 @@ export async function POST(req) {
       await prisma.testimonials.create({
         data: {
           id,
-          admin_user_id: admin.id,
-          photo_url: storedPhotoPath,
+          photo_url: storedPhotoUrl, // simpan URL publik langsung (atau string yang dikirim user)
           star,
           youtube_url,
           kampus_negara_tujuan: kampus_negara_tujuan ?? null,
@@ -520,8 +537,8 @@ export async function POST(req) {
 
       if (locale !== "en") {
         const [nameEn, messageEn] = await Promise.all([
-          translate(name, locale || "id", "en"),
-          translate(message, locale || "id", "en"),
+          translate(name, locale || "id", "en").catch(() => null),
+          translate(message, locale || "id", "en").catch(() => null),
         ]);
         await prisma.testimonials_translate.create({
           data: {
@@ -533,11 +550,11 @@ export async function POST(req) {
         });
       }
 
-      const image_public_url = getPublicUrl(storedPhotoPath);
+      const image_public_url = toPublicUrl(storedPhotoUrl);
 
       results.push({
         id,
-        photo_url: storedPhotoPath,
+        photo_url: storedPhotoUrl, // bisa URL publik atau string
         photo_public_url: image_public_url,
         image_public_url,
         star: star ?? null,
@@ -551,7 +568,10 @@ export async function POST(req) {
     }
 
     const payload = inputWasArray ? results : results[0];
-    return NextResponse.json({ data: payload }, { status: 201 });
+    const resp = NextResponse.json({ data: payload }, { status: 201 });
+    resp.headers.set("Cache-Control", "no-store");
+    resp.headers.set("Vary", "Cookie, Accept-Language");
+    return resp;
   } catch (e) {
     if (e?.message === "UNAUTHORIZED")
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });

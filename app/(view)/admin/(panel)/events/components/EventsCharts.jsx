@@ -5,6 +5,31 @@ import { Skeleton, Empty, Button } from "antd";
 import { BarChartOutlined } from "@ant-design/icons";
 import styles from "../eventsStyles";
 
+/* Normalizer agar selalu ada: id, label, short, value, percent */
+function normalizeBars(arr) {
+  const list = Array.isArray(arr) ? arr : [];
+  const vals = list.map((it) => Number(it?.value ?? it?.count ?? 0));
+  const max = Math.max(1, ...vals);
+  return list.map((it, idx) => {
+    const label = String(it?.label ?? it?.title ?? it?.name ?? "Event");
+    const value = Number(it?.value ?? it?.count ?? 0) || 0;
+    const percentRaw =
+      Number.isFinite(it?.percent) && it?.percent >= 0
+        ? Number(it.percent)
+        : (value / max) * 100;
+
+    return {
+      id: it?.id ?? it?.event_id ?? `${label}-${idx}`,
+      label,
+      short:
+        it?.short ??
+        (label.length > 10 ? label.slice(0, 9).trim() + "…" : label),
+      value,
+      percent: Math.max(0, Math.min(100, percentRaw)),
+    };
+  });
+}
+
 export default function EventsCharts({
   show,
   loading,
@@ -27,6 +52,9 @@ export default function EventsCharts({
     );
   }
 
+  const studentsNorm = normalizeBars(student);
+  const repsNorm = normalizeBars(rep);
+
   return (
     <div style={{ ...styles.cardOuter, marginTop: 12 }}>
       <div style={{ ...styles.cardInner, paddingTop: 14 }}>
@@ -38,23 +66,23 @@ export default function EventsCharts({
         </div>
 
         <div style={styles.chartsGrid}>
+          {/* Student */}
           <div style={styles.chartCard}>
             <div style={styles.chartTitle}>Student</div>
             {loading ? (
               <Skeleton active paragraph={{ rows: 3 }} />
-            ) : (student || []).length === 0 ? (
+            ) : studentsNorm.length === 0 ? (
               <Empty description="Belum ada data" />
             ) : (
               <div style={styles.barsArea}>
-                {student.map((it) => (
+                {studentsNorm.map((it) => (
                   <div key={it.id} style={styles.barItem}>
                     <div style={styles.barCol}>
                       <div
-                        style={{
-                          ...styles.barInner,
-                          height: `${Math.min(100, it.percent)}%`,
-                        }}
+                        style={{ ...styles.barInner, height: `${it.percent}%` }}
                         title={`${it.label}: ${it.value}`}
+                        aria-label={`${it.label}: ${it.value}`}
+                        role="img"
                       />
                     </div>
                     <div style={styles.barLabel} title={it.label}>
@@ -66,23 +94,26 @@ export default function EventsCharts({
             )}
           </div>
 
+          {/* Representative */}
           <div style={styles.chartCard}>
             <div style={styles.chartTitle}>Representative</div>
             {loading ? (
               <Skeleton active paragraph={{ rows: 3 }} />
-            ) : (rep || []).length === 0 ? (
+            ) : repsNorm.length === 0 ? (
               <Empty description="Belum ada data" />
             ) : (
               <div style={styles.barsArea}>
-                {rep.map((it) => (
+                {repsNorm.map((it) => (
                   <div key={it.id} style={styles.barItem}>
                     <div style={styles.barCol}>
                       <div
                         style={{
                           ...styles.barInnerAlt,
-                          height: `${Math.min(100, it.percent)}%`,
+                          height: `${it.percent}%`,
                         }}
                         title={`${it.label}: ${it.value}`}
+                        aria-label={`${it.label}: ${it.value}`}
+                        role="img"
                       />
                     </div>
                     <div style={styles.barLabel} title={it.label}>

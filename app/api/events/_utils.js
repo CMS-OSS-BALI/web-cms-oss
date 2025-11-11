@@ -3,16 +3,18 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+
+// ==== Storage client (konsisten dengan consultants) ====
+import storageClient from "@/app/utils/storageClient";
 
 /* -------------------- config -------------------- */
 export const DEFAULT_LOCALE = "id";
 export const EN_LOCALE = "en";
-export const BUCKET = process.env.SUPABASE_BUCKET;
-export const SUPA_URL =
-  process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
-export const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
 
+// Prefix publik di CDN/gateway
+const PUBLIC_PREFIX = "cms-oss";
+
+/* -------------------- sorting allowlist -------------------- */
 const SORT_ALLOWLIST = new Set([
   "created_at",
   "updated_at",
@@ -20,9 +22,11 @@ const SORT_ALLOWLIST = new Set([
   "end_at",
 ]);
 
-/* -------------------- tiny helpers -------------------- */
+/* =========================
+   Helpers: sanitize & json
+========================= */
 export function sanitize(v) {
-  if (v === null || v === undefined) return v;
+  if (v == null) return v;
   if (v instanceof Date) return v.toISOString();
   if (typeof v === "bigint") return v.toString();
   if (Array.isArray(v)) return v.map(sanitize);
@@ -52,6 +56,10 @@ export function badRequest(message, field, hint) {
 export function notFound(msg = "Data event tidak ditemukan.") {
   return json({ error: { code: "NOT_FOUND", message: msg } }, { status: 404 });
 }
+
+/* =========================
+   Value parsers
+========================= */
 export function asInt(v, dflt) {
   const n = parseInt(v, 10);
   return Number.isFinite(n) ? n : dflt;
@@ -86,7 +94,7 @@ export function pickLocale(req, key = "locale", dflt = DEFAULT_LOCALE) {
   }
 }
 export function pickTrans(list, primary, fallback) {
-  const by = (loc) => list?.find((t) => t.locale === loc);
+  const by = (loc) => list?.find?.((t) => t.locale === loc);
   return by(primary) || by(fallback) || null;
 }
 export const parseId = (v) => {
@@ -100,18 +108,89 @@ export function getOrderBy(param) {
   const order = String(dir).toLowerCase() === "asc" ? "asc" : "desc";
   return [{ [key]: order }];
 }
-export function toPublicUrl(path) {
-  if (!path) return "";
-  if (/^https?:\/\//i.test(path)) return path;
-  if (!SUPA_URL || !BUCKET) return path;
-  return `${SUPA_URL}/storage/v1/object/public/${BUCKET}/${path}`;
+
+/* =========================
+   Public URL helpers (CDN)
+========================= */
+function computePublicBase() {
+  const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return "";
+  try {
+    const u = new URL(base);
+    const host = u.host.replace(/^storage\./, "cdn.");
+    return `${u.protocol}//${host}`;
+  } catch {
+    return base; // fallback: pakai base apa adanya
+  }
+}
+function ensurePrefixedKey(key) {
+  const clean = String(key || "").replace(/^\/+/, "");
+  return clean.startsWith(PUBLIC_PREFIX + "/")
+    ? clean
+    : `${PUBLIC_PREFIX}/${clean}`;
+}
+export function toPublicUrl(keyOrUrl) {
+  if (!keyOrUrl) return null;
+  const s = String(keyOrUrl).trim();
+  if (/^https?:\/\//i.test(s)) return s;
+  const cdn = computePublicBase();
+  const path = ensurePrefixedKey(s);
+  const base =
+    cdn || (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return `/${path}`;
+  return `${base}/public/${path}`;
 }
 
-/* -------------------- auth -------------------- */
+/* =========================
+   URL → storage key (cleanup)
+========================= */
+function toStorageKey(u) {
+  if (!u) return null;
+  const s = String(u).trim();
+  if (!/^https?:\/\//i.test(s)) return s.replace(/^\/+/, "");
+  const idx = s.indexOf("/public/");
+  if (idx >= 0) return s.slice(idx + "/public/".length).replace(/^\/+/, "");
+  return null;
+}
+
+/* =========================
+   Best-effort remover (batch)
+========================= */
+export async function removeStorageObjects(urlsOrKeys = []) {
+  const keys = urlsOrKeys.map(toStorageKey).filter(Boolean);
+  if (!keys.length) return;
+  const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return;
+  try {
+    const res = await fetch(`${base}/api/storage/remove`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": process.env.OSS_STORAGE_API_KEY || "",
+      },
+      body: JSON.stringify({ keys }),
+    });
+    if (!res.ok) {
+      // fallback endpoint (kalau gateway beda)
+      await fetch(`${base}/api/storage/delete`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": process.env.OSS_STORAGE_API_KEY || "",
+        },
+        body: JSON.stringify({ keys }),
+      }).catch(() => {});
+    }
+  } catch {}
+}
+
+/* =========================
+   Auth
+========================= */
 /** session OR x-admin-key (untuk Postman). Return: { adminId, via } */
 export async function assertAdmin(req) {
   const key = req.headers.get("x-admin-key");
-  if (key && ADMIN_TEST_KEY && key === ADMIN_TEST_KEY) {
+  if (key && process.env.ADMIN_TEST_KEY && key === process.env.ADMIN_TEST_KEY) {
     const anyAdmin = await prisma.admin_users.findFirst({
       select: { id: true },
     });
@@ -129,7 +208,9 @@ export async function assertAdmin(req) {
   return { adminId: admin.id, via: "session" };
 }
 
-/* -------------------- body & upload -------------------- */
+/* =========================
+   Body & upload
+========================= */
 export async function readBodyAndFile(req) {
   const ct = (req.headers.get("content-type") || "").toLowerCase();
   const isMultipart = ct.startsWith("multipart/form-data");
@@ -152,34 +233,36 @@ export async function readBodyAndFile(req) {
   return { body, file: null };
 }
 
-export async function uploadEventBanner(file) {
+// Allowed mimetypes & size sama dengan consultants
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MAX_UPLOAD_SIZE = 10 * 1024 * 1024;
+
+/**
+ * Upload banner event → return PUBLIC URL
+ * Akan disimpan pada folder: cms-oss/events/<eventId>/...
+ */
+export async function uploadEventBanner(file, eventId) {
   if (!(file instanceof File)) throw new Error("NO_FILE");
-  if (!BUCKET) throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
+  const type = file?.type || "";
+  const size =
+    typeof file?.size === "number"
+      ? file.size
+      : (await file.arrayBuffer()).byteLength;
 
-  const MAX = 10 * 1024 * 1024; // 10MB
-  const allowed = ["image/jpeg", "image/png", "image/webp"];
-  if ((file.size || 0) > MAX) throw new Error("PAYLOAD_TOO_LARGE");
-  if (!allowed.includes(file.type)) throw new Error("UNSUPPORTED_TYPE");
+  if (!ALLOWED_IMAGE_TYPES.has(type)) throw new Error("UNSUPPORTED_TYPE");
+  if (size > MAX_UPLOAD_SIZE) throw new Error("PAYLOAD_TOO_LARGE");
 
-  const ext = (file.name?.split(".").pop() || "").toLowerCase();
-  const safe = `${Date.now()}-${Math.random().toString(36).slice(2)}${
-    ext ? "." + ext : ""
-  }`;
-  const objectPath = `events/${new Date().toISOString().slice(0, 10)}/${safe}`;
-  const bytes = new Uint8Array(await file.arrayBuffer());
-
-  const { error } = await supabaseAdmin.storage
-    .from(BUCKET)
-    .upload(objectPath, bytes, {
-      contentType: file.type || "application/octet-stream",
-      upsert: false,
-    });
-
-  if (error) throw new Error(error.message);
-  return objectPath;
+  const res = await storageClient.uploadBufferWithPresign(file, {
+    folder: `${PUBLIC_PREFIX}/events/${eventId || "misc"}`,
+    isPublic: true,
+  });
+  // Simpan sebagai URL publik langsung
+  return res.publicUrl || null;
 }
 
-/* -------------------- category -------------------- */
+/* =========================
+   Category resolver
+========================= */
 export async function resolveCategoryId({ category_id, category_slug }) {
   const byId = parseId(category_id);
   const bySlug = parseId(category_slug);

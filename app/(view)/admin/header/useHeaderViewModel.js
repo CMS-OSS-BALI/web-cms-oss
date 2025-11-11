@@ -1,3 +1,4 @@
+// useHeaderViewModel.js
 "use client";
 
 import { useMemo, useEffect } from "react";
@@ -65,12 +66,14 @@ export default function useHeaderViewModel() {
       .toUpperCase() || "AU";
 
   const { data: me, mutate } = useSWR(
-    email ? "/api/auth/profile" : null,
-    fetcher,
-    swrDefaults
+    email
+      ? ["/api/auth/profile", { credentials: "include", cache: "no-store" }]
+      : null,
+    ([url, init]) => fetcher(url, init),
+    { ...swrDefaults, revalidateOnFocus: true }
   );
 
-  // dengarkan update profil dari tab lain (BroadcastChannel + fallback storage)
+  // dengarkan update profil dari tab lain
   useEffect(() => {
     let ch;
     const onStorage = (e) => {
@@ -87,13 +90,14 @@ export default function useHeaderViewModel() {
     };
   }, [mutate]);
 
-  // AUTO-LOGOUT bila JWT callback menandai forceReauth (password diganti)
+  // AUTO-LOGOUT bila JWT callback menandai forceReauth
   useEffect(() => {
     if (session?.forceReauth) onLogout();
   }, [session?.forceReauth, onLogout]);
 
+  // Endpoint baru selalu kirim URL publik:
   const image =
-    me?.image_public_url || me?.profile_photo || session?.user?.image || "";
+    me?.profile_photo || me?.image_public_url || session?.user?.image || "";
 
   const user = { name, email, image, initials };
   return { breadcrumbs, user, onLogout };

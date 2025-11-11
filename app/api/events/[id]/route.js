@@ -17,6 +17,7 @@ import {
   readBodyAndFile,
   uploadEventBanner,
   resolveCategoryId,
+  removeStorageObjects,
 } from "@/app/api/events/_utils";
 
 export const dynamic = "force-dynamic";
@@ -71,11 +72,9 @@ export async function GET(req, { params }) {
     });
     if (!item) return notFound();
 
-    const [sold] = await Promise.all([
-      prisma.tickets.count({
-        where: { event_id: id, status: "CONFIRMED", deleted_at: null },
-      }),
-    ]);
+    const sold = await prisma.tickets.count({
+      where: { event_id: id, status: "CONFIRMED", deleted_at: null },
+    });
 
     const remaining =
       item.capacity == null ? null : Math.max(0, Number(item.capacity) - sold);
@@ -177,6 +176,7 @@ export async function PATCH(req, { params }) {
         end_at: true,
         pricing_type: true,
         booth_sold_count: true,
+        banner_url: true, // untuk cleanup
       },
     });
     if (!current) return notFound();
@@ -185,21 +185,17 @@ export async function PATCH(req, { params }) {
     const ops = [];
     let title_id_new, desc_id_new;
 
+    let postCleanupBanner = null;
+
     // Banner (file terlebih dulu)
     if (file) {
       try {
-        data.banner_url = await uploadEventBanner(file);
+        const newPublicUrl = await uploadEventBanner(file, id);
+        const prev = current.banner_url || null;
+        if (prev && newPublicUrl && prev !== newPublicUrl)
+          postCleanupBanner = prev;
+        data.banner_url = newPublicUrl;
       } catch (e) {
-        if (e?.message === "SUPABASE_BUCKET_NOT_CONFIGURED")
-          return json(
-            {
-              error: {
-                code: "CONFIG_ERROR",
-                message: "Konfigurasi bucket Supabase belum disetel.",
-              },
-            },
-            { status: 500 }
-          );
         if (e?.message === "PAYLOAD_TOO_LARGE")
           return json(
             {
@@ -237,6 +233,8 @@ export async function PATCH(req, { params }) {
       const v = String(body.banner_url || "").trim();
       if (v.length > 1024)
         return badRequest("banner_url maksimal 1024 karakter", "banner_url");
+      const prev = current.banner_url || null;
+      if (prev && v && prev !== v) postCleanupBanner = prev;
       data.banner_url = v || null;
     }
 
@@ -405,12 +403,11 @@ export async function PATCH(req, { params }) {
 
     const autoTranslate = String(body?.autoTranslate ?? "false") === "true";
 
-    // Update row utama (kalau ada perubahan)
+    // Update row utama
     if (Object.keys(data).length) {
       data.updated_at = new Date();
       await prisma.events.update({ where: { id }, data });
     } else {
-      // tetap cek eksistensi (agar respons NOT_FOUND konsisten)
       const exists = await prisma.events.findUnique({
         where: { id },
         select: { id: true },
@@ -418,7 +415,7 @@ export async function PATCH(req, { params }) {
       if (!exists) return notFound();
     }
 
-    // Jalankan upsert terjemahan terkumpul
+    // Jalankan upsert terjemahan yang terkumpul
     if (ops.length) await prisma.$transaction(ops);
 
     // Auto translate EN dari perubahan ID
@@ -475,6 +472,13 @@ export async function PATCH(req, { params }) {
             0,
             Number(updated.booth_quota) - Number(updated.booth_sold_count || 0)
           );
+
+    // Cleanup lama (best-effort, non-blocking)
+    if (postCleanupBanner) {
+      try {
+        await removeStorageObjects([postCleanupBanner]);
+      } catch {}
+    }
 
     return json({
       message: "Event berhasil diperbarui.",

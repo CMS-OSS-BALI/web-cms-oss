@@ -162,12 +162,11 @@ const styles = {
   vacOuter: {
     width: "min(1180px, 92%)",
     margin: "0 auto 84px",
-    /* supaya scrollIntoView memberi jarak dengan header */
     scrollMarginTop: `calc(${HEADER_H} + 16px)`,
   },
   vacTitle: {
     margin: 0,
-    color: "#0B56B8",
+    color: "#004A9E",
     fontWeight: 900,
     fontSize: "clamp(22px, 3vw, 40px)",
     letterSpacing: ".02em",
@@ -198,13 +197,13 @@ const styles = {
   /* ===== REFERRAL SECTION ===== */
   refWrap: {
     width: "min(1180px, 92%)",
-    margin: "0 auto 100px",
+    margin: "0 auto 40px",
     scrollMarginTop: `calc(${HEADER_H} + 16px)`,
   },
   refTitle: {
     margin: 0,
     textAlign: "center",
-    color: "#0B56C9",
+    color: "#004A9E",
     fontWeight: 900,
     letterSpacing: 0.4,
     fontSize: "clamp(22px, 3.4vw, 38px)",
@@ -260,6 +259,54 @@ const styles = {
     borderTop: "12px solid transparent",
     borderBottom: "12px solid transparent",
   },
+
+  /* ===== BENEFITS SECTION (baru) ===== */
+  benWrap: {
+    width: "min(1180px, 92%)",
+    margin: "44px auto 108px",
+  },
+  benTitle: {
+    textAlign: "center",
+    fontWeight: 900,
+    color: "#0b2a53",
+    letterSpacing: 0.5,
+    fontSize: "clamp(20px, 3vw, 34px)",
+    margin: 0,
+  },
+  benGrid: {
+    display: "grid",
+    gap: 18,
+    marginTop: 24,
+  },
+  benItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: 16,
+    background: "#004A9E",
+    color: "#fff",
+    borderRadius: 16,
+    padding: "16px 22px",
+    minHeight: "clamp(62px, 6vw, 80px)",
+    boxShadow: "0 16px 32px rgba(11,86,201,.22)",
+  },
+  benIco: {
+    width: 64,
+    height: 64,
+    minWidth: 64,
+    borderRadius: 14,
+    background: "#fff",
+    display: "grid",
+    placeItems: "center",
+    boxShadow: "0 8px 18px rgba(0,0,0,.10)",
+  },
+  benIcoImg: { width: "70%", height: "70%", objectFit: "contain" },
+  benText: {
+    margin: 0,
+    fontWeight: 800,
+    letterSpacing: 0.2,
+    lineHeight: 1.35,
+    fontSize: "clamp(14px, 2.2vw, 18px)",
+  },
 };
 
 export default function CareerContent({
@@ -267,6 +314,7 @@ export default function CareerContent({
   cta, // { title, subtitle, btnJobs, btnReferral }
   vacancy, // { title, image, body, btnLabel }
   referral, // { title, leadBold, desc, youtube }
+  benefits = [], // NEW
   onCTATeam,
   onCTAReferral,
   onSendCV,
@@ -289,13 +337,11 @@ export default function CareerContent({
 
   /* === CTA handlers === */
   const handleScrollVacancy = useCallback(() => {
-    // scroll ke Lowongan; fallback ke onCTATeam jika ref tak ada
     if (vacRef.current) scrollToRef(vacRef);
     else if (onCTATeam) onCTATeam();
   }, [scrollToRef, onCTATeam]);
 
   const handleScrollReferral = useCallback(() => {
-    // scroll ke Sahabat Referral; fallback ke onCTAReferral jika ref tak ada
     if (refRef.current) scrollToRef(refRef);
     else if (onCTAReferral) onCTAReferral();
   }, [scrollToRef, onCTAReferral]);
@@ -375,7 +421,6 @@ export default function CareerContent({
         <Paragraph style={styles.sectionSub}>{cta?.subtitle}</Paragraph>
 
         <div style={styles.ctaButtonsRow}>
-          {/* Lowongan → scroll ke Lowongan */}
           <div style={styles.pillWrap}>
             <Button
               size="large"
@@ -386,7 +431,6 @@ export default function CareerContent({
             </Button>
           </div>
 
-          {/* Sahabat Referral → scroll ke Referral */}
           <div style={styles.pillWrap}>
             <Button
               size="large"
@@ -485,6 +529,40 @@ export default function CareerContent({
               </>
             )}
           </div>
+        </div>
+      </section>
+
+      {/* ====== NEW: BENEFITS (di bawah Sahabat Referral) ====== */}
+      <section id="referral-benefits" style={styles.benWrap}>
+        <h3 style={styles.benTitle}>
+          {referral?.benefitsTitle ||
+            "Manfaat Bergabung Dalam Program Sahabat Referral OSS Bali"}
+        </h3>
+
+        <div
+          style={{
+            ...styles.benGrid,
+            gridTemplateColumns: isNarrow ? "1fr" : "1fr 1fr",
+          }}
+        >
+          {benefits.map((b, i) => (
+            <div
+              key={`${b.title}-${i}`}
+              style={styles.benItem}
+              role="listitem"
+              aria-label={b.title}
+            >
+              <div style={styles.benIco} aria-hidden>
+                <img
+                  src={b.icon || "/icons/benefit-placeholder.svg"}
+                  alt=""
+                  style={styles.benIcoImg}
+                  onError={(e) => (e.currentTarget.src = "/images/loading.png")}
+                />
+              </div>
+              <p style={styles.benText}>{b.title}</p>
+            </div>
+          ))}
         </div>
       </section>
     </div>

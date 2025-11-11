@@ -2,21 +2,19 @@
 import { NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
 import prisma from "@/lib/prisma";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import sharp from "sharp";
+
+// === Storage client baru (pakai 2 ENV saja)
+import storageClient from "@/app/utils/storageClient";
 
 /* -------------------- config -------------------- */
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const BUCKET =
-  process.env.SUPABASE_BUCKET || process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "";
-const SUPA_URL = (
-  process.env.NEXT_PUBLIC_SUPABASE_URL ||
-  process.env.SUPABASE_URL ||
-  ""
-).replace(/\/+$/, "");
 const NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET;
+
+// Simpan di jalur publik dengan prefix yang sama seperti modul lain
+const PUBLIC_PREFIX = "cms-oss";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ALLOWED_TYPES = new Set([
@@ -26,16 +24,49 @@ const ALLOWED_TYPES = new Set([
   "image/avif",
 ]);
 
-/* -------------------- helpers -------------------- */
-const json = (d, init) => NextResponse.json(d, init);
-
-function toPublicUrl(path) {
-  if (!path) return "";
-  if (/^https?:\/\//i.test(path)) return path;
-  if (!SUPA_URL || !BUCKET) return path;
-  const clean = String(path).replace(/^\/+/, "");
-  return `${SUPA_URL}/storage/v1/object/public/${BUCKET}/${clean}`;
+/* -------------------- public URL helpers -------------------- */
+/**
+ * Estimasi CDN/public base dari OSS_STORAGE_BASE_URL.
+ * Jika host mengandung "storage.", kita ganti jadi "cdn." agar URL publik rapi.
+ * Fallback: pakai base apa adanya.
+ */
+function computePublicBase() {
+  const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return "";
+  try {
+    const u = new URL(base);
+    const host = u.host.replace(/^storage\./, "cdn.");
+    return `${u.protocol}//${host}`;
+  } catch {
+    return base;
+  }
 }
+
+function ensurePrefixedKey(key) {
+  const clean = String(key || "").replace(/^\/+/, "");
+  return clean.startsWith(PUBLIC_PREFIX + "/")
+    ? clean
+    : `${PUBLIC_PREFIX}/${clean}`;
+}
+
+/** key/path/URL -> selalu URL publik */
+function toPublicUrl(keyOrUrl) {
+  if (!keyOrUrl) return "";
+  const s = String(keyOrUrl).trim();
+  if (/^https?:\/\//i.test(s)) return s; // sudah URL
+
+  const cdn = computePublicBase();
+  const path = ensurePrefixedKey(s);
+  const base =
+    cdn || (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+
+  if (!base) return `/${path}`;
+  // Gateway publik diekspektasi di `${BASE}/public/...`
+  return `${base}/public/${path}`;
+}
+
+/* -------------------- helpers umum -------------------- */
+const json = (d, init) => NextResponse.json(d, init);
 
 async function currentAdmin(req) {
   const token = await getToken({ req, secret: NEXTAUTH_SECRET });
@@ -51,7 +82,7 @@ async function currentAdmin(req) {
       name: true,
       email: true,
       no_whatsapp: true,
-      profile_photo: true, // PATH disimpan di DB
+      profile_photo: true, // bisa key/path lama atau URL publik baru
       updated_at: true,
     },
   });
@@ -68,11 +99,9 @@ async function readBodyAndFile(req) {
     const body = {};
     let file = null;
 
-    // nama field file yg didukung
     const candidates = ["avatar", "image", "file", "profile_photo"];
     for (const k of candidates) {
       const f = form.get(k);
-      // di runtime node Next.js, File tersedia di Web Streams API
       if (f && typeof File !== "undefined" && f instanceof File) {
         file = f;
         break;
@@ -88,35 +117,28 @@ async function readBodyAndFile(req) {
   return { body, file: null };
 }
 
+/* -------------------- upload avatar (sharp + storageClient) -------------------- */
 /**
- * Upload avatar dengan crop 1:1 center di server menggunakan sharp.
- * @param {File} file - file dari multipart/form-data
- * @param {object} opt
- * @param {string|number} opt.userId - id user untuk folder di storage
- * @param {number} [opt.size=600] - dimensi square output (WxH)
- * @param {number} [opt.quality=90] - kualitas WebP 1..100
- * @returns {Promise<string>} path object di bucket (bukan public URL)
+ * Proses avatar menjadi square 1:1 WebP, lalu upload via presign.
+ * Return: PUBLIC URL (bukan key).
  */
-async function uploadAvatar1x1(
+async function uploadAvatar1x1ToPublicUrl(
   file,
   { userId, size = 600, quality = 90 } = {}
 ) {
   if (!file) return null;
-  if (!supabaseAdmin || !BUCKET)
-    throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
 
-  const inputSize = file.size || 0;
-  const inputType = (file.type || "").toLowerCase();
-
+  // Validasi awal
+  const inputSize = Number(file.size || 0);
+  const inputType = String(file.type || "").toLowerCase();
   if (inputSize > MAX_FILE_SIZE) throw new Error("PAYLOAD_TOO_LARGE");
   if (inputType && !ALLOWED_TYPES.has(inputType))
     throw new Error("UNSUPPORTED_TYPE");
 
-  // Baca buffer dari File
+  // Baca & proses ke WEBP square
   const arrayBuf = await file.arrayBuffer();
   const inputBuffer = Buffer.from(arrayBuf);
 
-  // Proses crop square 1:1 (center) + rotate EXIF + convert WebP
   const outBuffer = await sharp(inputBuffer)
     .rotate()
     .resize(Number(size) || 600, Number(size) || 600, {
@@ -126,20 +148,22 @@ async function uploadAvatar1x1(
     .webp({ quality: Number(quality) || 90 })
     .toBuffer();
 
-  const ts = Date.now();
-  const rnd = Math.random().toString(36).slice(2);
-  const objectPath = `avatars/${userId || "unknown"}/avatar_${ts}_${rnd}.webp`;
+  // Buat objek pseudo-File agar utils/storageClient bisa baca name & type
+  const pseudoFile = {
+    name: "avatar.webp",
+    type: "image/webp",
+    size: outBuffer.length,
+    arrayBuffer: async () => outBuffer,
+  };
 
-  const { error } = await supabaseAdmin.storage
-    .from(BUCKET)
-    .upload(objectPath, outBuffer, {
-      cacheControl: "3600",
-      contentType: "image/webp",
-      upsert: true,
-    });
+  const res = await storageClient.uploadBufferWithPresign(pseudoFile, {
+    folder: `${PUBLIC_PREFIX}/avatars/${userId || "unknown"}`,
+    isPublic: true,
+  });
 
-  if (error) throw new Error(error.message);
-  return objectPath; // simpan PATH di DB
+  // storageClient sudah mengembalikan publicUrl jika gateway menyediakannya
+  // tetap normalkan via toPublicUrl sebagai fallback jika hanya key
+  return res.publicUrl || toPublicUrl(res.key);
 }
 
 /* -------------------- GET profile -------------------- */
@@ -151,8 +175,8 @@ export async function GET(req) {
       name: me.name,
       email: me.email,
       no_whatsapp: me.no_whatsapp,
-      profile_photo: toPublicUrl(me.profile_photo), // public URL
-      image_public_url: toPublicUrl(me.profile_photo), // alias
+      profile_photo: toPublicUrl(me.profile_photo), // selalu URL publik
+      image_public_url: toPublicUrl(me.profile_photo), // alias legacy
       updated_at: me.updated_at,
     });
     resp.headers.set("Cache-Control", "no-store");
@@ -169,27 +193,26 @@ export async function PATCH(req) {
     const me = await currentAdmin(req);
     const { body, file } = await readBodyAndFile(req);
 
-    // Opsi ukuran square dari body (baik multipart form fields atau JSON)
+    // Opsi ukuran square dari body (baik multipart fields atau JSON)
     const sizeParam = Number(body?.size);
     const AVATAR_SIZE =
       Number.isFinite(sizeParam) && sizeParam >= 64 ? sizeParam : 600;
 
-    let photoPath = null;
+    // ── Tentukan URL publik yang akan disimpan di DB ────────────────────────────
+    let photoPublicUrl = null;
+
     if (file) {
-      // 🚀 PROSES CROP 1:1 + UPLOAD
-      photoPath = await uploadAvatar1x1(file, {
+      photoPublicUrl = await uploadAvatar1x1ToPublicUrl(file, {
         userId: me.id,
         size: AVATAR_SIZE,
         quality: 90,
       });
     } else if (body?.profile_photo) {
-      // jika dikirim full public URL, konversi ke PATH
-      const s = String(body.profile_photo).trim();
-      const prefix = `${SUPA_URL}/storage/v1/object/public/${BUCKET}/`;
-      photoPath = s.startsWith(prefix) ? s.slice(prefix.length) : s;
+      // Terima key/path atau URL lalu normalkan ke URL publik
+      photoPublicUrl = toPublicUrl(String(body.profile_photo).trim());
     }
 
-    // minimal validation
+    // ── Minimal validation ─────────────────────────────────────────────────────
     if (body?.name && String(body.name).length > 191)
       return json(
         {
@@ -213,6 +236,7 @@ export async function PATCH(req) {
         { status: 400 }
       );
 
+    // Validasi & uniqueness email bila diubah
     let emailToSet = null;
     if (body?.email != null) {
       const e = String(body.email).trim().toLowerCase();
@@ -247,6 +271,7 @@ export async function PATCH(req) {
       }
     }
 
+    // ── Update DB: simpan URL publik di profile_photo ──────────────────────────
     const updated = await prisma.admin_users.update({
       where: { id: me.id },
       data: {
@@ -254,7 +279,9 @@ export async function PATCH(req) {
         ...(body?.no_whatsapp != null
           ? { no_whatsapp: String(body.no_whatsapp) }
           : {}),
-        ...(photoPath != null ? { profile_photo: String(photoPath) } : {}),
+        ...(photoPublicUrl != null
+          ? { profile_photo: String(photoPublicUrl) }
+          : {}),
         ...(emailToSet != null ? { email: emailToSet } : {}),
         updated_at: new Date(),
       },
@@ -263,7 +290,7 @@ export async function PATCH(req) {
         name: true,
         email: true,
         no_whatsapp: true,
-        profile_photo: true,
+        profile_photo: true, // sekarang berisi URL publik
         updated_at: true,
       },
     });
@@ -271,24 +298,11 @@ export async function PATCH(req) {
     const resp = json({
       ...updated,
       profile_photo: toPublicUrl(updated.profile_photo),
-      image_public_url: toPublicUrl(updated.profile_photo),
+      image_public_url: toPublicUrl(updated.profile_photo), // alias legacy
     });
     resp.headers.set("Cache-Control", "no-store");
     return resp;
   } catch (e) {
-    // Prisma unique
-    if (e?.code === "P2002") {
-      return json(
-        {
-          error: {
-            code: "BAD_REQUEST",
-            message: "Email already in use",
-            field: "email",
-          },
-        },
-        { status: 400 }
-      );
-    }
     // Validasi upload
     if (e?.message === "PAYLOAD_TOO_LARGE") {
       return json(
@@ -305,6 +319,19 @@ export async function PATCH(req) {
           },
         },
         { status: 415 }
+      );
+    }
+    // Prisma unique
+    if (e?.code === "P2002") {
+      return json(
+        {
+          error: {
+            code: "BAD_REQUEST",
+            message: "Email already in use",
+            field: "email",
+          },
+        },
+        { status: 400 }
       );
     }
     if (e instanceof Response) return e;

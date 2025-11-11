@@ -21,6 +21,8 @@ function buildKey({ page, perPage, q, sort, locale, fallback }) {
 }
 
 /** payload -> FormData (support replace/append program_images) */
+// NOTE: autoTranslate hanya dikirim kalau eksplisit diset pada payload.
+//       (default lama yang selalu true dihapus supaya PATCH tidak lambat)
 function toFormData(payload = {}) {
   const fd = new FormData();
 
@@ -30,54 +32,76 @@ function toFormData(payload = {}) {
     whatsapp: payload.whatsapp ?? payload.no_whatsapp,
     email: payload.email,
     profile_image_url: payload.profile_image_url,
-    autoTranslate:
-      payload.autoTranslate === undefined ? true : !!payload.autoTranslate,
-    program_images_mode:
-      (payload.imagesMode || payload.program_images_mode || "replace") ===
-      "append"
-        ? "append"
-        : "replace",
   };
   Object.entries(map).forEach(([k, v]) => {
     if (v === undefined) return;
-    if (typeof v === "boolean") fd.append(k, v ? "true" : "false");
-    else if (v === null) fd.append(k, "");
+    if (v === null) fd.append(k, "");
     else fd.append(k, String(v));
   });
 
+  // program_images_mode hanya dikirim kalau di-provide (hindari side effect)
+  const mode = payload.imagesMode || payload.program_images_mode;
+  if (mode) {
+    fd.append("program_images_mode", mode === "append" ? "append" : "replace");
+  }
+
+  // Hanya kirim autoTranslate jika eksplisit diset di payload
+  if (typeof payload.autoTranslate === "boolean") {
+    fd.append("autoTranslate", payload.autoTranslate ? "true" : "false");
+  }
+
+  // avatar file
   const pf =
     payload.profile_file ||
     (payload.avatar && payload.avatar instanceof File ? payload.avatar : null);
   if (pf instanceof File) fd.append("profile_file", pf);
 
-  const programImages =
-    payload.images ||
-    payload.program_images ||
-    (Array.isArray(payload.images) ? payload.images : []);
-  if (Array.isArray(programImages)) {
-    programImages
-      .map((s) => (s == null ? "" : String(s).trim()))
-      .filter(Boolean)
-      .forEach((s) => fd.append("program_images[]", s));
-  }
+  // program images (string URL/keys yang dipertahankan)
+  const programImages = Array.isArray(payload.program_images)
+    ? payload.program_images
+    : Array.isArray(payload.images)
+    ? payload.images
+    : [];
+  programImages
+    .map((s) => (s == null ? "" : String(s).trim()))
+    .filter(Boolean)
+    .forEach((s) => fd.append("program_images[]", s));
 
-  const fileList =
-    payload.program_files ||
-    payload.files ||
-    (payload.program_files instanceof FileList
+  // file baru untuk program images
+  const programFiles =
+    payload.program_files instanceof FileList
       ? [...payload.program_files]
       : Array.isArray(payload.program_files)
       ? payload.program_files
-      : []);
-  (fileList || [])
+      : Array.isArray(payload.files)
+      ? payload.files
+      : [];
+  programFiles
     .filter((f) => f instanceof File)
     .forEach((f) => fd.append("files[]", f));
 
   return fd;
 }
 
-const SSR_INIT = { headers: { "x-ssr": "1" }, credentials: "include" };
-const fetcherWithInit = ([url, init]) => fetch(url, init).then((r) => r.json());
+// Tambahkan no-store agar benar-benar fresh
+const SSR_INIT = {
+  headers: { "x-ssr": "1" },
+  credentials: "include",
+  cache: "no-store",
+  // Hindari cache di beberapa browser/CDN bandel
+  headersAdditional: { Pragma: "no-cache" },
+};
+const fetcherWithInit = async ([url, init]) => {
+  const merged = {
+    ...init,
+    headers: {
+      ...(init?.headers || {}),
+      ...(SSR_INIT.headersAdditional || {}),
+    },
+  };
+  const r = await fetch(url, merged);
+  return r.json();
+};
 
 /* ---------- unified error extraction ---------- */
 async function readJsonIfAny(res) {
@@ -95,7 +119,6 @@ async function readJsonIfAny(res) {
 function extractFieldErrors(json) {
   const fields = {};
 
-  // Laravel style: { errors: { field: [msg1, msg2] } }
   if (json?.errors && typeof json.errors === "object") {
     for (const [k, v] of Object.entries(json.errors)) {
       if (Array.isArray(v)) fields[k] = v.join("\n");
@@ -103,7 +126,6 @@ function extractFieldErrors(json) {
     }
   }
 
-  // { error: { fields: { field: msg | [msg] } } }
   const candidate = json?.error?.fields || json?.fieldErrors || json?.fields;
   if (candidate && typeof candidate === "object") {
     for (const [k, v] of Object.entries(candidate)) {
@@ -112,7 +134,6 @@ function extractFieldErrors(json) {
     }
   }
 
-  // generic details array (e.g. Joi/Zod): [{ path: ['a','b'], message }]
   const details = json?.error?.details || json?.details;
   if (Array.isArray(details)) {
     for (const d of details) {
@@ -158,12 +179,14 @@ export default function useConsultantsViewModel() {
     isLoading,
     mutate,
   } = useSWR(listKey, fetcherWithInit, {
-    revalidateOnFocus: false,
+    revalidateOnFocus: true,
     keepPreviousData: true,
+    dedupingInterval: 500, // lebih agresif agar refresh cepat
   });
 
   const consultants = useMemo(() => {
     const arr = listJson?.data ?? [];
+    // server sudah kirim profile_image_url (public URL) & whatsapp
     return arr.map((x) => ({ ...x, phone: x.whatsapp ?? null }));
   }, [listJson?.data]);
 
@@ -192,12 +215,18 @@ export default function useConsultantsViewModel() {
       );
       url.searchParams.set("locale", locale);
       url.searchParams.set("fallback", fallback);
-      const res = await fetch(url.toString(), { method: "GET", ...SSR_INIT });
+      const res = await fetch(url.toString(), {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+        headers: { "x-ssr": "1", Pragma: "no-cache" },
+      });
       const info = await res.json().catch(() => null);
       if (!res.ok) {
         return buildErrorResult(res, info, "Gagal memuat detail");
       }
       const d = info?.data ?? {};
+      // data sudah punya profile_image_url & program_images[].image_url
       return { ok: true, data: { ...d, phone: d.whatsapp ?? null } };
     } catch (e) {
       return { ok: false, error: e?.message || "Gagal memuat detail" };
@@ -208,11 +237,18 @@ export default function useConsultantsViewModel() {
   async function createConsultant(payload) {
     setOpLoading(true);
     try {
-      const fd = toFormData(payload);
+      // CREATE: autoTranslate default ON (eksplisit)
+      const fd = toFormData({
+        ...payload,
+        autoTranslate: true,
+        program_images_mode: "replace",
+      });
       const res = await fetch("/api/consultants", {
         method: "POST",
         body: fd,
         credentials: "include",
+        cache: "no-store",
+        headers: { Pragma: "no-cache" },
       });
       const info = await readJsonIfAny(res);
       if (!res.ok) {
@@ -235,19 +271,50 @@ export default function useConsultantsViewModel() {
   async function updateConsultant(id, payload) {
     setOpLoading(true);
     try {
-      const fd = toFormData(payload);
-      const res = await fetch(`/api/consultants/${encodeURIComponent(id)}`, {
+      // UPDATE: autoTranslate OFF secara default agar PATCH cepat
+      const fd = toFormData({
+        ...payload,
+        autoTranslate: payload.autoTranslate ?? false,
+        program_images_mode: payload.imagesMode || "replace",
+      });
+
+      const reqInit = {
         method: "PATCH",
         body: fd,
         credentials: "include",
-      });
+        cache: "no-store",
+        headers: { Pragma: "no-cache" },
+      };
+      const url = `/api/consultants/${encodeURIComponent(id)}`;
+      const res = await fetch(url, reqInit);
       const info = await readJsonIfAny(res);
       if (!res.ok) {
         return buildErrorResult(res, info, "Gagal memperbarui konsultan");
       }
 
-      // Tetap di halaman saat ini
-      await refresh();
+      // --- Optimistic patch ke list supaya UI langsung terlihat ---
+      await mutate(
+        (current) => {
+          if (!current?.data) return current;
+          const next = { ...current, data: [...current.data] };
+          const idx = next.data.findIndex((it) => it.id === id);
+          if (idx !== -1) {
+            const prev = next.data[idx];
+            next.data[idx] = {
+              ...prev,
+              name: payload.name ?? prev.name,
+              description: payload.description ?? prev.description,
+              email: payload.email ?? prev.email,
+              whatsapp:
+                payload.no_whatsapp ?? payload.whatsapp ?? prev.whatsapp,
+              // profile image akan di-refresh saat revalidate; tak perlu set manual
+            };
+          }
+          return next;
+        },
+        { revalidate: true }
+      );
+
       return { ok: true, data: info?.data };
     } catch (err) {
       return {
@@ -266,6 +333,8 @@ export default function useConsultantsViewModel() {
       const res = await fetch(`/api/consultants/${encodeURIComponent(id)}`, {
         method: "DELETE",
         credentials: "include",
+        cache: "no-store",
+        headers: { Pragma: "no-cache" },
       });
 
       if (!res.ok && res.status !== 204) {
@@ -295,7 +364,7 @@ export default function useConsultantsViewModel() {
         `/api/consultants/${encodeURIComponent(
           consultantId
         )}/program-images/${encodeURIComponent(imageId)}`,
-        { method: "DELETE", credentials: "include" }
+        { method: "DELETE", credentials: "include", cache: "no-store" }
       );
       if (!res.ok && res.status !== 204) {
         const info = await readJsonIfAny(res);
@@ -355,7 +424,7 @@ export default function useConsultantsViewModel() {
     createConsultant,
     updateConsultant,
     deleteConsultant,
-    deleteProgramImage, // <— expose
+    deleteProgramImage,
     refresh,
   };
 }

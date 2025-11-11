@@ -1,66 +1,124 @@
+// app/api/testimonials/[id]/route.js
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { randomUUID } from "crypto";
 import { cropFileTo16x9Webp } from "@/app/utils/cropper";
+
+// Storage client baru
+import storageClient from "@/app/utils/storageClient";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-/* =============== Auth & Shared Helpers =============== */
-async function assertAdmin() {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
-  if (!email) throw new Error("UNAUTHORIZED");
-  const admin = await prisma.admin_users.findUnique({ where: { email } });
-  if (!admin) throw new Error("FORBIDDEN");
-  return admin;
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MAX_UPLOAD_SIZE = 10 * 1024 * 1024;
+const PUBLIC_PREFIX = "cms-oss/testimonials";
+
+/* =========================
+   Public URL helpers
+========================= */
+function computePublicBase() {
+  const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return "";
+  try {
+    const u = new URL(base);
+    const host = u.host.replace(/^storage\./, "cdn.");
+    return `${u.protocol}//${host}`;
+  } catch {
+    return base;
+  }
+}
+function ensurePrefixedKey(key) {
+  const clean = String(key || "").replace(/^\/+/, "");
+  return clean.startsWith(PUBLIC_PREFIX + "/")
+    ? clean
+    : `${PUBLIC_PREFIX}/${clean}`;
+}
+function toPublicUrl(keyOrUrl) {
+  if (!keyOrUrl) return null;
+  const s = String(keyOrUrl).trim();
+  if (/^https?:\/\//i.test(s)) return s;
+  const cdn = computePublicBase();
+  const base =
+    cdn || (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  const path = ensurePrefixedKey(s);
+  if (!base) return `/${path}`;
+  return `${base}/public/${path}`;
 }
 
+/* =========================
+   URL → storage key (untuk cleanup)
+========================= */
+function toStorageKey(u) {
+  if (!u) return null;
+  const s = String(u).trim();
+  if (!/^https?:\/\//i.test(s)) {
+    // sudah key/path
+    return s.replace(/^\/+/, "");
+  }
+  const idx = s.indexOf("/public/");
+  if (idx >= 0) return s.slice(idx + "/public/".length).replace(/^\/+/, "");
+  return null;
+}
+
+/* =========================
+   Best-effort remover (batch)
+   Panggil gateway /api/storage/remove
+========================= */
+async function removeStorageObjects(urlsOrKeys = []) {
+  const keys = urlsOrKeys.map(toStorageKey).filter(Boolean);
+  if (!keys.length) return;
+  const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return;
+  try {
+    const res = await fetch(`${base}/api/storage/remove`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": process.env.OSS_STORAGE_API_KEY || "",
+      },
+      body: JSON.stringify({ keys }),
+    });
+    if (!res.ok) {
+      await fetch(`${base}/api/storage/delete`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": process.env.OSS_STORAGE_API_KEY || "",
+        },
+        body: JSON.stringify({ keys }),
+      }).catch(() => {});
+    }
+  } catch (_) {}
+}
+
+/* =========================
+   Auth & Utils
+========================= */
+async function requireAdmin() {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) {
+    const err = new Error("UNAUTHORIZED");
+    err.status = 401;
+    throw err;
+  }
+  return session.user;
+}
+function authError(err) {
+  const status = err?.status === 401 ? 401 : 403;
+  return NextResponse.json(
+    { error: { code: status === 401 ? "UNAUTHORIZED" : "FORBIDDEN" } },
+    { status }
+  );
+}
 function getLocaleFromReq(req) {
   try {
     const url = new URL(req.url);
     return (url.searchParams.get("locale") || "id").slice(0, 5).toLowerCase();
   } catch {
     return "id";
-  }
-}
-
-const BUCKET = process.env.SUPABASE_BUCKET;
-function isHttpUrl(path) {
-  return typeof path === "string" && /^https?:\/\//i.test(path);
-}
-function normalizeImageUrl(path) {
-  if (!path) return null;
-  if (isHttpUrl(path)) return path;
-  return path.startsWith("/") ? path : `/${path}`;
-}
-function pickExtFromMime(type) {
-  if (!type) return null;
-  if (/image\/webp/i.test(type)) return "webp";
-  if (/image\/png/i.test(type)) return "png";
-  if (/image\/jpe?g/i.test(type)) return "jpg";
-  return null;
-}
-function extFromName(name) {
-  if (typeof name !== "string") return null;
-  const match = /\.([a-z0-9]+)$/i.exec(name);
-  return match ? match[1].toLowerCase() : null;
-}
-function getPublicUrl(path) {
-  if (!path) return null;
-  if (isHttpUrl(path)) return path;
-  if (!BUCKET) return normalizeImageUrl(path);
-  try {
-    if (!supabaseAdmin?.storage) return normalizeImageUrl(path);
-    const { data, error } = supabaseAdmin.storage
-      .from(BUCKET)
-      .getPublicUrl(path);
-    if (error) return normalizeImageUrl(path);
-    return data?.publicUrl || normalizeImageUrl(path);
-  } catch {
-    return normalizeImageUrl(path);
   }
 }
 function trimOrNull(v, max = 255) {
@@ -88,18 +146,26 @@ function normalizeYoutubeUrl(u) {
     return null;
   }
 }
+function parseId(params) {
+  const raw = params?.id;
+  const s = String(raw ?? "").trim();
+  return s || null;
+}
 
+/* =========================
+   Upload (crop 16:9 → WebP)
+========================= */
 async function uploadTestimonialImage16x9(file) {
-  if (typeof File === "undefined" || !(file instanceof File))
+  if (typeof File === "undefined" || !(file instanceof File)) {
     throw new Error("NO_FILE");
-  if (!BUCKET) throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
-
-  const MAX = 10 * 1024 * 1024;
-  const allowed = ["image/jpeg", "image/png", "image/webp"];
-  const size = file.size || 0;
-  const type = file.type || "";
-  if (size > MAX) throw new Error("PAYLOAD_TOO_LARGE");
-  if (type && !allowed.includes(type)) throw new Error("UNSUPPORTED_TYPE");
+  }
+  const type = file?.type || "";
+  if (!ALLOWED_IMAGE_TYPES.has(type)) throw new Error("UNSUPPORTED_TYPE");
+  const size =
+    typeof file?.size === "number"
+      ? file.size
+      : (await file.arrayBuffer()).byteLength;
+  if (size > MAX_UPLOAD_SIZE) throw new Error("PAYLOAD_TOO_LARGE");
 
   const processed = await cropFileTo16x9Webp(file, {
     width: 1280,
@@ -107,67 +173,38 @@ async function uploadTestimonialImage16x9(file) {
     quality: 90,
   });
 
-  let { buffer, contentType, ext } = processed || {};
-
+  let { buffer, contentType } = processed || {};
   if (!buffer) {
-    const original = await file.arrayBuffer();
-    buffer = Buffer.from(original);
+    const ab = await file.arrayBuffer();
+    buffer = Buffer.from(ab);
   } else if (buffer instanceof ArrayBuffer) {
     buffer = Buffer.from(buffer);
   } else if (ArrayBuffer.isView(buffer)) {
     buffer = Buffer.from(buffer.buffer);
   }
-  if (!Buffer.isBuffer(buffer)) {
-    buffer = Buffer.from(buffer);
-  }
+  if (!Buffer.isBuffer(buffer)) buffer = Buffer.from(buffer);
   if (!buffer?.length) throw new Error("EMPTY_FILE_BUFFER");
 
-  const fallbackType = file.type || "application/octet-stream";
-  contentType = (contentType || fallbackType || "").toString() || fallbackType;
-  ext = (ext && String(ext).trim()) || pickExtFromMime(contentType) || extFromName(file.name) || "bin";
+  const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.webp`;
+  const folder = `${PUBLIC_PREFIX}/${new Date().toISOString().slice(0, 10)}`;
 
-  const safe = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-  const objectPath = `testimonials/${new Date()
-    .toISOString()
-    .slice(0, 10)}/${safe}`;
+  const blobFile = new File([buffer], filename, {
+    type: contentType || "image/webp",
+  });
+  const res = await storageClient.uploadBufferWithPresign(blobFile, {
+    folder,
+    isPublic: true,
+  });
 
-  const { error } = await supabaseAdmin.storage
-    .from(BUCKET)
-    .upload(objectPath, buffer, {
-      contentType,
-      upsert: false,
-      cacheControl: "3600",
-    });
-  if (error) throw new Error(error.message);
-  return objectPath;
-}
-
-async function resolveCategoryId({ category_id, category_slug }) {
-  if (category_id === null || category_id === "") return null;
-  if (category_slug === null || category_slug === "") return null;
-  if (typeof category_id === "string" && category_id.trim()) {
-    const found = await prisma.testimonial_categories.findUnique({
-      where: { id: category_id.trim() },
-      select: { id: true },
-    });
-    if (!found) throw new Error("CATEGORY_NOT_FOUND");
-    return found.id;
-  }
-  if (typeof category_slug === "string" && category_slug.trim()) {
-    const found = await prisma.testimonial_categories.findUnique({
-      where: { slug: category_slug.trim().toLowerCase() },
-      select: { id: true },
-    });
-    if (!found) throw new Error("CATEGORY_NOT_FOUND");
-    return found.id;
-  }
-  return undefined;
+  const publicUrl = res?.publicUrl || null;
+  if (!publicUrl) throw new Error("UPLOAD_FAILED");
+  return publicUrl;
 }
 
 /* ================ GET (detail) ================ */
 export async function GET(req, { params }) {
   try {
-    const { id } = params;
+    const id = parseId(params);
     const locale = getLocaleFromReq(req);
 
     const item = await prisma.testimonials.findUnique({
@@ -192,6 +229,7 @@ export async function GET(req, { params }) {
         id_testimonials: id,
         locale: locale === "id" ? "id" : { in: [locale, "id"] },
       },
+      select: { id: true, locale: true, name: true, message: true },
     });
     const picked =
       tr.find((t) => t.locale === locale) ||
@@ -217,13 +255,13 @@ export async function GET(req, { params }) {
       }
     }
 
-    const image_public_url = getPublicUrl(item.photo_url);
+    const image_public_url = toPublicUrl(item.photo_url);
 
-    return NextResponse.json({
+    const resp = NextResponse.json({
       data: {
         id: item.id,
-        photo_url: item.photo_url,
-        photo_public_url: image_public_url,
+        photo_url: item.photo_url, // bisa URL publik / key lama
+        photo_public_url: image_public_url, // normalisasi ke URL publik
         image_public_url,
         star: item.star ?? null,
         youtube_url: item.youtube_url ?? null,
@@ -236,6 +274,9 @@ export async function GET(req, { params }) {
         category,
       },
     });
+    resp.headers.set("Cache-Control", "no-store");
+    resp.headers.set("Vary", "Cookie, Accept-Language");
+    return resp;
   } catch (e) {
     console.error("GET /api/testimonials/[id] error:", e);
     return NextResponse.json({ message: "Server error" }, { status: 500 });
@@ -243,251 +284,285 @@ export async function GET(req, { params }) {
 }
 
 /* ================ PUT (update) ================ */
-export async function PUT(req, { params }) {
+export async function PUT(req, ctx) {
+  return PATCH(req, ctx);
+}
+
+export async function PATCH(req, { params }) {
   try {
-    await assertAdmin();
-    const { id } = params;
+    await requireAdmin();
+  } catch (err) {
+    return authError(err);
+  }
 
-    const contentType = (req.headers.get("content-type") || "").toLowerCase();
-    const isMultipart = contentType.startsWith("multipart/form-data");
-    const isUrlEncoded = contentType.startsWith(
-      "application/x-www-form-urlencoded"
-    );
+  const id = parseId(params);
+  if (!id) return NextResponse.json({ message: "Bad id" }, { status: 400 });
 
-    let body = {};
-    let uploadFile = null;
+  // Snapshot existing
+  const base = await prisma.testimonials.findUnique({
+    where: { id },
+    select: { id: true, photo_url: true, deleted_at: true },
+  });
+  if (!base || base.deleted_at) {
+    return NextResponse.json({ message: "Not found" }, { status: 404 });
+  }
 
-    if (isMultipart || isUrlEncoded) {
-      let form;
-      try {
-        form = await req.formData();
-      } catch {
-        return NextResponse.json(
-          {
-            message:
-              "Body form-data tidak valid. Gunakan Body=form-data dan biarkan header otomatis.",
-          },
-          { status: 400 }
-        );
-      }
-      uploadFile = form.get("file") || null;
-      const maybeFile = form.get("photo_url");
-      if (
-        !uploadFile &&
-        typeof File !== "undefined" &&
-        maybeFile instanceof File
-      ) {
-        uploadFile = maybeFile;
-      }
-      const obj = {};
-      for (const [k, v] of form.entries()) {
-        if (v instanceof File) continue;
-        obj[k] = v;
-      }
-      body = obj;
-    } else {
-      body = (await req.json().catch(() => ({}))) ?? {};
-    }
+  const contentType = (req.headers.get("content-type") || "").toLowerCase();
+  const isMultipart = contentType.startsWith("multipart/form-data");
+  const isUrlEncoded = contentType.startsWith(
+    "application/x-www-form-urlencoded"
+  );
 
-    const locale = (body.locale || "id").slice(0, 5).toLowerCase();
+  let body = {};
+  let uploadFile = null;
 
-    const base = await prisma.testimonials.findUnique({ where: { id } });
-    if (!base || base.deleted_at)
-      return NextResponse.json({ message: "Not found" }, { status: 404 });
-
-    const star = parseStar(body.star);
-    if (body.star !== undefined && star === null)
+  if (isMultipart || isUrlEncoded) {
+    let form;
+    try {
+      form = await req.formData();
+    } catch {
       return NextResponse.json(
-        { message: "star harus integer 1-5" },
+        {
+          message:
+            "Body form-data tidak valid. Gunakan Body=form-data dan biarkan header otomatis.",
+        },
+        { status: 400 }
+      );
+    }
+    uploadFile = form.get("file") || null;
+    const maybeFile = form.get("photo_url");
+    if (
+      !uploadFile &&
+      typeof File !== "undefined" &&
+      maybeFile instanceof File
+    ) {
+      uploadFile = maybeFile;
+    }
+    const obj = {};
+    for (const [k, v] of form.entries()) {
+      if (v instanceof File) continue;
+      obj[k] = v;
+    }
+    body = obj;
+  } else {
+    body = (await req.json().catch(() => ({}))) ?? {};
+  }
+
+  const locale = (body.locale || "id").slice(0, 5).toLowerCase();
+  const star = parseStar(body.star);
+  if (body.star !== undefined && star === null) {
+    return NextResponse.json(
+      { message: "star harus integer 1-5" },
+      { status: 422 }
+    );
+  }
+
+  const youtube_url = normalizeYoutubeUrl(body.youtube_url);
+  const kampus_negara_tujuan =
+    body.kampus_negara_tujuan === undefined && body.campusCountry === undefined
+      ? undefined
+      : (body.kampus_negara_tujuan ?? body.campusCountry ?? "")
+          .toString()
+          .trim()
+          .slice(0, 255);
+
+  // Category
+  let categoryId;
+  try {
+    categoryId = await (async () => {
+      const category_id = body.category_id;
+      const category_slug = body.category_slug;
+      if (category_id === null || category_id === "") return null;
+      if (category_slug === null || category_slug === "") return null;
+
+      if (typeof category_id === "string" && category_id.trim()) {
+        const found = await prisma.testimonial_categories.findUnique({
+          where: { id: category_id.trim() },
+          select: { id: true },
+        });
+        if (!found) throw new Error("CATEGORY_NOT_FOUND");
+        return found.id;
+      }
+      if (typeof category_slug === "string" && category_slug.trim()) {
+        const found = await prisma.testimonial_categories.findUnique({
+          where: { slug: category_slug.trim().toLowerCase() },
+          select: { id: true },
+        });
+        if (!found) throw new Error("CATEGORY_NOT_FOUND");
+        return found.id;
+      }
+      return undefined;
+    })();
+  } catch (err) {
+    if (err?.message === "CATEGORY_NOT_FOUND")
+      return NextResponse.json(
+        { message: "Kategori tidak ditemukan" },
         { status: 422 }
       );
-
-    const youtube_url = normalizeYoutubeUrl(body.youtube_url);
-    const kampus_negara_tujuan =
-      body.kampus_negara_tujuan === undefined &&
-      body.campusCountry === undefined
-        ? undefined
-        : (body.kampus_negara_tujuan ?? body.campusCountry ?? "")
-            .toString()
-            .trim()
-            .slice(0, 255);
-
-    let categoryId;
-    try {
-      categoryId = await resolveCategoryId({
-        category_id: body.category_id,
-        category_slug: body.category_slug,
-      });
-    } catch (err) {
-      if (err?.message === "CATEGORY_NOT_FOUND")
-        return NextResponse.json(
-          { message: "Kategori tidak ditemukan" },
-          { status: 422 }
-        );
-      throw err;
-    }
-
-    let storedPhotoPath = undefined;
-    if (
-      uploadFile &&
-      typeof File !== "undefined" &&
-      uploadFile instanceof File
-    ) {
-      try {
-        // ⬇️ crop 16:9 sebelum upload
-        storedPhotoPath = await uploadTestimonialImage16x9(uploadFile);
-      } catch (e) {
-        if (e?.message === "PAYLOAD_TOO_LARGE")
-          return NextResponse.json(
-            { message: "Maksimal 10MB" },
-            { status: 413 }
-          );
-        if (e?.message === "UNSUPPORTED_TYPE")
-          return NextResponse.json(
-            { message: "Format harus JPEG/PNG/WebP" },
-            { status: 415 }
-          );
-        if (e?.message === "SUPABASE_BUCKET_NOT_CONFIGURED")
-          return NextResponse.json(
-            { message: "Supabase bucket belum dikonfigurasi" },
-            { status: 500 }
-          );
-        console.error("uploadTestimonialImage error:", e);
-        return NextResponse.json(
-          { message: "Upload gambar gagal" },
-          { status: 500 }
-        );
-      }
-    } else if (body.photo_url !== undefined) {
-      const trimmed = trimOrNull(body.photo_url, 255);
-      storedPhotoPath = trimmed === null ? null : trimmed;
-    }
-
-    const parentPatch = {};
-    if (storedPhotoPath !== undefined) parentPatch.photo_url = storedPhotoPath;
-    if (star !== undefined) parentPatch.star = star;
-    if (youtube_url !== undefined) parentPatch.youtube_url = youtube_url;
-    if (kampus_negara_tujuan !== undefined)
-      parentPatch.kampus_negara_tujuan = kampus_negara_tujuan || null;
-    if (categoryId !== undefined) parentPatch.category_id = categoryId;
-
-    if (Object.keys(parentPatch).length) {
-      await prisma.testimonials.update({ where: { id }, data: parentPatch });
-    }
-
-    const name = trimOrNull(body.name, 191);
-    const message = trimOrNull(body.message, 10000);
-    if (name !== null || message !== null) {
-      const exist = await prisma.testimonials_translate.findFirst({
-        where: { id_testimonials: id, locale },
-      });
-      if (exist) {
-        await prisma.testimonials_translate.update({
-          where: { id: exist.id },
-          data: {
-            ...(name !== null ? { name } : {}),
-            ...(message !== null ? { message } : {}),
-          },
-        });
-      } else {
-        await prisma.testimonials_translate.create({
-          data: {
-            id_testimonials: id,
-            locale,
-            name: name ?? "",
-            message: message ?? "",
-          },
-        });
-      }
-    }
-
-    const latest = await prisma.testimonials.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        photo_url: true,
-        star: true,
-        youtube_url: true,
-        kampus_negara_tujuan: true,
-        category_id: true,
-        updated_at: true,
-      },
-    });
-
-    let category = null;
-    if (latest?.category_id) {
-      const cat = await prisma.testimonial_categories.findUnique({
-        where: { id: latest.category_id },
-        select: { id: true, slug: true },
-      });
-      if (cat) {
-        const i18n =
-          (await prisma.testimonial_categories_translate.findFirst({
-            where: {
-              category_id: cat.id,
-              locale: locale === "id" ? "id" : { in: [locale, "id"] },
-            },
-            orderBy: [{ locale: "desc" }],
-          })) || null;
-        category = { id: cat.id, slug: cat.slug, name: i18n?.name ?? null };
-      }
-    }
-
-    const trs = await prisma.testimonials_translate.findMany({
-      where: {
-        id_testimonials: id,
-        locale: locale === "id" ? "id" : { in: [locale, "id"] },
-      },
-    });
-    const picked =
-      trs.find((t) => t.locale === locale) ||
-      trs.find((t) => t.locale === "id") ||
-      null;
-
-    const image_public_url = getPublicUrl(latest?.photo_url ?? null);
-
-    return NextResponse.json({
-      data: {
-        id,
-        photo_url: latest?.photo_url ?? null,
-        photo_public_url: image_public_url,
-        image_public_url,
-        star: latest?.star ?? null,
-        youtube_url: latest?.youtube_url ?? null,
-        kampus_negara_tujuan: latest?.kampus_negara_tujuan ?? null,
-        name: picked?.name ?? null,
-        message: picked?.message ?? null,
-        locale: picked?.locale ?? null,
-        category,
-        updated_at: latest?.updated_at ?? new Date(),
-      },
-    });
-  } catch (e) {
-    if (e?.message === "UNAUTHORIZED")
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    if (e?.message === "FORBIDDEN")
-      return NextResponse.json({ message: "Forbidden" }, { status: 403 });
-    console.error("PUT /api/testimonials/[id] error:", e);
-    return NextResponse.json({ message: "Server error" }, { status: 500 });
+    throw err;
   }
+
+  // Upload baru?
+  let newPhotoUrl = undefined;
+  if (uploadFile && typeof File !== "undefined" && uploadFile instanceof File) {
+    try {
+      newPhotoUrl = await uploadTestimonialImage16x9(uploadFile); // URL publik
+    } catch (e) {
+      if (e?.message === "PAYLOAD_TOO_LARGE")
+        return NextResponse.json({ message: "Maksimal 10MB" }, { status: 413 });
+      if (e?.message === "UNSUPPORTED_TYPE")
+        return NextResponse.json(
+          { message: "Format harus JPEG/PNG/WebP" },
+          { status: 415 }
+        );
+      console.error("uploadTestimonialImage error:", e);
+      return NextResponse.json(
+        { message: "Upload gambar gagal" },
+        { status: 500 }
+      );
+    }
+  } else if (body.photo_url !== undefined) {
+    const trimmed = trimOrNull(body.photo_url, 255);
+    newPhotoUrl = trimmed === null ? null : trimmed; // bisa kosongkan gambar
+  }
+
+  const parentPatch = {};
+  if (newPhotoUrl !== undefined) parentPatch.photo_url = newPhotoUrl;
+  if (star !== undefined) parentPatch.star = star;
+  if (youtube_url !== undefined) parentPatch.youtube_url = youtube_url;
+  if (kampus_negara_tujuan !== undefined)
+    parentPatch.kampus_negara_tujuan = kampus_negara_tujuan || null;
+  if (categoryId !== undefined) parentPatch.category_id = categoryId;
+
+  let postCleanupPhoto = null;
+  if (Object.keys(parentPatch).length) {
+    // jika fotonya diganti, catat yang lama untuk cleanup
+    if (
+      newPhotoUrl !== undefined &&
+      base.photo_url &&
+      base.photo_url !== newPhotoUrl
+    ) {
+      postCleanupPhoto = base.photo_url;
+    }
+    await prisma.testimonials.update({ where: { id }, data: parentPatch });
+  }
+
+  // Upsert translation
+  const name = trimOrNull(body.name, 191);
+  const message = trimOrNull(body.message, 10000);
+  if (name !== null || message !== null) {
+    const exist = await prisma.testimonials_translate.findFirst({
+      where: { id_testimonials: id, locale },
+    });
+    if (exist) {
+      await prisma.testimonials_translate.update({
+        where: { id: exist.id },
+        data: {
+          ...(name !== null ? { name } : {}),
+          ...(message !== null ? { message } : {}),
+        },
+      });
+    } else {
+      await prisma.testimonials_translate.create({
+        data: {
+          id_testimonials: id,
+          locale,
+          name: name ?? "",
+          message: message ?? "",
+        },
+      });
+    }
+  }
+
+  const latest = await prisma.testimonials.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      photo_url: true,
+      star: true,
+      youtube_url: true,
+      kampus_negara_tujuan: true,
+      category_id: true,
+      updated_at: true,
+    },
+  });
+
+  let category = null;
+  if (latest?.category_id) {
+    const cat = await prisma.testimonial_categories.findUnique({
+      where: { id: latest.category_id },
+      select: { id: true, slug: true },
+    });
+    if (cat) {
+      const i18n =
+        (await prisma.testimonial_categories_translate.findFirst({
+          where: {
+            category_id: cat.id,
+            locale: locale === "id" ? "id" : { in: [locale, "id"] },
+          },
+          orderBy: [{ locale: "desc" }],
+        })) || null;
+      category = { id: cat.id, slug: cat.slug, name: i18n?.name ?? null };
+    }
+  }
+
+  const trs = await prisma.testimonials_translate.findMany({
+    where: {
+      id_testimonials: id,
+      locale: locale === "id" ? "id" : { in: [locale, "id"] },
+    },
+  });
+  const picked =
+    trs.find((t) => t.locale === locale) ||
+    trs.find((t) => t.locale === "id") ||
+    null;
+
+  const image_public_url = toPublicUrl(latest?.photo_url ?? null);
+
+  // cleanup best-effort (hapus foto lama jika diganti)
+  if (postCleanupPhoto) {
+    try {
+      await removeStorageObjects([postCleanupPhoto]);
+    } catch {}
+  }
+
+  const resp = NextResponse.json({
+    data: {
+      id,
+      photo_url: latest?.photo_url ?? null,
+      photo_public_url: image_public_url,
+      image_public_url,
+      star: latest?.star ?? null,
+      youtube_url: latest?.youtube_url ?? null,
+      kampus_negara_tujuan: latest?.kampus_negara_tujuan ?? null,
+      name: picked?.name ?? null,
+      message: picked?.message ?? null,
+      locale: picked?.locale ?? null,
+      category,
+      updated_at: latest?.updated_at ?? new Date(),
+    },
+  });
+  resp.headers.set("Cache-Control", "no-store");
+  resp.headers.set("Vary", "Cookie, Accept-Language");
+  return resp;
 }
 
 /* ================ DELETE (soft delete) ================ */
 export async function DELETE(_req, { params }) {
   try {
-    await assertAdmin();
-    const { id } = params;
-    const deleted = await prisma.testimonials.update({
-      where: { id },
-      data: { deleted_at: new Date() },
-    });
-    return NextResponse.json({ data: deleted });
-  } catch (e) {
-    if (e?.message === "UNAUTHORIZED")
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    if (e?.message === "FORBIDDEN")
-      return NextResponse.json({ message: "Forbidden" }, { status: 403 });
-    console.error("DELETE /api/testimonials/[id] error:", e);
-    return NextResponse.json({ message: "Server error" }, { status: 500 });
+    await requireAdmin();
+  } catch (err) {
+    return authError(err);
   }
+
+  const id = parseId(params);
+  if (!id) return NextResponse.json({ message: "Bad id" }, { status: 400 });
+
+  const deleted = await prisma.testimonials.update({
+    where: { id },
+    data: { deleted_at: new Date() },
+    select: { id: true, deleted_at: true },
+  });
+
+  return NextResponse.json({ data: deleted });
 }

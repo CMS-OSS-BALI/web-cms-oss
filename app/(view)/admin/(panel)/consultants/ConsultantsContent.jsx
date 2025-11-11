@@ -1,4 +1,5 @@
-﻿"use client";
+﻿// ConsultantsContent.jsx
+"use client";
 
 import { useMemo, useState } from "react";
 import {
@@ -28,43 +29,34 @@ import {
 
 export default function ConsultantsContent({ vm }) {
   const { t, tokens } = vm;
-  const { shellW, blue, text } = tokens; // headerH tidak dipakai lagi
-  const maxW = tokens.maxW ?? 1140; // fallback cap
+  const { shellW, blue, text } = tokens;
+  const maxW = tokens.maxW ?? 1140;
 
-  // notifications
   const [notify, contextHolder] = notification.useNotification();
   const ok = (msg, desc) =>
     notify.success({ message: msg, description: desc, placement: "topRight" });
   const err = (msg, desc) =>
     notify.error({ message: msg, description: desc, placement: "topRight" });
 
-  // modals
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
   const [activeRow, setActiveRow] = useState(null);
 
-  // forms
   const [formCreate] = Form.useForm();
   const [formEdit] = Form.useForm();
 
-  // avatar preview
   const [avatarPreviewCreate, setAvatarPreviewCreate] = useState("");
   const [avatarPreviewEdit, setAvatarPreviewEdit] = useState("");
 
-  // program images (untuk modal edit)
   const [editProgramImages, setEditProgramImages] = useState([]);
-
-  // loading detail saat buka edit
   const [editLoading, setEditLoading] = useState(false);
 
-  // ----- DETAIL (view) states -----
   const [viewLoading, setViewLoading] = useState(false);
   const [viewData, setViewData] = useState(null);
   const [viewAvatar, setViewAvatar] = useState("");
   const [viewProgramImages, setViewProgramImages] = useState([]);
 
-  // rows
   const rows = useMemo(
     () =>
       (vm.consultants || []).map((c) => ({
@@ -73,12 +65,12 @@ export default function ConsultantsContent({ vm }) {
         email: c.email || "-",
         phone: c.whatsapp || c.phone || c.no_whatsapp || "-",
         description: c.description || "",
-        avatarUrl: c.profile_image_public_url || "",
+        // server sudah kirim profile_image_url (public URL)
+        avatarUrl: c.profile_image_url || "",
       })),
     [vm.consultants]
   );
 
-  /* ---------- Upload helpers ---------- */
   const normList = (e) => (Array.isArray(e) ? e : e?.fileList || []);
   const isImg = (f) =>
     ["image/jpeg", "image/png", "image/webp"].includes(f?.type || "");
@@ -93,7 +85,7 @@ export default function ConsultantsContent({ vm }) {
       err("Ukuran gambar terlalu besar", `Maksimal ${maxMB}MB`);
       return Upload.LIST_IGNORE;
     }
-    return false; // block auto-upload
+    return false;
   };
 
   const beforeAvatarCreate = (file) => {
@@ -113,7 +105,6 @@ export default function ConsultantsContent({ vm }) {
     return false;
   };
 
-  /* ---------- Submit handlers ---------- */
   const onCreate = async () => {
     const v = await formCreate.validateFields().catch(() => null);
     if (!v) return;
@@ -130,6 +121,7 @@ export default function ConsultantsContent({ vm }) {
       description: v.description || "",
       profile_file: avatar,
       program_files: programFiles,
+      // autoTranslate handled in view model (true for create)
     });
 
     if (res.ok) {
@@ -152,9 +144,8 @@ export default function ConsultantsContent({ vm }) {
       .map((it) => it.originFileObj)
       .filter(Boolean);
 
-    // kirim list yang dipertahankan
     const keptProgramImages = editProgramImages
-      .map((pi) => pi.image_url || pi.image_public_url || pi.url || "")
+      .map((pi) => pi.image_url || "")
       .filter(Boolean);
 
     const res = await vm.updateConsultant(activeRow.id, {
@@ -164,6 +155,8 @@ export default function ConsultantsContent({ vm }) {
       description: v.description || "",
       imagesMode: "replace",
       program_images: keptProgramImages,
+      // MATIKAN autoTranslate saat edit agar PATCH cepat
+      autoTranslate: false,
       ...(avatar ? { profile_file: avatar } : {}),
       ...(programFiles.length ? { program_files: programFiles } : {}),
     });
@@ -185,9 +178,8 @@ export default function ConsultantsContent({ vm }) {
   };
 
   const goPrev = () => vm.setPage(Math.max(1, vm.page - 1));
-  const goNext = () => vm.setPage(vm.page + 1); // hindari Math.min(undefined, ...)
+  const goNext = () => vm.setPage(vm.page + 1);
 
-  /* ---------- Open Edit w/ fresh detail ---------- */
   const openEdit = async (row) => {
     setActiveRow(row);
     formEdit.setFieldsValue({
@@ -215,11 +207,11 @@ export default function ConsultantsContent({ vm }) {
       no_whatsapp: d.whatsapp ?? row.phone ?? "",
       description: d.description ?? row.description ?? "",
     });
-    setAvatarPreviewEdit(d.profile_image_public_url || row.avatarUrl || "");
+    // gunakan profile_image_url (public URL)
+    setAvatarPreviewEdit(d.profile_image_url || row.avatarUrl || "");
     setEditProgramImages(d.program_images || []);
   };
 
-  // Hapus 1 foto program (optimistic + call API)
   const handleDeleteProgramImage = async (imgObj) => {
     if (!activeRow || !imgObj?.id) return;
     const backup = [...editProgramImages];
@@ -227,13 +219,12 @@ export default function ConsultantsContent({ vm }) {
     const out = await vm.deleteProgramImage(activeRow.id, imgObj.id);
     if (!out.ok) {
       err("Gagal menghapus foto", out.error);
-      setEditProgramImages(backup); // rollback
+      setEditProgramImages(backup);
     } else {
       ok("Terhapus", "Foto program dihapus.");
     }
   };
 
-  /* ---------- Open View w/ fresh detail (styled like forms) ---------- */
   const openView = async (row) => {
     setActiveRow(row);
     setViewOpen(true);
@@ -251,7 +242,7 @@ export default function ConsultantsContent({ vm }) {
       return;
     }
     setViewData(data);
-    setViewAvatar(data.profile_image_public_url || row.avatarUrl || "");
+    setViewAvatar(data.profile_image_url || row.avatarUrl || "");
     setViewProgramImages(data.program_images || []);
   };
 
@@ -276,7 +267,6 @@ export default function ConsultantsContent({ vm }) {
     >
       {contextHolder}
 
-      {/* ===== Layout: hapus negative margin agar header tidak ketiban ===== */}
       <section
         style={{
           width: "100%",
@@ -284,11 +274,10 @@ export default function ConsultantsContent({ vm }) {
           minHeight: "100dvh",
           display: "flex",
           alignItems: "flex-start",
-          padding: "56px 0", // ruang wajar di bawah header global
+          padding: "56px 0",
           overflowX: "hidden",
         }}
       >
-        {/* full-bleed background layer */}
         <div
           aria-hidden
           style={{
@@ -309,7 +298,6 @@ export default function ConsultantsContent({ vm }) {
             zIndex: 1,
           }}
         >
-          {/* Manajemen Konsultan */}
           <div style={styles.cardOuter}>
             <div style={styles.cardHeaderBar} />
             <div style={styles.cardInner}>
@@ -317,13 +305,12 @@ export default function ConsultantsContent({ vm }) {
               <div style={styles.totalBadgeWrap}>
                 <div style={styles.totalBadgeLabel}>{t.totalLabel}</div>
                 <div style={styles.totalBadgeValue}>
-                  {vm.total ?? rows.length ?? "â€”"}
+                  {vm.total ?? rows.length ?? "—"}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Data Konsultan */}
           <div style={{ ...styles.cardOuter, marginTop: 16 }}>
             <div style={{ ...styles.cardInner, paddingTop: 18 }}>
               <div style={styles.sectionHeader}>
@@ -337,7 +324,6 @@ export default function ConsultantsContent({ vm }) {
                 </Button>
               </div>
 
-              {/* Header */}
               <div style={styles.tableHeader}>
                 <div style={styles.thCenter}>{t.name}</div>
                 <div style={styles.thCenter}>{t.email}</div>
@@ -363,7 +349,6 @@ export default function ConsultantsContent({ vm }) {
                 ) : (
                   rows.map((r) => (
                     <div key={r.id} style={styles.row}>
-                      {/* Nama + avatar */}
                       <div style={styles.colName}>
                         <div style={styles.nameCell}>
                           {renderAvatar(r.avatarUrl, r.name)}
@@ -373,13 +358,9 @@ export default function ConsultantsContent({ vm }) {
                         </div>
                       </div>
 
-                      {/* Email */}
                       <div style={styles.colCenter}>{r.email || "-"}</div>
-
-                      {/* Phone */}
                       <div style={styles.colCenter}>{r.phone || "-"}</div>
 
-                      {/* Actions */}
                       <div style={styles.colActionsCenter}>
                         <Tooltip title={t.view}>
                           <Button
@@ -439,7 +420,7 @@ export default function ConsultantsContent({ vm }) {
         </div>
       </section>
 
-      {/* ===== Modal: Create ===== */}
+      {/* Create */}
       <Modal
         open={createOpen}
         onCancel={() => {
@@ -454,7 +435,6 @@ export default function ConsultantsContent({ vm }) {
       >
         <div style={styles.modalShell}>
           <Form layout="vertical" form={formCreate}>
-            {/* Avatar + preview */}
             <div style={styles.avatarWrap}>
               <Form.Item
                 name="avatar"
@@ -559,7 +539,7 @@ export default function ConsultantsContent({ vm }) {
         </div>
       </Modal>
 
-      {/* ===== Modal: Edit ===== */}
+      {/* Edit */}
       <Modal
         open={editOpen}
         onCancel={() => {
@@ -576,7 +556,6 @@ export default function ConsultantsContent({ vm }) {
         <div style={styles.modalShell}>
           <Spin spinning={editLoading}>
             <Form layout="vertical" form={formEdit}>
-              {/* Avatar + preview */}
               <div style={styles.avatarWrap}>
                 <Form.Item
                   name="avatar"
@@ -644,7 +623,6 @@ export default function ConsultantsContent({ vm }) {
                 <Input.TextArea rows={3} placeholder="Deskripsi (opsional)" />
               </Form.Item>
 
-              {/* ===== Program Images ===== */}
               <div style={styles.blockHeaderRow}>
                 <div style={styles.blockLabel}>{t.programBlock}</div>
                 <Tag color="blue" style={styles.countTag}>
@@ -655,7 +633,7 @@ export default function ConsultantsContent({ vm }) {
               {editProgramImages.length ? (
                 <div style={styles.galleryGrid}>
                   {editProgramImages.map((pi) => {
-                    const src = pi.image_public_url || pi.image_url || "";
+                    const src = pi.image_url || "";
                     return (
                       <div key={pi.id} style={styles.thumb}>
                         <img src={src} alt="program" style={styles.thumbImg} />
@@ -677,7 +655,6 @@ export default function ConsultantsContent({ vm }) {
                 <div style={styles.noImagesHint}>Belum ada foto program.</div>
               )}
 
-              {/* Upload tambahan */}
               <Form.Item
                 name="program_files"
                 valuePropName="fileList"
@@ -711,7 +688,7 @@ export default function ConsultantsContent({ vm }) {
         </div>
       </Modal>
 
-      {/* ===== Modal: View (styled like forms) ===== */}
+      {/* View */}
       <Modal
         open={viewOpen}
         onCancel={() => {
@@ -727,7 +704,6 @@ export default function ConsultantsContent({ vm }) {
       >
         <div style={styles.modalShell}>
           <Spin spinning={viewLoading}>
-            {/* Avatar + preview (read-only) */}
             <div style={styles.avatarWrap}>
               <div style={styles.avatarCircle}>
                 {viewAvatar ? (
@@ -748,7 +724,6 @@ export default function ConsultantsContent({ vm }) {
               <div style={styles.avatarHint}>Foto Profil</div>
             </div>
 
-            {/* Info fields */}
             <div style={{ display: "grid", gap: 10, marginTop: 6 }}>
               <div>
                 <div style={styles.label}>{t.name}</div>
@@ -779,7 +754,6 @@ export default function ConsultantsContent({ vm }) {
               </div>
             </div>
 
-            {/* Program Images (read-only) */}
             <div style={styles.blockHeaderRow}>
               <div style={styles.blockLabel}>{t.programBlock}</div>
               <Tag color="blue" style={styles.countTag}>
@@ -790,7 +764,7 @@ export default function ConsultantsContent({ vm }) {
             {viewProgramImages.length ? (
               <div style={styles.galleryGrid}>
                 {viewProgramImages.map((pi) => {
-                  const src = pi.image_public_url || pi.image_url || "";
+                  const src = pi.image_url || "";
                   return (
                     <div key={pi.id} style={styles.thumb}>
                       <img src={src} alt="program" style={styles.thumbImg} />
@@ -808,7 +782,7 @@ export default function ConsultantsContent({ vm }) {
   );
 }
 
-/* ===== Styles ===== */
+/* ===== Styles (sudah rapih) ===== */
 const styles = {
   cardOuter: {
     background: "#ffffff",
@@ -951,7 +925,6 @@ const styles = {
     boxShadow: "inset 0 2px 6px rgba(11,86,201,0.05)",
   },
 
-  /* Modal shared */
   modalShell: {
     position: "relative",
     background: "#fff",
@@ -996,7 +969,6 @@ const styles = {
   },
   countTag: { borderRadius: 10 },
 
-  // thumbnails
   galleryGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))",
@@ -1041,4 +1013,3 @@ const styles = {
   modalFooter: { marginTop: 10, display: "grid", placeItems: "center" },
   saveBtn: { minWidth: 220, height: 44, borderRadius: 14 },
 };
-

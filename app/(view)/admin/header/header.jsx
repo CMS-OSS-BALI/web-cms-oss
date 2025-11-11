@@ -1,3 +1,4 @@
+// Header.jsx
 "use client";
 
 import { useRouter } from "next/navigation";
@@ -51,9 +52,14 @@ export default function Header() {
         >
           <button className="ah-avatar-btn" aria-label="User menu">
             {vm.user.image ? (
-              <Avatar size={36} src={vm.user.image} className="ah-avatar" />
+              <Avatar
+                size={36}
+                src={vm.user.image}
+                className="ah-avatar"
+                alt={vm.user.name}
+              />
             ) : (
-              <Avatar size={36} className="ah-avatar">
+              <Avatar size={36} className="ah-avatar" alt={vm.user.name}>
                 {vm.user.initials || <UserOutlined />}
               </Avatar>
             )}
