@@ -6,7 +6,7 @@ import Link from "next/link";
 import useCollegeDetailViewModel from "./useCollegeDetailViewModel";
 import { sanitizeHtml } from "@/app/utils/dompurify";
 
-/* ===== Storage helpers (gateway/CDN) ===== */
+/* ================== Storage helpers (gateway/CDN) ================== */
 const PUBLIC_PREFIX = "cms-oss";
 
 function computePublicBase() {
@@ -47,7 +47,21 @@ const normalizeSrc = (s = "") =>
   "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>";
 const shouldUnoptimize = (s = "") => /^(https?:|data:|blob:)/i.test(s);
 
-/* ===== Base ===== */
+/* ============================ Hooks ============================ */
+function useIsNarrow(breakpoint = 980) {
+  const [isNarrow, setIsNarrow] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia?.(`(max-width:${breakpoint}px)`);
+    const apply = () => setIsNarrow(!!mq?.matches);
+    apply();
+    mq?.addEventListener?.("change", apply);
+    return () => mq?.removeEventListener?.("change", apply);
+  }, [breakpoint]);
+  return isNarrow;
+}
+
+/* ============================ Tokens ============================ */
 const FONT_FAMILY = '"Public Sans", sans-serif';
 const HEADER_OFFSET = "clamp(48px, 8vw, 84px)";
 const STICKY_TOP = "clamp(72px, 9vw, 108px)";
@@ -58,7 +72,7 @@ const shell = {
   inner: { width: "min(1180px, 96%)", margin: "0 auto" },
 };
 
-/* ===== HERO ===== */
+/* ============================ HERO ============================ */
 const heroStyles = {
   wrapBleed: {
     width: "100vw",
@@ -71,7 +85,7 @@ const heroStyles = {
     height: "clamp(520px, 58vw, 700px)",
     overflow: "hidden",
     background: "#eaf2ff",
-    borderRadius: "28px",
+    borderRadius: 28,
     boxShadow: "0 24px 60px rgba(15,23,42,.25)",
   },
   overlay: {
@@ -89,42 +103,31 @@ const heroStyles = {
     top: "50%",
     transform: "translateY(-50%)",
     display: "grid",
-    gridTemplateColumns: "minmax(260px, 460px) 1fr",
-    alignItems: "center",
-    gap: 32,
-  },
-  logoCard: {
-    justifySelf: "start",
-    background: "#fff",
-    borderRadius: 24,
-    padding: "26px 28px",
-    minHeight: 180,
-    display: "grid",
-    placeItems: "center",
-    boxShadow: "0 18px 44px rgba(15,23,42,.20)",
+    justifyItems: "center",
+    gap: 16,
+    textAlign: "center",
   },
   logoBox: {
     position: "relative",
-    width: "min(360px, 32vw)",
-    height: "min(140px, 18vw)",
+    width: "min(460px, 40vw)",
+    height: "min(180px, 16vw)",
   },
-  titleWrap: { textAlign: "center" },
   title: {
     margin: 0,
     color: "#fff",
     fontWeight: 900,
     letterSpacing: ".12em",
     textTransform: "uppercase",
-    fontSize: "clamp(40px, 9vw, 90px)",
+    fontSize: "clamp(32px, 8vw, 84px)",
     lineHeight: 1.02,
     textShadow: "0 8px 22px rgba(0,0,0,.35)",
   },
   metaRow: {
-    marginTop: 18,
+    marginTop: 10,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    gap: 22,
+    gap: 18,
     flexWrap: "wrap",
   },
   flag: {
@@ -136,42 +139,36 @@ const heroStyles = {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    height: 56,
-    padding: "0 clamp(18px, 3.4vw, 38px)",
+    height: 48,
+    padding: "0 clamp(14px, 3.4vw, 30px)",
     background: "#ffffff",
     color: "#0B4DA6",
-    borderRadius: 28,
+    borderRadius: 26,
     fontWeight: 900,
-    fontSize: "clamp(16px, 2.4vw, 26px)",
+    fontSize: "clamp(14px, 2.6vw, 22px)",
     textDecoration: "none",
     boxShadow: "0 16px 34px rgba(0,0,0,.22)",
   },
   media: `
     @media (max-width: 980px){
-      .cd-hero-grid { grid-template-columns: 1fr; gap: 24px; }
-      .cd-hero-logo-card { justify-self: center; width: min(92%, 560px); }
-      .cd-hero-title-wrap { text-align: center; }
+      .cd-hero-logo { width: min(82vw, 520px) !important; height: min(32vw, 160px) !important; }
+      .cd-hero-title { letter-spacing: .08em !important; font-size: clamp(24px, 7.4vw, 44px) !important; }
+      .cd-hero-pill  { height: 44px !important; padding: 0 clamp(12px, 4vw, 20px) !important; font-size: clamp(13px, 4vw, 16px) !important; }
     }
   `,
 };
 
-/* ===== LAYOUT ===== */
+/* ============================ Layout/Blocks ============================ */
 const layout = {
   section: { padding: "32px 0 44px" },
-  grid: {
-    display: "grid",
-    gridTemplateColumns: "260px 1fr",
-    gap: 32,
-    alignItems: "start",
-  },
-  aside: {
-    alignSelf: "stretch",
-    height: "100%",
-    padding: 0,
-    position: "relative",
-  },
+  aside: { alignSelf: "stretch", position: "relative" },
   sidenavStick: { position: "sticky", top: STICKY_TOP },
-  content: { background: "#fff", borderRadius: 16, padding: "22px 22px 24px" },
+  content: {
+    background: "#fff",
+    borderRadius: 16,
+    padding: "22px 22px 24px",
+    scrollMarginTop: CLICK_OFFSET_PX,
+  },
   h2: {
     margin: "0 0 10px",
     color: "#0B2F74",
@@ -187,6 +184,12 @@ const layout = {
   },
   body: { color: "#2b3a5e", lineHeight: 1.8, opacity: 0.98 },
   media: `
+    .cd-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 260px) 1fr;
+      gap: 32px;
+      align-items: start;
+    }
     @media (max-width: 980px){
       .cd-grid { grid-template-columns: 1fr; gap: 18px; }
       .cd-sidenav-stick { position: static; }
@@ -194,36 +197,21 @@ const layout = {
   `,
 };
 
-/* ===== Blocks ===== */
 const leftNavCSS = `
   .cd-leftnav { display: grid; gap: 14px; }
   .cd-leftnav__item {
-    position: relative;
-    border: 0;
-    background: transparent;
-    color: #0B2F74;
-    font-weight: 800;
-    font-size: 18px;
-    line-height: 1.4;
-    text-align: left;
-    padding: 6px 0 6px 18px;
-    cursor: pointer;
-    white-space: pre-wrap;
+    position: relative; border: 0; background: transparent; color: #0B2F74;
+    font-weight: 800; font-size: 18px; line-height: 1.4; text-align: left;
+    padding: 6px 0 6px 18px; cursor: pointer; white-space: pre-wrap;
   }
   .cd-leftnav__item::before {
-    content: "";
-    position: absolute;
-    left: 0; top: 50%;
-    transform: translateY(-50%);
-    width: 4px; height: 26px;
-    background: #E3EEFF;
-    border-radius: 3px;
+    content: ""; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+    width: 4px; height: 26px; background: #E3EEFF; border-radius: 3px;
   }
   .cd-leftnav__item[data-active="true"] { color: #0B4DA6; }
   .cd-leftnav__item[data-active="true"]::before { background: #0B4DA6; height: 32px; }
 `;
 
-/* clickable style */
 const clickable = {
   color: "#0B4DA6",
   textDecoration: "underline",
@@ -233,8 +221,13 @@ const clickable = {
   display: "inline-block",
 };
 
+/* ====== UPDATED: 3 cols desktop, 2 cols ≤980px (tidak turun ke 1) ====== */
 const facultyStyles = {
-  grid: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 18 },
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0,1fr))",
+    gap: 18,
+  },
   card: {
     background: "#fff",
     border: "1px solid rgba(13,38,78,.08)",
@@ -250,20 +243,14 @@ const facultyStyles = {
     fontSize: 14,
     textTransform: "uppercase",
   },
-  intake: {
-    margin: "0 0 10px",
-    color: "#4b5b86",
-    fontWeight: 600,
-    fontSize: 12,
-  },
   ul: { margin: 0, padding: "0 0 0 18px", lineHeight: 1.7, fontSize: 14 },
   media: `
-    @media (max-width: 980px){ .cd-fac-grid { grid-template-columns: repeat(2,1fr); } }
-    @media (max-width: 640px){ .cd-fac-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 980px){
+      .cd-fac-grid { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 14px; }
+    }
   `,
 };
 
-/* --- custom bullet list --- */
 const progListStyles = {
   ul: { margin: 0, padding: 0, display: "grid", gap: 8 },
   li: {
@@ -281,7 +268,6 @@ const progListStyles = {
     marginTop: "0.55em",
   },
   text: { wordBreak: "break-word" },
-  sub: { display: "block", color: "#6a7aa4", fontSize: 12, marginTop: 2 }, // intake mini
 };
 
 const reqStyles = {
@@ -315,7 +301,7 @@ const tuitionStyles = {
   value: { color: "#0B2F74", fontWeight: 800, fontSize: 16 },
 };
 
-// CTA
+/* ============================ CTA ============================ */
 const ctaStyles = {
   wrapBleed: {
     width: "100vw",
@@ -381,7 +367,7 @@ const ctaStyles = {
   `,
 };
 
-// force no-underline for CTA link in all states
+/* ============================ Global Small CSS ============================ */
 const globalCSS = `
   a.cd-cta-btn,
   a.cd-cta-btn:visited,
@@ -389,51 +375,30 @@ const globalCSS = `
   a.cd-cta-btn:active,
   a.cd-cta-btn:focus { text-decoration: none !important; }
 `;
-
-/* ===== Modal (vanilla) ===== */
 const modalCSS = `
-  .cd-modal-backdrop {
-    position: fixed; inset: 0;
-    background: rgba(3,16,46,.55);
-    display: grid; place-items: center;
-    z-index: 9999;
-  }
-  .cd-modal {
-    width: min(720px, 94vw);
-    background: #fff;
-    border-radius: 18px;
-    box-shadow: 0 30px 80px rgba(15,23,42,.35);
-    padding: 18px 18px 20px;
-  }
-  .cd-modal__head {
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 12px; margin-bottom: 10px;
-  }
-  .cd-modal__title {
-    margin: 0; color: #0B2F74; font-weight: 900; letter-spacing: .02em;
-    font-size: clamp(18px, 2.6vw, 22px);
-  }
-  .cd-modal__close {
-    border: 0; background: #0B4DA6; color: #fff; width: 36px; height: 36px;
-    border-radius: 10px; cursor: pointer; font-size: 18px; font-weight: 800;
-    box-shadow: 0 10px 22px rgba(11,77,166,.35);
-  }
+  .cd-modal-backdrop { position: fixed; inset: 0; background: rgba(3,16,46,.55); display: grid; place-items: center; z-index: 9999; }
+  .cd-modal { width: min(720px, 94vw); background: #fff; border-radius: 18px; box-shadow: 0 30px 80px rgba(15,23,42,.35); padding: 18px; }
+  .cd-modal__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+  .cd-modal__title { margin: 0; color: #0B2F74; font-weight: 900; letter-spacing: .02em; font-size: clamp(18px, 2.6vw, 22px); }
+  .cd-modal__close { border: 0; background: #0B4DA6; color: #fff; width: 36px; height: 36px; border-radius: 10px; cursor: pointer; font-size: 18px; font-weight: 800; box-shadow: 0 10px 22px rgba(11,77,166,.35); }
   .cd-modal__body { color: #2b3a5e; line-height: 1.7; }
   .cd-modal__row { display: grid; grid-template-columns: 140px 1fr; gap: 10px; margin: 6px 0; }
   .cd-modal__label { color: #5b6a92; font-weight: 700; font-size: 14px; }
   .cd-modal__value { color: #0B2F74; font-weight: 700; }
 `;
+const hideAsideCSS = `@media (max-width: 980px){ .cd-aside { display: none !important; } }`;
 
+/* ============================ Component ============================ */
 export default function CollegeDetailContent({ id, locale = "id" }) {
   const { hero, sections, tuition, websiteHref } = useCollegeDetailViewModel({
     id,
     locale,
   });
+  const isNarrow = useIsNarrow(980);
 
   const sectionIds = useMemo(() => ["umum", "biaya", "fakultas", "syarat"], []);
   const [active, setActive] = useState(sectionIds[0]);
 
-  // modal state
   const [modalOpen, setModalOpen] = useState(false);
   const [modalData, setModalData] = useState({
     title: "",
@@ -489,6 +454,8 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
 
   const coverSrc = normalizeSrc(hero.cover);
   const logoSrc = normalizeSrc(hero.logo);
+  const coverObjectPos =
+    hero.objectPosition || (isNarrow ? "center 30%" : "center 40%");
 
   const navItems = useMemo(
     () => [
@@ -536,54 +503,53 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
             fill
             sizes="100vw"
             priority
-            style={{ objectFit: "cover", objectPosition: hero.objectPosition }}
+            style={{ objectFit: "cover", objectPosition: coverObjectPos }}
             unoptimized={shouldUnoptimize(coverSrc)}
           />
           <div style={heroStyles.overlay} />
           <style>{heroStyles.media}</style>
 
-          <div className="cd-hero-grid" style={heroStyles.content}>
-            <div className="cd-hero-logo-card" style={heroStyles.logoCard}>
-              <div style={heroStyles.logoBox}>
+          <div style={heroStyles.content}>
+            {!!hero.logo && (
+              <div className="cd-hero-logo" style={heroStyles.logoBox}>
                 <Image
                   src={logoSrc}
                   alt={`${hero.name || "College"} logo`}
                   fill
-                  sizes="360px"
+                  sizes="520px"
                   style={{ objectFit: "contain" }}
                   unoptimized={shouldUnoptimize(logoSrc)}
                 />
               </div>
-            </div>
+            )}
 
-            <div className="cd-hero-title-wrap" style={heroStyles.titleWrap}>
-              <h1 className="cd-hero-title" style={heroStyles.title}>
-                {(hero.name || "").toUpperCase()}
-              </h1>
-              <div className="cd-hero-meta" style={heroStyles.metaRow}>
-                {!!hero.flagSrc && (
-                  <Image
-                    src={normalizeSrc(hero.flagSrc)}
-                    alt={`${hero.countryName || "Country"} flag`}
-                    width={64}
-                    height={44}
-                    style={heroStyles.flag}
-                    priority
-                    unoptimized={shouldUnoptimize(hero.flagSrc)}
-                  />
-                )}
-                {!!websiteHref && (
-                  <a
-                    href={websiteHref}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={heroStyles.pill}
-                  >
-                    {hero.websiteText ||
-                      websiteHref.replace(/^https?:\/\//, "")}
-                  </a>
-                )}
-              </div>
+            <h1 className="cd-hero-title" style={heroStyles.title}>
+              {(hero.name || "").toUpperCase()}
+            </h1>
+
+            <div style={heroStyles.metaRow}>
+              {!!hero.flagSrc && (
+                <Image
+                  src={normalizeSrc(hero.flagSrc)}
+                  alt={`${hero.countryName || "Country"} flag`}
+                  width={64}
+                  height={44}
+                  style={heroStyles.flag}
+                  priority
+                  unoptimized={shouldUnoptimize(hero.flagSrc)}
+                />
+              )}
+              {!!websiteHref && (
+                <a
+                  href={websiteHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="cd-hero-pill"
+                  style={heroStyles.pill}
+                >
+                  {hero.websiteText || websiteHref.replace(/^https?:\/\//, "")}
+                </a>
+              )}
             </div>
           </div>
         </div>
@@ -592,26 +558,30 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
       {/* ===== CONTENT ===== */}
       <section style={layout.section}>
         <style>{layout.media}</style>
-        <div style={{ ...shell.inner, ...layout.grid }} className="cd-grid">
-          {/* Sidebar */}
-          <aside style={layout.aside}>
-            <div className="cd-sidenav-stick" style={layout.sidenavStick}>
-              <style dangerouslySetInnerHTML={{ __html: leftNavCSS }} />
-              <nav className="cd-leftnav" aria-label="College sections">
-                {navItems.map(([id, label]) => (
-                  <button
-                    key={id}
-                    className="cd-leftnav__item"
-                    data-active={active === id}
-                    aria-current={active === id ? "true" : undefined}
-                    onClick={() => goTo(id)}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </nav>
-            </div>
-          </aside>
+        <style>{hideAsideCSS}</style>
+
+        <div className="cd-grid" style={{ ...shell.inner }}>
+          {/* Sidebar hanya di desktop */}
+          {!isNarrow && (
+            <aside className="cd-aside" style={layout.aside}>
+              <div className="cd-sidenav-stick" style={layout.sidenavStick}>
+                <style dangerouslySetInnerHTML={{ __html: leftNavCSS }} />
+                <nav className="cd-leftnav" aria-label="College sections">
+                  {navItems.map(([id, label]) => (
+                    <button
+                      key={id}
+                      className="cd-leftnav__item"
+                      data-active={active === id}
+                      aria-current={active === id ? "true" : undefined}
+                      onClick={() => goTo(id)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </nav>
+              </div>
+            </aside>
+          )}
 
           {/* Body */}
           <div>
@@ -655,12 +625,10 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
                 {locale === "en" ? "Departments & Programs" : "Jurusan & Prodi"}
               </h2>
               <hr style={layout.hr} />
-
               <div className="cd-fac-grid" style={facultyStyles.grid}>
                 {faculties.length ? (
                   faculties.map((grp, idx) => (
                     <article key={idx} style={facultyStyles.card}>
-                      {/* JURUSAN CLICKABLE */}
                       <h4
                         style={{ ...facultyStyles.title, ...clickable }}
                         onClick={() =>
@@ -680,7 +648,6 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
                         {grp.title}
                       </h4>
 
-                      {/* PROGRAM LIST */}
                       {(grp.programs || []).length ? (
                         <ul style={progListStyles.ul}>
                           {(grp.programs || []).map((it, i) => {
@@ -825,11 +792,12 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
       </section>
 
       {/* ===== MODAL ===== */}
+      <style dangerouslySetInnerHTML={{ __html: hideAsideCSS }} />
       {modalOpen && (
         <div
           className="cd-modal-backdrop"
           onClick={(e) => {
-            if (e.target.classList.contains("cd-modal-backdrop"))
+            if (e.target.classList?.contains("cd-modal-backdrop"))
               setModalOpen(false);
           }}
         >

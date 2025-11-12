@@ -17,6 +17,7 @@ import {
   assertAdmin,
 } from "@/app/api/mitra-dalam-negeri-categories/_utils";
 import { translate } from "@/app/utils/geminiTranslator";
+import { randomUUID } from "crypto"; // <-- add this
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -46,10 +47,10 @@ export async function GET(req) {
         : { deleted_at: null }),
       ...(q
         ? {
-            translate: {
+            mitra_categories_translate: {
               some: {
                 locale: { in: locales },
-                name: { contains: q }, // MySQL: tanpa mode: 'insensitive'
+                name: { contains: q },
               },
             },
           }
@@ -57,14 +58,14 @@ export async function GET(req) {
     };
 
     const [total, rows] = await Promise.all([
-      prisma.mitra_dalam_negeri_categories.count({ where }),
-      prisma.mitra_dalam_negeri_categories.findMany({
+      prisma.mitra_categories.count({ where }),
+      prisma.mitra_categories.findMany({
         where,
         orderBy,
         skip: (page - 1) * perPage,
         take: perPage,
         include: {
-          translate: {
+          mitra_categories_translate: {
             where: { locale: { in: locales } },
             select: { locale: true, name: true },
           },
@@ -73,7 +74,7 @@ export async function GET(req) {
     ]);
 
     const data = rows.map((r) => {
-      const t = pickTrans(r.translate, locale, fallback);
+      const t = pickTrans(r.mitra_categories_translate, locale, fallback);
       return {
         id: r.id,
         slug: r.slug,
@@ -152,7 +153,6 @@ export async function POST(req) {
     }
     if (sort < 0) return badRequest("sort harus bilangan bulat ≥ 0.", "sort");
 
-    // optional auto-translate
     if (autoTranslate && !name_en && name_id) {
       try {
         name_en = await translate(name_id, "id", "en");
@@ -162,27 +162,35 @@ export async function POST(req) {
     }
 
     const created = await prisma.$transaction(async (tx) => {
-      const parent = await tx.mitra_dalam_negeri_categories.create({
-        data: { slug, sort },
+      const now = new Date();
+
+      const parent = await tx.mitra_categories.create({
+        data: {
+          id: randomUUID(),
+          slug,
+          sort,
+          created_at: now, // <-- tambahkan
+          updated_at: now, // <-- tambahkan
+        },
       });
 
-      // ID
-      await tx.mitra_dalam_negeri_categories_translate.create({
+      await tx.mitra_categories_translate.create({
         data: {
+          id: randomUUID(),
           category_id: parent.id,
           locale: "id",
           name: name_id.slice(0, 191),
         },
       });
 
-      // EN (optional)
       if (name_en) {
-        await tx.mitra_dalam_negeri_categories_translate.upsert({
+        await tx.mitra_categories_translate.upsert({
           where: {
             category_id_locale: { category_id: parent.id, locale: "en" },
           },
           update: { name: name_en.slice(0, 191) },
           create: {
+            id: randomUUID(),
             category_id: parent.id,
             locale: "en",
             name: name_en.slice(0, 191),
@@ -196,13 +204,7 @@ export async function POST(req) {
     return json(
       {
         message: "Kategori mitra berhasil dibuat.",
-        data: {
-          id: created.id,
-          slug,
-          sort,
-          name_id,
-          name_en: name_en || null,
-        },
+        data: { id: created.id, slug, sort, name_id, name_en: name_en || null },
       },
       { status: 201 }
     );

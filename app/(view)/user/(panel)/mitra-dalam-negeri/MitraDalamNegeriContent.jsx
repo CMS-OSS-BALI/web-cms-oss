@@ -1,30 +1,113 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useEffect, useRef } from "react";
 import Link from "next/link";
 import useMitraDalamNegeriViewModel from "./useMitraDalamNegeriViewModel";
 import { Swiper, SwiperSlide } from "swiper/react";
 import { Autoplay, FreeMode } from "swiper/modules";
 import "swiper/css";
 
-const MERCH_SWIPER_CLASS = "mdn-merchant-swiper";
-const ORG_SWIPER_CLASS = "mdn-org-swiper";
+const MERCH_SWIPER_CLASS = "mdn-merchant-swiper"; // LUAR NEGERI
+const ORG_SWIPER_CLASS = "mdn-org-swiper"; // DALAM NEGERI
+
+/* ===== Reveal on Scroll (reusable) ===== */
+function useRevealOnScroll(deps = []) {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const prefersReduce = window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    ).matches;
+
+    const markVisible = (els) =>
+      els.forEach((el) => el.classList.add("is-visible"));
+
+    if (prefersReduce) {
+      markVisible(Array.from(document.querySelectorAll(".reveal")));
+      return;
+    }
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            e.target.classList.add("is-visible");
+            io.unobserve(e.target);
+          }
+        });
+      },
+      { threshold: 0.16, rootMargin: "0px 0px -10% 0px" }
+    );
+
+    const observeAll = () => {
+      document
+        .querySelectorAll(".reveal:not(.is-visible)")
+        .forEach((el) => io.observe(el));
+    };
+
+    observeAll();
+
+    // Jika konten async muncul (SWR/SSR hydration), observe lagi
+    const mo = new MutationObserver(observeAll);
+    mo.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      io.disconnect();
+      mo.disconnect();
+    };
+  }, deps);
+}
+
+/* ===== Hero Parallax (halus, desktop only) ===== */
+function useHeroParallax(ref) {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const el = ref.current;
+    if (!el) return;
+
+    const prefersReduce = window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    ).matches;
+    const isDesktop = () => window.innerWidth >= 992;
+    if (prefersReduce || !isDesktop()) return;
+
+    const onMove = (e) => {
+      const r = el.getBoundingClientRect();
+      const cx = (e.clientX - r.left) / r.width - 0.5;
+      const cy = (e.clientY - r.top) / r.height - 0.5;
+      // geser background sedikit biar ada depth
+      el.style.backgroundPosition = `calc(50% + ${cx * 10}px) calc(20% + ${
+        cy * 10
+      }px)`;
+    };
+    const onLeave = () => {
+      el.style.backgroundPosition = "center 20%";
+    };
+    el.addEventListener("mousemove", onMove);
+    el.addEventListener("mouseleave", onLeave);
+    return () => {
+      el.removeEventListener("mousemove", onMove);
+      el.removeEventListener("mouseleave", onLeave);
+    };
+  }, [ref]);
+}
 
 export default function MitraDalamNegeriContent({ locale = "id" }) {
   const vm = useMitraDalamNegeriViewModel({ locale });
 
   const cta =
     locale === "en"
-      ? {
-          title: "COLLABORATE WITH US",
-          outline: "JOIN NOW & ENJOY THE BENEFITS",
-          primary: "JOIN HERE",
-        }
+      ? { title: "Ready to Grow Faster?", primary: "Partner With Us" }
       : {
-          title: "BERKOLABORASI DENGAN KAMI",
-          outline: "GABUNG SEKARANG JUGA & RASAKAN MANFAAT",
-          primary: "GABUNG DISINI",
+          title: "Siap Tumbuh Lebih Cepat?",
+          primary: "Saatnya Berpartner Dengan Kami",
         };
+
+  const heroRef = useRef(null);
+
+  // Nyalakan animasi saat data dinamis sudah siap
+  useRevealOnScroll([vm.merchants.length, vm.organizations.length]);
+  useHeroParallax(heroRef);
 
   const styles = useMemo(
     () => ({
@@ -42,14 +125,13 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
         frame: {
           position: "relative",
           width: "100vw",
-          height: "100svh",
+          height: "var(--hero-h, 72vh)",
           overflow: "hidden",
-          borderRadius: 0,
-          boxShadow: "0 24px 48px rgba(15,23,42,.08)",
           backgroundImage: `url(${vm.hero.bg})`,
           backgroundSize: "cover",
-          backgroundPosition: "center",
+          backgroundPosition: "center 20%",
           backgroundRepeat: "no-repeat",
+          willChange: "background-position",
         },
         overlayTop: {
           position: "absolute",
@@ -57,25 +139,6 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
           background:
             "linear-gradient(180deg, rgba(10,56,72,.18) 0%, rgba(10,56,72,0) 45%, rgba(255,255,255,0) 65%, rgba(255,255,255,1) 100%)",
           pointerEvents: "none",
-        },
-        content: {
-          position: "absolute",
-          left: "50%",
-          top: "clamp(56px, 10vh, 96px)",
-          transform: "translateX(-50%)",
-          width: "min(1360px, 96%)",
-          textAlign: "center",
-          color: "#0A3850",
-          textTransform: "uppercase",
-          userSelect: "none",
-        },
-        title: {
-          fontWeight: 800,
-          letterSpacing: ".06em",
-          fontSize: "clamp(32px, 6vw, 72px)",
-          lineHeight: 1.05,
-          margin: 0,
-          textShadow: "0 8px 24px rgba(10, 56, 72, .35)",
         },
         fadeBottom: {
           position: "absolute",
@@ -88,7 +151,7 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
         },
       },
       copy: {
-        section: { padding: "48px 0 12px" },
+        section: { padding: "48px 0 12px", background: "#fff" },
         title: {
           textAlign: "center",
           color: "#0B56C9",
@@ -99,24 +162,14 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
           lineHeight: 1.15,
           margin: "0 0 12px",
         },
-        bodyWrap: { display: "flex", justifyContent: "center" },
-        body: {
-          maxWidth: "min(1120px, 96%)",
-          textAlign: "center",
-          color: "#0B56C9",
-          fontWeight: 500,
-          fontSize: "clamp(14px, 1.6vw, 18px)",
-          lineHeight: 1.7,
-          margin: 0,
-        },
       },
-      spacer: { height: 36 },
       merchant: {
         wrap: {
           width: "100vw",
           marginLeft: "calc(50% - 50vw)",
           marginRight: "calc(50% - 50vw)",
           padding: "10px 0 26px",
+          background: "#fff",
         },
         slide: { width: "var(--merchant-card-w, 380px)" },
         card: {
@@ -135,12 +188,12 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
           marginTop: "50px",
           willChange: "transform",
         },
-        logo: {
-          maxWidth: "82%",
-          maxHeight: "82%",
-          width: "auto",
-          height: "auto",
-          objectFit: "contain",
+        logo: { maxWidth: "82%", maxHeight: "82%", objectFit: "contain" },
+        empty: {
+          padding: 20,
+          color: "#64748b",
+          textAlign: "center",
+          fontWeight: 600,
         },
       },
       organization: {
@@ -149,6 +202,7 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
           marginLeft: "calc(50% - 50vw)",
           marginRight: "calc(50% - 50vw)",
           padding: "10px 0 26px",
+          background: "#fff",
         },
         slide: { width: "var(--org-card-w, 380px)" },
         card: {
@@ -167,12 +221,12 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
           marginTop: "50px",
           willChange: "transform",
         },
-        logo: {
-          maxWidth: "82%",
-          maxHeight: "82%",
-          width: "auto",
-          height: "auto",
-          objectFit: "contain",
+        logo: { maxWidth: "82%", maxHeight: "82%", objectFit: "contain" },
+        empty: {
+          padding: 20,
+          color: "#64748b",
+          textAlign: "center",
+          fontWeight: 600,
         },
       },
       cta: {
@@ -180,7 +234,7 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
           width: "100vw",
           marginLeft: "calc(50% - 50vw)",
           marginRight: "calc(50% - 50vw)",
-          padding: "clamp(36px, 7vw, 80px) 0",
+          padding: "clamp(34px, 8vw, 96px) 0",
           background: "#fff",
         },
         container: {
@@ -189,60 +243,49 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
           display: "grid",
           gridTemplateColumns: "1.2fr .8fr",
           alignItems: "center",
-          gap: "clamp(16px, 4vw, 40px)",
+          gap: "clamp(16px, 4vw, 48px)",
         },
         left: {
           display: "flex",
           flexDirection: "column",
+          gap: "clamp(16px, 2.4vw, 22px)",
           alignItems: "flex-start",
-          gap: "clamp(12px, 2.2vw, 18px)",
         },
         title: {
           margin: 0,
           color: "#0B56C9",
           fontWeight: 900,
-          letterSpacing: ".06em",
-          textTransform: "uppercase",
-          fontSize: "clamp(28px, 5vw, 48px)",
-          lineHeight: 1.1,
+          letterSpacing: "0.01em",
+          fontSize: "clamp(26px, 4.6vw, 48px)",
+          lineHeight: 1.15,
         },
-        outlineBtn: {
-          display: "inline-block",
-          padding: "18px 28px",
-          borderRadius: 14,
-          border: "2px solid #2C6BD9",
-          color: "#0B56C9",
-          fontWeight: 800,
-          letterSpacing: ".04em",
-          boxShadow: "0 10px 18px rgba(11,86,201,.25)",
-          background: "#fff",
-          textDecoration: "none",
-          textTransform: "uppercase",
-        },
-        primaryBtn: {
+        btn: {
           display: "inline-flex",
           alignItems: "center",
+          justifyContent: "center",
           gap: 10,
-          padding: "16px 26px",
-          borderRadius: 14,
+          padding: "16px 28px",
+          borderRadius: 12,
           background: "#0B56C9",
           color: "#fff",
-          fontWeight: 900,
-          letterSpacing: ".04em",
+          fontWeight: 800,
+          fontSize: "clamp(14px, 2.2vw, 18px)",
+          letterSpacing: "0.01em",
           textDecoration: "none",
-          textTransform: "uppercase",
-          boxShadow: "0 14px 28px rgba(11,86,201,.32)",
-          transition: "transform .18s ease, box-shadow .18s ease, opacity .18s",
+          boxShadow: "0 12px 24px rgba(11,86,201,.28)",
+          transition: "transform .16s ease, box-shadow .16s ease",
+          width: "fit-content",
+          maxWidth: "min(92vw, 420px)",
+          whiteSpace: "nowrap",
+          alignSelf: "flex-start",
+          boxSizing: "border-box",
         },
-        rightImgWrap: {
-          display: "flex",
-          justifyContent: "center",
-        },
+        rightImgWrap: { display: "flex", justifyContent: "center" },
         rightImg: {
-          width: "min(420px, 60vw)",
+          width: "min(420px, 48vw)",
           height: "auto",
           objectFit: "contain",
-          filter: "drop-shadow(0 12px 24px rgba(0,0,0,.18))",
+          filter: "drop-shadow(0 12px 24px rgba(0,0,0,.14))",
         },
       },
     }),
@@ -251,123 +294,186 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
 
   return (
     <main>
+      {/* HERO */}
       <section style={styles.hero.section}>
         <div style={styles.hero.bleed}>
-          <div style={styles.hero.frame}>
-            <div style={styles.hero.content}>
-              <h1 style={styles.hero.title}>{vm.hero.title}</h1>
-            </div>
+          <div
+            ref={heroRef}
+            style={styles.hero.frame}
+            className="reveal"
+            data-anim="zoom"
+            style={{ ...styles.hero.frame, ["--rvd"]: "20ms" }}
+          >
             <div style={styles.hero.overlayTop} />
             <div style={styles.hero.fadeBottom} />
           </div>
         </div>
       </section>
 
+      {/* MITRA LUAR NEGERI */}
       <section style={styles.copy.section}>
         <div style={styles.sectionInner}>
-          <h2 style={styles.copy.title}>{vm.sections.partner.title}</h2>
-          <div style={styles.copy.bodyWrap}>
-            <p style={styles.copy.body}>{vm.sections.partner.body}</p>
-          </div>
-        </div>
-      </section>
-
-      <div style={styles.spacer} />
-
-      <section style={styles.copy.section}>
-        <div style={styles.sectionInner}>
-          <h2 style={styles.copy.title}>{vm.sections.merchant.title}</h2>
+          <h2
+            className="reveal"
+            data-anim="down"
+            style={{ ...styles.copy.title, ["--rvd"]: "40ms" }}
+          >
+            {vm.sections.merchant.title}
+          </h2>
         </div>
 
         <div
+          className="reveal"
+          data-anim="up"
           style={{
             ...styles.merchant.wrap,
             "--merchant-card-w": "380px",
             "--merchant-card-h": "300px",
+            ["--rvd"]: "100ms",
           }}
         >
-          <Swiper
-            className={MERCH_SWIPER_CLASS}
-            modules={[Autoplay, FreeMode]}
-            slidesPerView="auto"
-            spaceBetween={24}
-            loop
-            speed={6500}
-            allowTouchMove={false}
-            autoplay={{ delay: 0, disableOnInteraction: false }}
-            freeMode={{ enabled: true, momentum: false, sticky: false }}
-          >
-            {vm.merchants.map((m) => (
-              <SwiperSlide key={m.id} style={styles.merchant.slide}>
-                <div className="merchant-card" style={styles.merchant.card}>
-                  <img src={m.logo} alt={m.name} style={styles.merchant.logo} />
-                </div>
-              </SwiperSlide>
-            ))}
-          </Swiper>
+          {vm.loading && vm.merchants.length === 0 ? (
+            <div style={styles.merchant.empty}>Memuat mitra…</div>
+          ) : vm.merchants.length === 0 ? (
+            <div style={styles.merchant.empty}>Belum ada mitra disetujui</div>
+          ) : (
+            <Swiper
+              className={MERCH_SWIPER_CLASS}
+              modules={[Autoplay, FreeMode]}
+              slidesPerView="auto"
+              spaceBetween={24}
+              loop
+              speed={6500}
+              allowTouchMove={false}
+              autoplay={{ delay: 0, disableOnInteraction: false }}
+              freeMode={{ enabled: true, momentum: false, sticky: false }}
+            >
+              {vm.merchants.map((m, i) => (
+                <SwiperSlide key={m.id} style={styles.merchant.slide}>
+                  <div
+                    className="merchant-card reveal"
+                    data-anim="zoom"
+                    style={{
+                      ...styles.merchant.card,
+                      ["--rvd"]: `${(i % 6) * 70 + 80}ms`,
+                    }}
+                    title={m.name}
+                  >
+                    <img
+                      src={m.logo}
+                      alt={m.name}
+                      style={styles.merchant.logo}
+                      onError={(e) => (e.currentTarget.src = "/noimage.svg")}
+                    />
+                  </div>
+                </SwiperSlide>
+              ))}
+            </Swiper>
+          )}
         </div>
       </section>
 
-      <div style={styles.spacer} />
-
+      {/* MITRA DALAM NEGERI */}
       <section style={styles.copy.section}>
         <div style={styles.sectionInner}>
-          <h2 style={styles.copy.title}>{vm.sections.organization.title}</h2>
+          <h2
+            className="reveal"
+            data-anim="down"
+            style={{ ...styles.copy.title, ["--rvd"]: "40ms" }}
+          >
+            {vm.sections.organization.title}
+          </h2>
         </div>
 
         <div
+          className="reveal"
+          data-anim="up"
           style={{
             ...styles.organization.wrap,
             "--org-card-w": "380px",
             "--org-card-h": "300px",
+            ["--rvd"]: "100ms",
           }}
         >
-          <Swiper
-            className={ORG_SWIPER_CLASS}
-            modules={[Autoplay, FreeMode]}
-            slidesPerView="auto"
-            spaceBetween={24}
-            loop
-            speed={6500}
-            allowTouchMove={false}
-            autoplay={{
-              delay: 0,
-              disableOnInteraction: false,
-              reverseDirection: true,
-            }}
-            freeMode={{ enabled: true, momentum: false, sticky: false }}
-          >
-            {vm.organizations.map((o) => (
-              <SwiperSlide key={o.id} style={styles.organization.slide}>
-                <div className="org-card" style={styles.organization.card}>
-                  <img
-                    src={o.logo}
-                    alt={o.name}
-                    style={styles.organization.logo}
-                  />
-                </div>
-              </SwiperSlide>
-            ))}
-          </Swiper>
+          {vm.loading && vm.organizations.length === 0 ? (
+            <div style={styles.organization.empty}>Memuat mitra…</div>
+          ) : vm.organizations.length === 0 ? (
+            <div style={styles.organization.empty}>
+              Belum ada mitra disetujui
+            </div>
+          ) : (
+            <Swiper
+              className={ORG_SWIPER_CLASS}
+              modules={[Autoplay, FreeMode]}
+              slidesPerView="auto"
+              spaceBetween={24}
+              loop
+              speed={6500}
+              allowTouchMove={false}
+              autoplay={{
+                delay: 0,
+                disableOnInteraction: false,
+                reverseDirection: true,
+              }}
+              freeMode={{ enabled: true, momentum: false, sticky: false }}
+            >
+              {vm.organizations.map((o, i) => (
+                <SwiperSlide key={o.id} style={styles.organization.slide}>
+                  <div
+                    className="org-card reveal"
+                    data-anim="zoom"
+                    style={{
+                      ...styles.organization.card,
+                      ["--rvd"]: `${(i % 6) * 70 + 80}ms`,
+                    }}
+                    title={o.name}
+                  >
+                    <img
+                      src={o.logo}
+                      alt={o.name}
+                      style={styles.organization.logo}
+                      onError={(e) => (e.currentTarget.src = "/noimage.svg")}
+                    />
+                  </div>
+                </SwiperSlide>
+              ))}
+            </Swiper>
+          )}
         </div>
       </section>
 
-      <div style={styles.spacer} />
-
+      {/* CTA */}
       <section style={styles.cta.section}>
-        <div style={styles.cta.container}>
+        <div className="reveal" data-anim="zoom" style={styles.cta.container}>
           <div style={styles.cta.left}>
-            <h2 style={styles.cta.title}>{cta.title}</h2>
-            <span style={styles.cta.outlineBtn}>{cta.outline}</span>
-            <Link href="/user/form-mitra" style={styles.cta.primaryBtn}>
-              <span>{cta.primary}</span>
-              <span>→</span>
+            <h2
+              className="reveal"
+              data-anim="down"
+              style={{ ...styles.cta.title, ["--rvd"]: "40ms" }}
+            >
+              {cta.title}
+            </h2>
+            <Link
+              href="/user/form-mitra"
+              style={styles.cta.btn}
+              className="cta-btn hero-cta--pulse hero-cta--bob reveal"
+              data-anim="up"
+              aria-label={cta.primary}
+              // delay halus
+              {...{ style: { ...styles.cta.btn, ["--rvd"]: "140ms" } }}
+            >
+              {cta.primary}
             </Link>
           </div>
-          <div style={styles.cta.rightImgWrap}>
+          <div
+            className="reveal"
+            data-anim="right"
+            style={{ ...styles.cta.rightImgWrap, ["--rvd"]: "160ms" }}
+          >
             <img
-              src="/jempol.svg"
-              alt="CTA Image"
+              src="/oss-bird.svg"
+              onError={(e) => (e.currentTarget.src = "/jempol.svg")}
+              alt="OSS Mascot"
               style={styles.cta.rightImg}
             />
           </div>
@@ -375,6 +481,92 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
       </section>
 
       <style jsx global>{`
+        :root {
+          --nav-h: clamp(60px, 7vw, 84px);
+          --hero-h: min(max(520px, calc(100svh - var(--nav-h))), 780px);
+        }
+        @media (max-width: 1024px) {
+          :root {
+            --hero-h: min(max(460px, calc(100svh - var(--nav-h))), 680px);
+          }
+        }
+        @media (max-width: 640px) {
+          :root {
+            --hero-h: min(max(380px, calc(100svh - var(--nav-h))), 560px);
+          }
+        }
+        html,
+        body {
+          overflow-x: clip;
+        }
+
+        /* ===== Reveal utilities ===== */
+        .reveal {
+          opacity: 0;
+          transform: var(--reveal-from, translate3d(0, 16px, 0));
+          transition: opacity 700ms ease,
+            transform 700ms cubic-bezier(0.21, 1, 0.21, 1);
+          transition-delay: var(--rvd, 0ms);
+          will-change: opacity, transform;
+        }
+        .reveal[data-anim="up"] {
+          --reveal-from: translate3d(0, 18px, 0);
+        }
+        .reveal[data-anim="down"] {
+          --reveal-from: translate3d(0, -18px, 0);
+        }
+        .reveal[data-anim="left"] {
+          --reveal-from: translate3d(-18px, 0, 0);
+        }
+        .reveal[data-anim="right"] {
+          --reveal-from: translate3d(18px, 0, 0);
+        }
+        .reveal[data-anim="zoom"] {
+          --reveal-from: scale(0.96);
+        }
+        .reveal.is-visible {
+          opacity: 1;
+          transform: none;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .reveal {
+            transition: none !important;
+            opacity: 1 !important;
+            transform: none !important;
+          }
+          .hero-cta--bob,
+          .hero-cta--pulse {
+            animation: none !important;
+          }
+        }
+
+        /* Micro-motions untuk CTA */
+        @keyframes y-bob {
+          0%,
+          100% {
+            transform: translateY(0);
+          }
+          50% {
+            transform: translateY(-3px);
+          }
+        }
+        .hero-cta--bob {
+          animation: y-bob 3s ease-in-out infinite;
+        }
+        @keyframes pulse-soft {
+          0%,
+          100% {
+            box-shadow: 0 12px 24px rgba(11, 86, 201, 0.28);
+          }
+          50% {
+            box-shadow: 0 16px 32px rgba(11, 86, 201, 0.36);
+          }
+        }
+        .hero-cta--pulse {
+          animation: pulse-soft 2.8s ease-in-out infinite;
+        }
+
+        /* Swiper utility */
         .${MERCH_SWIPER_CLASS}, .${ORG_SWIPER_CLASS} {
           overflow: visible;
           padding-inline: clamp(12px, 4vw, 24px);
@@ -395,17 +587,38 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
             0 18px 44px rgba(15, 23, 42, 0.22), 0 0 0 1px rgba(14, 30, 62, 0.08);
           transform: translateY(-4px);
         }
+
+        /* CTA layout collapse ke 1 kolom saat tablet/mobile */
         @media (max-width: 1024px) {
-          section[style*="padding"] > div[style*="grid-template-columns"] {
+          section[style*="grid-template-columns"] {
             grid-template-columns: 1fr !important;
             text-align: center;
           }
-          section[style*="padding"] h2 {
-            text-align: center !important;
-          }
-          section[style*="padding"] a,
-          section[style*="padding"] span {
+          .cta-btn {
             align-self: center !important;
+          }
+        }
+
+        /* Guard agar tombol tidak melebar penuh */
+        .cta-btn {
+          width: max-content !important;
+          white-space: nowrap;
+        }
+        @media (max-width: 1024px) {
+          .cta-btn {
+            width: auto !important;
+          }
+        }
+
+        .cta-btn:focus-visible {
+          outline: 3px solid #5aa8ff;
+          outline-offset: 3px;
+          border-radius: 12px;
+        }
+        @media (hover: hover) {
+          .cta-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 14px 28px rgba(11, 86, 201, 0.36);
           }
         }
       `}</style>

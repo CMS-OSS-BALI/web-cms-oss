@@ -1,3 +1,4 @@
+// app/api/mitra-dalam-negeri/export/route.js
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
@@ -65,13 +66,12 @@ export async function GET(req) {
     await assertAdmin(req);
     const { searchParams } = new URL(req.url);
 
-    // ===== delimiter & EOL (Excel ID cocoknya ";")
+    // ===== delimiter & EOL
     const SEP = (searchParams.get("sep") || ";").slice(0, 1) || ";";
-    const EOL = "\r\n"; // CRLF untuk Excel
-    // ⚠️ TANPA BOM: biar Excel memproses "sep=" sebagai baris pertama
+    const EOL = "\r\n";
     const EXCEL_SEP_LINE = `sep=${SEP}${EOL}`;
 
-    // ===== filters (selaras endpoint list)
+    // ===== filters
     const q = (searchParams.get("q") || "").trim();
     const includeDeleted = searchParams.get("includeDeleted") === "1";
     const withDeleted = searchParams.get("with_deleted") === "1";
@@ -99,7 +99,7 @@ export async function GET(req) {
         : includeDeleted || withDeleted
         ? {}
         : { deleted_at: null }),
-      mitra_dalam_negeri_translate: { some: { locale: { in: locales } } },
+      mitra_translate: { some: { locale: { in: locales } } },
     };
     const AND = [];
     if (statusFilter) AND.push({ status: { in: statusFilter } });
@@ -107,7 +107,7 @@ export async function GET(req) {
     if (category_id) {
       AND.push({ category_id: String(category_id) });
     } else if (category_slug) {
-      const cat = await prisma.mitra_dalam_negeri_categories.findUnique({
+      const cat = await prisma.mitra_categories.findUnique({
         where: { slug: String(category_slug) },
         select: { id: true },
       });
@@ -118,7 +118,7 @@ export async function GET(req) {
       AND.push({
         OR: [
           {
-            mitra_dalam_negeri_translate: {
+            mitra_translate: {
               some: {
                 locale: { in: locales },
                 OR: [{ name: ci(q) }, { description: ci(q) }],
@@ -137,6 +137,7 @@ export async function GET(req) {
           { contact_name: ci(q) },
           { contact_position: ci(q) },
           { contact_whatsapp: ci(q) },
+          { nik: ci(q) },
         ],
       });
     }
@@ -157,6 +158,7 @@ export async function GET(req) {
       "category",
       "email",
       "phone",
+      "nik",
       "website",
       "city",
       "province",
@@ -168,7 +170,6 @@ export async function GET(req) {
 
     const stream = new ReadableStream({
       async start(controller) {
-        // 1) sep=...   2) header
         controller.enqueue(encoder.encode(EXCEL_SEP_LINE));
         controller.enqueue(encoder.encode(HEAD.join(SEP) + EOL));
       },
@@ -176,13 +177,13 @@ export async function GET(req) {
         const args = {
           where,
           include: {
-            mitra_dalam_negeri_translate: {
+            mitra_translate: {
               where: { locale: { in: locales } },
               select: { locale: true, name: true, description: true },
             },
-            category: {
+            mitra_categories: {
               include: {
-                translate: {
+                mitra_categories_translate: {
                   where: { locale: { in: locales } },
                   select: { locale: true, name: true },
                 },
@@ -197,7 +198,7 @@ export async function GET(req) {
           args.skip = 1;
         }
 
-        const rows = await prisma.mitra_dalam_negeri.findMany(args);
+        const rows = await prisma.mitra.findMany(args);
         if (!rows.length) {
           controller.close();
           return;
@@ -206,13 +207,9 @@ export async function GET(req) {
         const chunk =
           rows
             .map((row) => {
-              const t = pickTrans(
-                row.mitra_dalam_negeri_translate || [],
-                locale,
-                fallback
-              );
+              const t = pickTrans(row.mitra_translate || [], locale, fallback);
               const ct = pickTrans(
-                row.category?.translate || [],
+                row.mitra_categories?.mitra_categories_translate || [],
                 locale,
                 fallback
               );
@@ -223,6 +220,7 @@ export async function GET(req) {
                 csvSafe(ct?.name || "", SEP),
                 csvSafe(row.email || "", SEP),
                 csvSafe(row.phone || "", SEP),
+                csvSafe(row.nik || "", SEP),
                 csvSafe(row.website || "", SEP),
                 csvSafe(row.city || "", SEP),
                 csvSafe(row.province || "", SEP),

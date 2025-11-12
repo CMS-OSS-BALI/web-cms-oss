@@ -1,4 +1,3 @@
-// CareerContent.jsx
 "use client";
 
 import React, { useCallback, useMemo, useRef, useState } from "react";
@@ -8,7 +7,7 @@ import { useRouter } from "next/navigation";
 
 const { Title, Paragraph } = Typography;
 
-/* ===== media hook ===== */
+/* ===== media hooks ===== */
 function useIsNarrow(breakpoint = 900) {
   const [n, setN] = React.useState(false);
   React.useEffect(() => {
@@ -48,7 +47,7 @@ const toThumb = (url) => {
 /* ===== constants ===== */
 const HEADER_H = "clamp(48px, 8vw, 84px)";
 
-/* ===== styles ===== */
+/* ===== base styles ===== */
 const styles = {
   /* HERO */
   hero: { marginTop: `calc(-1 * ${HEADER_H})`, background: "#fff" },
@@ -142,23 +141,23 @@ const styles = {
     border: "none",
     color: "#fff",
     height: "clamp(52px, 7vw, 64px)",
-    minWidth: "clamp(180px, 40vw, 380px)",
-    padding: "0 clamp(22px, 4vw, 36px)",
+    minWidth: "clamp(160px, 40vw, 360px)",
+    padding: "0 clamp(18px, 4vw, 32px)",
     borderRadius: 9999,
     fontWeight: 900,
     letterSpacing: 0.4,
-    fontSize: "clamp(15px, 2.3vw, 18px)",
+    fontSize: "clamp(14px, 2.3vw, 18px)",
     textTransform: "none",
   },
 
   /* CTA visual */
   ctaVisual: {
     position: "relative",
-    width: "clamp(240px, 68vw, 440px)",
+    width: "clamp(220px, 68vw, 440px)",
     margin: "10px auto 0",
   },
 
-  /* LOWONGAN (tanpa wrapper pemotong) */
+  /* LOWONGAN */
   vacOuter: {
     width: "min(1180px, 92%)",
     margin: "0 auto 84px",
@@ -183,11 +182,11 @@ const styles = {
     background: "linear-gradient(180deg,#0B56C9 0%,#084A94 100%)",
     border: "none",
     color: "#fff",
-    height: "clamp(50px, 7vw, 60px)",
-    minWidth: "clamp(200px, 36vw, 420px)",
+    height: "clamp(48px, 7vw, 60px)",
+    minWidth: "clamp(180px, 36vw, 400px)",
     borderRadius: 999,
     fontWeight: 800,
-    fontSize: "clamp(15px, 2.3vw, 18px)",
+    fontSize: "clamp(14px, 2.3vw, 18px)",
     letterSpacing: 0.2,
     boxShadow: "0 18px 36px rgba(11,86,184,.25)",
   },
@@ -260,11 +259,8 @@ const styles = {
     borderBottom: "12px solid transparent",
   },
 
-  /* ===== BENEFITS SECTION (baru) ===== */
-  benWrap: {
-    width: "min(1180px, 92%)",
-    margin: "44px auto 108px",
-  },
+  /* ===== BENEFITS ===== */
+  benWrap: { width: "min(1180px, 92%)", margin: "44px auto 48px" },
   benTitle: {
     textAlign: "center",
     fontWeight: 900,
@@ -273,11 +269,7 @@ const styles = {
     fontSize: "clamp(20px, 3vw, 34px)",
     margin: 0,
   },
-  benGrid: {
-    display: "grid",
-    gap: 18,
-    marginTop: 24,
-  },
+  benGrid: { display: "grid", gap: 18, marginTop: 24 },
   benItem: {
     display: "flex",
     alignItems: "center",
@@ -307,53 +299,166 @@ const styles = {
     lineHeight: 1.35,
     fontSize: "clamp(14px, 2.2vw, 18px)",
   },
+
+  /* ===== LEVELS ===== */
+  levWrap: { width: "min(1180px, 92%)", margin: "18px auto 88px" },
+  levTitle: {
+    margin: 0,
+    textAlign: "center",
+    color: "#0b2a53",
+    fontWeight: 900,
+    letterSpacing: 0.3,
+    fontSize: "clamp(20px, 3vw, 30px)",
+  },
+  levGrid: { display: "grid", gridAutoRows: "1fr", gap: 20, marginTop: 22 },
+  levCardBase: {
+    position: "relative",
+    borderRadius: 18,
+    padding: "18px",
+    boxShadow: "0 18px 32px rgba(0,0,0,.18)",
+    display: "grid",
+    gridTemplateColumns: "minmax(120px,180px) 1fr",
+    alignItems: "center",
+    overflow: "hidden",
+  },
+  levCardPro: {
+    background:
+      "linear-gradient(135deg, #5B0F2D 0%, #8F214A 45%, #B23A5F 100%)",
+  },
+  levCardBasic: {
+    background:
+      "linear-gradient(135deg, #5E91B6 0%, #6FA1C4 45%, #8CB7D4 100%)",
+  },
+  levShine: {
+    position: "absolute",
+    left: 18,
+    top: 0,
+    bottom: 0,
+    width: 2,
+    background:
+      "linear-gradient(180deg, rgba(255,255,255,.4), rgba(255,255,255,0))",
+    opacity: 0.8,
+  },
+  levLogoBox: { display: "grid", placeItems: "center", height: "100%" },
+  levLogoMark: {
+    width: "min(120px, 22vw)",
+    maxWidth: 150,
+    height: "auto",
+    filter: "drop-shadow(0 8px 18px rgba(0,0,0,.25))",
+  },
+  levInfoBox: {
+    justifySelf: "end",
+    width: "min(460px, 92%)",
+    background: "rgba(255,255,255,.22)",
+    border: "1px solid rgba(255,255,255,.35)",
+    color: "#fff",
+    borderRadius: 14,
+    padding: "16px 18px",
+    backdropFilter: "blur(4px)",
+  },
+  levInfoTitle: {
+    margin: 0,
+    fontWeight: 900,
+    letterSpacing: 0.6,
+    fontSize: "clamp(14px, 2.2vw, 18px)",
+  },
+  levInfoDesc: {
+    margin: "6px 0 0",
+    lineHeight: 1.45,
+    fontSize: "clamp(12px, 2vw, 14px)",
+    opacity: 0.95,
+  },
+  levCenterWrap: {
+    width: "min(1180px, 92%)",
+    margin: "18px auto 0",
+    display: "grid",
+    justifyItems: "center",
+  },
+  levCircle: {
+    width: "clamp(180px, 34vw, 360px)",
+    height: "clamp(180px, 34vw, 360px)",
+    background: "#CFE0F2",
+    borderRadius: "50%",
+    position: "relative",
+    overflow: "visible",
+    boxShadow: "0 12px 28px rgba(0,0,0,.12) inset",
+  },
+  levMan: {
+    position: "absolute",
+    inset: "auto 0 -10% 0",
+    width: "100%",
+    height: "auto",
+    transform: "translateY(-12%)",
+  },
+  levCTA: {
+    marginTop: 24,
+    background: "linear-gradient(180deg,#0B56C9 0%,#084A94 100%)",
+    border: "none",
+    color: "#fff",
+    height: "clamp(46px, 7vw, 58px)",
+    minWidth: "clamp(200px, 36vw, 360px)",
+    borderRadius: 9999,
+    fontWeight: 800,
+    fontSize: "clamp(14px, 2.2vw, 18px)",
+    letterSpacing: 0.2,
+    boxShadow: "0 18px 36px rgba(11,86,184,.25)",
+  },
 };
 
 export default function CareerContent({
   hero,
-  cta, // { title, subtitle, btnJobs, btnReferral }
-  vacancy, // { title, image, body, btnLabel }
-  referral, // { title, leadBold, desc, youtube }
-  benefits = [], // NEW
+  cta,
+  vacancy,
+  referral,
+  benefits = [],
   onCTATeam,
   onCTAReferral,
   onSendCV,
   ctaImage,
+  levels,
+  levelsCTA,
+  onLevelsCTA,
+  levelsHeroImg,
 }) {
   const router = useRouter();
-  const isNarrow = useIsNarrow(900);
+  const isNarrow = useIsNarrow(900); // tablet breakpoint
+  const isCompact = useIsNarrow(640); // phone breakpoint
   const [play, setPlay] = useState(false);
 
-  /* === Refs untuk target scroll === */
+  /* Refs */
   const vacRef = useRef(null);
   const refRef = useRef(null);
 
-  /* === Scroll helpers === */
+  /* Scroll helpers */
   const scrollToRef = useCallback((r) => {
     if (typeof window === "undefined") return;
     const el = r?.current;
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
 
-  /* === CTA handlers === */
+  /* CTA handlers */
   const handleScrollVacancy = useCallback(() => {
     if (vacRef.current) scrollToRef(vacRef);
     else if (onCTATeam) onCTATeam();
   }, [scrollToRef, onCTATeam]);
-
   const handleScrollReferral = useCallback(() => {
     if (refRef.current) scrollToRef(refRef);
     else if (onCTAReferral) onCTAReferral();
   }, [scrollToRef, onCTAReferral]);
-
   const handleSendCV = useCallback(() => {
     if (onSendCV) return onSendCV();
     router.push("/career/apply");
   }, [onSendCV, router]);
+  const handleLevelsCTA = useCallback(() => {
+    if (onLevelsCTA) return onLevelsCTA();
+    if (onCTAReferral) return onCTAReferral();
+    router.push("/user/referral?menu=career");
+  }, [onLevelsCTA, onCTAReferral, router]);
 
   const ctaImg = ctaImage || "/cta-girl.svg";
   const vacImg = vacancy?.image || "/images/loading.png";
 
+  /* Responsive hero */
   const heroFrameStyle = {
     ...styles.heroImgFrame,
     height: isNarrow
@@ -361,7 +466,11 @@ export default function CareerContent({
       : `calc(100vh + ${HEADER_H} + 1px)`,
     background: isNarrow ? "transparent" : styles.heroImgFrame.background,
   };
+  const heroObjectPosition = isCompact
+    ? "50% 30%"
+    : hero.objectPosition || "50% 45%";
 
+  /* Grids */
   const vacGrid = {
     display: "grid",
     gridTemplateColumns: isNarrow ? "1fr" : "1.15fr 1fr",
@@ -369,6 +478,7 @@ export default function CareerContent({
     alignItems: "center",
   };
 
+  /* YouTube */
   const embedUrl = useMemo(
     () => toEmbed(referral?.youtube || ""),
     [referral?.youtube]
@@ -377,6 +487,30 @@ export default function CareerContent({
     () => toThumb(referral?.youtube || ""),
     [referral?.youtube]
   );
+
+  /* Levels (defaults) */
+  const levelItems =
+    levels && levels.length
+      ? levels
+      : [
+          {
+            id: "pro",
+            variant: "pro",
+            logo: "/logo-oss-cube.svg",
+            title: "PRO SOLITAIRE LEVEL",
+            desc: "Keanggotaan Sahabat Referral OSS Bali tertinggi dengan akses eksklusif ke bonus komisi lebih besar dan trip luar negeri gratis tahunan.",
+          },
+          {
+            id: "basic",
+            variant: "basic",
+            logo: "/logo-oss-cube.svg",
+            title: "BASIC LEVEL",
+            desc: "Keanggotaan Sahabat Referral OSS Bali tingkat awal. Langkah pertama untuk mulai meraih penghasilan sederhana.",
+          },
+        ];
+
+  const manImg = levelsHeroImg || "/images/referral-man-pointing.png";
+  const levelsCtaLabel = levelsCTA || "Wujudkan sekarang!";
 
   return (
     <div>
@@ -392,7 +526,7 @@ export default function CareerContent({
               sizes="100vw"
               style={{
                 objectFit: "cover",
-                objectPosition: hero.objectPosition || "50% 45%",
+                objectPosition: heroObjectPosition,
               }}
             />
             <div style={styles.heroGradOverlay} aria-hidden />
@@ -455,14 +589,32 @@ export default function CareerContent({
               display: "block",
             }}
             priority
+            sizes="(max-width:640px) 70vw, (max-width:900px) 46vw, 440px"
           />
         </div>
       </section>
 
       {/* LOWONGAN */}
       <section id="lowongan" ref={vacRef} style={styles.vacOuter}>
-        <div style={vacGrid}>
-          <div style={styles.vacImgBox}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: isNarrow ? "1fr" : "1.15fr 1fr",
+            gap: isNarrow ? 16 : 32,
+            alignItems: "center",
+          }}
+        >
+          {/* Text block – di mobile tampil duluan */}
+          <div style={{ order: isNarrow ? 1 : 0 }}>
+            <h2 style={styles.vacTitle}>{vacancy?.title}</h2>
+            <Paragraph style={styles.vacBody}>{vacancy?.body}</Paragraph>
+            <Button style={styles.vacBtn} onClick={handleSendCV}>
+              {vacancy?.btnLabel}
+            </Button>
+          </div>
+
+          {/* Gambar – di mobile pindah ke bawah */}
+          <div style={{ ...styles.vacImgBox, order: isNarrow ? 2 : 0 }}>
             <Image
               src={vacImg}
               alt="Team atmosphere"
@@ -472,14 +624,6 @@ export default function CareerContent({
               style={styles.vacImgEl}
               unoptimized={false}
             />
-          </div>
-
-          <div>
-            <h2 style={styles.vacTitle}>{vacancy?.title}</h2>
-            <Paragraph style={styles.vacBody}>{vacancy?.body}</Paragraph>
-            <Button style={styles.vacBtn} onClick={handleSendCV}>
-              {vacancy?.btnLabel}
-            </Button>
           </div>
         </div>
       </section>
@@ -532,7 +676,7 @@ export default function CareerContent({
         </div>
       </section>
 
-      {/* ====== NEW: BENEFITS (di bawah Sahabat Referral) ====== */}
+      {/* BENEFITS */}
       <section id="referral-benefits" style={styles.benWrap}>
         <h3 style={styles.benTitle}>
           {referral?.benefitsTitle ||
@@ -563,6 +707,117 @@ export default function CareerContent({
               <p style={styles.benText}>{b.title}</p>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* LEVELS */}
+      <section id="referral-levels" style={styles.levWrap}>
+        <h3 style={styles.levTitle}>
+          Peluang Level Program Sahabat Referral OSS Bali
+        </h3>
+
+        <div
+          style={{
+            ...styles.levGrid,
+            gridTemplateColumns: isNarrow ? "1fr" : "1fr 1fr",
+          }}
+        >
+          {levelItems.map((lv) => {
+            const isPro = lv.variant === "pro";
+            // selalu row: logo kiri, info kanan; hanya skala yg menyesuaikan
+            const logoColMin = isCompact ? 86 : 120;
+            const logoColMax = isCompact ? 110 : 180;
+
+            return (
+              <div
+                key={lv.id}
+                style={{
+                  ...styles.levCardBase,
+                  ...(isPro ? styles.levCardPro : styles.levCardBasic),
+                  gridTemplateColumns: `minmax(${logoColMin}px, ${logoColMax}px) 1fr`,
+                  gap: isCompact ? 12 : 18,
+                  padding: isCompact ? "14px" : "18px",
+                  alignItems: "center",
+                }}
+              >
+                <span style={styles.levShine} aria-hidden />
+
+                {/* Logo kiri */}
+                <div style={{ ...styles.levLogoBox, justifyItems: "center" }}>
+                  <img
+                    src={lv.logo || "/logo-oss-cube.svg"}
+                    alt="OSS cube"
+                    style={{
+                      ...styles.levLogoMark,
+                      width: "clamp(72px, 18vw, 120px)",
+                      maxWidth: isCompact ? 110 : 150,
+                    }}
+                    onError={(e) =>
+                      (e.currentTarget.src = "/images/loading.png")
+                    }
+                  />
+                </div>
+
+                {/* Info kanan */}
+                <div
+                  style={{
+                    ...styles.levInfoBox,
+                    justifySelf: "stretch",
+                    width: "auto",
+                  }}
+                >
+                  <h4
+                    style={{
+                      ...styles.levInfoTitle,
+                      fontSize: isCompact
+                        ? "clamp(13px,3.6vw,16px)"
+                        : undefined,
+                    }}
+                  >
+                    {lv.title}
+                  </h4>
+                  <p
+                    style={{
+                      ...styles.levInfoDesc,
+                      fontSize: isCompact
+                        ? "clamp(12px,3.4vw,14px)"
+                        : undefined,
+                    }}
+                  >
+                    {lv.desc}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* center image + CTA tetap */}
+        <div
+          style={{
+            ...styles.levCenterWrap,
+            marginTop: isNarrow ? 28 : 36,
+          }}
+        >
+          <div style={styles.levCircle}>
+            <Image
+              src={manImg}
+              alt="Referral pointing"
+              width={800}
+              height={800}
+              style={{
+                ...styles.levMan,
+                transform: isCompact
+                  ? "translateY(-6%)"
+                  : styles.levMan.transform,
+              }}
+              priority={false}
+              sizes="(max-width:640px) 60vw, (max-width:900px) 40vw, 360px"
+            />
+          </div>
+          <Button style={styles.levCTA} onClick={handleLevelsCTA}>
+            {levelsCtaLabel}
+          </Button>
         </div>
       </section>
     </div>

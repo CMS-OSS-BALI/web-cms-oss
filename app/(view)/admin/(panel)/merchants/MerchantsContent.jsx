@@ -1,5 +1,4 @@
-﻿// app/(view)/admin/(panel)/merchants/MerchantsContent.jsx
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -160,6 +159,7 @@ const T = {
   status: "Status",
   // detail / edit labels
   merchant: "Nama Mitra",
+  nik: "NIK",
   email: "Email",
   phone: "No. Telepon",
   website: "Website",
@@ -200,7 +200,6 @@ function ensurePrefixedKey(key) {
     ? clean
     : `${PUBLIC_PREFIX}/${clean}`;
 }
-/** key/path/URL -> URL publik */
 function toPublicUrl(keyOrUrl) {
   if (!keyOrUrl) return "";
   const s = String(keyOrUrl).trim();
@@ -212,7 +211,6 @@ function toPublicUrl(keyOrUrl) {
   if (!base) return `/${path}`;
   return `${base}/public/${path}`;
 }
-/** URL publik atau key -> key storage (setelah /public/) */
 function toStorageKey(keyOrUrl) {
   if (!keyOrUrl) return "";
   const s = String(keyOrUrl).trim();
@@ -221,13 +219,11 @@ function toStorageKey(keyOrUrl) {
   }
   try {
     const u = new URL(s);
-    // path contoh: /public/cms-oss/merchants/abc/file.pdf
     const idx = u.pathname.indexOf("/public/");
     if (idx >= 0) {
       const after = u.pathname.slice(idx + "/public/".length);
       return ensurePrefixedKey(after);
     }
-    // fallback: jika URL tidak memuat '/public', coba hapus leading slash
     return ensurePrefixedKey(u.pathname.replace(/^\/+/, ""));
   } catch {
     return ensurePrefixedKey(s);
@@ -281,7 +277,6 @@ async function handleDownloadClick(keyOrUrl, name, toast) {
       res?.signed_url;
 
     if (!url) throw new Error("URL download tidak tersedia.");
-    // Buka di tab baru untuk menghindari blokir popup di sebagian browser
     const a = document.createElement("a");
     a.href = url;
     a.download = name || baseName(key);
@@ -468,6 +463,7 @@ export default function MerchantsContent({ vm }) {
 
     formEdit.setFieldsValue({
       merchant_name: d.merchant_name || "",
+      nik: d.nik || "",
       email: d.email || "",
       phone: d.phone || "",
       website: d.website || "",
@@ -504,6 +500,7 @@ export default function MerchantsContent({ vm }) {
     const payload = {
       file,
       merchant_name: v.merchant_name,
+      nik: v.nik || null,
       email: v.email,
       phone: v.phone,
       website: v.website || null,
@@ -916,6 +913,11 @@ export default function MerchantsContent({ vm }) {
                                 <div style={styles.nameText}>{title}</div>
                               </Tooltip>
                               <div style={styles.subDate}>{date}</div>
+                              {r?.nik ? (
+                                <div style={styles.subNik}>
+                                  NIK: {String(r.nik)}
+                                </div>
+                              ) : null}
                             </div>
                           </div>
 
@@ -1071,21 +1073,30 @@ export default function MerchantsContent({ vm }) {
                 </div>
 
                 <div>
+                  <div style={styles.label}>{T.nik}</div>
+                  <div style={styles.value}>{clip(detailData.nik)}</div>
+                </div>
+                <div>
                   <div style={styles.label}>{T.website}</div>
                   <div style={styles.value}>{clip(detailData.website)}</div>
                 </div>
+
                 <div>
                   <div style={styles.label}>{T.instagram}</div>
                   <div style={styles.value}>{clip(detailData.instagram)}</div>
                 </div>
-
                 <div>
                   <div style={styles.label}>{T.twitter}</div>
                   <div style={styles.value}>{clip(detailData.twitter)}</div>
                 </div>
+
                 <div>
                   <div style={styles.label}>{T.mou_url}</div>
                   <div style={styles.value}>{clip(detailData.mou_url)}</div>
+                </div>
+                <div>
+                  <div style={styles.label}>Status</div>
+                  <div style={styles.value}>{statusTag(detailData.status)}</div>
                 </div>
 
                 <div style={{ gridColumn: "1 / span 2" }}>
@@ -1107,29 +1118,25 @@ export default function MerchantsContent({ vm }) {
                   <div style={styles.value}>{clip(detailData.postal_code)}</div>
                 </div>
                 <div>
-                  <div style={styles.label}>Status</div>
-                  <div style={styles.value}>{statusTag(detailData.status)}</div>
-                </div>
-
-                <div>
                   <div style={styles.label}>{T.contact_name}</div>
                   <div style={styles.value}>
                     {clip(detailData.contact_name)}
                   </div>
                 </div>
+
                 <div>
                   <div style={styles.label}>{T.contact_position}</div>
                   <div style={styles.value}>
                     {clip(detailData.contact_position)}
                   </div>
                 </div>
-
                 <div>
                   <div style={styles.label}>{T.contact_whatsapp}</div>
                   <div style={styles.value}>
                     {clip(detailData.contact_whatsapp)}
                   </div>
                 </div>
+
                 <div>
                   <div style={styles.label}>{T.review_notes}</div>
                   <div style={styles.value}>
@@ -1144,7 +1151,7 @@ export default function MerchantsContent({ vm }) {
                   </div>
                 </div>
 
-                {/* Lampiran: pakai signed URL via storageClient */}
+                {/* Lampiran */}
                 <div style={{ gridColumn: "1 / span 2" }}>
                   <div style={styles.label}>Lampiran</div>
                   <div style={{ ...styles.value, display: "grid", gap: 6 }}>
@@ -1293,18 +1300,40 @@ export default function MerchantsContent({ vm }) {
                   <Input placeholder="08xxxxxxxxxx" />
                 </Form.Item>
 
+                <Form.Item
+                  label={T.nik}
+                  name="nik"
+                  rules={[
+                    {
+                      pattern: /^\d{16}$/,
+                      message: "NIK harus 16 digit angka",
+                    },
+                  ]}
+                >
+                  <Input placeholder="16 digit" maxLength={16} />
+                </Form.Item>
                 <Form.Item label={T.website} name="website">
                   <Input placeholder="https://..." />
                 </Form.Item>
+
                 <Form.Item label={T.instagram} name="instagram">
                   <Input placeholder="@handle" />
                 </Form.Item>
-
                 <Form.Item label={T.twitter} name="twitter">
                   <Input placeholder="@handle" />
                 </Form.Item>
+
                 <Form.Item label={T.mou_url} name="mou_url">
                   <Input placeholder="https://..." />
+                </Form.Item>
+                <Form.Item label="Status" name="status">
+                  <Select
+                    options={[
+                      { value: "PENDING", label: "Pending" },
+                      { value: "APPROVED", label: "Approved" },
+                      { value: "DECLINED", label: "Declined" },
+                    ]}
+                  />
                 </Form.Item>
 
                 <Form.Item
@@ -1326,26 +1355,17 @@ export default function MerchantsContent({ vm }) {
                 <Form.Item label={T.postal_code} name="postal_code">
                   <Input />
                 </Form.Item>
-                <Form.Item label="Status" name="status">
-                  <Select
-                    options={[
-                      { value: "PENDING", label: "Pending" },
-                      { value: "APPROVED", label: "Approved" },
-                      { value: "DECLINED", label: "Declined" },
-                    ]}
-                  />
-                </Form.Item>
-
                 <Form.Item label={T.contact_name} name="contact_name">
                   <Input />
                 </Form.Item>
+
                 <Form.Item label={T.contact_position} name="contact_position">
                   <Input />
                 </Form.Item>
-
                 <Form.Item label={T.contact_whatsapp} name="contact_whatsapp">
                   <Input />
                 </Form.Item>
+
                 <Form.Item label={T.review_notes} name="review_notes">
                   <Input />
                 </Form.Item>
@@ -1649,6 +1669,7 @@ const styles = {
     textOverflow: "ellipsis",
   },
   subDate: { fontSize: 11.5, color: "#6b7280" },
+  subNik: { fontSize: 11.5, color: "#6b7280" },
 
   colCenter: {
     textAlign: "center",

@@ -10,7 +10,6 @@ const jsonFetcher = async (url, init = {}) => {
     headers: { Accept: "application/json", ...(init.headers || {}) },
     ...init,
   });
-  // try decode even on error to surface message
   let payload = null;
   try {
     payload = await res.json();
@@ -28,16 +27,19 @@ const jsonFetcher = async (url, init = {}) => {
   return payload ?? {};
 };
 
+const otherLocale = (loc) => (loc === "en" ? "id" : "en");
+
 /* ---------- type registry ---------- */
 const TYPES = {
   blog: {
     key: "blog",
     label: "Kategori Blog",
-    buildListUrl: ({ page, perPage, q }) => {
+    buildListUrl: ({ page, perPage, q /*, locale*/ }) => {
       const u = new URL("/api/blog-categories", window.location.origin);
       u.searchParams.set("page", String(page));
       u.searchParams.set("perPage", String(perPage));
       u.searchParams.set("sort", "created_at:desc");
+      // endpoint lama: tetap pakai ID
       u.searchParams.set("locale", "id");
       u.searchParams.set("fallback", "id");
       if (q?.trim()) u.searchParams.set("q", q.trim());
@@ -52,7 +54,7 @@ const TYPES = {
         created_at: r.created_at ?? null,
       })),
     }),
-    getOne: (id) =>
+    getOne: (id /*, opt */) =>
       jsonFetcher(
         `/api/blog-categories/${encodeURIComponent(id)}?locale=id&fallback=id`
       ),
@@ -83,7 +85,7 @@ const TYPES = {
   event: {
     key: "event",
     label: "Kategori Event",
-    buildListUrl: ({ page, perPage, q }) => {
+    buildListUrl: ({ page, perPage, q /*, locale*/ }) => {
       const u = new URL("/api/event-categories", window.location.origin);
       u.searchParams.set("page", String(page));
       u.searchParams.set("perPage", String(perPage));
@@ -102,7 +104,7 @@ const TYPES = {
         created_at: r.created_at ?? null,
       })),
     }),
-    getOne: (id) =>
+    getOne: (id /*, opt */) =>
       jsonFetcher(
         `/api/event-categories/${encodeURIComponent(id)}?locale=id&fallback=id`
       ),
@@ -130,10 +132,11 @@ const TYPES = {
       }),
   },
 
+  /* ======= ADJUSTED: mitra uses new locale/fallback + soft-delete flags ======= */
   mitra: {
     key: "mitra",
-    label: "Kategori Mitra (Dalam Negeri)",
-    buildListUrl: ({ page, perPage, q }) => {
+    label: "Kategori Mitra",
+    buildListUrl: ({ page, perPage, q, locale, withDeleted, onlyDeleted }) => {
       const u = new URL(
         "/api/mitra-dalam-negeri-categories",
         window.location.origin
@@ -141,8 +144,11 @@ const TYPES = {
       u.searchParams.set("page", String(page));
       u.searchParams.set("perPage", String(perPage));
       u.searchParams.set("sort", "created_at:desc");
-      u.searchParams.set("locale", "id");
-      u.searchParams.set("fallback", "id");
+      const loc = (locale || "id").slice(0, 2).toLowerCase();
+      u.searchParams.set("locale", loc);
+      u.searchParams.set("fallback", otherLocale(loc));
+      if (withDeleted) u.searchParams.set("with_deleted", "1");
+      if (onlyDeleted) u.searchParams.set("only_deleted", "1");
       if (q?.trim()) u.searchParams.set("q", q.trim());
       return u.toString();
     },
@@ -155,19 +161,23 @@ const TYPES = {
         created_at: r.created_at ?? null,
       })),
     }),
-    getOne: (id) =>
-      jsonFetcher(
+    getOne: (id, { locale } = {}) => {
+      const loc = (locale || "id").slice(0, 2).toLowerCase();
+      return jsonFetcher(
         `/api/mitra-dalam-negeri-categories/${encodeURIComponent(
           id
-        )}?locale=id&fallback=id`
-      ),
+        )}?locale=${encodeURIComponent(loc)}&fallback=${encodeURIComponent(
+          otherLocale(loc)
+        )}`
+      );
+    },
     create: (name) =>
       jsonFetcher("/api/mitra-dalam-negeri-categories", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name_id: String(name || ""),
-          autoTranslate: true,
+          autoTranslate: true, // ID -> EN otomatis (lihat endpoint)
         }),
       }),
     update: (id, name) =>
@@ -178,7 +188,7 @@ const TYPES = {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name_id: String(name || ""),
-            autoTranslate: true,
+            autoTranslate: true, // sinkron EN dari ID
           }),
         }
       ),
@@ -186,7 +196,7 @@ const TYPES = {
       jsonFetcher(
         `/api/mitra-dalam-negeri-categories/${encodeURIComponent(id)}`,
         {
-          method: "DELETE",
+          method: "DELETE", // soft delete di server
         }
       ),
   },
@@ -194,12 +204,11 @@ const TYPES = {
   service: {
     key: "service",
     label: "Kategori Layanan",
-    buildListUrl: ({ page, perPage, q }) => {
+    buildListUrl: ({ page, perPage, q /*, locale*/ }) => {
       const u = new URL("/api/service-categories", window.location.origin);
       u.searchParams.set("page", String(page));
       u.searchParams.set("limit", String(perPage));
       if (q?.trim()) u.searchParams.set("q", q.trim());
-      // meta didukung (lihat patch endpoint di bawah)
       return u.toString();
     },
     normalizeList: (json) => {
@@ -215,7 +224,7 @@ const TYPES = {
         })),
       };
     },
-    getOne: (id) =>
+    getOne: (id /*, opt */) =>
       jsonFetcher(`/api/service-categories/${encodeURIComponent(id)}`),
     create: (name) =>
       jsonFetcher("/api/service-categories", {
@@ -252,7 +261,7 @@ const TYPES = {
         created_at: null,
       })),
     }),
-    getOne: (id) =>
+    getOne: (id /*, opt */) =>
       jsonFetcher(
         `/api/testimonials-category/${encodeURIComponent(id)}?locale=id`
       ),
@@ -286,7 +295,13 @@ export default function useMasterDataViewModel() {
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
+
+  // locale untuk endpoint yang mendukung (mitra)
   const [locale, setLocale] = useState("id");
+
+  // dukungan soft-delete flags (hanya dipakai oleh mitra)
+  const [withDeleted, setWithDeleted] = useState(false);
+  const [onlyDeleted, setOnlyDeleted] = useState(false);
 
   /* ========== list state ========== */
   const [rows, setRows] = useState([]);
@@ -302,7 +317,14 @@ export default function useMasterDataViewModel() {
     const seq = ++seqRef.current;
     setLoading(true);
     try {
-      const url = current.buildListUrl({ page, perPage, q, locale });
+      const url = current.buildListUrl({
+        page,
+        perPage,
+        q,
+        locale,
+        withDeleted,
+        onlyDeleted,
+      });
       const json = await jsonFetcher(url);
       let {
         rows: rws,
@@ -323,7 +345,6 @@ export default function useMasterDataViewModel() {
         rws = rws.slice(start, end);
       }
 
-      // commit only if not stale
       if (seq === seqRef.current) {
         setRows(rws);
         setTotal(ttl);
@@ -338,7 +359,7 @@ export default function useMasterDataViewModel() {
     } finally {
       if (seq === seqRef.current) setLoading(false);
     }
-  }, [current, page, perPage, q, locale]);
+  }, [current, page, perPage, q, locale, withDeleted, onlyDeleted]);
 
   useEffect(() => {
     fetchList();
@@ -386,7 +407,7 @@ export default function useMasterDataViewModel() {
 
   async function getCategory(id) {
     try {
-      const json = await current.getOne(id);
+      const json = await current.getOne(id, { locale });
       const d = json?.data ?? json;
       return { ok: true, data: { id: d.id, name: d.name ?? d?.slug ?? "-" } };
     } catch (e) {
@@ -398,8 +419,13 @@ export default function useMasterDataViewModel() {
     setType(next);
     setQ("");
     setPage(1);
-    // perPage tetap, atau sesuaikan bila perlu
+    // perPage tetap
   }
+
+  // ketika onlyDeleted aktif, matikan withDeleted agar konsisten
+  useEffect(() => {
+    if (onlyDeleted && withDeleted) setWithDeleted(false);
+  }, [onlyDeleted, withDeleted]);
 
   return {
     // state
@@ -413,8 +439,14 @@ export default function useMasterDataViewModel() {
     setPage,
     perPage,
     setPerPage,
+
     locale,
     setLocale,
+
+    withDeleted,
+    setWithDeleted,
+    onlyDeleted,
+    setOnlyDeleted,
 
     rows,
     total,

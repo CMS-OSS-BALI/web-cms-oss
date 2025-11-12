@@ -332,25 +332,18 @@ export default function useMerchantsViewModel() {
       try {
         let body;
         if (payload instanceof FormData) {
-          // langsung pakai, tanpa memodifikasi argumen
           body = payload;
         } else {
-          // SUSUN FormData TANPA mengubah payload caller
           const fd = new FormData();
 
-          // 1) file utama (image)
           const file = payload?.file;
-          if (file) {
-            fd.set("image", file);
-          }
+          if (file) fd.set("image", file);
 
-          // 2) lampiran baru (array file)
           const attachmentsNew = Array.isArray(payload?.attachments_new)
             ? payload.attachments_new
             : [];
           attachmentsNew.forEach((f) => fd.append("attachments", f));
 
-          // 3) daftar lampiran yang akan dihapus (array id/string)
           const attachmentsToDelete = Array.isArray(
             payload?.attachments_to_delete
           )
@@ -360,7 +353,6 @@ export default function useMerchantsViewModel() {
             fd.append("attachments_to_delete", String(x))
           );
 
-          // 4) field lain (skip key khusus agar tidak dobel)
           const SKIP = new Set([
             "file",
             "attachments_new",
@@ -410,7 +402,6 @@ export default function useMerchantsViewModel() {
         if (!res.ok)
           return { ok: false, error: j?.error?.message || "Gagal menghapus" };
 
-        // Clamp page → halaman valid terdekat
         const newTotal = Math.max(0, (total || 0) - 1);
         const nextTotalPages = Math.max(
           1,
@@ -471,9 +462,8 @@ export default function useMerchantsViewModel() {
     [locale]
   );
 
-  /* ========== CSV export ========== */
+  /* ========== CSV export (include NIK) ========== */
   const exportCSV = useCallback(async () => {
-    // 1) Try a backend export endpoint first (fastest + truly streams server-side)
     try {
       const params = new URLSearchParams();
       params.set("format", "csv");
@@ -493,18 +483,12 @@ export default function useMerchantsViewModel() {
       if (resp.ok) {
         const ct = (resp.headers.get("content-type") || "").toLowerCase();
         if (ct.includes("text/csv") || ct.includes("octet-stream")) {
-          // server already gives us the CSV — just return it
           return await resp.blob();
         }
-        // if server returns JSON instead of CSV, fall through to client batching
       }
-    } catch {
-      // ignore and fall back to client-side batching
-    }
+    } catch {}
 
-    // 2) Client-side parallelised export (batched Promise.all with concurrency limit)
     try {
-      // First get the total count quickly
       const headUrl = buildKey({
         page: 1,
         perPage: 1,
@@ -527,6 +511,7 @@ export default function useMerchantsViewModel() {
         "category",
         "email",
         "phone",
+        "nik",
         "website",
         "city",
         "province",
@@ -539,11 +524,9 @@ export default function useMerchantsViewModel() {
         });
       }
 
-      // Tune these to your API/server
-      const PER = 250; // larger page = fewer roundtrips
+      const PER = 250;
       const pages = Math.max(1, Math.ceil(allTotal / PER));
 
-      // Concurrency cap to avoid hammering the API (use hardware hint if available)
       const MAX_CONCURRENCY =
         typeof navigator !== "undefined" && navigator.hardwareConcurrency
           ? Math.min(
@@ -552,7 +535,6 @@ export default function useMerchantsViewModel() {
             )
           : 6;
 
-      // Helper: fetch one page
       const fetchPage = async (p) => {
         const url = buildKey({
           page: p,
@@ -570,10 +552,8 @@ export default function useMerchantsViewModel() {
         return Array.isArray(json?.data) ? json.data : [];
       };
 
-      // Prepare an array to hold CSV chunk per page (to keep order)
       const pageChunks = new Array(pages);
 
-      // Convert rows → CSV chunk (string)
       const rowsToCsvLines = (rows) =>
         rows
           .map((r) =>
@@ -584,6 +564,7 @@ export default function useMerchantsViewModel() {
               csvSafe(r?.category?.name || ""),
               csvSafe(r.email || ""),
               csvSafe(r.phone || ""),
+              csvSafe(r.nik || ""),
               csvSafe(r.website || ""),
               csvSafe(r.city || ""),
               csvSafe(r.province || ""),
@@ -592,7 +573,6 @@ export default function useMerchantsViewModel() {
           )
           .join("\n");
 
-      // Worker pool with concurrency limit
       let cursor = 1;
       const worker = async () => {
         while (true) {
@@ -602,10 +582,6 @@ export default function useMerchantsViewModel() {
 
           const rows = await fetchPage(myPage);
           pageChunks[myPage - 1] = rowsToCsvLines(rows);
-
-          // Yield to the browser a bit on big exports
-          // (prevents long single-task blocking on the main thread)
-          // eslint-disable-next-line no-await-in-loop
           await new Promise((r) => setTimeout(r, 0));
         }
       };
@@ -613,7 +589,6 @@ export default function useMerchantsViewModel() {
       const workers = Array.from({ length: MAX_CONCURRENCY }, () => worker());
       await Promise.all(workers);
 
-      // Assemble Blob parts without building one huge string at once
       const parts = [];
       parts.push(HEADERS.join(","), "\n");
       for (let i = 0; i < pageChunks.length; i += 1) {
@@ -666,9 +641,10 @@ export default function useMerchantsViewModel() {
     updateMerchant,
     deleteMerchant,
 
-    // summary counts (already minimized requests)
+    // summary counts & list reload
     statusCounts,
     reload,
+    refreshStatusCounts,
 
     // export
     exportCSV,

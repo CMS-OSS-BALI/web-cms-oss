@@ -380,10 +380,25 @@ body {
   }
 }
 
+body.user-shell-full .user-content {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  gap: 0;
+}
+
+body.user-shell-full .user-content > * {
+  width: 100%;
+}
+
 /* Mobile padding vertical tetap berlaku seperti sebelumnya */
 @media (max-width: 768px) {
   .user-content {
     padding-top: clamp(32px, 10vw, 60px);
     padding-bottom: clamp(24px, 8vw, 48px);
+  }
+  body.user-shell-full .user-content {
+    padding-top: 0;
+    padding-bottom: 0;
   }
 }

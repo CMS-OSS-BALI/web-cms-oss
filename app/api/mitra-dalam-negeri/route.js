@@ -5,6 +5,7 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
 import { translate } from "@/app/utils/geminiTranslator";
 import storageClient from "@/app/utils/storageClient";
+import { randomUUID } from "crypto";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -13,6 +14,8 @@ const DEFAULT_LOCALE = "id";
 const EN_LOCALE = "en";
 const FALLBACK_LOCALE = EN_LOCALE;
 const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
+const NIK_LENGTH = 16;
+const DIGIT_ONLY = /\D+/g;
 
 /* =========================
    Storage & URL helpers
@@ -61,6 +64,12 @@ function toStorageKey(u) {
     return s.slice(idx + "/public/".length).replace(/^\/+/, "");
   }
   return null;
+}
+
+function sanitizeNik(value) {
+  if (value === undefined || value === null) return null;
+  const digits = String(value).replace(DIGIT_ONLY, "");
+  return digits || null;
 }
 
 // Best-effort remover ke service storage
@@ -285,7 +294,7 @@ async function resolveCategoryId({ category_id, category_slug }) {
   const id = category_id ? String(category_id).trim() : "";
   const slug = category_slug ? String(category_slug).trim() : "";
   if (!id && !slug) return null;
-  const found = await prisma.mitra_dalam_negeri_categories.findFirst({
+  const found = await prisma.mitra_categories.findFirst({
     where: id ? { id } : { slug },
     select: { id: true },
   });
@@ -334,7 +343,7 @@ export async function GET(req) {
         : includeDeleted || withDeleted
         ? {}
         : { deleted_at: null }),
-      mitra_dalam_negeri_translate: { some: { locale: { in: locales } } },
+      mitra_translate: { some: { locale: { in: locales } } },
     };
 
     const AND = [];
@@ -345,7 +354,7 @@ export async function GET(req) {
     if (category_id) {
       AND.push({ category_id: String(category_id) });
     } else if (category_slug) {
-      const cat = await prisma.mitra_dalam_negeri_categories.findUnique({
+      const cat = await prisma.mitra_categories.findUnique({
         where: { slug: String(category_slug) },
         select: { id: true },
       });
@@ -357,7 +366,7 @@ export async function GET(req) {
       AND.push({
         OR: [
           {
-            mitra_dalam_negeri_translate: {
+            mitra_translate: {
               some: {
                 locale: { in: locales },
                 OR: [{ name: ci(q) }, { description: ci(q) }],
@@ -376,6 +385,7 @@ export async function GET(req) {
           { contact_name: ci(q) },
           { contact_position: ci(q) },
           { contact_whatsapp: ci(q) },
+          { nik: ci(q) },
         ],
       });
     }
@@ -393,20 +403,20 @@ export async function GET(req) {
     if (AND.length) where.AND = AND;
 
     const [total, rows] = await Promise.all([
-      prisma.mitra_dalam_negeri.count({ where }),
-      prisma.mitra_dalam_negeri.findMany({
+      prisma.mitra.count({ where }),
+      prisma.mitra.findMany({
         where,
         orderBy,
         skip: (page - 1) * perPage,
         take: perPage,
         include: {
-          mitra_dalam_negeri_translate: {
+          mitra_translate: {
             where: { locale: { in: locales } },
             select: { locale: true, name: true, description: true },
           },
-          category: {
+          mitra_categories: {
             include: {
-              translate: {
+              mitra_categories_translate: {
                 where: { locale: { in: locales } },
                 select: { locale: true, name: true },
               },
@@ -417,25 +427,26 @@ export async function GET(req) {
     ]);
 
     const data = rows.map((row) => {
-      const t = pickTrans(
-        row.mitra_dalam_negeri_translate || [],
+      const t = pickTrans(row.mitra_translate || [], locale, fallback);
+      const ct = pickTrans(
+        row.mitra_categories?.mitra_categories_translate || [],
         locale,
         fallback
       );
-      const ct = pickTrans(row.category?.translate || [], locale, fallback);
       return {
         id: row.id,
         admin_user_id: row.admin_user_id,
-        category: row.category
+        category: row.mitra_categories
           ? {
-              id: row.category.id,
-              slug: row.category.slug,
+              id: row.mitra_categories.id,
+              slug: row.mitra_categories.slug,
               name: ct?.name ?? null,
               locale_used: ct?.locale ?? null,
             }
           : null,
         email: row.email,
         phone: row.phone,
+        nik: row.nik,
         website: row.website,
         instagram: row.instagram,
         twitter: row.twitter,
@@ -500,6 +511,8 @@ export async function POST(req) {
     const email = (body?.email || "").trim();
     const phone = (body?.phone || "").trim();
     const address = (body?.address || "").trim();
+    const nikInput = body?.nik ?? body?.ktp_number;
+    const nik = sanitizeNik(nikInput);
 
     if (!merchantName)
       return json(
@@ -516,6 +529,22 @@ export async function POST(req) {
     if (!phone)
       return json(
         { error: { code: "BAD_REQUEST", message: "phone wajib diisi" } },
+        { status: 400 }
+      );
+    if (!nik)
+      return json(
+        { error: { code: "BAD_REQUEST", message: "NIK wajib diisi", field: "nik" } },
+        { status: 400 }
+      );
+    if (nik.length !== NIK_LENGTH)
+      return json(
+        {
+          error: {
+            code: "BAD_REQUEST",
+            message: `NIK harus ${NIK_LENGTH} digit angka.`,
+            field: "nik",
+          },
+        },
         { status: 400 }
       );
     if (!address)
@@ -577,9 +606,10 @@ export async function POST(req) {
       aboutEn = aEn ?? aboutRaw;
     }
 
-    // 1) Buat parent dahulu (cepat)
-    const created = await prisma.mitra_dalam_negeri.create({
+    // 1) Buat parent dahulu
+    const created = await prisma.mitra.create({
       data: {
+        id: randomUUID(),
         // org info
         email,
         phone,
@@ -614,13 +644,14 @@ export async function POST(req) {
         review_notes: null,
         reviewed_by: null,
         reviewed_at: null,
+        nik,
 
         created_at: new Date(),
         updated_at: new Date(),
       },
     });
 
-    // 2) Upload logo (optional) DI LUAR transaksi, lalu update kolom
+    // 2) Upload logo (opsional) DI LUAR transaksi, lalu update kolom
     if (imageFile && !image_url) {
       try {
         await assertImageFileOrThrow(imageFile);
@@ -629,7 +660,7 @@ export async function POST(req) {
           `mitra/${created.id}`
         );
         if (publicUrl) {
-          await prisma.mitra_dalam_negeri.update({
+          await prisma.mitra.update({
             where: { id: created.id },
             data: { image_url: publicUrl, updated_at: new Date() },
           });
@@ -660,10 +691,11 @@ export async function POST(req) {
       }
     }
 
-    // 3) Translations (cepat)
+    // 3) Translations
     await prisma.$transaction(async (tx) => {
-      await tx.mitra_dalam_negeri_translate.create({
+      await tx.mitra_translate.create({
         data: {
+          id: randomUUID(),
           id_merchants: created.id,
           locale,
           name: merchantName,
@@ -672,7 +704,7 @@ export async function POST(req) {
       });
 
       if (locale !== EN_LOCALE) {
-        await tx.mitra_dalam_negeri_translate.upsert({
+        await tx.mitra_translate.upsert({
           where: {
             id_merchants_locale: {
               id_merchants: created.id,
@@ -684,6 +716,7 @@ export async function POST(req) {
             ...(aboutEn !== undefined ? { description: aboutEn ?? null } : {}),
           },
           create: {
+            id: randomUUID(),
             id_merchants: created.id,
             locale: EN_LOCALE,
             name: nameEn || merchantName,
@@ -693,7 +726,7 @@ export async function POST(req) {
       }
     });
 
-    // 4) Upload attachments (opsional, di luar transaksi), kemudian simpan metadata
+    // 4) Upload attachments (opsional)
     let uploaded = [];
     if (attachments?.length) {
       for (const f of attachments) {

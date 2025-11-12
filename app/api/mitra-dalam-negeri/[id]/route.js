@@ -5,6 +5,7 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
 import { translate } from "@/app/utils/geminiTranslator";
 import storageClient from "@/app/utils/storageClient";
+import { randomUUID } from "crypto";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -12,6 +13,8 @@ export const runtime = "nodejs";
 const DEFAULT_LOCALE = "id";
 const EN_LOCALE = "en";
 const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
+const NIK_LENGTH = 16;
+const DIGIT_ONLY = /\D+/g;
 
 /* =========================
    Storage & URL helpers
@@ -57,6 +60,11 @@ function toStorageKey(u) {
     return s.slice(idx + "/public/".length).replace(/^\/+/, "");
   }
   return null;
+}
+function sanitizeNik(value) {
+  if (value === undefined || value === null) return null;
+  const digits = String(value).replace(DIGIT_ONLY, "");
+  return digits || null;
 }
 async function removeStorageObjects(urlsOrKeys = []) {
   const keys = urlsOrKeys.map(toStorageKey).filter(Boolean);
@@ -268,7 +276,7 @@ async function resolveCategoryId({ category_id, category_slug }) {
   const id = category_id ? String(category_id).trim() : "";
   const slug = category_slug ? String(category_slug).trim() : "";
   if (!id && !slug) return null;
-  const found = await prisma.mitra_dalam_negeri_categories.findFirst({
+  const found = await prisma.mitra_categories.findFirst({
     where: id ? { id } : { slug },
     select: { id: true },
   });
@@ -292,16 +300,16 @@ export async function GET(req, { params }) {
     const fallback = normalizeLocale(searchParams.get("fallback") || EN_LOCALE);
     const locales = locale === fallback ? [locale] : [locale, fallback];
 
-    const row = await prisma.mitra_dalam_negeri.findFirst({
+    const row = await prisma.mitra.findFirst({
       where: { id },
       include: {
-        mitra_dalam_negeri_translate: {
+        mitra_translate: {
           where: { locale: { in: locales } },
           select: { locale: true, name: true, description: true },
         },
-        category: {
+        mitra_categories: {
           include: {
-            translate: {
+            mitra_categories_translate: {
               where: { locale: { in: locales } },
               select: { locale: true, name: true },
             },
@@ -321,13 +329,13 @@ export async function GET(req, { params }) {
       select: { id: true, file_url: true, sort: true, created_at: true },
     });
 
-    const t = pickTrans(
-      row.mitra_dalam_negeri_translate || [],
+    const t = pickTrans(row.mitra_translate || [], locale, fallback);
+    const ct = pickTrans(
+      row.mitra_categories?.mitra_categories_translate || [],
       locale,
       fallback
     );
-    const ct = pickTrans(row.category?.translate || [], locale, fallback);
-    const { mitra_dalam_negeri_translate, ...base } = row;
+    const { mitra_translate, ...base } = row;
 
     return json({
       message: "OK",
@@ -335,10 +343,10 @@ export async function GET(req, { params }) {
         ...base,
         image_url: toPublicUrl(base.image_url),
         mou_url: toPublicUrl(base.mou_url),
-        category: row.category
+        category: row.mitra_categories
           ? {
-              id: row.category.id,
-              slug: row.category.slug,
+              id: row.mitra_categories.id,
+              slug: row.mitra_categories.slug,
               name: ct?.name ?? null,
               locale_used: ct?.locale ?? null,
             }
@@ -387,6 +395,35 @@ export async function PATCH(req, { params }) {
     );
     const locale = normalizeLocale(body.locale);
     const data = buildUpdateData(body);
+    const wantsNikUpdate =
+      body.nik !== undefined || body.ktp_number !== undefined;
+    if (wantsNikUpdate) {
+      const nik = sanitizeNik(body.nik ?? body.ktp_number);
+      if (!nik)
+        return json(
+          {
+            error: {
+              code: "BAD_REQUEST",
+              message: "NIK wajib diisi.",
+              field: "nik",
+            },
+          },
+          { status: 400 }
+        );
+      if (nik.length !== NIK_LENGTH)
+        return json(
+          {
+            error: {
+              code: "BAD_REQUEST",
+              message: `NIK harus ${NIK_LENGTH} digit angka.`,
+              field: "nik",
+            },
+          },
+          { status: 400 }
+        );
+      data.nik = nik;
+      data.updated_at = new Date();
+    }
 
     // category update (id/slug)
     if (body.category_id !== undefined || body.category_slug !== undefined) {
@@ -458,7 +495,7 @@ export async function PATCH(req, { params }) {
     if (imageFile) {
       try {
         await assertImageFileOrThrow(imageFile);
-        const existing = await prisma.mitra_dalam_negeri.findUnique({
+        const existing = await prisma.mitra.findUnique({
           where: { id },
           select: { image_url: true },
         });
@@ -495,7 +532,7 @@ export async function PATCH(req, { params }) {
 
     await prisma.$transaction(async (tx) => {
       if (Object.keys(data).length) {
-        await tx.mitra_dalam_negeri.update({ where: { id }, data });
+        await tx.mitra.update({ where: { id }, data });
       }
 
       // translasi
@@ -505,10 +542,11 @@ export async function PATCH(req, { params }) {
         if (hasAbout)
           tUpd.description = body.about === null ? null : String(body.about);
 
-        await tx.mitra_dalam_negeri_translate.upsert({
+        await tx.mitra_translate.upsert({
           where: { id_merchants_locale: { id_merchants: id, locale } },
           update: tUpd,
           create: {
+            id: randomUUID(),
             id_merchants: id,
             locale,
             name: tUpd.name || body.merchant_name || "",
@@ -532,12 +570,13 @@ export async function PATCH(req, { params }) {
             enUpdate.description = aboutEn ?? tUpd.description ?? null;
 
           if (Object.keys(enUpdate).length) {
-            await tx.mitra_dalam_negeri_translate.upsert({
+            await tx.mitra_translate.upsert({
               where: {
                 id_merchants_locale: { id_merchants: id, locale: EN_LOCALE },
               },
               update: enUpdate,
               create: {
+                id: randomUUID(),
                 id_merchants: id,
                 locale: EN_LOCALE,
                 name: enUpdate.name || body.merchant_name || "",
@@ -642,7 +681,7 @@ export async function DELETE(req, { params }) {
       );
 
     if (restore) {
-      const restored = await prisma.mitra_dalam_negeri.update({
+      const restored = await prisma.mitra.update({
         where: { id },
         data: { deleted_at: null, updated_at: new Date() },
       });
@@ -657,7 +696,7 @@ export async function DELETE(req, { params }) {
             where: { mitra_id: id },
             select: { file_url: true },
           }),
-          prisma.mitra_dalam_negeri.findUnique({
+          prisma.mitra.findUnique({
             where: { id },
             select: { image_url: true },
           }),
@@ -669,11 +708,11 @@ export async function DELETE(req, { params }) {
         if (paths.length) await removeStorageObjects(paths);
         await prisma.mitra_files.deleteMany({ where: { mitra_id: id } });
       } catch {}
-      await prisma.mitra_dalam_negeri.delete({ where: { id } });
+      await prisma.mitra.delete({ where: { id } });
       return json({ message: "Deleted permanently", data: { id } });
     }
 
-    const deleted = await prisma.mitra_dalam_negeri.update({
+    const deleted = await prisma.mitra.update({
       where: { id },
       data: { deleted_at: new Date(), updated_at: new Date() },
     });

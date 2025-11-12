@@ -1,9 +1,8 @@
-// useFormMitraViewModel.js
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-/* ==== helpers ==== */
+/* ===== helpers ===== */
 const normalizeLocale = (v, fb = "id") => {
   const raw = String(v ?? "")
     .trim()
@@ -17,37 +16,94 @@ const trim = (v) => (v == null ? "" : String(v).trim());
 const isEmail = (s = "") => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(trim(s));
 const isPhone = (s = "") =>
   /^(\+?\d[\d\s-]{7,}|0\d{8,})$/.test(String(s).replace(/\s+/g, ""));
+const isDigits = (s = "") => /^\d{10,20}$/.test(String(s).replace(/\s+/g, ""));
+
+const DEFAULT_LOGO_URL =
+  process.env.NEXT_PUBLIC_DEFAULT_LOGO_URL ||
+  "https://cdn.onestepsolutionbali.com/public/cms-oss/system/placeholder-logo.png";
+
+/* ===== UI copy (semua teks di sini) ===== */
+const UI_COPY = {
+  id: {
+    title: "FORM MITRA",
+    labels: {
+      contact_name: "Nama Penanggung Jawab",
+      merchant_name: "Nama Merchant/organisasi",
+      whatsapp: "No Whatsapp",
+      address: "Alamat Lengkap",
+      email: "Email",
+      ktp_number: "Nomor KTP",
+      submit: "KIRIM",
+    },
+    placeholders: {
+      contact_name:
+        "Nama Lengkap ( Contoh : Ni Komang Putri Indah Puspita Sari )",
+      merchant_name: "Nama Merchant (contoh : IMADJI COFFE)",
+      whatsapp:
+        "Gunakan Kode Nomor  +62 atau kode sesuai negara (contoh: +6289770)",
+      address:
+        "Alamat Lengkap (contoh : Jl. P.B. Sudirman No.18 A, Dauh Puri Klod, Kec. Denpasar Bar., Kota Denpasar, Bali 80232, Indonesia.)",
+      email: "Gunakan Email Aktif (contoh : imadji@gmail.com)",
+      ktp_number: "Gunakan No KTP Penanggung jawab (contoh : 00897123900)",
+    },
+    reqMark: "*",
+    notif: { successTitle: "Berhasil", errorTitle: "Gagal" },
+    errors: {
+      required: "Wajib diisi.",
+      invalidPhone: "Nomor tidak valid.",
+      invalidEmail: "Email tidak valid.",
+      invalidKTP: "Nomor KTP tidak valid.",
+    },
+  },
+  en: {
+    title: "PARTNER FORM",
+    labels: {
+      contact_name: "PIC Full Name",
+      merchant_name: "Merchant/Organization Name",
+      whatsapp: "WhatsApp Number",
+      address: "Full Address",
+      email: "Email",
+      ktp_number: "National ID (KTP)",
+      submit: "SUBMIT",
+    },
+    placeholders: {
+      contact_name: "Full name",
+      merchant_name: "e.g., IMADJI COFFE",
+      whatsapp: "Use country code, e.g., +628xxx",
+      address: "Street, district, city, province, country, postal code",
+      email: "Active email address",
+      ktp_number: "PIC National ID number",
+    },
+    reqMark: "*",
+    notif: { successTitle: "Success", errorTitle: "Failed" },
+    errors: {
+      required: "This field is required.",
+      invalidPhone: "Invalid phone number.",
+      invalidEmail: "Invalid email address.",
+      invalidKTP: "Invalid ID number.",
+    },
+  },
+};
 
 export default function useFormMitraViewModel({ locale = "id" } = {}) {
-  const activeLocale = normalizeLocale(locale, "id");
+  const [activeLocale, setActiveLocale] = useState(
+    normalizeLocale(locale, "id")
+  );
+
+  // sinkron saat header/URL ubah bahasa
+  useEffect(() => {
+    setActiveLocale(normalizeLocale(locale, "id"));
+  }, [locale]);
+
+  const ui = useMemo(() => UI_COPY[activeLocale], [activeLocale]);
 
   const [values, setValues] = useState({
-    // required
-    merchant_name: "",
-    email: "",
-    phone: "",
-    address: "",
-    city: "",
-    province: "",
-    postal_code: "",
     contact_name: "",
-    contact_position: "",
-    contact_whatsapp: "",
-    about: "",
-    category_id: "",
-
-    // logo: boleh file ATAU url (salah satu wajib)
-    image: null, // file
-    image_url: "",
-
-    // Website & Socials (opsional)
-    website: "",
-    instagram: "",
-    twitter: "",
-    mou_url: "",
-
-    // attachments optional multi
-    attachments: [],
+    merchant_name: "",
+    whatsapp: "",
+    address: "",
+    email: "",
+    ktp_number: "",
   });
 
   const [errors, setErrors] = useState({});
@@ -59,78 +115,27 @@ export default function useFormMitraViewModel({ locale = "id" } = {}) {
     setErrors((e) => ({ ...e, [k]: null }));
   };
 
-  const onPickImage = (fileOrNull) => {
-    setValues((s) => ({ ...s, image: fileOrNull || null }));
-    setErrors((e) => ({ ...e, image: null, image_url: null }));
-  };
-
-  // merge files (multi pick) + dedup
-  const onPickAttachments = (files) => {
-    setValues((s) => {
-      const current = s.attachments || [];
-      const incoming = Array.isArray(files) ? files : [];
-      const merged = [...current, ...incoming];
-      const map = new Map();
-      merged.forEach((f) =>
-        map.set(`${f.name}|${f.size}|${f.lastModified || 0}`, f)
-      );
-      return { ...s, attachments: Array.from(map.values()) };
-    });
-  };
-
-  const removeAttachment = (idx) => {
-    setValues((s) => {
-      const copy = [...(s.attachments || [])];
-      copy.splice(idx, 1);
-      return { ...s, attachments: copy };
-    });
-  };
-
   const validate = () => {
     const e = {};
-    // required utama
-    if (!trim(values.merchant_name)) e.merchant_name = "Required";
-    if (!isEmail(values.email)) e.email = "Invalid email";
-    if (!isPhone(values.phone)) e.phone = "Invalid phone";
-    if (!trim(values.address)) e.address = "Required";
-    if (!trim(values.city)) e.city = "Required";
-    if (!trim(values.province)) e.province = "Required";
-    if (!trim(values.postal_code)) e.postal_code = "Required";
-    if (!trim(values.contact_name)) e.contact_name = "Required";
-    if (!trim(values.contact_position)) e.contact_position = "Required";
-    if (!isPhone(values.contact_whatsapp)) e.contact_whatsapp = "Invalid phone";
-    if (!trim(values.about)) e.about = "Required";
-    if (!trim(values.category_id)) e.category_id = "Required";
-
-    // logo wajib: file ATAU url
-    if (!values.image && !trim(values.image_url)) {
-      e.image = "Image file or URL is required";
-      e.image_url = e.image;
-    }
-
-    // Website & Socials -> opsional (tak divalidasi)
+    if (!trim(values.contact_name)) e.contact_name = ui.errors.required;
+    if (!trim(values.merchant_name)) e.merchant_name = ui.errors.required;
+    if (!isPhone(values.whatsapp)) e.whatsapp = ui.errors.invalidPhone;
+    if (!trim(values.address)) e.address = ui.errors.required;
+    if (!isEmail(values.email)) e.email = ui.errors.invalidEmail;
+    if (!isDigits(values.ktp_number)) e.ktp_number = ui.errors.invalidKTP;
     return e;
   };
 
-  const canSubmit = useMemo(() => {
-    const e = validate();
-    return !Object.keys(e).length;
-  }, [
-    values.merchant_name,
-    values.email,
-    values.phone,
-    values.address,
-    values.city,
-    values.province,
-    values.postal_code,
-    values.contact_name,
-    values.contact_position,
-    values.contact_whatsapp,
-    values.about,
-    values.category_id,
-    values.image,
-    values.image_url,
-  ]);
+  // Jika user ganti bahasa saat ada error, refresh pesan error ke bahasa baru
+  useEffect(() => {
+    if (Object.keys(errors || {}).length) setErrors(validate());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeLocale]);
+
+  const canSubmit = useMemo(
+    () => !Object.keys(validate()).length,
+    [values, ui]
+  );
 
   const submit = async () => {
     const e = validate();
@@ -141,74 +146,34 @@ export default function useFormMitraViewModel({ locale = "id" } = {}) {
     try {
       setLoading(true);
       const fd = new FormData();
-
-      // locale
       fd.append("locale", activeLocale);
-
-      // required
       fd.append("merchant_name", trim(values.merchant_name));
       fd.append("email", trim(values.email));
-      fd.append("phone", trim(values.phone));
+      fd.append("phone", trim(values.whatsapp));
       fd.append("address", trim(values.address));
-      fd.append("city", trim(values.city));
-      fd.append("province", trim(values.province));
-      fd.append("postal_code", trim(values.postal_code));
       fd.append("contact_name", trim(values.contact_name));
-      fd.append("contact_position", trim(values.contact_position));
-      fd.append("contact_whatsapp", trim(values.contact_whatsapp));
-      fd.append("about", trim(values.about));
-      fd.append("category_id", trim(values.category_id));
-
-      // logo
-      if (values.image) fd.append("image", values.image);
-      if (trim(values.image_url))
-        fd.append("image_url", trim(values.image_url));
-
-      // Website & Socials (opsional)
-      ["website", "instagram", "twitter", "mou_url"].forEach((k) => {
-        const v = trim(values[k]);
-        if (v) fd.append(k, v);
-      });
-
-      // attachments (opsional multi)
-      if (values.attachments?.length) {
-        values.attachments.forEach((f) => fd.append("attachments", f));
-      }
+      fd.append("contact_whatsapp", trim(values.whatsapp));
+      fd.append("ktp_number", trim(values.ktp_number));
+      if (DEFAULT_LOGO_URL) fd.append("image_url", DEFAULT_LOGO_URL);
 
       const res = await fetch("/api/mitra-dalam-negeri", {
         method: "POST",
         body: fd,
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
+      if (!res.ok)
         throw new Error(
           data?.error?.message || data?.message || "Submit failed"
         );
-      }
 
       setMsg({ type: "success", text: data?.message || "Success" });
-
-      // Reset form
       setValues({
-        merchant_name: "",
-        email: "",
-        phone: "",
-        address: "",
-        city: "",
-        province: "",
-        postal_code: "",
         contact_name: "",
-        contact_position: "",
-        contact_whatsapp: "",
-        about: "",
-        category_id: "",
-        image: null,
-        image_url: "",
-        website: "",
-        instagram: "",
-        twitter: "",
-        mou_url: "",
-        attachments: [],
+        merchant_name: "",
+        whatsapp: "",
+        address: "",
+        email: "",
+        ktp_number: "",
       });
     } catch (err) {
       setMsg({ type: "error", text: err?.message || "Server error" });
@@ -217,8 +182,14 @@ export default function useFormMitraViewModel({ locale = "id" } = {}) {
     }
   };
 
+  // compat (tidak dipakai, biarkan ada biar aman)
+  const onPickImage = () => {};
+  const onPickAttachments = () => {};
+  const removeAttachment = () => {};
+
   return {
-    locale: activeLocale,
+    ui,
+    // form
     values,
     errors,
     onChange,

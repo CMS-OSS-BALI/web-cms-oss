@@ -2,24 +2,18 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-// Sesuaikan salah satu import di bawah dengan setup-mu:
-import { prisma } from "@/lib/prisma"; // ← umum
-// import prisma from "@/lib/prisma";  // ← kalau default export
+import prisma from "@/lib/prisma";
 
 const ALLOWED = ["PENDING", "APPROVED", "DECLINED"];
 
 export async function GET() {
   try {
-    // Cari model yang tersedia di schema kamu
-    const repo =
-      prisma.merchantDomestic ||
-      prisma.merchant ||
-      prisma.merchants ||
-      prisma.mitraDalamNegeri;
+    // target model yang benar sesuai schema baru
+    const repo = prisma.mitra;
 
     if (!repo) {
       throw new Error(
-        "Prisma model untuk mitra/merchant tidak ditemukan. Sesuaikan nama model di route ini."
+        "Prisma model `mitra` tidak ditemukan. Cek export prisma di '@/lib/prisma'."
       );
     }
 
@@ -28,7 +22,6 @@ export async function GET() {
       _count: { _all: true },
     });
 
-    // Seed 0 untuk semua status yang diizinkan
     const base = Object.fromEntries(ALLOWED.map((s) => [s, 0]));
     for (const r of rows) {
       const key = String(r.status ?? "").toUpperCase();
@@ -41,7 +34,6 @@ export async function GET() {
       declined: base.DECLINED,
     };
 
-    // Ikutkan juga di meta.counts agar kompatibel dengan VM kamu
     const meta = {
       total: Object.values(base).reduce((a, b) => a + b, 0),
       counts: { ...summary },

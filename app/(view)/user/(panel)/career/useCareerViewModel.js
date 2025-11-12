@@ -1,4 +1,3 @@
-// useCareerViewModel.js
 "use client";
 
 import { useMemo, useCallback } from "react";
@@ -41,14 +40,14 @@ export default function useCareerViewModel({ locale = "id" } = {}) {
       image: "/images/career-vacancy.svg",
       body: L(
         "Kesempatan lowongan kerja terbuka lebar bagi Anda yang siap bergabung menjadi staf kami dan berkontribusi bersama para Super Team OSS Bali. Temukan berbagai posisi yang tersedia dan pastikan kesesuaiannya dengan kompetensi yang Anda miliki. Untuk mempermudah proses evaluasi, silakan kirim CV terbaik Anda melalui tombol di bawah.",
-        "Exciting openings are available for those ready to join our staff and contribute with the OSS Bali Super Team. Explore the roles, ensure they match your competencies, and send your best resume using the button below."
+        "Exciting openings are available for those ready to join the OSS Bali Super Team. Explore the roles, ensure they match your competencies, and send your best resume using the button below."
       ),
       btnLabel: L("Kirim CV", "Send CV"),
     }),
     [locale]
   );
 
-  /* ===== REFERRAL SECTION ===== */
+  /* REFERRAL */
   const referral = useMemo(
     () => ({
       title: L("Sahabat Referral", "Referral Buddy"),
@@ -69,7 +68,7 @@ export default function useCareerViewModel({ locale = "id" } = {}) {
     [locale]
   );
 
-  /* ===== BENEFITS (sesuai desain 6 item) ===== */
+  /* BENEFITS (6 item) */
   const benefits = useMemo(
     () => [
       {
@@ -106,6 +105,36 @@ export default function useCareerViewModel({ locale = "id" } = {}) {
     [locale]
   );
 
+  /* ===== LEVELS (baru, 2 kartu) ===== */
+  const levels = useMemo(
+    () => [
+      {
+        id: "pro",
+        variant: "pro",
+        logo: "/logo-oss-cube-pro.svg",
+        title: L("PRO SOLITAIRE LEVEL", "PRO SOLITAIRE LEVEL"),
+        desc: L(
+          "Keanggotaan Sahabat Referral OSS Bali tertinggi dengan akses eksklusif ke bonus komisi lebih besar dan trip luar negeri gratis tahunan.",
+          "Top-tier OSS Bali Referral membership with exclusive access to higher commission bonuses and annual free overseas trip."
+        ),
+      },
+      {
+        id: "basic",
+        variant: "basic",
+        logo: "/logo-oss-cube-basic.svg",
+        title: L("BASIC LEVEL", "BASIC LEVEL"),
+        desc: L(
+          "Keanggotaan Sahabat Referral OSS Bali tingkat awal. Langkah pertama untuk mulai meraih penghasilan sederhana.",
+          "Entry-level OSS Bali Referral membership. The first step to start earning simply."
+        ),
+      },
+    ],
+    [locale]
+  );
+
+  const levelsCTA = L("Wujudkan sekarang!", "Make it happen!");
+  const levelsHeroImg = "/images/referral-man-pointing.png";
+
   /* Actions */
   const onCTATeam = useCallback(() => {
     router.push("/career/team-member");
@@ -119,6 +148,8 @@ export default function useCareerViewModel({ locale = "id" } = {}) {
     router.push("/career/apply");
   }, [router]);
 
+  const onLevelsCTA = onCTAReferral; // arahkan ke referral
+
   /* Assets */
   const ctaImage = "/cta-girl.svg";
 
@@ -128,10 +159,14 @@ export default function useCareerViewModel({ locale = "id" } = {}) {
     cta,
     vacancy,
     referral,
-    benefits, // NEW
+    benefits,
+    levels,
+    levelsCTA,
+    levelsHeroImg,
     onCTATeam,
     onCTAReferral,
     onSendCV,
+    onLevelsCTA,
     ctaImage,
   };
 }

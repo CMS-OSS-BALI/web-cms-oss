@@ -15,6 +15,7 @@ import {
   assertAdmin,
 } from "@/app/api/mitra-dalam-negeri-categories/_utils";
 import { translate } from "@/app/utils/geminiTranslator";
+import { randomUUID } from "crypto";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -29,10 +30,10 @@ export async function GET(req, { params }) {
     const fallback = pickLocale(req, "fallback", "id");
     const locales = locale === fallback ? [locale] : [locale, fallback];
 
-    const item = await prisma.mitra_dalam_negeri_categories.findFirst({
+    const item = await prisma.mitra_categories.findFirst({
       where: { id, deleted_at: null },
       include: {
-        translate: {
+        mitra_categories_translate: {
           where: { locale: { in: locales } },
           select: { locale: true, name: true },
         },
@@ -40,7 +41,7 @@ export async function GET(req, { params }) {
     });
     if (!item) return notFound("Kategori mitra tidak ditemukan.");
 
-    const t = pickTrans(item.translate, locale, fallback);
+    const t = pickTrans(item.mitra_categories_translate, locale, fallback);
 
     return json({
       message: "OK",
@@ -124,10 +125,11 @@ export async function PATCH(req, { params }) {
     if (body.name_id !== undefined) {
       name_id_new = String(body.name_id || "");
       ops.push(
-        prisma.mitra_dalam_negeri_categories_translate.upsert({
+        prisma.mitra_categories_translate.upsert({
           where: { category_id_locale: { category_id: id, locale: "id" } },
           update: { name: (name_id_new || "(no title)").slice(0, 191) },
           create: {
+            id: randomUUID(),
             category_id: id,
             locale: "id",
             name: (name_id_new || "(no title)").slice(0, 191),
@@ -140,10 +142,11 @@ export async function PATCH(req, { params }) {
     if (body.name_en !== undefined) {
       const name_en = String(body.name_en || "");
       ops.push(
-        prisma.mitra_dalam_negeri_categories_translate.upsert({
+        prisma.mitra_categories_translate.upsert({
           where: { category_id_locale: { category_id: id, locale: "en" } },
           update: { name: (name_en || "(no title)").slice(0, 191) },
           create: {
+            id: randomUUID(),
             category_id: id,
             locale: "en",
             name: (name_en || "(no title)").slice(0, 191),
@@ -155,12 +158,9 @@ export async function PATCH(req, { params }) {
     // Apply main update (or ensure exists)
     if (Object.keys(data).length) {
       data.updated_at = new Date();
-      await prisma.mitra_dalam_negeri_categories.update({
-        where: { id },
-        data,
-      });
+      await prisma.mitra_categories.update({ where: { id }, data });
     } else {
-      const exists = await prisma.mitra_dalam_negeri_categories.findUnique({
+      const exists = await prisma.mitra_categories.findUnique({
         where: { id },
         select: { id: true },
       });
@@ -174,10 +174,11 @@ export async function PATCH(req, { params }) {
           ? await translate(String(name_id_new), "id", "en")
           : "";
         ops.push(
-          prisma.mitra_dalam_negeri_categories_translate.upsert({
+          prisma.mitra_categories_translate.upsert({
             where: { category_id_locale: { category_id: id, locale: "en" } },
             update: { name: (name_en_auto || "(no title)").slice(0, 191) },
             create: {
+              id: randomUUID(),
               category_id: id,
               locale: "en",
               name: (name_en_auto || "(no title)").slice(0, 191),
@@ -248,7 +249,7 @@ export async function DELETE(req, { params }) {
     const id = String(params?.id || "");
     if (!id) return badRequest("Parameter id wajib disertakan.", "id");
 
-    const deleted = await prisma.mitra_dalam_negeri_categories.update({
+    const deleted = await prisma.mitra_categories.update({
       where: { id },
       data: { deleted_at: new Date(), updated_at: new Date() },
       select: { id: true },

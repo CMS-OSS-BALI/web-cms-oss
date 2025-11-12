@@ -1062,9 +1062,10 @@ export default function LandingContent({ locale = "id" }) {
       {/* CONSULTANTS */}
       <section style={consultants.section}>
         <div style={CONTAINER}>
+          {/* Ganti className ke faqV2-title supaya sama seperti bagian FAQ */}
           <Title
             level={2}
-            className="consultV2-title reveal"
+            className="faqV2-title reveal"
             data-anim="down"
             style={{ ["--rvd"]: "40ms" }}
           >
@@ -1095,42 +1096,45 @@ export default function LandingContent({ locale = "id" }) {
                 >
                   <Link
                     href={href}
-                    className="consultV2-link"
+                    className="consult3-link"
                     aria-label={c?.name}
                   >
-                    <Card
-                      className="consultV2-card"
-                      bordered={false}
-                      hoverable
-                      bodyStyle={{ padding: "22px 22px 26px" }}
-                      style={{ marginTop: "calc(var(--consultV2-avatar)/2)" }}
-                    >
-                      <div className="consultV2-avatar">
+                    <article className="consult3-card">
+                      {/* foto PNG transparan (full/half body) */}
+                      <div className="consult3-photo">
                         <img
                           src={c.photo || "/images/avatars/default.jpg"}
                           alt={c.name || "Consultant"}
-                          onError={(e) => {
-                            e.currentTarget.src = "/images/avatars/default.jpg";
-                          }}
                           loading="lazy"
+                          onError={(e) =>
+                            (e.currentTarget.src =
+                              "/images/avatars/default.jpg")
+                          }
                         />
                       </div>
 
-                      <h4 className="consultV2-name">
-                        {(c.name || "").toUpperCase()}
-                      </h4>
+                      {/* copy di bawah */}
+                      <div className="consult3-bottom">
+                        <h4 className="consult3-name">
+                          {(c.name || "").trim()}
+                        </h4>
+                        <div
+                          className="consult3-role"
+                          dangerouslySetInnerHTML={{
+                            __html: sanitizeHtml(
+                              c.role ||
+                                c.title ||
+                                (Array.isArray(c.bio)
+                                  ? c.bio.join("<br/>")
+                                  : c.bio || "")
+                            ),
+                          }}
+                        />
+                      </div>
 
-                      <div
-                        className="consultV2-bio"
-                        dangerouslySetInnerHTML={{
-                          __html: sanitizeHtml(
-                            Array.isArray(c.bio)
-                              ? c.bio.join("<br/>")
-                              : c.bio || ""
-                          ),
-                        }}
-                      />
-                    </Card>
+                      {/* aksen halus */}
+                      <span className="consult3-shine" aria-hidden />
+                    </article>
                   </Link>
                 </Col>
               );
@@ -1754,83 +1758,120 @@ export default function LandingContent({ locale = "id" }) {
           line-height: 1.7;
         }
 
-        /* ===== Consultants V2 ===== */
         :root {
-          --consultV2-avatar: clamp(120px, 22vw, 180px);
-          --consultV2-radius: 18px;
+          /* mudah diatur: radius & tinggi minimum */
+          --consult3-r: clamp(22px, 3vw, 36px);
+          --consult3-minh: 420px;
+          --consult3-bg-a: #0b56c9;
+          --consult3-bg-b: #084a94;
+          --consult3-bg-c: #063e7c;
         }
-        .consultV2-title {
-          margin: 0 !important;
-          text-align: center;
-          color: #0b3e91 !important;
-          font-weight: 900 !important;
-          letter-spacing: 0.02em;
-          text-transform: none;
-          font-size: clamp(24px, 5.2vw, 44px) !important;
-          line-height: 1.15 !important;
-        }
-        .consultV2-link {
+
+        .consult3-link {
           text-decoration: none;
+          color: inherit;
+          display: block;
         }
-        .consultV2-card {
+
+        .consult3-card {
           position: relative;
-          background: #0b3e91 !important;
-          border-radius: var(--consultV2-radius) !important;
+          min-height: var(--consult3-minh);
+          border-radius: var(--consult3-r);
+          overflow: hidden;
+          /* gradient biru seperti desain */
+          background: radial-gradient(
+            140% 120% at 20% -10%,
+            var(--consult3-bg-a) 0%,
+            var(--consult3-bg-b) 48%,
+            var(--consult3-bg-c) 100%
+          );
           box-shadow: 0 18px 34px rgba(0, 0, 0, 0.18);
-          overflow: visible;
-          padding-top: calc(var(--consultV2-avatar) / 2 + 28px) !important;
+          isolation: isolate;
+          /* grid buat bottom area selalu nempel bawah */
+          display: grid;
+          grid-template-rows: 1fr auto;
+          align-items: end;
           transition: transform 0.18s ease, box-shadow 0.18s ease,
             filter 0.18s ease;
         }
+
+        /* aksen shine tipis di sisi kiri */
+        .consult3-shine {
+          position: absolute;
+          inset: 0 auto 0 0;
+          width: 2px;
+          opacity: 0.8;
+          background: linear-gradient(
+            180deg,
+            rgba(255, 255, 255, 0.45),
+            rgba(255, 255, 255, 0)
+          );
+          mix-blend-mode: soft-light;
+          pointer-events: none;
+        }
+
+        /* foto di tengah atas, agak “mengambang” */
+        .consult3-photo {
+          position: absolute;
+          inset: clamp(18px, 3vw, 28px) 0 auto 0;
+          display: grid;
+          place-items: center;
+          pointer-events: none;
+        }
+        .consult3-photo img {
+          width: min(86%, 360px);
+          height: auto;
+          object-fit: contain;
+          display: block;
+          filter: drop-shadow(0 18px 26px rgba(0, 0, 0, 0.32));
+          transform: translateY(6px);
+        }
+
+        /* bottom info band (nama + role) */
+        .consult3-bottom {
+          position: relative;
+          z-index: 1;
+          padding: clamp(14px, 2.6vw, 20px) clamp(16px, 2.8vw, 22px)
+            clamp(18px, 3vw, 24px);
+          /* gradien transparan supaya teks kebaca di atas foto */
+          background: linear-gradient(
+            180deg,
+            rgba(0, 0, 0, 0) 0%,
+            rgba(0, 0, 0, 0.08) 22%,
+            rgba(0, 0, 0, 0.22) 100%
+          );
+        }
+        .consult3-name {
+          margin: 0 0 6px 0;
+          color: #fff;
+          font-weight: 900;
+          letter-spacing: 0.02em;
+          font-size: clamp(18px, 2.8vw, 24px);
+          text-transform: none; /* kalau mau ALL CAPS: uppercase */
+        }
+        .consult3-role {
+          color: #dce9ff;
+          font-weight: 600;
+          font-size: clamp(12px, 2.1vw, 14px);
+          line-height: 1.5;
+        }
+
+        /* hover micro-interaction */
         @media (hover: hover) {
-          .consultV2-card:hover {
+          .consult3-card:hover {
             transform: translateY(-2px);
             box-shadow: 0 22px 40px rgba(0, 0, 0, 0.22);
             filter: saturate(1.06);
           }
         }
-        .consultV2-avatar {
-          position: absolute;
-          top: calc(var(--consultV2-avatar) * -0.5);
-          left: 50%;
-          transform: translateX(-50%);
-          width: var(--consultV2-avatar);
-          height: var(--consultV2-avatar);
-          border-radius: 50%;
-          overflow: hidden;
-          background: #eee;
-          border: 8px solid #fff;
-          box-shadow: 0 16px 32px rgba(0, 0, 0, 0.28);
-          z-index: 2;
-        }
-        .consultV2-avatar img {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          display: block;
-          transform: translateZ(0);
-        }
-        .consultV2-name {
-          margin: 10px 0 8px 0;
-          text-align: center;
-          color: #fff;
-          font-size: clamp(16px, 2.2vw, 20px);
-          font-weight: 800;
-          letter-spacing: 0.08em;
-          text-transform: uppercase;
-        }
-        .consultV2-bio {
-          color: #e9f0ff;
-          text-align: center;
-          font-size: clamp(13px, 1.9vw, 16px);
-          line-height: 1.7;
-          max-width: 640px;
-          margin: 0 auto;
-        }
-        @media (max-width: 767px) {
-          .consultV2-card {
-            padding-left: clamp(14px, 3vw, 20px) !important;
-            padding-right: clamp(14px, 3vw, 20px) !important;
+
+        /* responsif kecil: tinggi minimum & skala foto */
+        @media (max-width: 575px) {
+          :root {
+            --consult3-minh: 380px;
+          }
+          .consult3-photo img {
+            width: min(92%, 340px);
           }
         }
 
