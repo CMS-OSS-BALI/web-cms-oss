@@ -4,7 +4,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
 import { translate } from "@/app/utils/geminiTranslator";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import storageClient from "@/app/utils/storageClient";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -13,9 +13,150 @@ const DEFAULT_LOCALE = "id";
 const EN_LOCALE = "en";
 const FALLBACK_LOCALE = EN_LOCALE;
 const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
-const BUCKET = process.env.SUPABASE_BUCKET;
 
-// ---- DB vendor aware case-insensitive helper ----
+/* =========================
+   Storage & URL helpers
+========================= */
+const PUBLIC_PREFIX = "cms-oss";
+
+// Ganti base "storage." ke "cdn." agar URL publik langsung CDN
+function computePublicBase() {
+  const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return "";
+  try {
+    const u = new URL(base);
+    const host = u.host.replace(/^storage\./, "cdn.");
+    return `${u.protocol}//${host}`;
+  } catch {
+    return base;
+  }
+}
+function ensurePrefixedKey(key) {
+  const clean = String(key || "").replace(/^\/+/, "");
+  return clean.startsWith(PUBLIC_PREFIX + "/")
+    ? clean
+    : `${PUBLIC_PREFIX}/${clean}`;
+}
+function toPublicUrl(keyOrUrl) {
+  if (!keyOrUrl) return null;
+  const s = String(keyOrUrl).trim();
+  if (/^https?:\/\//i.test(s)) return s;
+  const cdn = computePublicBase();
+  const path = ensurePrefixedKey(s);
+  const base =
+    cdn || (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return `/${path}`;
+  return `${base}/public/${path}`;
+}
+
+// url -> storage key (untuk hapus)
+function toStorageKey(u) {
+  if (!u) return null;
+  const s = String(u).trim();
+  if (!/^https?:\/\//i.test(s)) {
+    return s.replace(/^\/+/, "");
+  }
+  const idx = s.indexOf("/public/");
+  if (idx >= 0) {
+    return s.slice(idx + "/public/".length).replace(/^\/+/, "");
+  }
+  return null;
+}
+
+// Best-effort remover ke service storage
+async function removeStorageObjects(urlsOrKeys = []) {
+  const keys = urlsOrKeys.map(toStorageKey).filter(Boolean);
+  if (!keys.length) return;
+  const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return;
+
+  try {
+    const res = await fetch(`${base}/api/storage/remove`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": process.env.OSS_STORAGE_API_KEY || "",
+      },
+      body: JSON.stringify({ keys }),
+    });
+    if (!res.ok) {
+      await fetch(`${base}/api/storage/delete`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": process.env.OSS_STORAGE_API_KEY || "",
+        },
+        body: JSON.stringify({ keys }),
+      }).catch(() => {});
+    }
+  } catch (_) {}
+}
+
+/* =========================
+   Upload validators
+========================= */
+const ALLOWED_IMAGE_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/svg+xml",
+]);
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10MB
+
+async function assertImageFileOrThrow(file) {
+  const type = file?.type || "";
+  if (!ALLOWED_IMAGE_TYPES.has(type))
+    throw Object.assign(new Error("UNSUPPORTED_TYPE"), {
+      meta: { accepted: [...ALLOWED_IMAGE_TYPES] },
+    });
+  const size =
+    typeof file?.size === "number"
+      ? file.size
+      : (await file.arrayBuffer()).byteLength;
+  if (size > MAX_IMAGE_BYTES) throw new Error("PAYLOAD_TOO_LARGE");
+}
+
+const ALLOWED_FILE_TYPES = new Set([
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/svg+xml",
+  "text/plain",
+]);
+const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20MB
+
+async function assertAttachmentFileOrThrow(file) {
+  const type = file?.type || "";
+  if (type && !ALLOWED_FILE_TYPES.has(type))
+    throw Object.assign(new Error("UNSUPPORTED_TYPE"), {
+      meta: { accepted: [...ALLOWED_FILE_TYPES] },
+    });
+  const size =
+    typeof file?.size === "number"
+      ? file.size
+      : (await file.arrayBuffer()).byteLength;
+  if (size > MAX_FILE_BYTES) throw new Error("PAYLOAD_TOO_LARGE");
+}
+
+async function uploadPublicFile(file, folder) {
+  // folder tanpa prefix "cms-oss", helper akan menambahkan
+  const res = await storageClient.uploadBufferWithPresign(file, {
+    folder: `${PUBLIC_PREFIX}/${folder}`.replace(/\/+/g, "/"),
+    isPublic: true,
+  });
+  return res?.publicUrl || null;
+}
+
+/* =========================
+   Helpers umum
+========================= */
 const isPg = (process.env.DATABASE_URL || "").startsWith("postgres");
 const ci = (q) =>
   q
@@ -24,7 +165,6 @@ const ci = (q) =>
       : { contains: q }
     : undefined;
 
-/* ------------ shared helpers (sanitized JSON, parsing, etc.) ------------ */
 function sanitize(v) {
   if (v === null || v === undefined) return v;
   if (typeof v === "bigint") return v.toString();
@@ -134,44 +274,11 @@ async function readBodyAndFiles(req) {
   return { body, imageFile: null, attachments: [] };
 }
 
-function safeExt(filename = "") {
-  const ext = String(filename).split(".").pop();
-  return ext ? `.${ext.toLowerCase()}` : "";
-}
-function randName(ext = "") {
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
-}
 function parseDateOnly(s) {
   const m = String(s || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) return null;
   const [_, y, mo, d] = m;
   return new Date(`${y}-${mo}-${d}T00:00:00.000Z`);
-}
-async function uploadToSupabase(
-  file,
-  prefix,
-  { allowedTypes = [], maxMB = 20 } = {}
-) {
-  if (!file) return null;
-  if (!BUCKET) throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
-  const size = file.size || 0;
-  const type = file.type || "application/octet-stream";
-  if (size > maxMB * 1024 * 1024) throw new Error("PAYLOAD_TOO_LARGE");
-  if (allowedTypes.length && type && !allowedTypes.includes(type)) {
-    const err = new Error("UNSUPPORTED_TYPE");
-    err.meta = { accepted: allowedTypes };
-    throw err;
-  }
-  const ext = safeExt(file.name);
-  const objectPath = `${prefix}/${new Date()
-    .toISOString()
-    .slice(0, 10)}/${randName(ext)}`;
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const { error } = await supabaseAdmin.storage
-    .from(BUCKET)
-    .upload(objectPath, bytes, { contentType: type, upsert: false });
-  if (error) throw new Error(error.message);
-  return { path: objectPath, mime: type, size };
 }
 
 async function resolveCategoryId({ category_id, category_slug }) {
@@ -245,7 +352,7 @@ export async function GET(req) {
       AND.push({ category_id: cat?.id ?? "__nope__" });
     }
 
-    // free-text search (ALL without `mode` for MySQL; Postgres uses `mode` via ci())
+    // free-text search
     if (q) {
       AND.push({
         OR: [
@@ -332,8 +439,8 @@ export async function GET(req) {
         website: row.website,
         instagram: row.instagram,
         twitter: row.twitter,
-        mou_url: row.mou_url,
-        image_url: row.image_url,
+        mou_url: toPublicUrl(row.mou_url),
+        image_url: toPublicUrl(row.image_url),
         address: row.address,
         city: row.city,
         province: row.province,
@@ -383,7 +490,7 @@ export async function GET(req) {
   }
 }
 
-/* ---------- POST (PUBLIC, + upload Supabase) ---------- */
+/* ---------- POST (PUBLIC, + upload ke storage baru) ---------- */
 export async function POST(req) {
   try {
     const { body, imageFile, attachments } = await readBodyAndFiles(req);
@@ -417,7 +524,7 @@ export async function POST(req) {
         { status: 400 }
       );
 
-    // kategori (opsional) via id/slug
+    // kategori (opsional)
     let categoryId = null;
     try {
       categoryId = await resolveCategoryId({
@@ -449,51 +556,7 @@ export async function POST(req) {
       );
     }
 
-    // 1) Upload logo (luar transaksi)
-    if (imageFile) {
-      try {
-        const up = await uploadToSupabase(imageFile, "mitra/images", {
-          allowedTypes: [
-            "image/jpeg",
-            "image/png",
-            "image/webp",
-            "image/svg+xml",
-          ],
-          maxMB: 10,
-        });
-        image_url = up?.path ?? image_url;
-      } catch (e) {
-        if (e?.message === "PAYLOAD_TOO_LARGE")
-          return json(
-            {
-              error: { code: "PAYLOAD_TOO_LARGE", message: "Gambar max 10MB" },
-            },
-            { status: 413 }
-          );
-        if (e?.message === "UNSUPPORTED_TYPE")
-          return json(
-            {
-              error: {
-                code: "UNSUPPORTED_TYPE",
-                message: "Gambar harus JPEG/PNG/WebP/SVG",
-              },
-            },
-            { status: 415 }
-          );
-        if (e?.message === "SUPABASE_BUCKET_NOT_CONFIGURED")
-          return json(
-            { error: { code: "SERVER_ERROR", message: "Bucket belum diset" } },
-            { status: 500 }
-          );
-        console.error("upload image error:", e);
-        return json(
-          { error: { code: "SERVER_ERROR", message: "Upload gambar gagal" } },
-          { status: 500 }
-        );
-      }
-    }
-
-    // 2) Siapkan terjemahan (luar transaksi)
+    // siapkan terjemahan di luar transaksi
     const aboutRaw =
       body.about !== undefined && body.about !== null
         ? String(body.about)
@@ -514,114 +577,138 @@ export async function POST(req) {
       aboutEn = aEn ?? aboutRaw;
     }
 
-    // 3) Transaksi singkat (DB)
-    const created = await prisma.$transaction(async (tx) => {
-      const mitra = await tx.mitra_dalam_negeri.create({
-        data: {
-          // org info
-          email,
-          phone,
-          website: body.website ? String(body.website).trim() : null,
-          instagram: body.instagram ? String(body.instagram).trim() : null,
-          twitter: body.twitter ? String(body.twitter).trim() : null,
-          mou_url: body.mou_url ? String(body.mou_url).trim() : null,
-          image_url,
+    // 1) Buat parent dahulu (cepat)
+    const created = await prisma.mitra_dalam_negeri.create({
+      data: {
+        // org info
+        email,
+        phone,
+        website: body.website ? String(body.website).trim() : null,
+        instagram: body.instagram ? String(body.instagram).trim() : null,
+        twitter: body.twitter ? String(body.twitter).trim() : null,
+        mou_url: body.mou_url ? String(body.mou_url).trim() : null,
+        image_url: image_url || null,
 
-          // address
-          address,
-          city: body.city ? String(body.city).trim() : null,
-          province: body.province ? String(body.province).trim() : null,
-          postal_code: body.postal_code
-            ? String(body.postal_code).trim()
-            : null,
+        // address
+        address,
+        city: body.city ? String(body.city).trim() : null,
+        province: body.province ? String(body.province).trim() : null,
+        postal_code: body.postal_code ? String(body.postal_code).trim() : null,
 
-          // contact person
-          contact_name: body.contact_name
-            ? String(body.contact_name).trim()
-            : null,
-          contact_position: body.contact_position
-            ? String(body.contact_position).trim()
-            : null,
-          contact_whatsapp: body.contact_whatsapp
-            ? String(body.contact_whatsapp).trim()
-            : null,
+        // contact person
+        contact_name: body.contact_name
+          ? String(body.contact_name).trim()
+          : null,
+        contact_position: body.contact_position
+          ? String(body.contact_position).trim()
+          : null,
+        contact_whatsapp: body.contact_whatsapp
+          ? String(body.contact_whatsapp).trim()
+          : null,
 
-          // category
-          category_id: categoryId,
+        // category
+        category_id: categoryId,
 
-          // workflow
-          status: "PENDING",
-          review_notes: null,
-          reviewed_by: null,
-          reviewed_at: null,
+        // workflow
+        status: "PENDING",
+        review_notes: null,
+        reviewed_by: null,
+        reviewed_at: null,
 
-          created_at: new Date(),
-          updated_at: new Date(),
-        },
-      });
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
+    });
 
-      // translasi utama (locale user)
+    // 2) Upload logo (optional) DI LUAR transaksi, lalu update kolom
+    if (imageFile && !image_url) {
+      try {
+        await assertImageFileOrThrow(imageFile);
+        const publicUrl = await uploadPublicFile(
+          imageFile,
+          `mitra/${created.id}`
+        );
+        if (publicUrl) {
+          await prisma.mitra_dalam_negeri.update({
+            where: { id: created.id },
+            data: { image_url: publicUrl, updated_at: new Date() },
+          });
+        }
+      } catch (e) {
+        if (e?.message === "PAYLOAD_TOO_LARGE")
+          return json(
+            {
+              error: { code: "PAYLOAD_TOO_LARGE", message: "Gambar max 10MB" },
+            },
+            { status: 413 }
+          );
+        if (e?.message === "UNSUPPORTED_TYPE")
+          return json(
+            {
+              error: {
+                code: "UNSUPPORTED_TYPE",
+                message: "Gambar harus JPEG/PNG/WebP/SVG",
+              },
+            },
+            { status: 415 }
+          );
+        console.error("upload image error:", e);
+        return json(
+          { error: { code: "SERVER_ERROR", message: "Upload gambar gagal" } },
+          { status: 500 }
+        );
+      }
+    }
+
+    // 3) Translations (cepat)
+    await prisma.$transaction(async (tx) => {
       await tx.mitra_dalam_negeri_translate.create({
         data: {
-          id_merchants: mitra.id,
+          id_merchants: created.id,
           locale,
           name: merchantName,
           description: aboutRaw,
         },
       });
 
-      // translasi EN (kalau perlu)
       if (locale !== EN_LOCALE) {
         await tx.mitra_dalam_negeri_translate.upsert({
           where: {
-            id_merchants_locale: { id_merchants: mitra.id, locale: EN_LOCALE },
+            id_merchants_locale: {
+              id_merchants: created.id,
+              locale: EN_LOCALE,
+            },
           },
           update: {
             ...(nameEn ? { name: nameEn } : {}),
             ...(aboutEn !== undefined ? { description: aboutEn ?? null } : {}),
           },
           create: {
-            id_merchants: mitra.id,
+            id_merchants: created.id,
             locale: EN_LOCALE,
             name: nameEn || merchantName,
             description: aboutEn ?? aboutRaw,
           },
         });
       }
-
-      return mitra;
     });
 
-    // 4) Upload ATTACHMENTS (luar transaksi)
+    // 4) Upload attachments (opsional, di luar transaksi), kemudian simpan metadata
     let uploaded = [];
     if (attachments?.length) {
       for (const f of attachments) {
         try {
-          const up = await uploadToSupabase(f, `mitra/files/${created.id}`, {
-            allowedTypes: [
-              "application/pdf",
-              "application/msword",
-              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-              "application/vnd.ms-excel",
-              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-              "application/vnd.ms-powerpoint",
-              "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-              "image/jpeg",
-              "image/png",
-              "image/webp",
-              "image/svg+xml",
-              "text/plain",
-            ],
-            maxMB: 20,
-          });
-          if (up?.path) uploaded.push(up.path);
+          await assertAttachmentFileOrThrow(f);
+          const publicUrl = await uploadPublicFile(
+            f,
+            `mitra/${created.id}/files`
+          );
+          if (publicUrl) uploaded.push(publicUrl);
         } catch (e) {
           console.error("upload attachment error:", e?.message || e);
         }
       }
     }
-
-    // 5) Simpan metadata lampiran (sekali jalan)
     if (uploaded.length) {
       try {
         const agg = await prisma.mitra_files.aggregate({
@@ -630,9 +717,9 @@ export async function POST(req) {
         });
         const startSort = agg?._max?.sort ?? 0;
 
-        const rows = uploaded.map((p, i) => ({
+        const rows = uploaded.map((u, i) => ({
           mitra_id: created.id,
-          file_url: p,
+          file_url: u,
           sort: startSort + i + 1,
         }));
 

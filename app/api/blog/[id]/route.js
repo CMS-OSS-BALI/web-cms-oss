@@ -12,8 +12,9 @@ import {
   assertAdmin,
   readBodyAndFile,
   resolveCategoryId,
-  uploadImageToSupabase,
+  uploadBlogImage,
   toPublicUrl,
+  removeStorageObjects,
 } from "@/app/api/blog/_utils";
 import { translate } from "@/app/utils/geminiTranslator";
 
@@ -64,6 +65,13 @@ export async function PATCH(req, { params }) {
     const id = params?.id;
     if (!id) return badRequest("Parameter id wajib disertakan.", "id");
 
+    // Snapshot untuk cek perubahan image & cleanup
+    const before = await prisma.blog.findUnique({
+      where: { id },
+      select: { id: true, image_url: true, category_id: true },
+    });
+    if (!before) return notFound();
+
     const { body, file } = await readBodyAndFile(req);
 
     const blogData = {};
@@ -73,18 +81,8 @@ export async function PATCH(req, { params }) {
     // image
     if (file) {
       try {
-        blogData.image_url = await uploadImageToSupabase(file, "blog");
+        blogData.image_url = await uploadBlogImage(file, id); // URL publik final
       } catch (e) {
-        if (e?.message === "SUPABASE_BUCKET_NOT_CONFIGURED")
-          return json(
-            {
-              error: {
-                code: "CONFIG_ERROR",
-                message: "Konfigurasi bucket Supabase belum disetel.",
-              },
-            },
-            { status: 500 }
-          );
         if (e?.message === "PAYLOAD_TOO_LARGE")
           return json(
             {
@@ -120,7 +118,7 @@ export async function PATCH(req, { params }) {
       }
     } else if ("image_url" in body) {
       const v = String(body.image_url || "").trim();
-      blogData.image_url = v || null;
+      blogData.image_url = v ? toPublicUrl(v) : null;
     }
 
     if ("views_count" in body) {
@@ -270,6 +268,15 @@ export async function PATCH(req, { params }) {
 
     if (!result) return notFound();
 
+    // Cleanup best-effort jika ganti gambar
+    try {
+      const prev = before.image_url || null;
+      const next = result.image_url || null;
+      if (prev && next && prev !== next) {
+        await removeStorageObjects([prev]);
+      }
+    } catch {}
+
     return json({
       message: "Blog berhasil diperbarui.",
       data: {
@@ -321,6 +328,8 @@ export async function DELETE(req, { params }) {
     const id = params?.id;
     if (!id) return badRequest("Parameter id wajib disertakan.", "id");
 
+    // Soft delete (tetap seperti semula). Kalau mau hard-delete + cleanup file,
+    // bisa tambahkan removeStorageObjects di sini.
     const deleted = await prisma.blog.update({
       where: { id },
       data: { deleted_at: new Date(), updated_at: new Date() },

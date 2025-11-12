@@ -3,15 +3,103 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { formatPhoneNumber } from "@/app/utils/watzap";
+import storageClient from "@/app/utils/storageClient";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+/* =========================
+   Constants & Config
+========================= */
 const GENDERS = ["MALE", "FEMALE"];
 const STATUSES = ["PENDING", "REJECTED", "VERIFIED"];
 
+const PUBLIC_PREFIX = "cms-oss";
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MAX_UPLOAD_SIZE = 5 * 1024 * 1024; // 5MB
+
+/* =========================
+   Public URL helpers
+========================= */
+function computePublicBase() {
+  const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return "";
+  try {
+    const u = new URL(base);
+    const host = u.host.replace(/^storage\./, "cdn.");
+    return `${u.protocol}//${host}`;
+  } catch {
+    return base;
+  }
+}
+
+function ensurePrefixedKey(key) {
+  const clean = String(key || "").replace(/^\/+/, "");
+  return clean.startsWith(PUBLIC_PREFIX + "/")
+    ? clean
+    : `${PUBLIC_PREFIX}/${clean}`;
+}
+
+function toPublicUrl(keyOrUrl) {
+  if (!keyOrUrl) return null;
+  const s = String(keyOrUrl).trim();
+  if (/^https?:\/\//i.test(s)) return s;
+  const cdn = computePublicBase();
+  const path = ensurePrefixedKey(s);
+  const base =
+    cdn || (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return `/${path}`;
+  return `${base}/public/${path}`;
+}
+
+/* =========================
+   Storage cleanup helpers
+========================= */
+function toStorageKey(u) {
+  if (!u) return null;
+  const s = String(u).trim();
+  if (!/^https?:\/\//i.test(s)) {
+    return s.replace(/^\/+/, "");
+  }
+  const idx = s.indexOf("/public/");
+  if (idx >= 0) {
+    return s.slice(idx + "/public/".length).replace(/^\/+/, "");
+  }
+  return null;
+}
+
+async function removeStorageObjects(urlsOrKeys = []) {
+  const keys = urlsOrKeys.map(toStorageKey).filter(Boolean);
+  if (!keys.length) return;
+  const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return;
+
+  try {
+    const res = await fetch(`${base}/api/storage/remove`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": process.env.OSS_STORAGE_API_KEY || "",
+      },
+      body: JSON.stringify({ keys }),
+    });
+    if (!res.ok) {
+      await fetch(`${base}/api/storage/delete`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": process.env.OSS_STORAGE_API_KEY || "",
+        },
+        body: JSON.stringify({ keys }),
+      }).catch(() => {});
+    }
+  } catch (_) {}
+}
+
+/* =========================
+   JSON & Auth helpers
+========================= */
 const json = (b, i) => NextResponse.json(sanitize(b), i);
 function sanitize(v) {
   if (v == null) return v;
@@ -34,13 +122,18 @@ async function requireAdmin() {
   return session.user;
 }
 
+/* =========================
+   Misc helpers
+========================= */
 const trimStr = (v, m = 191) =>
   typeof v === "string" ? v.trim().slice(0, m) : v === null ? null : undefined;
+
 const pickEnum = (v, allowed) => {
   if (!v || typeof v !== "string") return null;
   const up = v.toUpperCase();
   return allowed.includes(up) ? up : null;
 };
+
 const parseDate = (v) => {
   if (!v) return null;
   const d = new Date(v);
@@ -67,28 +160,27 @@ const withTs = (row) =>
       }
     : row;
 
-async function uploadFrontToSupabase(file, nik) {
-  const ext = (file.name?.split(".").pop() || "").toLowerCase();
-  const safe = `${Date.now()}-${Math.random().toString(36).slice(2)}${
-    ext ? "." + ext : ""
-  }`;
-  const objectPath = `referral/${nik}/${safe}`;
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const { error } = await supabaseAdmin.storage
-    .from(process.env.SUPABASE_BUCKET)
-    .upload(objectPath, bytes, {
-      contentType: file.type || "application/octet-stream",
-      upsert: false,
-    });
-  if (error) throw new Error(error.message);
-  return objectPath;
+/* =========================
+   Upload helpers (OSS)
+========================= */
+async function assertImageFileOrThrow(file) {
+  const type = file?.type || "";
+  if (!ALLOWED_IMAGE_TYPES.has(type)) throw new Error("UNSUPPORTED_TYPE");
+  const size =
+    typeof file?.size === "number"
+      ? file.size
+      : (await file.arrayBuffer()).byteLength;
+  if (size > MAX_UPLOAD_SIZE) throw new Error("PAYLOAD_TOO_LARGE");
 }
-function getPublicUrl(path) {
-  if (!path) return null;
-  const { data } = supabaseAdmin.storage
-    .from(process.env.SUPABASE_BUCKET)
-    .getPublicUrl(path);
-  return data?.publicUrl || null;
+
+/** Upload foto KTP depan ke OSS Storage, return public URL */
+async function uploadReferralFront(file, nik) {
+  await assertImageFileOrThrow(file);
+  const res = await storageClient.uploadBufferWithPresign(file, {
+    folder: `${PUBLIC_PREFIX}/referral/${nik}`,
+    isPublic: true,
+  });
+  return res.publicUrl || null;
 }
 
 /* ==================== GET (ADMIN LIST) ==================== */
@@ -122,7 +214,7 @@ export async function GET(req) {
         { code: { contains: q } },
         { city: { contains: q } },
         { province: { contains: q } },
-        { pekerjaan: { contains: q } }, // searchable by pekerjaan
+        { pekerjaan: { contains: q } },
       ];
     }
     if (STATUSES.includes(statusRaw)) where.status = statusRaw;
@@ -201,12 +293,12 @@ export async function POST(req) {
   const province = trimStr(form.get("province"), 64);
   const postal_code = trimStr(form.get("postal_code"), 10);
 
-  const pekerjaan = trimStr(form.get("pekerjaan"), 100) ?? null; // ⬅️ Wajib (divalidasi di bawah)
+  const pekerjaan = trimStr(form.get("pekerjaan"), 100) ?? null; // wajib
 
   const whatsapp = trimStr(form.get("whatsapp"), 32);
   const email = trimStr(form.get("email"), 191);
 
-  const pic_consultant_id_raw = trimStr(form.get("pic_consultant_id"), 36); // ⬅️ opsional
+  const pic_consultant_id_raw = trimStr(form.get("pic_consultant_id"), 36); // opsional
   const consent_agreed = String(form.get("consent_agreed")) === "true";
 
   // --- validate required ---
@@ -246,7 +338,6 @@ export async function POST(req) {
       { status: 422 }
     );
 
-  // pekerjaan wajib
   if (!pekerjaan || pekerjaan.length < 2)
     return json(
       {
@@ -339,23 +430,24 @@ export async function POST(req) {
       { status: 422 }
     );
   }
-  const MAX = 5 * 1024 * 1024;
-  const allowed = ["image/jpeg", "image/png", "image/webp"];
-  if ((front.size || 0) > MAX)
-    return json(
-      { error: { code: "PAYLOAD_TOO_LARGE", message: "Maksimal 5MB" } },
-      { status: 413 }
-    );
-  if (!allowed.includes(front.type))
-    return json(
-      {
-        error: {
-          code: "UNSUPPORTED_TYPE",
-          message: "Format gambar harus JPEG/PNG/WebP",
+  // Validasi ulang sesuai ALLOWED_IMAGE_TYPES & MAX_UPLOAD_SIZE
+  try {
+    await assertImageFileOrThrow(front);
+  } catch (e) {
+    if (e?.message === "PAYLOAD_TOO_LARGE")
+      return json(
+        { error: { code: "PAYLOAD_TOO_LARGE", message: "Maksimal 5MB" } },
+        { status: 413 }
+      );
+    if (e?.message === "UNSUPPORTED_TYPE")
+      return json(
+        {
+          error: { code: "UNSUPPORTED_TYPE", message: "Harus JPEG/PNG/WebP" },
         },
-      },
-      { status: 415 }
-    );
+        { status: 415 }
+      );
+    return json({ error: { code: "SERVER_ERROR" } }, { status: 500 });
+  }
 
   try {
     // PIC opsional: cek hanya jika ada
@@ -379,7 +471,8 @@ export async function POST(req) {
       pic_consultant_id = pic_consultant_id_raw;
     }
 
-    const front_url = await uploadFrontToSupabase(front, nik);
+    // Upload ke OSS Storage (return public URL)
+    const front_url = await uploadReferralFront(front, nik);
     const whatsapp_e164 = formatPhoneNumber(whatsapp) || null;
 
     const created = await prisma.referral.create({
@@ -405,9 +498,9 @@ export async function POST(req) {
 
         consent_agreed: true,
         domicile: trimStr(form.get("domicile"), 100) ?? null,
-        front_url,
+        front_url, // sudah public URL
         status: "PENDING",
-        pic_consultant_id, // bisa null
+        pic_consultant_id, // boleh null
         code: null,
       },
       select: {
@@ -429,9 +522,11 @@ export async function POST(req) {
       },
     });
 
-    const public_front = getPublicUrl(created.front_url);
     return json(
-      { data: withTs(created), preview: { front: public_front } },
+      {
+        data: withTs(created),
+        preview: { front: toPublicUrl(created.front_url) },
+      },
       { status: 201 }
     );
   } catch (err) {

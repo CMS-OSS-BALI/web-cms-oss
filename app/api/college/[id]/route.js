@@ -1,24 +1,96 @@
+// app/api/college/[id]/route.js
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
 import { translate } from "@/app/utils/geminiTranslator";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+
+// Storage client baru (konsisten dengan consultants)
+import storageClient from "@/app/utils/storageClient";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-/* -------------------- utils -------------------- */
+/* =========================
+   Config & helpers
+========================= */
 const DEFAULT_LOCALE = "id";
 const EN_LOCALE = "en";
-const BUCKET = process.env.SUPABASE_BUCKET;
-const SUPA_URL =
-  process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
 const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
-
-// ⚠️ type (enum) sudah dihapus. Currency tetap dikunci IDR.
 const ALWAYS_CURRENCY = "IDR";
+const PUBLIC_PREFIX = "cms-oss";
 
+/* ---------- Public URL helpers (sama seperti di list/create) ---------- */
+function computePublicBase() {
+  const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return "";
+  try {
+    const u = new URL(base);
+    const host = u.host.replace(/^storage\./, "cdn.");
+    return `${u.protocol}//${host}`;
+  } catch {
+    return base;
+  }
+}
+function ensurePrefixedKey(key) {
+  const clean = String(key || "").replace(/^\/+/, "");
+  return clean.startsWith(PUBLIC_PREFIX + "/")
+    ? clean
+    : `${PUBLIC_PREFIX}/${clean}`;
+}
+function toPublicUrl(keyOrUrl) {
+  if (!keyOrUrl) return null;
+  const s = String(keyOrUrl).trim();
+  if (/^https?:\/\//i.test(s)) return s;
+  const cdn = computePublicBase();
+  const path = ensurePrefixedKey(s);
+  const base =
+    cdn || (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return `/${path}`;
+  return `${base}/public/${path}`;
+}
+
+/* ---------- URL → storage key (untuk cleanup) ---------- */
+function toStorageKey(u) {
+  if (!u) return null;
+  const s = String(u).trim();
+  if (!/^https?:\/\//i.test(s)) {
+    return s.replace(/^\/+/, "");
+  }
+  const idx = s.indexOf("/public/");
+  if (idx >= 0) return s.slice(idx + "/public/".length).replace(/^\/+/, "");
+  return null;
+}
+
+/* ---------- Best-effort remover (gateway) ---------- */
+async function removeStorageObjects(urlsOrKeys = []) {
+  const keys = urlsOrKeys.map(toStorageKey).filter(Boolean);
+  if (!keys.length) return;
+  const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return;
+  try {
+    const res = await fetch(`${base}/api/storage/remove`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": process.env.OSS_STORAGE_API_KEY || "",
+      },
+      body: JSON.stringify({ keys }),
+    });
+    if (!res.ok) {
+      await fetch(`${base}/api/storage/delete`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": process.env.OSS_STORAGE_API_KEY || "",
+        },
+        body: JSON.stringify({ keys }),
+      }).catch(() => {});
+    }
+  } catch {}
+}
+
+/* ---------- misc helpers ---------- */
 function slugify(s) {
   return String(s || "")
     .normalize("NFKD")
@@ -27,23 +99,6 @@ function slugify(s) {
     .trim()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-}
-function normalizeLocale(value, fallback = DEFAULT_LOCALE) {
-  return (value || fallback).toLowerCase().slice(0, 5);
-}
-function pickTrans(
-  trans = [],
-  primary = DEFAULT_LOCALE,
-  fallback = DEFAULT_LOCALE
-) {
-  const by = (loc) => trans.find((t) => t.locale === loc);
-  return by(primary) || by(fallback) || null;
-}
-function toNumeric(value) {
-  if (value === undefined || value === null || value === "") return null;
-  const cleaned = String(value).replace(/\./g, "").replace(/,/g, ".");
-  const n = Number(cleaned);
-  return Number.isFinite(n) ? n : null;
 }
 async function uniqueSlugForUpdate(base, excludeId) {
   const seed = slugify(base || "item");
@@ -59,15 +114,25 @@ async function uniqueSlugForUpdate(base, excludeId) {
     candidate = `${seed}-${i}`;
   }
 }
-/** path -> public URL */
-function toPublicUrl(path) {
-  if (!path) return "";
-  if (/^https?:\/\//i.test(path)) return path;
-  if (!SUPA_URL || !BUCKET) return path;
-  return `${SUPA_URL}/storage/v1/object/public/${BUCKET}/${path}`;
+function normalizeLocale(value, fallback = DEFAULT_LOCALE) {
+  return (value || fallback).toLowerCase().slice(0, 5);
+}
+function pickTrans(
+  list = [],
+  primary = DEFAULT_LOCALE,
+  fallback = DEFAULT_LOCALE
+) {
+  const by = (loc) => list.find((t) => t.locale === loc);
+  return by(primary) || by(fallback) || null;
+}
+function toNumeric(value) {
+  if (value === undefined || value === null || value === "") return null;
+  const cleaned = String(value).replace(/\./g, "").replace(/,/g, ".");
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
 }
 
-/** Accept NextAuth OR x-admin-key header */
+/* ---------- Auth ---------- */
 async function assertAdmin(req) {
   const key = req.headers.get("x-admin-key");
   if (key && ADMIN_TEST_KEY && key === ADMIN_TEST_KEY) {
@@ -88,7 +153,7 @@ async function assertAdmin(req) {
   return { adminId: admin.id, via: "session" };
 }
 
-/** Read form-data or JSON */
+/* ---------- Body reader ---------- */
 async function readBodyAndFile(req) {
   const contentType = (req.headers.get("content-type") || "").toLowerCase();
   const isMultipart = contentType.startsWith("multipart/form-data");
@@ -100,60 +165,57 @@ async function readBodyAndFile(req) {
     const form = await req.formData();
     const body = {};
     let file = null;
-    for (const name of ["logo", "file", "logo_file", "logo_url"]) {
+    for (const name of ["logo", "file", "logo_file"]) {
       const f = form.get(name);
       if (f && typeof File !== "undefined" && f instanceof File) {
         file = f;
         break;
       }
     }
-    for (const [k, v] of form.entries()) {
-      if (v instanceof File) continue;
-      body[k] = v;
-    }
+    for (const [k, v] of form.entries()) if (!(v instanceof File)) body[k] = v;
     return { body, file };
   }
-
   const body = (await req.json().catch(() => ({}))) ?? {};
   return { body, file: null };
 }
 
-async function uploadCollegeLogo(file) {
+/* ---------- Upload (pakai storageClient) ---------- */
+const ALLOWED_IMAGE_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/svg+xml",
+]);
+const MAX_UPLOAD_SIZE = 10 * 1024 * 1024;
+
+async function assertImageFileOrThrow(file) {
+  const type = file?.type || "";
+  if (type && !ALLOWED_IMAGE_TYPES.has(type))
+    throw new Error("UNSUPPORTED_TYPE");
+  const size =
+    typeof file?.size === "number"
+      ? file.size
+      : (await file.arrayBuffer()).byteLength;
+  if (size > MAX_UPLOAD_SIZE) throw new Error("PAYLOAD_TOO_LARGE");
+}
+async function uploadCollegeLogo(file, collegeId) {
   if (!file) return null;
-  if (!BUCKET) throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
-
-  const size = file.size || 0;
-  const type = file.type || "";
-  const allowed = ["image/jpeg", "image/png", "image/webp", "image/svg+xml"];
-  if (size > 10 * 1024 * 1024) throw new Error("PAYLOAD_TOO_LARGE");
-  if (type && !allowed.includes(type)) throw new Error("UNSUPPORTED_TYPE");
-
-  const ext = (file.name?.split(".").pop() || "").toLowerCase();
-  const safe = `${Date.now()}-${Math.random().toString(36).slice(2)}${
-    ext ? "." + ext : ""
-  }`;
-  const objectPath = `college-logos/${new Date()
-    .toISOString()
-    .slice(0, 10)}/${safe}`;
-  const bytes = new Uint8Array(await file.arrayBuffer());
-
-  const { error } = await supabaseAdmin.storage
-    .from(BUCKET)
-    .upload(objectPath, bytes, {
-      contentType: type || "application/octet-stream",
-      upsert: false,
-    });
-  if (error) throw new Error(error.message);
-  return objectPath;
+  await assertImageFileOrThrow(file);
+  const res = await storageClient.uploadBufferWithPresign(file, {
+    folder: `${PUBLIC_PREFIX}/colleges/${collegeId}`,
+    isPublic: true,
+  });
+  return res.publicUrl || null;
 }
 
-/* -------------------- GET (detail) -------------------- */
+/* =========================
+   GET /api/college/:id (by id or slug)
+========================= */
 export async function GET(req, { params }) {
   try {
     const identRaw = params?.id;
-    if (!identRaw) {
+    if (!identRaw)
       return NextResponse.json({ message: "id is required" }, { status: 400 });
-    }
     const ident = String(identRaw);
 
     const { searchParams } = new URL(req.url);
@@ -163,7 +225,6 @@ export async function GET(req, { params }) {
     );
     const locales = locale === fallback ? [locale] : [locale, fallback];
 
-    // ✅ dukung ID atau slug
     const isUuid =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
         ident
@@ -180,7 +241,7 @@ export async function GET(req, { params }) {
         admin_user_id: true,
         slug: true,
         country: true,
-        jenjang: true, // <- ganti dari type
+        jenjang: true,
         website: true,
         mou_url: true,
         logo_url: true,
@@ -203,10 +264,8 @@ export async function GET(req, { params }) {
         },
       },
     });
-
-    if (!row) {
+    if (!row)
       return NextResponse.json({ message: "Not found" }, { status: 404 });
-    }
 
     const t = pickTrans(row.college_translate, locale, fallback);
     const { college_translate, ...base } = row;
@@ -227,11 +286,12 @@ export async function GET(req, { params }) {
   }
 }
 
-/* -------------------- PATCH / PUT (update) -------------------- */
+/* =========================
+   PATCH / PUT /api/college/:id
+========================= */
 export async function PUT(req, ctx) {
   return PATCH(req, ctx);
 }
-
 export async function PATCH(req, { params }) {
   try {
     await assertAdmin(req);
@@ -239,18 +299,24 @@ export async function PATCH(req, { params }) {
     if (!id)
       return NextResponse.json({ message: "id is required" }, { status: 400 });
 
+    // snapshot existing (untuk compare logo lama)
+    const existing = await prisma.college.findUnique({
+      where: { id },
+      select: { id: true, slug: true, logo_url: true },
+    });
+    if (!existing)
+      return NextResponse.json({ message: "Not found" }, { status: 404 });
+
     const { body, file } = await readBodyAndFile(req);
     const locale = normalizeLocale(body.locale);
 
     const patch = {};
-
     if (body.country !== undefined) patch.country = body.country ?? null;
 
-    // ❌ patch.type = ALWAYS_TYPE;  ->  ✅ jenjang TEXT
+    // jenjang TEXT (back-compat: type)
     if (body.jenjang !== undefined) {
       patch.jenjang = body.jenjang ?? null;
     } else if (body.type !== undefined) {
-      // backward-compat: kalau klien lama masih kirim 'type'
       patch.jenjang = body.type ?? null;
     }
 
@@ -261,6 +327,7 @@ export async function PATCH(req, { params }) {
     if (body.state !== undefined) patch.state = body.state ?? null;
     if (body.postal_code !== undefined)
       patch.postal_code = body.postal_code ?? null;
+
     if (body.tuition_min !== undefined)
       patch.tuition_min = toNumeric(body.tuition_min);
     if (body.tuition_max !== undefined)
@@ -284,30 +351,30 @@ export async function PATCH(req, { params }) {
           ? String(body.email).toLowerCase().slice(0, 191)
           : null;
 
+    // slug rules
+    if (body.slug) {
+      patch.slug = slugify(body.slug);
+    } else if (body.name && locale === DEFAULT_LOCALE) {
+      patch.slug = await uniqueSlugForUpdate(body.name, id);
+    }
+
+    // logo handling
+    let newLogoUrl = null;
     if (file) {
       try {
-        patch.logo_url = await uploadCollegeLogo(file);
+        newLogoUrl = await uploadCollegeLogo(file, id);
       } catch (e) {
-        if (e?.message === "PAYLOAD_TOO_LARGE")
-          return NextResponse.json(
-            { message: "Logo max 10MB" },
-            { status: 413 }
-          );
         if (e?.message === "UNSUPPORTED_TYPE")
           return NextResponse.json(
             { message: "Logo must be JPEG/PNG/WebP/SVG" },
             { status: 415 }
           );
-        if (e?.message === "SUPABASE_BUCKET_NOT_CONFIGURED")
+        if (e?.message === "PAYLOAD_TOO_LARGE")
           return NextResponse.json(
-            { message: "Supabase bucket is not configured" },
-            { status: 500 }
+            { message: "Logo max 10MB" },
+            { status: 413 }
           );
-        console.error("uploadCollegeLogo error:", e);
-        return NextResponse.json(
-          { message: "Upload logo failed" },
-          { status: 500 }
-        );
+        throw e;
       }
     } else if (body.logo_url !== undefined) {
       const trimmed = String(body.logo_url || "").trim();
@@ -316,14 +383,9 @@ export async function PATCH(req, { params }) {
           { message: "logo_url must be at most 1024 characters" },
           { status: 400 }
         );
-      patch.logo_url = trimmed || null;
+      newLogoUrl = trimmed || null;
     }
-
-    if (body.slug) {
-      patch.slug = slugify(body.slug);
-    } else if (body.name && locale === DEFAULT_LOCALE) {
-      patch.slug = await uniqueSlugForUpdate(body.name, id);
-    }
+    if (newLogoUrl !== null) patch.logo_url = newLogoUrl;
 
     if (Object.keys(patch).length) patch.updated_at = new Date();
 
@@ -332,6 +394,7 @@ export async function PATCH(req, { params }) {
     const autoTranslate =
       String(body.autoTranslate ?? "false").toLowerCase() === "true";
 
+    // transaksi: update parent + translations
     await prisma.$transaction(async (tx) => {
       if (Object.keys(patch).length) {
         await tx.college.update({ where: { id }, data: patch });
@@ -341,11 +404,9 @@ export async function PATCH(req, { params }) {
         const updateT = {};
         if (hasName) {
           const nm = String(body.name || "").trim();
-          if (!nm)
-            return NextResponse.json(
-              { message: "name is required" },
-              { status: 400 }
-            );
+          if (!nm) {
+            throw Object.assign(new Error("NAME_REQUIRED"), { status: 400 });
+          }
           updateT.name = nm;
         }
         if (hasDescription) {
@@ -404,7 +465,17 @@ export async function PATCH(req, { params }) {
       }
     });
 
-    // ambil logo terbaru untuk response publik
+    // cleanup logo lama jika berubah (best-effort)
+    try {
+      if (
+        newLogoUrl !== null &&
+        existing.logo_url &&
+        existing.logo_url !== newLogoUrl
+      ) {
+        await removeStorageObjects([existing.logo_url]);
+      }
+    } catch {}
+
     const updated = await prisma.college.findUnique({
       where: { id },
       select: { id: true, logo_url: true },
@@ -415,6 +486,11 @@ export async function PATCH(req, { params }) {
     });
   } catch (err) {
     if (err instanceof Response) return err;
+    if (err?.status === 400 && err?.message === "NAME_REQUIRED")
+      return NextResponse.json(
+        { message: "name is required" },
+        { status: 400 }
+      );
     console.error(`PATCH /api/college/${params?.id} error:`, err);
     return NextResponse.json(
       { message: "Failed to update college" },
@@ -423,7 +499,9 @@ export async function PATCH(req, { params }) {
   }
 }
 
-/* -------------------- DELETE (soft) -------------------- */
+/* =========================
+   DELETE (soft) /api/college/:id
+========================= */
 export async function DELETE(req, { params }) {
   try {
     await assertAdmin(req);
@@ -434,6 +512,7 @@ export async function DELETE(req, { params }) {
     const deleted = await prisma.college.update({
       where: { id },
       data: { deleted_at: new Date(), updated_at: new Date() },
+      select: { id: true },
     });
 
     return NextResponse.json({ message: "deleted", data: { id: deleted.id } });

@@ -4,7 +4,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
 import { translate } from "@/app/utils/geminiTranslator";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import storageClient from "@/app/utils/storageClient";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -12,9 +12,144 @@ export const runtime = "nodejs";
 const DEFAULT_LOCALE = "id";
 const EN_LOCALE = "en";
 const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
-const BUCKET = process.env.SUPABASE_BUCKET;
 
-/* ------------ shared helpers ------------ */
+/* =========================
+   Storage & URL helpers
+========================= */
+const PUBLIC_PREFIX = "cms-oss";
+
+function computePublicBase() {
+  const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return "";
+  try {
+    const u = new URL(base);
+    const host = u.host.replace(/^storage\./, "cdn.");
+    return `${u.protocol}//${host}`;
+  } catch {
+    return base;
+  }
+}
+function ensurePrefixedKey(key) {
+  const clean = String(key || "").replace(/^\/+/, "");
+  return clean.startsWith(PUBLIC_PREFIX + "/")
+    ? clean
+    : `${PUBLIC_PREFIX}/${clean}`;
+}
+function toPublicUrl(keyOrUrl) {
+  if (!keyOrUrl) return null;
+  const s = String(keyOrUrl).trim();
+  if (/^https?:\/\//i.test(s)) return s;
+  const cdn = computePublicBase();
+  const path = ensurePrefixedKey(s);
+  const base =
+    cdn || (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return `/${path}`;
+  return `${base}/public/${path}`;
+}
+function toStorageKey(u) {
+  if (!u) return null;
+  const s = String(u).trim();
+  if (!/^https?:\/\//i.test(s)) {
+    return s.replace(/^\/+/, "");
+  }
+  const idx = s.indexOf("/public/");
+  if (idx >= 0) {
+    return s.slice(idx + "/public/".length).replace(/^\/+/, "");
+  }
+  return null;
+}
+async function removeStorageObjects(urlsOrKeys = []) {
+  const keys = urlsOrKeys.map(toStorageKey).filter(Boolean);
+  if (!keys.length) return;
+  const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return;
+
+  try {
+    const res = await fetch(`${base}/api/storage/remove`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": process.env.OSS_STORAGE_API_KEY || "",
+      },
+      body: JSON.stringify({ keys }),
+    });
+    if (!res.ok) {
+      await fetch(`${base}/api/storage/delete`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": process.env.OSS_STORAGE_API_KEY || "",
+        },
+        body: JSON.stringify({ keys }),
+      }).catch(() => {});
+    }
+  } catch (_) {}
+}
+
+/* =========================
+   Upload validators
+========================= */
+const ALLOWED_IMAGE_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/svg+xml",
+]);
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+
+async function assertImageFileOrThrow(file) {
+  const type = file?.type || "";
+  if (!ALLOWED_IMAGE_TYPES.has(type))
+    throw Object.assign(new Error("UNSUPPORTED_TYPE"), {
+      meta: { accepted: [...ALLOWED_IMAGE_TYPES] },
+    });
+  const size =
+    typeof file?.size === "number"
+      ? file.size
+      : (await file.arrayBuffer()).byteLength;
+  if (size > MAX_IMAGE_BYTES) throw new Error("PAYLOAD_TOO_LARGE");
+}
+
+const ALLOWED_FILE_TYPES = new Set([
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/svg+xml",
+  "text/plain",
+]);
+const MAX_FILE_BYTES = 20 * 1024 * 1024;
+
+async function assertAttachmentFileOrThrow(file) {
+  const type = file?.type || "";
+  if (type && !ALLOWED_FILE_TYPES.has(type))
+    throw Object.assign(new Error("UNSUPPORTED_TYPE"), {
+      meta: { accepted: [...ALLOWED_FILE_TYPES] },
+    });
+  const size =
+    typeof file?.size === "number"
+      ? file.size
+      : (await file.arrayBuffer()).byteLength;
+  if (size > MAX_FILE_BYTES) throw new Error("PAYLOAD_TOO_LARGE");
+}
+
+async function uploadPublicFile(file, folder) {
+  const res = await storageClient.uploadBufferWithPresign(file, {
+    folder: `${PUBLIC_PREFIX}/${folder}`.replace(/\/+/g, "/"),
+    isPublic: true,
+  });
+  return res?.publicUrl || null;
+}
+
+/* =========================
+   Shared helpers
+========================= */
 function sanitize(v) {
   if (v === null || v === undefined) return v;
   if (typeof v === "bigint") return v.toString();
@@ -55,6 +190,7 @@ async function assertAdmin(req) {
     throw Object.assign(new Error("UNAUTHORIZED"), { status: 401 });
   return session.user;
 }
+
 function buildUpdateData(payload) {
   const allow = [
     // org info
@@ -86,6 +222,7 @@ function buildUpdateData(payload) {
   if (Object.keys(data).length) data.updated_at = new Date();
   return data;
 }
+
 // form-data / urlencoded / json + ambil file
 async function readBodyAndFiles(req) {
   const ct = (req.headers.get("content-type") || "").toLowerCase();
@@ -126,47 +263,7 @@ async function readBodyAndFiles(req) {
     : [];
   return { body, imageFile: null, attachments: [], deleteIds };
 }
-function safeExt(filename = "") {
-  const ext = String(filename).split(".").pop();
-  return ext ? `.${ext.toLowerCase()}` : "";
-}
-function randName(ext = "") {
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
-}
-async function uploadToSupabase(
-  file,
-  prefix,
-  { allowedTypes = [], maxMB = 20 } = {}
-) {
-  if (!file) return null;
-  if (!BUCKET) throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
-  const size = file.size || 0;
-  const type = file.type || "application/octet-stream";
-  if (size > maxMB * 1024 * 1024) throw new Error("PAYLOAD_TOO_LARGE");
-  if (allowedTypes.length && type && !allowedTypes.includes(type)) {
-    const err = new Error("UNSUPPORTED_TYPE");
-    err.meta = { accepted: allowedTypes };
-    throw err;
-  }
-  const ext = safeExt(file.name);
-  const objectPath = `${prefix}/${new Date()
-    .toISOString()
-    .slice(0, 10)}/${randName(ext)}`;
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const { error } = await supabaseAdmin.storage
-    .from(BUCKET)
-    .upload(objectPath, bytes, { contentType: type, upsert: false });
-  if (error) throw new Error(error.message);
-  return { path: objectPath, mime: type, size };
-}
-async function deleteFromSupabase(paths = []) {
-  if (!paths.length) return;
-  try {
-    await supabaseAdmin.storage.from(BUCKET).remove(paths);
-  } catch (e) {
-    console.error("supabase remove error:", e?.message || e);
-  }
-}
+
 async function resolveCategoryId({ category_id, category_slug }) {
   const id = category_id ? String(category_id).trim() : "";
   const slug = category_slug ? String(category_slug).trim() : "";
@@ -236,6 +333,8 @@ export async function GET(req, { params }) {
       message: "OK",
       data: {
         ...base,
+        image_url: toPublicUrl(base.image_url),
+        mou_url: toPublicUrl(base.mou_url),
         category: row.category
           ? {
               id: row.category.id,
@@ -247,7 +346,10 @@ export async function GET(req, { params }) {
         merchant_name: t?.name || null,
         about: t?.description || null,
         locale_used: t?.locale || null,
-        files,
+        files: files.map((f) => ({
+          ...f,
+          file_url: toPublicUrl(f.file_url),
+        })),
       },
     });
   } catch (err) {
@@ -269,7 +371,7 @@ export async function PUT(req, ctx) {
   return PATCH(req, ctx);
 }
 
-/* ---------- PATCH (admin, + upload Supabase) ---------- */
+/* ---------- PATCH (admin, + storage baru) ---------- */
 export async function PATCH(req, { params }) {
   try {
     const admin = await assertAdmin(req);
@@ -286,7 +388,7 @@ export async function PATCH(req, { params }) {
     const locale = normalizeLocale(body.locale);
     const data = buildUpdateData(body);
 
-    // category update (accept id or slug)
+    // category update (id/slug)
     if (body.category_id !== undefined || body.category_slug !== undefined) {
       try {
         data.category_id = await resolveCategoryId({
@@ -351,19 +453,20 @@ export async function PATCH(req, { params }) {
       body.merchant_name = trimmed;
     }
 
-    // upload image baru (opsional)
+    // Upload image baru (opsional) di luar transaksi
+    let postCleanupImageUrl = null;
     if (imageFile) {
       try {
-        const up = await uploadToSupabase(imageFile, `mitra/images`, {
-          allowedTypes: [
-            "image/jpeg",
-            "image/png",
-            "image/webp",
-            "image/svg+xml",
-          ],
-          maxMB: 10,
+        await assertImageFileOrThrow(imageFile);
+        const existing = await prisma.mitra_dalam_negeri.findUnique({
+          where: { id },
+          select: { image_url: true },
         });
-        data.image_url = up.path;
+        const newUrl = await uploadPublicFile(imageFile, `mitra/${id}`);
+        data.image_url = newUrl;
+        if (existing?.image_url && existing.image_url !== newUrl) {
+          postCleanupImageUrl = existing.image_url;
+        }
       } catch (e) {
         if (e?.message === "PAYLOAD_TOO_LARGE")
           return json(
@@ -381,11 +484,6 @@ export async function PATCH(req, { params }) {
               },
             },
             { status: 415 }
-          );
-        if (e?.message === "SUPABASE_BUCKET_NOT_CONFIGURED")
-          return json(
-            { error: { code: "SERVER_ERROR", message: "Bucket belum diset" } },
-            { status: 500 }
           );
         console.error("upload image error:", e);
         return json(
@@ -464,7 +562,7 @@ export async function PATCH(req, { params }) {
             where: { id: { in: toDel.map((x) => x.id) } },
           });
           const paths = toDel.map((x) => x.file_url).filter(Boolean);
-          if (paths.length) await deleteFromSupabase(paths);
+          if (paths.length) await removeStorageObjects(paths);
         }
       }
 
@@ -480,33 +578,27 @@ export async function PATCH(req, { params }) {
 
         for (const f of attachments) {
           try {
-            const up = await uploadToSupabase(f, `mitra/files/${id}`, {
-              allowedTypes: [
-                "application/pdf",
-                "application/msword",
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                "application/vnd.ms-excel",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                "application/vnd.ms-powerpoint",
-                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                "image/jpeg",
-                "image/png",
-                "image/webp",
-                "image/svg+xml",
-                "text/plain",
-              ],
-              maxMB: 20,
-            });
-            currentSort += 1;
-            await tx.mitra_files.create({
-              data: { mitra_id: id, file_url: up.path, sort: currentSort },
-            });
+            await assertAttachmentFileOrThrow(f);
+            const publicUrl = await uploadPublicFile(f, `mitra/${id}/files`);
+            if (publicUrl) {
+              currentSort += 1;
+              await tx.mitra_files.create({
+                data: { mitra_id: id, file_url: publicUrl, sort: currentSort },
+              });
+            }
           } catch (e) {
             console.error("upload attachment error:", e?.message || e);
           }
         }
       }
     });
+
+    // cleanup image lama (best-effort)
+    if (postCleanupImageUrl) {
+      try {
+        await removeStorageObjects([postCleanupImageUrl]);
+      } catch {}
+    }
 
     return json({ message: "OK", data: { id } });
   } catch (err) {
@@ -558,14 +650,23 @@ export async function DELETE(req, { params }) {
     }
 
     if (hard) {
-      // hapus lampiran di storage juga
+      // hapus lampiran & gambar di storage (best-effort)
       try {
-        const files = await prisma.mitra_files.findMany({
-          where: { mitra_id: id },
-          select: { file_url: true },
-        });
-        const paths = files.map((x) => x.file_url).filter(Boolean);
-        if (paths.length) await deleteFromSupabase(paths);
+        const [files, parent] = await Promise.all([
+          prisma.mitra_files.findMany({
+            where: { mitra_id: id },
+            select: { file_url: true },
+          }),
+          prisma.mitra_dalam_negeri.findUnique({
+            where: { id },
+            select: { image_url: true },
+          }),
+        ]);
+        const paths = [
+          ...files.map((x) => x.file_url).filter(Boolean),
+          parent?.image_url || null,
+        ].filter(Boolean);
+        if (paths.length) await removeStorageObjects(paths);
         await prisma.mitra_files.deleteMany({ where: { mitra_id: id } });
       } catch {}
       await prisma.mitra_dalam_negeri.delete({ where: { id } });

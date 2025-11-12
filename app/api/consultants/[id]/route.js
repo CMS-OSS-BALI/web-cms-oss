@@ -5,8 +5,6 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
 import { randomUUID } from "crypto";
 import { translate } from "@/app/utils/geminiTranslator";
-
-// === Storage client (baru, pakai utils kamu)
 import storageClient from "@/app/utils/storageClient";
 
 export const dynamic = "force-dynamic";
@@ -14,17 +12,10 @@ export const runtime = "nodejs";
 
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_UPLOAD_SIZE = 10 * 1024 * 1024;
-
-// Secara default kamu mau prefix "cms-oss" di jalur publik
 const PUBLIC_PREFIX = "cms-oss";
 
 /* =========================
-   Public URL normalizer
-   - Simpan apa adanya kalau sudah URL.
-   - Kalau masih "key/path", kita bentuk:
-     {CDN}/public/<maybe cms-oss/>key
-   - CDN diestimasi dari OSS_STORAGE_BASE_URL
-     (ganti 'storage.' -> 'cdn.')
+   Public URL helpers
 ========================= */
 function computePublicBase() {
   const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
@@ -34,18 +25,15 @@ function computePublicBase() {
     const host = u.host.replace(/^storage\./, "cdn.");
     return `${u.protocol}//${host}`;
   } catch {
-    // fallback: langsung pakai base (bukan CDN)
     return base;
   }
 }
-
 function ensurePrefixedKey(key) {
   const clean = String(key || "").replace(/^\/+/, "");
   return clean.startsWith(PUBLIC_PREFIX + "/")
     ? clean
     : `${PUBLIC_PREFIX}/${clean}`;
 }
-
 function toPublicUrl(keyOrUrl) {
   if (!keyOrUrl) return null;
   const s = String(keyOrUrl).trim();
@@ -60,26 +48,22 @@ function toPublicUrl(keyOrUrl) {
 
 /* =========================
    URL -> storage key
-   - Ambil bagian setelah "/public/"
-   - Kalau bukan URL, anggap sudah key
 ========================= */
 function toStorageKey(u) {
   if (!u) return null;
   const s = String(u).trim();
   if (!/^https?:\/\//i.test(s)) {
-    // sudah berupa key/path
     return s.replace(/^\/+/, "");
   }
   const idx = s.indexOf("/public/");
   if (idx >= 0) {
     return s.slice(idx + "/public/".length).replace(/^\/+/, "");
   }
-  return null; // tidak dikenali → jangan dihapus (aman)
+  return null;
 }
 
 /* =========================
    Best-effort remover (batch)
-   - call gateway POST /api/storage/remove { keys: [...] }
 ========================= */
 async function removeStorageObjects(urlsOrKeys = []) {
   const keys = urlsOrKeys.map(toStorageKey).filter(Boolean);
@@ -96,9 +80,7 @@ async function removeStorageObjects(urlsOrKeys = []) {
       },
       body: JSON.stringify({ keys }),
     });
-    // boleh gagal, non-blocking
     if (!res.ok) {
-      // fallback: coba endpoint lain jika gateway berbeda
       await fetch(`${base}/api/storage/delete`, {
         method: "POST",
         headers: {
@@ -108,9 +90,7 @@ async function removeStorageObjects(urlsOrKeys = []) {
         body: JSON.stringify({ keys }),
       }).catch(() => {});
     }
-  } catch (_) {
-    // diamkan
-  }
+  } catch (_) {}
 }
 
 /* =========================
@@ -165,30 +145,25 @@ function pickTrans(list, primary, fallback) {
 }
 
 /* =========================
-   Upload helpers (pakai storageClient)
+   Upload helpers
 ========================= */
 async function assertImageFileOrThrow(file) {
   const type = file?.type || "";
   if (!ALLOWED_IMAGE_TYPES.has(type)) throw new Error("UNSUPPORTED_TYPE");
-
   const size =
     typeof file?.size === "number"
       ? file.size
       : (await file.arrayBuffer()).byteLength;
   if (size > MAX_UPLOAD_SIZE) throw new Error("PAYLOAD_TOO_LARGE");
 }
-
 async function uploadConsultantProgramImage(file, id) {
   await assertImageFileOrThrow(file);
   const res = await storageClient.uploadBufferWithPresign(file, {
-    // simpan di cms-oss/consultants/<id> agar URL publik sesuai keinginanmu
     folder: `${PUBLIC_PREFIX}/consultants/${id}`,
     isPublic: true,
   });
-  // simpan URL publik; DB akan langsung berisi URL final
   return res.publicUrl || null;
 }
-
 async function uploadConsultantProfileImage(file, id) {
   await assertImageFileOrThrow(file);
   const res = await storageClient.uploadBufferWithPresign(file, {
@@ -291,7 +266,6 @@ export async function PATCH(req, { params }) {
   const id = parseIdString(params?.id);
   if (!id) return ok({ error: { code: "BAD_ID" } }, { status: 400 });
 
-  // Snapshot existing
   let existing = await prisma.consultants.findUnique({
     where: { id },
     select: { id: true, profile_image_url: true },
@@ -358,7 +332,7 @@ export async function PATCH(req, { params }) {
     parentData.profile_image_url = payload.profile_image_url;
   if (Object.keys(parentData).length) parentData.updated_at = new Date();
 
-  // Cleanup plan for avatar
+  // Cleanup plan for avatar lama
   let postCleanupProfileUrl = null;
 
   if (Object.keys(parentData).length && !profileFile) {
@@ -385,7 +359,7 @@ export async function PATCH(req, { params }) {
     }
   }
 
-  // Upsert translations
+  // Upsert translations: kumpulkan sebagai batch ops
   const ops = [];
   if (payload.name_id !== undefined || payload.description_id !== undefined) {
     ops.push(
@@ -474,7 +448,7 @@ export async function PATCH(req, { params }) {
     }
   }
 
-  // New avatar file upload
+  // Upload avatar baru (di luar transaksi)
   if (profileFile) {
     const newPublicUrl = await uploadConsultantProfileImage(profileFile, id);
     const current = existing.profile_image_url || null;
@@ -490,13 +464,14 @@ export async function PATCH(req, { params }) {
     existing = { ...existing, profile_image_url: newPublicUrl };
   }
 
-  // -------- Program images (CRUD) --------
+  // -------- Program images --------
   const stringImages = Array.isArray(payload?.program_images)
     ? payload.program_images
         .map((v) => (v == null ? "" : String(v).trim()))
         .filter(Boolean)
     : [];
 
+  // Upload file program (di luar transaksi)
   let uploadedPublicUrls = [];
   if (Array.isArray(uploadFiles) && uploadFiles.length) {
     for (const f of uploadFiles) {
@@ -505,7 +480,6 @@ export async function PATCH(req, { params }) {
     }
   }
 
-  // Pastikan semua yang mau dimasukin sudah berbentuk URL publik
   const toInsertPublic = [
     ...stringImages.map(toPublicUrl),
     ...uploadedPublicUrls,
@@ -522,7 +496,6 @@ export async function PATCH(req, { params }) {
       select: { image_url: true },
     });
 
-    // Hitung file mana yang harus dibersihkan dari storage
     const keepSet = new Set(
       toInsertPublic.map((u) => toStorageKey(u)).filter(Boolean)
     );
@@ -530,7 +503,6 @@ export async function PATCH(req, { params }) {
       .map((e) => toStorageKey(e.image_url))
       .filter((k) => k && !keepSet.has(k));
 
-    // Replace: hapus semua rows lama lalu create ulang berurutan
     const txOps = [
       prisma.consultant_program_images.deleteMany({
         where: { id_consultant: id },
@@ -552,7 +524,7 @@ export async function PATCH(req, { params }) {
 
     await prisma.$transaction(txOps);
 
-    // cleanup (best-effort, non-blocking)
+    // cleanup file storage best-effort
     try {
       const bundle = postCleanupProfileUrl
         ? [postCleanupProfileUrl, ...removeKeys]
@@ -587,7 +559,6 @@ export async function PATCH(req, { params }) {
         } catch {}
       }
     } else if (postCleanupProfileUrl) {
-      // Kalau hanya ganti avatar
       try {
         await removeStorageObjects([postCleanupProfileUrl]);
       } catch {}

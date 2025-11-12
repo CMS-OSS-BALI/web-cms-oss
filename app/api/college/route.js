@@ -1,24 +1,63 @@
+// app/api/college/route.js
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
 import { translate } from "@/app/utils/geminiTranslator";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
+// === Storage client (baru)
+import storageClient from "@/app/utils/storageClient";
+
+/* =========================
+   Runtime & Defaults
+========================= */
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-/* -------------------- utils -------------------- */
+/* =========================
+   Config & Utils
+========================= */
 const DEFAULT_LOCALE = "id";
 const EN_LOCALE = "en";
-const BUCKET = process.env.SUPABASE_BUCKET;
-const SUPA_URL =
-  process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
-const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || ""; // set in .env for Postman
+const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
 
-// ⚠️ type (enum) sudah dihapus. Currency tetap dikunci IDR.
+// Currency dikunci IDR, field "type" dihapus → gunakan TEXT "jenjang"
 const ALWAYS_CURRENCY = "IDR";
 
+// Prefix jalur publik
+const PUBLIC_PREFIX = "cms-oss";
+
+/* ---------- Public URL helpers (konsisten dg consultants) ---------- */
+function computePublicBase() {
+  const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return "";
+  try {
+    const u = new URL(base);
+    const host = u.host.replace(/^storage\./, "cdn.");
+    return `${u.protocol}//${host}`;
+  } catch {
+    return base;
+  }
+}
+function ensurePrefixedKey(key) {
+  const clean = String(key || "").replace(/^\/+/, "");
+  return clean.startsWith(PUBLIC_PREFIX + "/")
+    ? clean
+    : `${PUBLIC_PREFIX}/${clean}`;
+}
+function toPublicUrl(keyOrUrl) {
+  if (!keyOrUrl) return null;
+  const s = String(keyOrUrl).trim();
+  if (/^https?:\/\//i.test(s)) return s;
+  const cdn = computePublicBase();
+  const path = ensurePrefixedKey(s);
+  const base =
+    cdn || (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return `/${path}`;
+  return `${base}/public/${path}`;
+}
+
+/* ---------- Basic helpers ---------- */
 function slugify(s) {
   return String(s || "")
     .normalize("NFKD")
@@ -45,14 +84,6 @@ function toNumeric(value) {
   const n = Number(cleaned);
   return Number.isFinite(n) ? n : null;
 }
-/** path in storage -> public HTTP URL */
-function toPublicUrl(path) {
-  if (!path) return "";
-  if (/^https?:\/\//i.test(path)) return path;
-  if (!SUPA_URL || !BUCKET) return path;
-  return `${SUPA_URL}/storage/v1/object/public/${BUCKET}/${path}`;
-}
-
 async function ensureUniqueSlug(base) {
   const seed = slugify(base || "item");
   let slug = seed;
@@ -68,7 +99,7 @@ async function ensureUniqueSlug(base) {
   }
 }
 
-/** Accept NextAuth session OR x-admin-key header (for Postman) */
+/* ---------- Auth (session OR x-admin-key) ---------- */
 async function assertAdmin(req) {
   const key = req.headers.get("x-admin-key");
   if (key && ADMIN_TEST_KEY && key === ADMIN_TEST_KEY) {
@@ -89,7 +120,7 @@ async function assertAdmin(req) {
   return { adminId: admin.id, via: "session" };
 }
 
-/** Read JSON or multipart form-data (surface File under 'logo' / 'file' / 'logo_file' / 'logo_url') */
+/* ---------- Body Reader ---------- */
 async function readBodyAndFile(req) {
   const contentType = (req.headers.get("content-type") || "").toLowerCase();
   const isMultipart = contentType.startsWith("multipart/form-data");
@@ -102,57 +133,51 @@ async function readBodyAndFile(req) {
     const body = {};
     let file = null;
 
-    const tryKeys = ["logo", "file", "logo_file", "logo_url"];
-    for (const k of tryKeys) {
+    for (const k of ["logo", "file", "logo_file"]) {
       const f = form.get(k);
       if (f && typeof File !== "undefined" && f instanceof File) {
         file = f;
         break;
       }
     }
-
-    for (const [k, v] of form.entries()) {
-      if (v instanceof File) continue;
-      body[k] = v;
-    }
+    for (const [k, v] of form.entries()) if (!(v instanceof File)) body[k] = v;
     return { body, file };
   }
-
   const body = (await req.json().catch(() => ({}))) ?? {};
   return { body, file: null };
 }
 
-/** Upload logo to Supabase (optional) */
-async function uploadCollegeLogo(file) {
-  if (!file) return null;
-  if (!BUCKET) throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
+/* ---------- Upload (pakai storageClient, allow SVG) ---------- */
+const ALLOWED_IMAGE_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/svg+xml",
+]);
+const MAX_UPLOAD_SIZE = 10 * 1024 * 1024;
 
-  const size = file.size || 0;
-  const type = file.type || "";
-  const allowed = ["image/jpeg", "image/png", "image/webp", "image/svg+xml"];
-  if (size > 10 * 1024 * 1024) throw new Error("PAYLOAD_TOO_LARGE");
-  if (type && !allowed.includes(type)) throw new Error("UNSUPPORTED_TYPE");
-
-  const ext = (file.name?.split(".").pop() || "").toLowerCase();
-  const safe = `${Date.now()}-${Math.random().toString(36).slice(2)}${
-    ext ? "." + ext : ""
-  }`;
-  const objectPath = `college-logos/${new Date()
-    .toISOString()
-    .slice(0, 10)}/${safe}`;
-  const bytes = new Uint8Array(await file.arrayBuffer());
-
-  const { error } = await supabaseAdmin.storage
-    .from(BUCKET)
-    .upload(objectPath, bytes, {
-      contentType: type || "application/octet-stream",
-      upsert: false,
-    });
-  if (error) throw new Error(error.message);
-  return objectPath; // store this into DB (path)
+async function assertImageFileOrThrow(file) {
+  const type = file?.type || "";
+  if (type && !ALLOWED_IMAGE_TYPES.has(type))
+    throw new Error("UNSUPPORTED_TYPE");
+  const size =
+    typeof file?.size === "number"
+      ? file.size
+      : (await file.arrayBuffer()).byteLength;
+  if (size > MAX_UPLOAD_SIZE) throw new Error("PAYLOAD_TOO_LARGE");
 }
 
-/** mapper: gunakan jenjang (TEXT) */
+async function uploadCollegeLogo(file, collegeId) {
+  if (!file) return null;
+  await assertImageFileOrThrow(file);
+  const res = await storageClient.uploadBufferWithPresign(file, {
+    folder: `${PUBLIC_PREFIX}/colleges/${collegeId}`,
+    isPublic: true,
+  });
+  return res.publicUrl || null; // simpan URL publik langsung ke DB
+}
+
+/* ---------- Serializer ---------- */
 function mapCollege(row, locale, fallback) {
   const t = pickTrans(row.college_translate || [], locale, fallback);
   return {
@@ -160,7 +185,7 @@ function mapCollege(row, locale, fallback) {
     admin_user_id: row.admin_user_id,
     slug: row.slug,
     country: row.country,
-    jenjang: row.jenjang ?? null, // <- ganti dari type
+    jenjang: row.jenjang ?? null,
     website: row.website,
     mou_url: row.mou_url,
     logo_url: toPublicUrl(row.logo_url),
@@ -183,7 +208,9 @@ function mapCollege(row, locale, fallback) {
   };
 }
 
-/* -------------------- GET (list) -------------------- */
+/* =========================
+   GET /api/college (list)
+========================= */
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
@@ -199,13 +226,13 @@ export async function GET(req) {
       searchParams.get("type") ||
       ""
     ).trim(); // alias 'type' utk backward-compat
+
     const locale = normalizeLocale(searchParams.get("locale"));
     const fallback = normalizeLocale(
       searchParams.get("fallback") || DEFAULT_LOCALE
     );
     const locales = locale === fallback ? [locale] : [locale, fallback];
 
-    // Hapus filter 'type: ALWAYS_TYPE'
     const where = { deleted_at: null };
     if (country) where.country = country;
 
@@ -235,7 +262,7 @@ export async function GET(req) {
     }
     if (and.length) where.AND = and;
 
-    // tetap hanya yang punya terjemahan sesuai locales
+    // pastikan ada translation sesuai locales
     where.college_translate = { some: { locale: { in: locales } } };
 
     const rows = await prisma.college.findMany({
@@ -248,7 +275,7 @@ export async function GET(req) {
         admin_user_id: true,
         slug: true,
         country: true,
-        jenjang: true, // <- ganti dari type
+        jenjang: true,
         website: true,
         mou_url: true,
         logo_url: true,
@@ -283,24 +310,25 @@ export async function GET(req) {
   }
 }
 
-/* -------------------- POST (create) -------------------- */
+/* =========================
+   POST /api/college (create)
+========================= */
 export async function POST(req) {
   try {
     const { adminId } = await assertAdmin(req);
-
     const { body, file } = await readBodyAndFile(req);
+
     const locale = normalizeLocale(body.locale);
     const name = String(body?.name || "").trim();
-    if (!name) {
+    if (!name)
       return NextResponse.json(
         { message: "name is required" },
         { status: 400 }
       );
-    }
 
     const slug = body.slug ? slugify(body.slug) : await ensureUniqueSlug(name);
 
-    // ⚠️ HAPUS normType. Gunakan jenjang text dari body (atau dari legacy 'type')
+    // jenjang TEXT (ganti dari type)
     const jenjangRaw =
       body.jenjang !== undefined
         ? body.jenjang
@@ -309,57 +337,19 @@ export async function POST(req) {
         : null;
 
     const currency = ALWAYS_CURRENCY;
-
-    let logo_url = null;
-    if (file) {
-      try {
-        logo_url = await uploadCollegeLogo(file);
-      } catch (e) {
-        if (e?.message === "PAYLOAD_TOO_LARGE")
-          return NextResponse.json(
-            { message: "Logo max 10MB" },
-            { status: 413 }
-          );
-        if (e?.message === "UNSUPPORTED_TYPE")
-          return NextResponse.json(
-            { message: "Logo must be JPEG/PNG/WebP/SVG" },
-            { status: 415 }
-          );
-        if (e?.message === "SUPABASE_BUCKET_NOT_CONFIGURED")
-          return NextResponse.json(
-            { message: "Supabase bucket is not configured" },
-            { status: 500 }
-          );
-        console.error("uploadCollegeLogo error:", e);
-        return NextResponse.json(
-          { message: "Upload logo failed" },
-          { status: 500 }
-        );
-      }
-    } else if (body.logo_url !== undefined) {
-      const trimmed = String(body.logo_url || "").trim();
-      if (trimmed.length > 1024)
-        return NextResponse.json(
-          { message: "logo_url must be at most 1024 characters" },
-          { status: 400 }
-        );
-      logo_url = trimmed || null;
-    }
-
-    const autoTranslate =
-      String(body.autoTranslate ?? "true").toLowerCase() !== "false";
     const ownerId = body.admin_user_id || adminId;
 
+    // Buat parent dulu → upload logo memakai id folder → update logo_url
     const created = await prisma.$transaction(async (tx) => {
       const parent = await tx.college.create({
         data: {
           admin_user_id: ownerId,
           slug,
           country: body.country ?? null,
-          jenjang: jenjangRaw ?? null, // <- ganti dari type
+          jenjang: jenjangRaw ?? null,
           website: body.website ?? null,
           mou_url: body.mou_url ?? null,
-          logo_url,
+          logo_url: null, // set nanti (file/string)
           address: body.address ?? null,
           city: body.city ?? null,
           state: body.state ?? null,
@@ -383,8 +373,10 @@ export async function POST(req) {
           created_at: new Date(),
           updated_at: new Date(),
         },
+        select: { id: true },
       });
 
+      // translations (locale sumber)
       const description =
         body.description !== undefined && body.description !== null
           ? String(body.description)
@@ -394,10 +386,13 @@ export async function POST(req) {
         data: { id_college: parent.id, locale, name, description },
       });
 
+      // auto translate ke EN (opsional)
+      const autoTranslate =
+        String(body.autoTranslate ?? "true").toLowerCase() !== "false";
       if (autoTranslate && locale !== EN_LOCALE && (name || description)) {
         const [nameEn, descEn] = await Promise.all([
           name ? translate(name, locale, EN_LOCALE) : Promise.resolve(name),
-          description
+          typeof description === "string"
             ? translate(description, locale, EN_LOCALE)
             : Promise.resolve(description),
         ]);
@@ -419,21 +414,48 @@ export async function POST(req) {
         });
       }
 
-      return parent;
+      // handle logo
+      let finalLogo = null;
+      if (file) {
+        finalLogo = await uploadCollegeLogo(file, parent.id);
+      } else if (body.logo_url !== undefined) {
+        const trimmed = String(body.logo_url || "").trim();
+        if (trimmed.length > 1024)
+          throw Object.assign(new Error("BAD_LOGO_URL"), { status: 400 });
+        finalLogo = trimmed || null; // bisa URL publik / key; disimpan apa adanya
+      }
+
+      if (finalLogo) {
+        await tx.college.update({
+          where: { id: parent.id },
+          data: { logo_url: finalLogo, updated_at: new Date() },
+        });
+      }
+
+      return { id: parent.id, logo_url: finalLogo || null };
     });
 
     return NextResponse.json(
       {
-        data: {
-          id: created.id,
-          slug: created.slug,
-          logo_url: toPublicUrl(logo_url),
-        },
+        data: { id: created.id, slug, logo_url: toPublicUrl(created.logo_url) },
       },
       { status: 201 }
     );
   } catch (err) {
     if (err instanceof Response) return err;
+    if (err?.message === "UNSUPPORTED_TYPE")
+      return NextResponse.json(
+        { message: "Logo must be JPEG/PNG/WebP/SVG" },
+        { status: 415 }
+      );
+    if (err?.message === "PAYLOAD_TOO_LARGE")
+      return NextResponse.json({ message: "Logo max 10MB" }, { status: 413 });
+    if (err?.message === "BAD_LOGO_URL")
+      return NextResponse.json(
+        { message: "logo_url must be at most 1024 characters" },
+        { status: 400 }
+      );
+
     console.error("POST /api/college error:", err);
     return NextResponse.json(
       { message: "Failed to create college" },

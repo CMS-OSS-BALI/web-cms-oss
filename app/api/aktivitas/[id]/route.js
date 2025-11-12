@@ -92,7 +92,7 @@ export async function PATCH(req, { params }) {
     let image_url = undefined;
     if (file) {
       try {
-        image_url = await uploadAktivitasImage(file);
+        image_url = await uploadAktivitasImage(file, id);
       } catch (e) {
         if (e?.message === "PAYLOAD_TOO_LARGE")
           return json({ message: "Gambar max 10MB" }, { status: 413 });
@@ -100,11 +100,6 @@ export async function PATCH(req, { params }) {
           return json(
             { message: "Gambar harus JPEG/PNG/WebP" },
             { status: 415 }
-          );
-        if (e?.message === "SUPABASE_BUCKET_NOT_CONFIGURED")
-          return json(
-            { message: "Supabase bucket belum disetel" },
-            { status: 500 }
           );
         console.error("uploadAktivitasImage error:", e);
         return json({ message: "Upload gambar gagal" }, { status: 500 });
@@ -139,7 +134,7 @@ export async function PATCH(req, { params }) {
     const cur = (lc) => existing.find((x) => x.locale === lc) || null;
 
     if (autoTranslate) {
-      // ID-only changes -> fill EN
+      // ID-only -> fill EN
       if (
         (name_id !== undefined || description_id !== undefined) &&
         name_en === undefined &&
@@ -157,7 +152,7 @@ export async function PATCH(req, { params }) {
           description_en = await translate(srcDesc, "id", "en");
         }
       }
-      // EN-only changes -> fill ID
+      // EN-only -> fill ID
       if (
         (name_en !== undefined || description_en !== undefined) &&
         name_id === undefined &&
@@ -177,12 +172,13 @@ export async function PATCH(req, { params }) {
       }
     }
 
-    // Single query update + nested upsert (hemat round-trip)
     const updated = await prisma.aktivitas.update({
       where: { id },
       data: {
         updated_at: new Date(),
-        ...(image_url !== undefined ? { image_url } : {}),
+        ...(image_url !== undefined
+          ? { image_url: toPublicUrl(image_url) }
+          : {}),
         ...(sort !== undefined ? { sort } : {}),
         ...(is_published !== undefined ? { is_published } : {}),
         ...((name_id !== undefined ||

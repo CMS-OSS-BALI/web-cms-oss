@@ -4,12 +4,87 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
 import { translate } from "@/app/utils/geminiTranslator";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import storageClient from "@/app/utils/storageClient";
 
+/* =========================
+   Runtime
+========================= */
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-/* =============== Auth & Helpers =============== */
+/* =========================
+   Storage helpers (match consultants)
+========================= */
+const PUBLIC_PREFIX = "cms-oss";
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MAX_UPLOAD_SIZE = 10 * 1024 * 1024;
+
+function computePublicBase() {
+  const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return "";
+  try {
+    const u = new URL(base);
+    const host = u.host.replace(/^storage\./, "cdn.");
+    return `${u.protocol}//${host}`;
+  } catch {
+    return base;
+  }
+}
+function ensurePrefixedKey(key) {
+  const clean = String(key || "").replace(/^\/+/, "");
+  return clean.startsWith(PUBLIC_PREFIX + "/")
+    ? clean
+    : `${PUBLIC_PREFIX}/${clean}`;
+}
+function toPublicUrl(keyOrUrl) {
+  if (!keyOrUrl) return null;
+  const s = String(keyOrUrl).trim();
+  if (/^https?:\/\//i.test(s)) return s;
+  const cdn = computePublicBase();
+  const path = ensurePrefixedKey(s);
+  const base =
+    cdn || (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return `/${path}`;
+  return `${base}/public/${path}`;
+}
+function toStorageKey(u) {
+  if (!u) return null;
+  const s = String(u).trim();
+  if (!/^https?:\/\//i.test(s)) return s.replace(/^\/+/, "");
+  const idx = s.indexOf("/public/");
+  if (idx >= 0) return s.slice(idx + "/public/".length).replace(/^\/+/, "");
+  return null;
+}
+async function removeStorageObjects(urlsOrKeys = []) {
+  const keys = urlsOrKeys.map(toStorageKey).filter(Boolean);
+  if (!keys.length) return;
+  const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return;
+  try {
+    const res = await fetch(`${base}/api/storage/remove`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": process.env.OSS_STORAGE_API_KEY || "",
+      },
+      body: JSON.stringify({ keys }),
+    });
+    if (!res.ok) {
+      await fetch(`${base}/api/storage/delete`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": process.env.OSS_STORAGE_API_KEY || "",
+        },
+        body: JSON.stringify({ keys }),
+      }).catch(() => {});
+    }
+  } catch {}
+}
+
+/* =========================
+   Auth & small helpers
+========================= */
 async function assertAdmin() {
   const session = await getServerSession(authOptions);
   const email = session?.user?.email;
@@ -18,11 +93,7 @@ async function assertAdmin() {
   if (!admin) throw new Error("FORBIDDEN");
   return admin;
 }
-
 const SERVICE_TYPE_VALUES = new Set(["B2B", "B2C"]);
-const BUCKET =
-  process.env.SUPABASE_BUCKET || process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "";
-
 function badRequest(message) {
   return NextResponse.json({ message }, { status: 400 });
 }
@@ -71,76 +142,30 @@ function normalizeSlug(s) {
     .replace(/^-+|-+$/g, "");
 }
 
-/* ---- Supabase URL helpers ---- */
-function publicUrlFromPath(path) {
-  if (!path) return null;
-  if (/^https?:\/\//i.test(path)) return path;
-  try {
-    if (!BUCKET || !supabaseAdmin?.storage) return null;
-    const { data } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path);
-    return data?.publicUrl || null;
-  } catch {
-    return null;
-  }
+/* =========================
+   Upload helpers
+========================= */
+async function assertImageFileOrThrow(file) {
+  const type = file?.type || "";
+  if (!ALLOWED_IMAGE_TYPES.has(type)) throw new Error("UNSUPPORTED_TYPE");
+  const size =
+    typeof file?.size === "number"
+      ? file.size
+      : (await file.arrayBuffer()).byteLength;
+  if (size > MAX_UPLOAD_SIZE) throw new Error("PAYLOAD_TOO_LARGE");
 }
-async function renderableUrl(path, { expiresIn = 60 * 60 * 24 * 7 } = {}) {
-  if (!path) return null;
-  if (/^https?:\/\//i.test(path)) return path;
-  if (!BUCKET || !supabaseAdmin?.storage) return null;
-
-  const from = supabaseAdmin.storage.from(BUCKET);
-
-  try {
-    const { data, error } = await from.createSignedUrl(path, expiresIn);
-    if (!error && data?.signedUrl) return data.signedUrl;
-  } catch {
-    // ignore
-  }
-
-  try {
-    const { data } = from.getPublicUrl(path);
-    return data?.publicUrl || null;
-  } catch {
-    return null;
-  }
+async function uploadServiceImage(file, id) {
+  await assertImageFileOrThrow(file);
+  const res = await storageClient.uploadBufferWithPresign(file, {
+    folder: `${PUBLIC_PREFIX}/services/${id}`,
+    isPublic: true,
+  });
+  return res.publicUrl || null;
 }
 
-/* ---- Upload helper ---- */
-async function uploadServiceImage(file) {
-  if (typeof File === "undefined" || !(file instanceof File)) {
-    throw new Error("NO_FILE");
-  }
-  if (!BUCKET) throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
-
-  const MAX = 10 * 1024 * 1024;
-  const allowed = ["image/jpeg", "image/png", "image/webp"];
-  const size = file.size || 0;
-  const type = file.type || "";
-
-  if (size > MAX) throw new Error("PAYLOAD_TOO_LARGE");
-  if (type && !allowed.includes(type)) throw new Error("UNSUPPORTED_TYPE");
-
-  const ext = (file.name?.split(".").pop() || "").toLowerCase();
-  const safe = `${Date.now()}-${Math.random().toString(36).slice(2)}${
-    ext ? "." + ext : ""
-  }`;
-  const objectPath = `services/${new Date()
-    .toISOString()
-    .slice(0, 10)}/${safe}`;
-  const bytes = new Uint8Array(await file.arrayBuffer());
-
-  const { error } = await supabaseAdmin.storage
-    .from(BUCKET)
-    .upload(objectPath, bytes, {
-      contentType: type || "application/octet-stream",
-      upsert: false,
-    });
-
-  if (error) throw new Error(error.message);
-  return objectPath;
-}
-
-/* ---- Category resolver (PATCH) ---- */
+/* =========================
+   Category resolver (PATCH)
+========================= */
 async function resolveCategoryId({ category_id, category_slug }) {
   if (category_id !== undefined) {
     if (category_id === null || category_id === "") return null;
@@ -170,7 +195,7 @@ async function resolveCategoryId({ category_id, category_slug }) {
   return undefined;
 }
 
-/* ========= GET /api/services/:id (DETAIL) ========= */
+/* ========= GET detail ========= */
 export async function GET(req, { params }) {
   try {
     const id = params?.id;
@@ -199,18 +224,13 @@ export async function GET(req, { params }) {
     });
     if (!item) return notFound();
 
-    const t = ((arr) => {
-      const by = (loc) => arr?.find((x) => x.locale === loc);
-      return by(locale) || by(fallback) || null;
-    })(item.services_translate);
+    const by = (loc) => item.services_translate?.find((x) => x.locale === loc);
+    const t = by(locale) || by(fallback) || null;
 
-    const pub = publicUrlFromPath(item.image_url);
-    const signed = await renderableUrl(item.image_url);
-    const hasToken = typeof signed === "string" && signed.includes("token=");
-    const ver = item.updated_at
-      ? `?v=${new Date(item.updated_at).getTime()}`
-      : "";
-    const resolved = signed ? (hasToken ? signed : signed + ver) : null;
+    const pub = toPublicUrl(item.image_url);
+    const ver =
+      item.updated_at && pub ? `?v=${new Date(item.updated_at).getTime()}` : "";
+    const resolved = pub ? pub + ver : null;
 
     return NextResponse.json({
       data: {
@@ -246,11 +266,10 @@ export async function GET(req, { params }) {
   }
 }
 
-/* ========= PUT/PATCH /api/services/:id ========= */
+/* ========= PUT/PATCH ========= */
 export async function PUT(req, ctx) {
   return PATCH(req, ctx);
 }
-
 export async function PATCH(req, { params }) {
   try {
     await assertAdmin();
@@ -310,7 +329,7 @@ export async function PATCH(req, { params }) {
       uploadFile instanceof File
     ) {
       try {
-        data.image_url = await uploadServiceImage(uploadFile);
+        data.image_url = await uploadServiceImage(uploadFile, id);
       } catch (e) {
         if (e?.message === "PAYLOAD_TOO_LARGE")
           return NextResponse.json(
@@ -322,11 +341,6 @@ export async function PATCH(req, { params }) {
             { message: "Format harus JPEG/PNG/WebP" },
             { status: 415 }
           );
-        if (e?.message === "SUPABASE_BUCKET_NOT_CONFIGURED")
-          return NextResponse.json(
-            { message: "Supabase bucket belum dikonfigurasi" },
-            { status: 500 }
-          );
         console.error("uploadServiceImage error:", e);
         return NextResponse.json(
           { message: "Upload gambar gagal" },
@@ -335,7 +349,7 @@ export async function PATCH(req, { params }) {
       }
     } else if (body.image_url !== undefined) {
       const trimmed = String(body.image_url || "").trim();
-      data.image_url = trimmed === "" ? null : trimmed;
+      data.image_url = trimmed === "" ? null : toPublicUrl(trimmed);
     }
 
     // service_type
@@ -507,13 +521,12 @@ export async function PATCH(req, { params }) {
       }
     }
 
-    const pub = publicUrlFromPath(latest.image_url ?? null);
-    const signed = await renderableUrl(latest.image_url ?? null);
-    const hasToken = typeof signed === "string" && signed.includes("token=");
-    const ver = latest.updated_at
-      ? `?v=${new Date(latest.updated_at).getTime()}`
-      : "";
-    const resolved = signed ? (hasToken ? signed : signed + ver) : null;
+    const pub = toPublicUrl(latest.image_url ?? null);
+    const ver =
+      latest.updated_at && pub
+        ? `?v=${new Date(latest.updated_at).getTime()}`
+        : "";
+    const resolved = pub ? pub + ver : null;
 
     return NextResponse.json({
       data: {
@@ -569,19 +582,13 @@ export async function DELETE(_req, { params }) {
       prisma.services.delete({ where: { id } }),
     ]);
 
-    // attempt to remove object (best-effort)
+    // cleanup best-effort
     try {
-      const path = existing.image_url || "";
-      if (
-        path &&
-        !/^https?:\/\//i.test(path) &&
-        supabaseAdmin?.storage &&
-        BUCKET
-      ) {
-        await supabaseAdmin.storage.from(BUCKET).remove([path]);
+      if (existing.image_url) {
+        await removeStorageObjects([existing.image_url]);
       }
     } catch (err) {
-      console.warn("Supabase remove image failed:", err?.message || err);
+      console.warn("Remove image failed:", err?.message || err);
     }
 
     return NextResponse.json({ data: { id, deleted: true } });

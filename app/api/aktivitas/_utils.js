@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import storageClient from "@/app/utils/storageClient";
 
 /* -------------------- config -------------------- */
 export const dynamic = "force-dynamic";
@@ -11,10 +11,39 @@ export const runtime = "nodejs";
 
 export const DEFAULT_LOCALE = "id";
 export const EN_LOCALE = "en";
-export const BUCKET = process.env.SUPABASE_BUCKET;
-export const SUPA_URL =
-  process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
 export const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
+
+/* Storage config (align with consultants) */
+export const PUBLIC_PREFIX = "cms-oss";
+
+function computePublicBase() {
+  const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return "";
+  try {
+    const u = new URL(base);
+    const host = u.host.replace(/^storage\./, "cdn.");
+    return `${u.protocol}//${host}`;
+  } catch {
+    return base;
+  }
+}
+function ensurePrefixedKey(key) {
+  const clean = String(key || "").replace(/^\/+/, "");
+  return clean.startsWith(PUBLIC_PREFIX + "/")
+    ? clean
+    : `${PUBLIC_PREFIX}/${clean}`;
+}
+export function toPublicUrl(keyOrUrl) {
+  if (!keyOrUrl) return "";
+  const s = String(keyOrUrl).trim();
+  if (/^https?:\/\//i.test(s)) return s;
+  const cdn = computePublicBase();
+  const path = ensurePrefixedKey(s);
+  const base =
+    cdn || (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return `/${path}`;
+  return `${base}/public/${path}`;
+}
 
 /* -------------------- tiny utils -------------------- */
 export function sanitize(v) {
@@ -60,14 +89,7 @@ export function getOrderBy(param) {
   const [field = "sort", dir = "asc"] = String(param || "").split(":");
   const key = allowed.has(field) ? field : "sort";
   const order = String(dir).toLowerCase() === "desc" ? "desc" : "asc";
-  // fallback second order untuk stabilitas list
   return [{ [key]: order }, { created_at: "desc" }];
-}
-export function toPublicUrl(path) {
-  if (!path) return "";
-  if (/^https?:\/\//i.test(path)) return path;
-  if (!SUPA_URL || !BUCKET) return path;
-  return `${SUPA_URL}/storage/v1/object/public/${BUCKET}/${path}`;
 }
 export const toMs = (d) => {
   if (!d) return null;
@@ -122,32 +144,25 @@ export async function readBodyAndFile(req) {
   return { body, file: null };
 }
 
-export async function uploadAktivitasImage(file) {
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MAX_UPLOAD_SIZE = 10 * 1024 * 1024;
+
+async function assertImageFileOrThrow(file) {
+  const type = file?.type || "";
+  if (!ALLOWED_IMAGE_TYPES.has(type)) throw new Error("UNSUPPORTED_TYPE");
+  const size =
+    typeof file?.size === "number"
+      ? file.size
+      : (await file.arrayBuffer()).byteLength;
+  if (size > MAX_UPLOAD_SIZE) throw new Error("PAYLOAD_TOO_LARGE");
+}
+
+export async function uploadAktivitasImage(file, id) {
   if (!file) return null;
-  if (!BUCKET) throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
-
-  const size = file.size || 0;
-  const type = file.type || "";
-  const allowed = ["image/jpeg", "image/png", "image/webp"];
-  if (size > 10 * 1024 * 1024) throw new Error("PAYLOAD_TOO_LARGE");
-  if (type && !allowed.includes(type)) throw new Error("UNSUPPORTED_TYPE");
-
-  const ext = (file.name?.split(".").pop() || "").toLowerCase();
-  const safe = `${Date.now()}-${Math.random().toString(36).slice(2)}${
-    ext ? "." + ext : ""
-  }`;
-  const objectPath = `aktivitas/${new Date()
-    .toISOString()
-    .slice(0, 10)}/${safe}`;
-  const bytes = new Uint8Array(await file.arrayBuffer());
-
-  const { error } = await supabaseAdmin.storage
-    .from(BUCKET)
-    .upload(objectPath, bytes, {
-      contentType: type || "application/octet-stream",
-      upsert: false,
-    });
-
-  if (error) throw new Error(error.message);
-  return objectPath;
+  await assertImageFileOrThrow(file);
+  const res = await storageClient.uploadBufferWithPresign(file, {
+    folder: `${PUBLIC_PREFIX}/aktivitas/${id || "misc"}`,
+    isPublic: true,
+  });
+  return res.publicUrl || null;
 }

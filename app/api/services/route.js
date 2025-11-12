@@ -5,12 +5,89 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
 import { randomUUID } from "crypto";
 import { translate } from "@/app/utils/geminiTranslator";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import storageClient from "@/app/utils/storageClient";
 
+/* =========================
+   Runtime & Defaults
+========================= */
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-/* ===================== Auth & Helpers ===================== */
+/* =========================
+   Storage helpers (match consultants)
+========================= */
+const PUBLIC_PREFIX = "cms-oss";
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MAX_UPLOAD_SIZE = 10 * 1024 * 1024;
+
+function computePublicBase() {
+  const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return "";
+  try {
+    const u = new URL(base);
+    const host = u.host.replace(/^storage\./, "cdn.");
+    return `${u.protocol}//${host}`;
+  } catch {
+    return base;
+  }
+}
+function ensurePrefixedKey(key) {
+  const clean = String(key || "").replace(/^\/+/, "");
+  return clean.startsWith(PUBLIC_PREFIX + "/")
+    ? clean
+    : `${PUBLIC_PREFIX}/${clean}`;
+}
+function toPublicUrl(keyOrUrl) {
+  if (!keyOrUrl) return null;
+  const s = String(keyOrUrl).trim();
+  if (/^https?:\/\//i.test(s)) return s;
+  const cdn = computePublicBase();
+  const path = ensurePrefixedKey(s);
+  const base =
+    cdn || (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return `/${path}`;
+  return `${base}/public/${path}`;
+}
+function toStorageKey(u) {
+  if (!u) return null;
+  const s = String(u).trim();
+  if (!/^https?:\/\//i.test(s)) {
+    return s.replace(/^\/+/, "");
+  }
+  const idx = s.indexOf("/public/");
+  if (idx >= 0) return s.slice(idx + "/public/".length).replace(/^\/+/, "");
+  return null;
+}
+async function removeStorageObjects(urlsOrKeys = []) {
+  const keys = urlsOrKeys.map(toStorageKey).filter(Boolean);
+  if (!keys.length) return;
+  const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return;
+  try {
+    const res = await fetch(`${base}/api/storage/remove`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": process.env.OSS_STORAGE_API_KEY || "",
+      },
+      body: JSON.stringify({ keys }),
+    });
+    if (!res.ok) {
+      await fetch(`${base}/api/storage/delete`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": process.env.OSS_STORAGE_API_KEY || "",
+        },
+        body: JSON.stringify({ keys }),
+      }).catch(() => {});
+    }
+  } catch {}
+}
+
+/* =========================
+   Auth & common helpers
+========================= */
 async function assertAdmin() {
   const session = await getServerSession(authOptions);
   const email = session?.user?.email;
@@ -24,10 +101,6 @@ const SERVICE_TYPE_VALUES = new Set(["B2B", "B2C"]);
 const MAX_NAME_LENGTH = 191;
 const MAX_TEXT_LENGTH = 10000;
 
-const BUCKET =
-  process.env.SUPABASE_BUCKET || process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "";
-
-/* --------- parsers / utils --------- */
 function parseBool(v) {
   if (v === undefined || v === null) return undefined;
   const s = String(v).toLowerCase();
@@ -98,80 +171,33 @@ function normalizeSlug(s) {
     .replace(/^-+|-+$/g, "");
 }
 
-/* ---- Supabase URL helpers ---- */
-function publicUrlFromPath(path) {
-  if (!path) return null;
-  if (/^https?:\/\//i.test(path)) return path; // already URL
-  try {
-    if (!BUCKET || !supabaseAdmin?.storage) return null;
-    const { data } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path);
-    return data?.publicUrl || null;
-  } catch {
-    return null;
-  }
+/* =========================
+   Upload helpers
+========================= */
+async function assertImageFileOrThrow(file) {
+  const type = file?.type || "";
+  if (!ALLOWED_IMAGE_TYPES.has(type)) throw new Error("UNSUPPORTED_TYPE");
+  const size =
+    typeof file?.size === "number"
+      ? file.size
+      : (await file.arrayBuffer()).byteLength;
+  if (size > MAX_UPLOAD_SIZE) throw new Error("PAYLOAD_TOO_LARGE");
+}
+async function uploadServiceImage(file, serviceId) {
+  await assertImageFileOrThrow(file);
+  const res = await storageClient.uploadBufferWithPresign(file, {
+    folder: `${PUBLIC_PREFIX}/services/${serviceId}`,
+    isPublic: true,
+  });
+  return res.publicUrl || null;
 }
 
-/** Prefer signed URL (works for private/public), fallback ke public */
-async function renderableUrl(path, { expiresIn = 60 * 60 * 24 * 7 } = {}) {
-  if (!path) return null;
-  if (/^https?:\/\//i.test(path)) return path;
-  if (!BUCKET || !supabaseAdmin?.storage) return null;
-
-  const from = supabaseAdmin.storage.from(BUCKET);
-
-  try {
-    const { data, error } = await from.createSignedUrl(path, expiresIn);
-    if (!error && data?.signedUrl) return data.signedUrl;
-  } catch {
-    // ignore
-  }
-
-  try {
-    const { data } = from.getPublicUrl(path);
-    return data?.publicUrl || null;
-  } catch {
-    return null;
-  }
-}
-
-/* ---- Supabase upload helper ---- */
-async function uploadServiceImage(file) {
-  if (typeof File === "undefined" || !(file instanceof File)) {
-    throw new Error("NO_FILE");
-  }
-  if (!BUCKET) throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
-
-  const MAX = 10 * 1024 * 1024;
-  const allowed = ["image/jpeg", "image/png", "image/webp"];
-  const size = file.size || 0;
-  const type = file.type || "";
-  if (size > MAX) throw new Error("PAYLOAD_TOO_LARGE");
-  if (type && !allowed.includes(type)) throw new Error("UNSUPPORTED_TYPE");
-
-  const ext = (file.name?.split(".").pop() || "").toLowerCase();
-  const safe = `${Date.now()}-${Math.random().toString(36).slice(2)}${
-    ext ? "." + ext : ""
-  }`;
-  const objectPath = `services/${new Date()
-    .toISOString()
-    .slice(0, 10)}/${safe}`;
-  const bytes = new Uint8Array(await file.arrayBuffer());
-
-  const { error } = await supabaseAdmin.storage
-    .from(BUCKET)
-    .upload(objectPath, bytes, {
-      contentType: type || "application/octet-stream",
-      upsert: false,
-    });
-
-  if (error) throw new Error(error.message);
-  return objectPath;
-}
-
-/* ---- Category resolver (POST) ---- */
+/* =========================
+   Category resolver (POST)
+========================= */
 async function resolveCategoryId({ category_id, category_slug }) {
   if (category_id !== undefined) {
-    if (category_id === null || category_id === "") return null; // explicit clear
+    if (category_id === null || category_id === "") return null;
     if (typeof category_id === "string" && category_id.trim()) {
       const found = await prisma.service_categories.findUnique({
         where: { id: category_id.trim() },
@@ -184,7 +210,7 @@ async function resolveCategoryId({ category_id, category_slug }) {
   }
 
   if (category_slug !== undefined) {
-    if (category_slug === null || category_slug === "") return null; // explicit clear
+    if (category_slug === null || category_slug === "") return null;
     if (typeof category_slug === "string" && category_slug.trim()) {
       const slug = normalizeSlug(category_slug);
       const found = await prisma.service_categories.findUnique({
@@ -200,12 +226,12 @@ async function resolveCategoryId({ category_id, category_slug }) {
   return undefined;
 }
 
-/* ===================== GET (list/single via ?id=) ===================== */
+/* ===================== GET (list or ?id=) ===================== */
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
 
-    // optional single-item via ?id=
+    // single via ?id=
     const idParam = searchParams.get("id");
     if (idParam) {
       const locale = getLocaleFromReq(req);
@@ -236,13 +262,12 @@ export async function GET(req) {
         return NextResponse.json({ message: "Not found" }, { status: 404 });
 
       const t = pickTrans(item.services_translate, locale, fallback);
-      const pub = publicUrlFromPath(item.image_url);
-      const signed = await renderableUrl(item.image_url);
-      const hasToken = typeof signed === "string" && signed.includes("token=");
-      const ver = item.updated_at
-        ? `?v=${new Date(item.updated_at).getTime()}`
-        : "";
-      const resolved = signed ? (hasToken ? signed : signed + ver) : null;
+      const pub = toPublicUrl(item.image_url);
+      const ver =
+        item.updated_at && pub
+          ? `?v=${new Date(item.updated_at).getTime()}`
+          : "";
+      const resolved = pub ? pub + ver : null;
 
       return NextResponse.json({
         data: {
@@ -271,7 +296,7 @@ export async function GET(req) {
       });
     }
 
-    // ===== list =====
+    // list
     const q = searchParams.get("q")?.trim();
     const service_type = searchParams.get("service_type") || undefined;
     const published = parseBool(searchParams.get("published"));
@@ -281,7 +306,6 @@ export async function GET(req) {
       Math.max(1, asInt(searchParams.get("perPage"), 12))
     );
     const orderBy = getOrderBy(searchParams.get("sort"));
-
     const category_id = searchParams.get("category_id") || undefined;
     const category_slug = searchParams.get("category_slug") || undefined;
 
@@ -292,7 +316,7 @@ export async function GET(req) {
     const allowedMinimal = new Set([
       "image",
       "image_public_url",
-      "image_public", // backward compat
+      "image_public",
       "image_resolved_url",
       "name",
       "description",
@@ -304,7 +328,6 @@ export async function GET(req) {
     if (service_type && SERVICE_TYPE_VALUES.has(service_type.toUpperCase())) {
       typeFilter = service_type.toUpperCase();
     }
-
     const normalizedSlug =
       category_slug && !category_id ? normalizeSlug(category_slug) : null;
 
@@ -332,108 +355,90 @@ export async function GET(req) {
     const total = await prisma.services.count({ where });
     const totalPages = Math.max(1, Math.ceil(total / perPage));
 
+    const selectMinimal = {
+      id: true,
+      image_url: true,
+      updated_at: true,
+      services_translate: {
+        where: { locale: { in: [locale, fallback] } },
+        select: { locale: true, name: true, description: true },
+      },
+    };
+    const selectFull = {
+      id: true,
+      admin_user_id: true,
+      image_url: true,
+      service_type: true,
+      category_id: true,
+      price: true,
+      phone: true,
+      is_published: true,
+      created_at: true,
+      updated_at: true,
+      category: { select: { id: true, slug: true, name: true } },
+      services_translate: {
+        where: { locale: { in: [locale, fallback] } },
+        select: { locale: true, name: true, description: true },
+      },
+    };
+
     const rows = await prisma.services.findMany({
       where,
       orderBy,
       take: perPage,
       skip: (page - 1) * perPage,
-      select: minimalOnly
-        ? {
-            id: true,
-            image_url: true,
-            updated_at: true,
-            services_translate: {
-              where: { locale: { in: [locale, fallback] } },
-              select: { locale: true, name: true, description: true },
-            },
-          }
-        : {
-            id: true,
-            admin_user_id: true,
-            image_url: true,
-            service_type: true,
-            category_id: true,
-            price: true,
-            phone: true,
-            is_published: true,
-            created_at: true,
-            updated_at: true,
-            category: { select: { id: true, slug: true, name: true } },
-            services_translate: {
-              where: { locale: { in: [locale, fallback] } },
-              select: { locale: true, name: true, description: true },
-            },
-          },
+      select: minimalOnly ? selectMinimal : selectFull,
     });
 
     const meta = { page, perPage, total, totalPages };
 
-    // Build payload with signed/public URLs
     if (minimalOnly) {
-      const data = await Promise.all(
-        rows.map(async (s) => {
-          const t = pickTrans(s.services_translate, locale, fallback);
-          const pub = publicUrlFromPath(s.image_url);
-          const signed = await renderableUrl(s.image_url);
-          const hasToken =
-            typeof signed === "string" && signed.includes("token=");
-          const ver = s.updated_at
-            ? `?v=${new Date(s.updated_at).getTime()}`
-            : "";
-          const resolved = signed ? (hasToken ? signed : signed + ver) : null;
+      const data = rows.map((s) => {
+        const t = pickTrans(s.services_translate, locale, fallback);
+        const pub = toPublicUrl(s.image_url);
+        const ver =
+          s.updated_at && pub ? `?v=${new Date(s.updated_at).getTime()}` : "";
+        const resolved = pub ? pub + ver : null;
 
-          const obj = { id: s.id };
-          if (fields.has("image")) obj.image = s.image_url;
-          if (fields.has("image_public") || fields.has("image_public_url"))
-            obj.image_public_url = pub;
-          if (fields.has("image_resolved_url"))
-            obj.image_resolved_url = resolved;
-          if (fields.has("name")) obj.name = t?.name ?? null;
-          if (fields.has("description"))
-            obj.description = t?.description ?? null;
-          return obj;
-        })
-      );
+        const obj = { id: s.id };
+        if (fields.has("image")) obj.image = s.image_url;
+        if (fields.has("image_public") || fields.has("image_public_url"))
+          obj.image_public_url = pub;
+        if (fields.has("image_resolved_url")) obj.image_resolved_url = resolved;
+        if (fields.has("name")) obj.name = t?.name ?? null;
+        if (fields.has("description")) obj.description = t?.description ?? null;
+        return obj;
+      });
       return NextResponse.json({ data, meta });
     }
 
-    const data = await Promise.all(
-      rows.map(async (s) => {
-        const t = pickTrans(s.services_translate, locale, fallback);
-        const pub = publicUrlFromPath(s.image_url);
-        const signed = await renderableUrl(s.image_url);
-        const hasToken =
-          typeof signed === "string" && signed.includes("token=");
-        const ver = s.updated_at
-          ? `?v=${new Date(s.updated_at).getTime()}`
-          : "";
-        const resolved = signed ? (hasToken ? signed : signed + ver) : null;
+    const data = rows.map((s) => {
+      const t = pickTrans(s.services_translate, locale, fallback);
+      const pub = toPublicUrl(s.image_url);
+      const ver =
+        s.updated_at && pub ? `?v=${new Date(s.updated_at).getTime()}` : "";
+      const resolved = pub ? pub + ver : null;
 
-        return {
-          id: s.id,
-          admin_user_id: s.admin_user_id,
-          image_url: s.image_url,
-          image_public_url: pub,
-          image_resolved_url: resolved, // for FE
-          service_type: s.service_type,
-          category: s.category
-            ? {
-                id: s.category.id,
-                slug: s.category.slug,
-                name: s.category.name,
-              }
-            : null,
-          price: s.price,
-          phone: s.phone,
-          is_published: s.is_published,
-          created_at: s.created_at,
-          updated_at: s.updated_at,
-          locale_used: t?.locale || null,
-          name: t?.name || null,
-          description: t?.description || null,
-        };
-      })
-    );
+      return {
+        id: s.id,
+        admin_user_id: s.admin_user_id,
+        image_url: s.image_url,
+        image_public_url: pub,
+        image_resolved_url: resolved,
+        service_type: s.service_type,
+        category: s.category
+          ? { id: s.category.id, slug: s.category.slug, name: s.category.name }
+          : null,
+        price: s.price,
+        phone: s.phone,
+        is_published: s.is_published,
+        created_at: s.created_at,
+        updated_at: s.updated_at,
+        locale_used: t?.locale || null,
+        name: t?.name || null,
+        description: t?.description || null,
+      };
+    });
 
     return NextResponse.json({ data, meta });
   } catch (err) {
@@ -583,11 +588,14 @@ export async function POST(req) {
         throw e;
       }
 
-      // image (file atau path)
-      let storedImagePath = (body.image_url || "").toString().trim();
+      // generate id dulu supaya folder upload rapi
+      const id = randomUUID();
+
+      // image (file atau url)
+      let storedImage = (body.image_url || "").toString().trim();
       if (file && typeof File !== "undefined" && file instanceof File) {
         try {
-          storedImagePath = await uploadServiceImage(file);
+          storedImage = await uploadServiceImage(file, id);
         } catch (e) {
           if (e?.message === "PAYLOAD_TOO_LARGE")
             return NextResponse.json(
@@ -599,11 +607,6 @@ export async function POST(req) {
               { message: "Format harus JPEG/PNG/WebP" },
               { status: 415 }
             );
-          if (e?.message === "SUPABASE_BUCKET_NOT_CONFIGURED")
-            return NextResponse.json(
-              { message: "Supabase bucket belum dikonfigurasi" },
-              { status: 500 }
-            );
           console.error("uploadServiceImage error:", e);
           return NextResponse.json(
             { message: "Upload gambar gagal" },
@@ -611,19 +614,21 @@ export async function POST(req) {
           );
         }
       }
-      const image_url =
-        storedImagePath && storedImagePath.trim()
-          ? storedImagePath.trim()
-          : null;
+      const image_url = storedImage ? toPublicUrl(storedImage) : null;
 
       // auto translate
       if (autoTranslate) {
-        if (!name_en && name_id) name_en = await translate(name_id, "id", "en");
-        if (!description_en && description_id)
-          description_en = await translate(description_id, "id", "en");
+        if (!name_en && name_id) {
+          try {
+            name_en = await translate(name_id, "id", "en");
+          } catch {}
+        }
+        if (!description_en && description_id) {
+          try {
+            description_en = await translate(description_id, "id", "en");
+          } catch {}
+        }
       }
-
-      const id = randomUUID();
 
       await prisma.services.create({
         data: {
@@ -663,11 +668,13 @@ export async function POST(req) {
         });
       }
 
-      const resolved = await renderableUrl(image_url);
+      const pub = toPublicUrl(image_url);
+      const resolved = pub ? `${pub}?v=${Date.now()}` : null;
+
       results.push({
         id,
         image_url,
-        image_public_url: publicUrlFromPath(image_url),
+        image_public_url: pub,
         image_resolved_url: resolved,
         service_type,
         category_id: category_id_resolved ?? null,

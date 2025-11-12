@@ -1,4 +1,5 @@
-﻿"use client";
+﻿// app/(view)/admin/(panel)/merchants/MerchantsContent.jsx
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -29,6 +30,7 @@ import {
   PaperClipOutlined,
   ReloadOutlined,
 } from "@ant-design/icons";
+import storageClient from "@/app/utils/storageClient";
 
 /* =======================
    Lightweight Donut Pie
@@ -100,7 +102,7 @@ function PieDonut({
         acc = end;
         const fill = palette[i % palette.length];
 
-        if (1 - pct < EPS) {
+        if (1 - pct < 1e-4) {
           return (
             <g key={i}>
               <circle cx={cx} cy={cy} r={r} fill={fill}>
@@ -178,13 +180,62 @@ const T = {
   review_notes: "Catatan Review",
 };
 
-/* ===== helpers ===== */
-const PUB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const PUB_BUCKET =
-  process.env.NEXT_PUBLIC_SUPABASE_BUCKET ||
-  process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET ||
-  "";
+/* ===== OSS public URL helpers (ganti Supabase) ===== */
+const PUBLIC_PREFIX = "cms-oss";
 
+function computePublicBase() {
+  const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return "";
+  try {
+    const u = new URL(base);
+    const host = u.host.replace(/^storage\./, "cdn.");
+    return `${u.protocol}//${host}`;
+  } catch {
+    return base;
+  }
+}
+function ensurePrefixedKey(key) {
+  const clean = String(key || "").replace(/^\/+/, "");
+  return clean.startsWith(PUBLIC_PREFIX + "/")
+    ? clean
+    : `${PUBLIC_PREFIX}/${clean}`;
+}
+/** key/path/URL -> URL publik */
+function toPublicUrl(keyOrUrl) {
+  if (!keyOrUrl) return "";
+  const s = String(keyOrUrl).trim();
+  if (/^https?:\/\//i.test(s)) return s;
+  const cdn = computePublicBase();
+  const path = ensurePrefixedKey(s);
+  const base =
+    cdn || (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return `/${path}`;
+  return `${base}/public/${path}`;
+}
+/** URL publik atau key -> key storage (setelah /public/) */
+function toStorageKey(keyOrUrl) {
+  if (!keyOrUrl) return "";
+  const s = String(keyOrUrl).trim();
+  if (!/^https?:\/\//i.test(s)) {
+    return ensurePrefixedKey(s);
+  }
+  try {
+    const u = new URL(s);
+    // path contoh: /public/cms-oss/merchants/abc/file.pdf
+    const idx = u.pathname.indexOf("/public/");
+    if (idx >= 0) {
+      const after = u.pathname.slice(idx + "/public/".length);
+      return ensurePrefixedKey(after);
+    }
+    // fallback: jika URL tidak memuat '/public', coba hapus leading slash
+    return ensurePrefixedKey(u.pathname.replace(/^\/+/, ""));
+  } catch {
+    return ensurePrefixedKey(s);
+  }
+}
+const baseName = (p = "") => String(p).split("/").pop() || "file";
+
+/* ===== utils lainnya ===== */
 const monthsId = [
   "Januari",
   "Februari",
@@ -210,35 +261,42 @@ const fmtDateId = (dLike) => {
     return "-";
   }
 };
-const clip = (s) => (s ? String(s) : "â€”");
+const clip = (s) => (s ? String(s) : "—");
 const isImg = (f) =>
   ["image/jpeg", "image/png", "image/webp", "image/svg+xml"].includes(
     f?.type || ""
   );
 const tooBig = (f, mb = 10) => f.size / 1024 / 1024 > mb;
 
-/** Build public URL from Supabase storage path when bucket is public */
-const toPublicUrl = (pathOrUrl) => {
-  const s = String(pathOrUrl || "");
-  if (!s) return "";
-  if (/^https?:\/\//i.test(s)) return s;
-  if (PUB_URL && PUB_BUCKET) {
-    return `${PUB_URL.replace(
-      /\/$/,
-      ""
-    )}/storage/v1/object/public/${PUB_BUCKET}/${s.replace(/^\/+/, "")}`;
+/** Download handler (ganti /api/supabase/download) */
+async function handleDownloadClick(keyOrUrl, name, toast) {
+  try {
+    const key = toStorageKey(keyOrUrl);
+    const res = await storageClient.createDownload({ key, expiresIn: 60 });
+    const url =
+      res?.url ||
+      res?.downloadUrl ||
+      res?.download_url ||
+      res?.signedUrl ||
+      res?.signed_url;
+
+    if (!url) throw new Error("URL download tidak tersedia.");
+    // Buka di tab baru untuk menghindari blokir popup di sebagian browser
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name || baseName(key);
+    a.rel = "noopener";
+    a.target = "_blank";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } catch (e) {
+    toast?.err?.(
+      "Gagal mengunduh",
+      e?.message || "Tidak bisa membuat link unduhan."
+    );
   }
-  return s;
-};
-/** Derive filename from Supabase path */
-const baseName = (p = "") => String(p).split("/").pop() || "file";
-/** Build download href that ALWAYS works (private/public) */
-const toDownloadHref = (storagePath = "", name) => {
-  if (!storagePath) return "#";
-  const n = encodeURIComponent(name || baseName(storagePath));
-  const p = encodeURIComponent(String(storagePath));
-  return `/api/supabase/download?path=${p}&name=${n}`;
-};
+}
 
 export default function MerchantsContent({ vm }) {
   const viewModel = vm ?? require("./useMerchantsViewModel").default();
@@ -265,7 +323,6 @@ export default function MerchantsContent({ vm }) {
 
   // upload previews (logo)
   const [imgPrevEdit, setImgPrevEdit] = useState("");
-  // cleanup blob url
   useEffect(() => {
     return () => {
       if (imgPrevEdit && imgPrevEdit.startsWith("blob:")) {
@@ -289,7 +346,7 @@ export default function MerchantsContent({ vm }) {
   // derived
   const rows = useMemo(() => viewModel.merchants || [], [viewModel.merchants]);
 
-  // status counts (already respects q + category in VM)
+  // status counts
   const pendingCount =
     viewModel.statusCounts?.pending ??
     rows.filter((r) => r.status === "PENDING").length;
@@ -595,7 +652,7 @@ export default function MerchantsContent({ vm }) {
               <div style={styles.totalBadgeWrap}>
                 <div style={styles.totalBadgeLabel}>{T.totalLabel}</div>
                 <div style={styles.totalBadgeValue}>
-                  {viewModel.total ?? rows.length ?? "â€”"}
+                  {viewModel.total ?? rows.length ?? "—"}
                 </div>
               </div>
             </div>
@@ -613,7 +670,7 @@ export default function MerchantsContent({ vm }) {
                 />
               </div>
               <div style={styles.statTitle}>Pending</div>
-              <div style={styles.statValue}>{pendingCount ?? "â€”"}</div>
+              <div style={styles.statValue}>{pendingCount ?? "—"}</div>
             </div>
             <div style={styles.statCard} aria-label="Jumlah Approved">
               <div style={styles.statIconBox}>
@@ -625,7 +682,7 @@ export default function MerchantsContent({ vm }) {
                 />
               </div>
               <div style={styles.statTitle}>Approved</div>
-              <div style={styles.statValue}>{approvedCount ?? "â€”"}</div>
+              <div style={styles.statValue}>{approvedCount ?? "—"}</div>
             </div>
             <div style={styles.statCard} aria-label="Jumlah Declined">
               <div style={styles.statIconBox}>
@@ -637,7 +694,7 @@ export default function MerchantsContent({ vm }) {
                 />
               </div>
               <div style={styles.statTitle}>Declined</div>
-              <div style={styles.statValue}>{declinedCount ?? "â€”"}</div>
+              <div style={styles.statValue}>{declinedCount ?? "—"}</div>
             </div>
           </div>
 
@@ -749,7 +806,7 @@ export default function MerchantsContent({ vm }) {
                 </div>
               </div>
 
-              {/* Filters (per page & reset removed) */}
+              {/* Filters */}
               <div className="grid-filters" style={styles.filtersRow}>
                 <Input
                   allowClear
@@ -835,11 +892,10 @@ export default function MerchantsContent({ vm }) {
                     rows.map((r) => {
                       const image = toPublicUrl(r.image_url);
                       const title = r.merchant_name || "(tanpa nama)";
-                      // â¬‡ï¸ Fallback tanggal: reviewed_at -> created_ts -> created_at
                       const date = fmtDateId(
                         r.reviewed_at ?? r.created_ts ?? r.created_at
                       );
-                      const cat = r.category?.name || "â€”";
+                      const cat = r.category?.name || "—";
                       return (
                         <div key={r.id} style={styles.row}>
                           {/* Mitra */}
@@ -852,7 +908,7 @@ export default function MerchantsContent({ vm }) {
                                   style={styles.thumbImg}
                                 />
                               ) : (
-                                <div style={styles.thumbFallback}>ðŸ¢</div>
+                                <div style={styles.thumbFallback}>🏢</div>
                               )}
                             </div>
                             <div style={styles.nameWrap}>
@@ -991,7 +1047,7 @@ export default function MerchantsContent({ vm }) {
                   </div>
                 </div>
 
-                {/* kiri */}
+                {/* kiri/kanan fields */}
                 <div>
                   <div style={styles.label}>{T.merchant}</div>
                   <div style={styles.value}>
@@ -1088,7 +1144,7 @@ export default function MerchantsContent({ vm }) {
                   </div>
                 </div>
 
-                {/* Lampiran: gunakan signed URL via API */}
+                {/* Lampiran: pakai signed URL via storageClient */}
                 <div style={{ gridColumn: "1 / span 2" }}>
                   <div style={styles.label}>Lampiran</div>
                   <div style={{ ...styles.value, display: "grid", gap: 6 }}>
@@ -1098,10 +1154,7 @@ export default function MerchantsContent({ vm }) {
                       </span>
                     ) : (
                       detailData.files.map((f) => {
-                        const href = toDownloadHref(
-                          f.file_url,
-                          baseName(f.file_url)
-                        );
+                        const name = baseName(f.file_url);
                         return (
                           <div
                             key={f.id}
@@ -1113,7 +1166,11 @@ export default function MerchantsContent({ vm }) {
                           >
                             <PaperClipOutlined />
                             <a
-                              href={href}
+                              href="#"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                handleDownloadClick(f.file_url, name, toast);
+                              }}
                               style={{
                                 overflow: "hidden",
                                 textOverflow: "ellipsis",
@@ -1121,9 +1178,9 @@ export default function MerchantsContent({ vm }) {
                                 color: "#0b56c9",
                                 fontWeight: 600,
                               }}
-                              title={baseName(f.file_url)}
+                              title={name}
                             >
-                              {baseName(f.file_url)}
+                              {name}
                             </a>
                           </div>
                         );
@@ -1310,10 +1367,7 @@ export default function MerchantsContent({ vm }) {
                     <span style={{ color: "#64748b" }}>Tidak ada lampiran</span>
                   ) : (
                     (detailData?.files || []).map((f) => {
-                      const href = toDownloadHref(
-                        f.file_url,
-                        baseName(f.file_url)
-                      );
+                      const name = baseName(f.file_url);
                       const marked = delAttach.includes(f.id);
                       return (
                         <div
@@ -1326,7 +1380,11 @@ export default function MerchantsContent({ vm }) {
                         >
                           <PaperClipOutlined />
                           <a
-                            href={href}
+                            href="#"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              handleDownloadClick(f.file_url, name, toast);
+                            }}
                             style={{
                               overflow: "hidden",
                               textOverflow: "ellipsis",
@@ -1336,9 +1394,9 @@ export default function MerchantsContent({ vm }) {
                               fontWeight: 600,
                               textDecoration: marked ? "line-through" : "none",
                             }}
-                            title={baseName(f.file_url)}
+                            title={name}
                           >
-                            {baseName(f.file_url)}
+                            {name}
                           </a>
                           <Tag
                             color={marked ? "red" : "default"}
@@ -1390,7 +1448,6 @@ export default function MerchantsContent({ vm }) {
 
 /* ===== styles ===== */
 const GRID_COLS = "1.8fr 1fr 1fr .9fr .7fr";
-/* Grid untuk tabel persentase: label | jumlah | persen */
 const CHART_COLS = "1fr 96px 96px";
 
 const styles = {
@@ -1483,7 +1540,7 @@ const styles = {
 
   filtersRow: {
     display: "grid",
-    gridTemplateColumns: "1fr 1fr", // â† simplified (per page & reset removed)
+    gridTemplateColumns: "1fr 1fr",
     gap: 8,
     marginBottom: 10,
     alignItems: "center",
@@ -1520,7 +1577,6 @@ const styles = {
     borderRadius: 8,
     border: "1px solid #e8eeff",
   },
-  /* Header & cell angka: right-align + tabular numbers */
   numHead: {
     textAlign: "right",
     fontVariantNumeric: "tabular-nums",
@@ -1675,4 +1731,3 @@ const styles = {
   modalFooter: { marginTop: 8, display: "grid", placeItems: "center" },
   saveBtn: { minWidth: 220, height: 40, borderRadius: 12 },
 };
-

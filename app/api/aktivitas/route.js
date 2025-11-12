@@ -140,11 +140,14 @@ export async function POST(req) {
     const { adminId } = await assertAdmin(req);
     const { body, file } = await readBodyAndFile(req);
 
-    // File > URL (prioritaskan file jika ada)
+    // siapkan id dulu agar folder rapi
+    const id = randomUUID();
+
+    // File > URL
     let image_url = "";
     if (file) {
       try {
-        image_url = await uploadAktivitasImage(file);
+        image_url = await uploadAktivitasImage(file, id);
       } catch (e) {
         if (e?.message === "PAYLOAD_TOO_LARGE")
           return json({ message: "Gambar max 10MB" }, { status: 413 });
@@ -152,11 +155,6 @@ export async function POST(req) {
           return json(
             { message: "Gambar harus JPEG/PNG/WebP" },
             { status: 415 }
-          );
-        if (e?.message === "SUPABASE_BUCKET_NOT_CONFIGURED")
-          return json(
-            { message: "Supabase bucket belum disetel" },
-            { status: 500 }
           );
         console.error("uploadAktivitasImage error:", e);
         return json({ message: "Upload gambar gagal" }, { status: 500 });
@@ -184,7 +182,7 @@ export async function POST(req) {
     const sort = asInt(body?.sort, 0);
     const is_published = toBool(body?.is_published, false) ?? false;
 
-    // Auto-translate (paralel)
+    // Auto-translate
     let name_en = String(body?.name_en || "").trim();
     let description_en =
       body?.description_en !== undefined && body?.description_en !== null
@@ -221,13 +219,12 @@ export async function POST(req) {
       }
     }
 
-    const id = randomUUID();
     const created = await prisma.$transaction(async (tx) => {
       const parent = await tx.aktivitas.create({
         data: {
           id,
           admin_user_id: adminId,
-          image_url,
+          image_url: toPublicUrl(image_url),
           sort,
           is_published,
           created_at: new Date(),
@@ -269,8 +266,8 @@ export async function POST(req) {
       {
         message: "Aktivitas berhasil dibuat.",
         data: {
-          id: created.id,
-          image_url: toPublicUrl(created.image_url || image_url),
+          id,
+          image_url: toPublicUrl(created.image_url),
           sort,
           is_published,
           created_at: created.created_at,

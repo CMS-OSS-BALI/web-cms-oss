@@ -3,18 +3,25 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+
+// === Storage client (baru, sama seperti consultants)
+import storageClient from "@/app/utils/storageClient";
 
 /* =========================
-   Config
+   Config & Defaults
 ========================= */
 export const DEFAULT_LOCALE = "id";
 export const EN_LOCALE = "en";
 
-export const BUCKET = process.env.SUPABASE_BUCKET;
-export const SUPA_URL =
-  process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
+// Untuk akses admin via header (opsional)
 export const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
+
+// Semua aset publik berada di bawah prefix ini
+const PUBLIC_PREFIX = "cms-oss";
+
+// Batas & tipe file gambar
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MAX_UPLOAD_SIZE = 10 * 1024 * 1024;
 
 /* =========================
    JSON helpers
@@ -86,17 +93,93 @@ export function pickTrans(list, primary, fallback) {
   const by = (loc) => list?.find((t) => t.locale === loc);
   return by(primary) || by(fallback) || null;
 }
-export function toPublicUrl(path) {
-  if (!path) return "";
-  if (/^https?:\/\//i.test(path)) return path;
-  if (!SUPA_URL || !BUCKET) return path;
-  return `${SUPA_URL}/storage/v1/object/public/${BUCKET}/${path}`;
+
+/* =========================
+   Public URL Helpers (CDN)
+   - Normalisasi ke {BASE}/public/cms-oss/<path>
+   - BASE diambil dari OSS_STORAGE_BASE_URL,
+     jika host-nya "storage." akan diubah ke "cdn."
+========================= */
+function computePublicBase() {
+  const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return "";
+  try {
+    const u = new URL(base);
+    const host = u.host.replace(/^storage\./, "cdn.");
+    return `${u.protocol}//${host}`;
+  } catch {
+    return base; // fallback
+  }
+}
+function ensurePrefixedKey(key) {
+  const clean = String(key || "").replace(/^\/+/, "");
+  return clean.startsWith(PUBLIC_PREFIX + "/")
+    ? clean
+    : `${PUBLIC_PREFIX}/${clean}`;
+}
+
+/** Ubah key/path/URL lama → URL publik final */
+export function toPublicUrl(keyOrUrl) {
+  if (!keyOrUrl) return null;
+  const s = String(keyOrUrl).trim();
+  if (/^https?:\/\//i.test(s)) return s;
+  const cdn = computePublicBase();
+  const base =
+    cdn || (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  const path = ensurePrefixedKey(s);
+  if (!base) return `/${path}`;
+  return `${base}/public/${path}`;
+}
+
+/** Ambil storage key dari public URL (bagian setelah '/public/') */
+export function toStorageKey(u) {
+  if (!u) return null;
+  const s = String(u).trim();
+  if (!/^https?:\/\//i.test(s)) {
+    // sudah key/path
+    return s.replace(/^\/+/, "");
+  }
+  const idx = s.indexOf("/public/");
+  if (idx >= 0) {
+    return s.slice(idx + "/public/".length).replace(/^\/+/, "");
+  }
+  return null;
+}
+
+/** Best-effort remover (non-blocking) ke gateway storage */
+export async function removeStorageObjects(urlsOrKeys = []) {
+  const keys = urlsOrKeys.map(toStorageKey).filter(Boolean);
+  if (!keys.length) return;
+  const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return;
+
+  try {
+    const res = await fetch(`${base}/api/storage/remove`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": process.env.OSS_STORAGE_API_KEY || "",
+      },
+      body: JSON.stringify({ keys }),
+    });
+    if (!res.ok) {
+      await fetch(`${base}/api/storage/delete`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": process.env.OSS_STORAGE_API_KEY || "",
+        },
+        body: JSON.stringify({ keys }),
+      }).catch(() => {});
+    }
+  } catch {}
 }
 
 /* =========================
    Auth (session OR x-admin-key)
 ========================= */
 export async function assertAdmin(req) {
+  // Header override (opsional untuk internal tools)
   const key = req.headers.get("x-admin-key");
   if (key && ADMIN_TEST_KEY && key === ADMIN_TEST_KEY) {
     const anyAdmin = await prisma.admin_users.findFirst({
@@ -143,35 +226,28 @@ export async function readBodyAndFile(req) {
 }
 
 /* =========================
-   Supabase upload (image)
+   Upload (pakai storageClient)
 ========================= */
-export async function uploadImageToSupabase(file, prefix = "blog") {
+async function assertImageFileOrThrow(file) {
+  const type = file?.type || "";
+  if (!ALLOWED_IMAGE_TYPES.has(type)) throw new Error("UNSUPPORTED_TYPE");
+  const size =
+    typeof file?.size === "number"
+      ? file.size
+      : (await file.arrayBuffer()).byteLength;
+  if (size > MAX_UPLOAD_SIZE) throw new Error("PAYLOAD_TOO_LARGE");
+}
+
+/** Upload gambar blog → simpan URL publik langsung di DB */
+export async function uploadBlogImage(file, blogId) {
   if (!(file instanceof File)) throw new Error("NO_FILE");
-  if (!BUCKET) throw new Error("SUPABASE_BUCKET_NOT_CONFIGURED");
-
-  const MAX = 10 * 1024 * 1024; // 10MB
-  const allowed = ["image/jpeg", "image/png", "image/webp"];
-  if ((file.size || 0) > MAX) throw new Error("PAYLOAD_TOO_LARGE");
-  if (!allowed.includes(file.type)) throw new Error("UNSUPPORTED_TYPE");
-
-  const ext = (file.name?.split(".").pop() || "").toLowerCase();
-  const safe = `${Date.now()}-${Math.random().toString(36).slice(2)}${
-    ext ? "." + ext : ""
-  }`;
-  const objectPath = `${prefix}/${new Date()
-    .toISOString()
-    .slice(0, 10)}/${safe}`;
-  const bytes = new Uint8Array(await file.arrayBuffer());
-
-  const { error } = await supabaseAdmin.storage
-    .from(BUCKET)
-    .upload(objectPath, bytes, {
-      contentType: file.type || "application/octet-stream",
-      upsert: false,
-    });
-
-  if (error) throw new Error(error.message);
-  return objectPath; // simpan PATH (bukan URL) ke DB
+  await assertImageFileOrThrow(file);
+  const res = await storageClient.uploadBufferWithPresign(file, {
+    folder: `${PUBLIC_PREFIX}/blog/${blogId}`,
+    isPublic: true,
+  });
+  if (!res?.publicUrl) throw new Error("UPLOAD_FAILED");
+  return res.publicUrl; // simpan URL publik langsung
 }
 
 /* =========================
@@ -318,6 +394,8 @@ export function projectBlogRow(r, { locale, fallback, includeCategory }) {
 
   return {
     id: r.id,
+    // DB sekarang menyimpan URL publik langsung,
+    // tapi toPublicUrl tetap aman untuk legacy key/path
     image_url: toPublicUrl(r.image_url),
     views_count: r.views_count,
     likes_count: r.likes_count,

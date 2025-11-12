@@ -6,6 +6,47 @@ import Link from "next/link";
 import useCollegeDetailViewModel from "./useCollegeDetailViewModel";
 import { sanitizeHtml } from "@/app/utils/dompurify";
 
+/* ===== Storage helpers (gateway/CDN) ===== */
+const PUBLIC_PREFIX = "cms-oss";
+
+function computePublicBase() {
+  const base = (
+    process.env.NEXT_PUBLIC_OSS_STORAGE_BASE_URL ||
+    process.env.OSS_STORAGE_BASE_URL ||
+    ""
+  ).replace(/\/+$/, "");
+  if (!base) return "";
+  try {
+    const u = new URL(base);
+    const host = u.host.replace(/^storage\./, "cdn.");
+    return `${u.protocol}//${host}`;
+  } catch {
+    return base;
+  }
+}
+function ensurePrefixedKey(key) {
+  const clean = String(key || "").replace(/^\/+/, "");
+  return clean.startsWith(PUBLIC_PREFIX + "/")
+    ? clean
+    : `${PUBLIC_PREFIX}/${clean}`;
+}
+function toPublicUrlMaybe(input) {
+  const raw = String(input || "").trim();
+  if (!raw) return "";
+  if (/^(https?:|data:|blob:)/i.test(raw)) return raw;
+  if (raw.startsWith("/")) return raw;
+  const base =
+    computePublicBase() ||
+    (process.env.NEXT_PUBLIC_OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  const path = ensurePrefixedKey(raw);
+  if (!base) return `/${path}`;
+  return `${base}/public/${path}`;
+}
+const normalizeSrc = (s = "") =>
+  toPublicUrlMaybe(s) ||
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>";
+const shouldUnoptimize = (s = "") => /^(https?:|data:|blob:)/i.test(s);
+
 /* ===== Base ===== */
 const FONT_FAMILY = '"Public Sans", sans-serif';
 const HEADER_OFFSET = "clamp(48px, 8vw, 84px)";
@@ -349,27 +390,6 @@ const globalCSS = `
   a.cd-cta-btn:focus { text-decoration: none !important; }
 `;
 
-/* ===== Image helpers ===== */
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const SUPABASE_BUCKET = process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "";
-
-const buildPublic = (objectPath = "") => {
-  const path = String(objectPath || "").replace(/^\/+/, "");
-  if (!path) return "";
-  if (!SUPABASE_URL || !SUPABASE_BUCKET) return `/${path}`;
-  const base = SUPABASE_URL.replace(/\/+$/, "");
-  return `${base}/storage/v1/object/public/${SUPABASE_BUCKET}/${path}`;
-};
-const normalizeSrc = (s = "") => {
-  const raw = (s || "").trim();
-  if (!raw)
-    return "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>";
-  if (/^(https?:|data:|blob:)/i.test(raw)) return raw;
-  if (raw.startsWith("/")) return raw;
-  return buildPublic(raw);
-};
-const shouldUnoptimize = (s = "") => /^(https?:|data:|blob:)/i.test(s);
-
 /* ===== Modal (vanilla) ===== */
 const modalCSS = `
   .cd-modal-backdrop {
@@ -419,7 +439,7 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
     title: "",
     description: "",
     priceLabel: "",
-    intakeLabel: "", // <<< NEW
+    intakeLabel: "",
   });
 
   const openModal = useCallback((payload) => {
@@ -427,7 +447,7 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
       title: payload?.title || "",
       description: payload?.description || "",
       priceLabel: payload?.priceLabel || "",
-      intakeLabel: payload?.intake || "", // <<< NEW
+      intakeLabel: payload?.intake || "",
     });
     setModalOpen(true);
   }, []);
@@ -543,12 +563,13 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
               <div className="cd-hero-meta" style={heroStyles.metaRow}>
                 {!!hero.flagSrc && (
                   <Image
-                    src={hero.flagSrc}
+                    src={normalizeSrc(hero.flagSrc)}
                     alt={`${hero.countryName || "Country"} flag`}
                     width={64}
                     height={44}
                     style={heroStyles.flag}
                     priority
+                    unoptimized={shouldUnoptimize(hero.flagSrc)}
                   />
                 )}
                 {!!websiteHref && (
@@ -647,7 +668,7 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
                             title: grp.title,
                             description: grp.description,
                             priceLabel: grp.priceLabel,
-                            intake: grp.intake, // <<< NEW
+                            intake: grp.intake,
                           })
                         }
                         title={
@@ -860,7 +881,6 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
                 </div>
               </div>
 
-              {/* NEW: Intake */}
               <div className="cd-modal__row">
                 <div className="cd-modal__label">Intake</div>
                 <div className="cd-modal__value">

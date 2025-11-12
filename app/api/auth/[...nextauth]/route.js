@@ -1,18 +1,45 @@
+// app/api/auth/[...nextauth]/route.js
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import prisma from "@/lib/prisma";
 
-/* ===== Supabase public URL helper ===== */
-const BUCKET = process.env.SUPABASE_BUCKET || "";
-const SUPA_URL =
-  process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
-const toPublicUrl = (path) => {
-  if (!path) return "";
-  if (/^https?:\/\//i.test(path)) return path;
-  if (!SUPA_URL || !BUCKET) return path;
-  return `${SUPA_URL}/storage/v1/object/public/${BUCKET}/${path}`;
-};
+/* =========================
+   OSS public URL helpers
+========================= */
+const PUBLIC_PREFIX = "cms-oss";
+
+function computePublicBase() {
+  const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return "";
+  try {
+    const u = new URL(base);
+    const host = u.host.replace(/^storage\./, "cdn.");
+    return `${u.protocol}//${host}`;
+  } catch {
+    return base;
+  }
+}
+
+function ensurePrefixedKey(key) {
+  const clean = String(key || "").replace(/^\/+/, "");
+  return clean.startsWith(PUBLIC_PREFIX + "/")
+    ? clean
+    : `${PUBLIC_PREFIX}/${clean}`;
+}
+
+/** key/path/URL -> selalu URL publik OSS */
+function toPublicUrl(keyOrUrl) {
+  if (!keyOrUrl) return "";
+  const s = String(keyOrUrl).trim();
+  if (/^https?:\/\//i.test(s)) return s; // sudah URL
+  const cdn = computePublicBase();
+  const path = ensurePrefixedKey(s);
+  const base =
+    cdn || (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return `/${path}`;
+  return `${base}/public/${path}`;
+}
 
 /* ===== PCA revalidate interval (detik) ===== */
 const PCA_REVALIDATE_SEC = parseInt(
@@ -20,24 +47,16 @@ const PCA_REVALIDATE_SEC = parseInt(
   10
 );
 
-/** Ambil timestamp PCA user admin dalam ms.
- * Sesuaikan nama kolom sesuai schema kamu.
- */
+/** Ambil timestamp PCA user admin dalam ms. */
 async function getAdminPCA(adminId) {
   if (!adminId) return 0;
   try {
     const row = await prisma.admin_users.findUnique({
       where: { id: String(adminId) },
-      select: {
-        password_changed_at: true,
-        updated_at: true,
-      },
+      select: { password_changed_at: true, updated_at: true },
     });
     if (!row) return 0;
-    const src =
-      row.password_changed_at ??
-      row.updated_at ??
-      null; /* fallback agar tetap ada baseline */
+    const src = row.password_changed_at ?? row.updated_at ?? null;
     const d = src ? new Date(src) : null;
     return d && !isNaN(d.getTime()) ? d.getTime() : 0;
   } catch {
@@ -70,14 +89,14 @@ export const authOptions = {
         const ok = await bcrypt.compare(password, admin.password);
         if (!ok) return null;
 
-        // kirim field penting ke jwt (gambar masih path; akan dipublic-kan di jwt)
+        // Kirim field penting ke JWT; profile_photo disalurkan apa adanya
         return {
           id: admin.id,
           email: admin.email,
           name: admin.name ?? null,
-          profile_photo: admin.profile_photo ?? null,
+          profile_photo: admin.profile_photo ?? null, // bisa key/path/URL
           role: "admin",
-          // tetap kirim PCA dalam ISO; JWT callback akan override ke ms & set TTL
+          // PCA as ISO; JWT callback akan override ke ms & set TTL
           pca: admin.password_changed_at?.toISOString() ?? null,
         };
       },
@@ -97,7 +116,7 @@ export const authOptions = {
 
         // Simpan PCA (ms) + jadwal cek berikutnya
         const pcaMs = await getAdminPCA(user.id);
-        token.pca = pcaMs; // simpan sebagai number (ms)
+        token.pca = pcaMs; // number (ms)
         token.forceReauth = false;
         const now = Date.now();
         token.pcaCheckedAt = now;
@@ -105,7 +124,7 @@ export const authOptions = {
         return token;
       }
 
-      // Refresh data profil ringan saat session.update() atau picture belum URL
+      // Refresh ringan saat session.update() atau picture belum berupa URL
       const needRefresh =
         trigger === "update" ||
         !token.picture ||
@@ -123,7 +142,7 @@ export const authOptions = {
         }
       }
 
-      // Revalidasi PCA secara periodik tanpa melibatkan middleware
+      // Revalidasi PCA periodik
       const now = Date.now();
       const due = (token.pcaNextCheck || 0) <= now;
       if (due && token.sub) {

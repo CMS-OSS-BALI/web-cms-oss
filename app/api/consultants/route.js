@@ -5,8 +5,6 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
 import { randomUUID } from "crypto";
 import { translate } from "@/app/utils/geminiTranslator";
-
-// === Storage client (pakai utils kamu, hanya 2 ENV)
 import storageClient from "@/app/utils/storageClient";
 
 /* =========================
@@ -22,14 +20,10 @@ const MAX_ADMIN_PER_PAGE = 100;
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_UPLOAD_SIZE = 10 * 1024 * 1024;
 
-// Simpan di jalur publik dengan prefix ini
 const PUBLIC_PREFIX = "cms-oss";
 
 /* =========================
    Public URL helpers
-   - Jika DB berisi key/path lama, kita bentuk URL publik:
-     {CDN}/public/<cms-oss/>key
-   - CDN diestimasi dari OSS_STORAGE_BASE_URL (ganti 'storage.' -> 'cdn.')
 ========================= */
 function computePublicBase() {
   const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
@@ -39,7 +33,7 @@ function computePublicBase() {
     const host = u.host.replace(/^storage\./, "cdn.");
     return `${u.protocol}//${host}`;
   } catch {
-    return base; // fallback: pakai base apa adanya
+    return base;
   }
 }
 
@@ -137,7 +131,7 @@ async function canIncludePII(req, isPublic) {
 }
 
 /* =========================
-   Upload helpers (pakai storageClient)
+   Upload helpers
 ========================= */
 async function assertImageFileOrThrow(file) {
   const type = file?.type || "";
@@ -175,7 +169,6 @@ function serializeConsultant(row, { locale, fallback, includePII }) {
     id: row.id,
     email: includePII ? row.email ?? null : null,
     whatsapp: includePII ? row.whatsapp ?? null : null,
-    // Always return single public URL
     profile_image_url: toPublicUrl(row.profile_image_url),
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -317,7 +310,7 @@ export async function GET(req) {
 }
 
 /* =========================
-   POST /api/consultants
+   POST /api/consultants  (NO long I/O inside transaction)
 ========================= */
 export async function POST(req) {
   try {
@@ -337,7 +330,7 @@ export async function POST(req) {
     body = {
       email: form.get("email"),
       whatsapp: form.get("whatsapp"),
-      profile_image_url: form.get("profile_image_url"), // optional (bisa URL publik)
+      profile_image_url: form.get("profile_image_url"),
       name_id: form.get("name_id") ?? form.get("name"),
       description_id: form.has("description_id")
         ? form.get("description_id")
@@ -398,125 +391,143 @@ export async function POST(req) {
   let description_en =
     typeof body?.description_en === "string" ? body.description_en : "";
 
+  // === 1) Translate DI LUAR TRANSAKSI ===
+  if (autoTranslate) {
+    try {
+      if (!name_en && name_id) name_en = await translate(name_id, "id", "en");
+    } catch {}
+    try {
+      if (!description_en && description_id)
+        description_en = await translate(description_id, "id", "en");
+    } catch {}
+  }
+
+  // === 2) Buat parent dulu (cepat, 1 query) ===
+  const id = randomUUID();
+  let createdParent;
+  try {
+    createdParent = await prisma.consultants.create({
+      data: {
+        id,
+        email,
+        whatsapp,
+        profile_image_url: profile_image_url_in || null,
+      },
+      select: {
+        id: true,
+        profile_image_url: true,
+        created_at: true,
+        updated_at: true,
+      },
+    });
+  } catch (e) {
+    if (e?.code === "P2002") {
+      const field = e?.meta?.target?.join?.(", ") || "unique";
+      return ok(
+        { error: { code: "CONFLICT", message: `${field} already in use` } },
+        { status: 409 }
+      );
+    }
+    return ok({ error: { code: "SERVER_ERROR" } }, { status: 500 });
+  }
+
+  // === 3) Upload file DI LUAR TRANSAKSI ===
+  let avatarPublicUrl = createdParent.profile_image_url || null;
+  try {
+    if (profileFile && !profile_image_url_in) {
+      avatarPublicUrl = await uploadConsultantProfileImage(profileFile, id);
+    }
+  } catch (e) {
+    if (e?.message === "PAYLOAD_TOO_LARGE")
+      return ok({ message: "Maksimal 10MB" }, { status: 413 });
+    if (e?.message === "UNSUPPORTED_TYPE")
+      return ok({ message: "Format harus JPEG/PNG/WebP" }, { status: 415 });
+    // kalau upload avatar gagal, kita tetap lanjut tanpa avatar
+  }
+
+  let uploadedProgramUrls = [];
+  try {
+    if (Array.isArray(uploadFiles) && uploadFiles.length) {
+      for (const f of uploadFiles) {
+        const u = await uploadConsultantProgramImage(f, id);
+        if (u) uploadedProgramUrls.push(u);
+      }
+    }
+  } catch (e) {
+    // kalau satu foto gagal, kita lanjut dengan yang berhasil
+  }
+
   const strProgramImages = Array.isArray(body?.program_images)
     ? body.program_images
         .map((v) => (v == null ? "" : String(v).trim()))
         .filter(Boolean)
     : [];
+  const normalizedFromBody = strProgramImages.map(toPublicUrl).filter(Boolean);
+  const allImages = [...normalizedFromBody, ...uploadedProgramUrls];
 
-  try {
-    const created = await prisma.$transaction(async (tx) => {
-      // 1) create parent (tanpa avatar dulu)
-      const parent = await tx.consultants.create({
-        data: {
-          email,
-          whatsapp,
-          // Jika user kirim string: bisa URL publik atau key/path -> simpan apa adanya dulu
-          profile_image_url: profile_image_url_in || null,
-        },
-        select: {
-          id: true,
-          profile_image_url: true,
-          created_at: true,
-          updated_at: true,
-        },
-      });
+  // === 4) Kumpulan query DB SAJA dalam $transaction([...]) ===
+  const queries = [];
 
-      // 2) translations
-      await tx.consultants_translate.create({
+  // translations
+  queries.push(
+    prisma.consultants_translate.create({
+      data: {
+        id: randomUUID(),
+        id_consultant: id,
+        locale: "id",
+        name: name_id.slice(0, 150),
+        description: description_id || null,
+      },
+    })
+  );
+  if (name_en || description_en) {
+    queries.push(
+      prisma.consultants_translate.create({
         data: {
           id: randomUUID(),
-          id_consultant: parent.id,
-          locale: "id",
-          name: name_id.slice(0, 150),
-          description: description_id || null,
+          id_consultant: id,
+          locale: "en",
+          name: (name_en || "(no title)").slice(0, 150),
+          description: description_en || null,
         },
-      });
-
-      if (autoTranslate) {
-        try {
-          if (!name_en && name_id)
-            name_en = await translate(name_id, "id", "en");
-        } catch {}
-        try {
-          if (!description_en && description_id)
-            description_en = await translate(description_id, "id", "en");
-        } catch {}
-      }
-
-      if (name_en || description_en) {
-        await tx.consultants_translate.create({
-          data: {
-            id: randomUUID(),
-            id_consultant: parent.id,
-            locale: "en",
-            name: (name_en || "(no title)").slice(0, 150),
-            description: description_en || null,
-          },
-        });
-      }
-
-      // 3) upload avatar jika ada file dan belum ada URL string
-      if (profileFile && !profile_image_url_in) {
-        const publicUrl = await uploadConsultantProfileImage(
-          profileFile,
-          parent.id
-        );
-        await tx.consultants.update({
-          where: { id: parent.id },
-          data: { profile_image_url: publicUrl, updated_at: new Date() },
-        });
-        parent.profile_image_url = publicUrl;
-      }
-
-      // 4) Upload program images (opsional) -> simpan sebagai URL publik
-      const uploadedUrls = [];
-      if (Array.isArray(uploadFiles) && uploadFiles.length) {
-        for (const f of uploadFiles) {
-          const url = await uploadConsultantProgramImage(f, parent.id);
-          if (url) uploadedUrls.push(url);
-        }
-      }
-      // String images dari body: bisa URL atau key/path -> normalisasi ke URL publik
-      const normalizedFromBody = strProgramImages
-        .map(toPublicUrl)
-        .filter(Boolean);
-      const allImages = [...normalizedFromBody, ...uploadedUrls];
-
-      if (allImages.length) {
-        await tx.consultant_program_images.createMany({
-          data: allImages.map((url, idx) => ({
-            id_consultant: parent.id,
-            image_url: url, // simpan URL publik langsung
-            sort: idx,
-            created_at: new Date(),
-            updated_at: new Date(),
-          })),
-        });
-      }
-
-      return parent;
-    });
-
-    const resp = ok(
-      {
-        data: {
-          id: created.id,
-          profile_image_url: toPublicUrl(created.profile_image_url),
-          created_at: created.created_at,
-          updated_at: created.updated_at,
-        },
-      },
-      { status: 201 }
+      })
     );
-    resp.headers.set("Cache-Control", "no-store");
-    resp.headers.set("Vary", "Cookie, x-ssr, Accept-Language");
-    return resp;
+  }
+
+  // set avatar (jika berubah karena upload)
+  if (avatarPublicUrl && avatarPublicUrl !== createdParent.profile_image_url) {
+    queries.push(
+      prisma.consultants.update({
+        where: { id },
+        data: { profile_image_url: avatarPublicUrl, updated_at: new Date() },
+      })
+    );
+  }
+
+  // program images
+  if (allImages.length) {
+    queries.push(
+      prisma.consultant_program_images.createMany({
+        data: allImages.map((url, idx) => ({
+          id_consultant: id,
+          image_url: url,
+          sort: idx,
+          created_at: new Date(),
+          updated_at: new Date(),
+        })),
+      })
+    );
+  }
+
+  try {
+    if (queries.length) {
+      await prisma.$transaction(queries);
+    }
   } catch (err) {
-    if (err?.message === "PAYLOAD_TOO_LARGE")
-      return ok({ message: "Maksimal 10MB" }, { status: 413 });
-    if (err?.message === "UNSUPPORTED_TYPE")
-      return ok({ message: "Format harus JPEG/PNG/WebP" }, { status: 415 });
+    // Best-effort rollback parent jika batch gagal (tanpa menghapus file)
+    try {
+      await prisma.consultants.delete({ where: { id } });
+    } catch {}
     if (err?.code === "P2002") {
       const field = err?.meta?.target?.join?.(", ") || "unique";
       return ok(
@@ -524,9 +535,23 @@ export async function POST(req) {
         { status: 409 }
       );
     }
-    console.error("POST /api/consultants error:", err);
     return ok({ error: { code: "SERVER_ERROR" } }, { status: 500 });
   }
+
+  const resp = ok(
+    {
+      data: {
+        id,
+        profile_image_url: toPublicUrl(avatarPublicUrl),
+        created_at: createdParent.created_at,
+        updated_at: new Date().toISOString(),
+      },
+    },
+    { status: 201 }
+  );
+  resp.headers.set("Cache-Control", "no-store");
+  resp.headers.set("Vary", "Cookie, x-ssr, Accept-Language");
+  return resp;
 }
 
 function decorateCaching(resp, { isPublic, includePII }) {

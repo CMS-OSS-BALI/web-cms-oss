@@ -16,7 +16,7 @@ import {
   assertAdmin,
   readBodyAndFile,
   resolveCategoryId,
-  uploadImageToSupabase,
+  uploadBlogImage,
 } from "./_utils";
 import prisma from "@/lib/prisma";
 import { randomUUID } from "crypto";
@@ -98,22 +98,15 @@ export async function POST(req) {
     const { adminId } = await assertAdmin(req);
     const { body, file } = await readBodyAndFile(req);
 
-    // image
+    // Siapkan ID lebih awal agar folder upload rapi: cms-oss/blog/<id>/*
+    const id = randomUUID();
+
+    // image (harus ada salah satu: file atau image_url)
     let image_url = "";
     if (file) {
       try {
-        image_url = await uploadImageToSupabase(file, "blog");
+        image_url = await uploadBlogImage(file, id); // URL publik final
       } catch (e) {
-        if (e?.message === "SUPABASE_BUCKET_NOT_CONFIGURED")
-          return json(
-            {
-              error: {
-                code: "CONFIG_ERROR",
-                message: "Konfigurasi bucket Supabase belum disetel.",
-              },
-            },
-            { status: 500 }
-          );
         if (e?.message === "PAYLOAD_TOO_LARGE")
           return json(
             {
@@ -148,7 +141,8 @@ export async function POST(req) {
         );
       }
     } else {
-      image_url = String(body?.image_url || "").trim();
+      // Normalisasi input string (bisa key/path atau URL)
+      image_url = toPublicUrl(String(body?.image_url || "").trim());
     }
 
     const name_id = String(body?.name_id ?? body?.name ?? "").trim();
@@ -193,7 +187,7 @@ export async function POST(req) {
       throw e;
     }
 
-    // auto-translate (paralel bila perlu)
+    // auto-translate
     const autoTranslate =
       String(body?.autoTranslate ?? "true").toLowerCase() !== "false";
     let name_en = String(body?.name_en || "").trim();
@@ -215,12 +209,12 @@ export async function POST(req) {
       description_en = (tDesc || description_en || "").toString();
     }
 
-    const id = randomUUID();
     await prisma.$transaction(async (tx) => {
       await tx.blog.create({
         data: {
           id,
           admin_user_id: adminId,
+          // Simpan URL publik langsung
           image_url,
           category_id: resolvedCategoryId,
         },

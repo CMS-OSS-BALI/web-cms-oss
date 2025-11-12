@@ -10,32 +10,52 @@ import "swiper/css/free-mode";
 import { Pagination } from "antd";
 import "antd/dist/reset.css";
 
-/* ---------- utils ---------- */
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const SUPABASE_BUCKET = process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "";
-const buildSupabasePublicUrl = (objectPath = "") => {
-  const raw = String(objectPath || "").trim();
-  if (!raw) return "";
-  if (/^https?:\/\//i.test(raw)) return raw;
-  if (raw.startsWith("/")) return raw;
-  const path = raw.replace(/^\/+/, "");
-  if (!path) return "";
-  if (!SUPABASE_URL || !SUPABASE_BUCKET) return `/${path}`;
-  return `${SUPABASE_URL.replace(
-    /\/+$/,
-    ""
-  )}/storage/v1/object/public/${SUPABASE_BUCKET}/${path}`;
-};
-const normalizeImgSrc = (input) => {
-  const raw = (input || "").trim();
-  if (!raw)
-    return "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>";
-  const storage = buildSupabasePublicUrl(raw);
-  if (storage) return storage;
-  if (/^https?:\/\//i.test(raw)) return raw;
-  return raw.startsWith("/") ? raw : `/${raw}`;
-};
+/* ---------- Storage helpers (gateway/CDN) ---------- */
+const PUBLIC_PREFIX = "cms-oss";
 
+/** Ubah storage.* ke cdn.* bila memungkinkan */
+function computePublicBase() {
+  const base = (
+    process.env.NEXT_PUBLIC_OSS_STORAGE_BASE_URL ||
+    process.env.OSS_STORAGE_BASE_URL ||
+    ""
+  ).replace(/\/+$/, "");
+  if (!base) return "";
+  try {
+    const u = new URL(base);
+    const host = u.host.replace(/^storage\./, "cdn.");
+    return `${u.protocol}//${host}`;
+  } catch {
+    return base;
+  }
+}
+function ensurePrefixedKey(key) {
+  const clean = String(key || "").replace(/^\/+/, "");
+  return clean.startsWith(PUBLIC_PREFIX + "/")
+    ? clean
+    : `${PUBLIC_PREFIX}/${clean}`;
+}
+function toPublicUrlMaybe(input) {
+  const raw = String(input || "").trim();
+  if (!raw) return "";
+  if (/^(https?:|data:|blob:)/i.test(raw)) return raw;
+  if (raw.startsWith("/")) return raw;
+  const base =
+    computePublicBase() ||
+    (process.env.NEXT_PUBLIC_OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  const path = ensurePrefixedKey(raw);
+  if (!base) return `/${path}`;
+  return `${base}/public/${path}`;
+}
+function normalizeImgSrc(input) {
+  const out =
+    toPublicUrlMaybe(input) ||
+    "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>";
+  return out;
+}
+const isExternal = (s) => /^(https?:|data:|blob:)/i.test(String(s || ""));
+
+/* ---------- Icons ---------- */
 const BulletIcon = ({ type }) => {
   const p = {
     width: 18,
@@ -497,6 +517,7 @@ export default function CollegeContent({ locale = "id" }) {
                 objectPosition: hero.objectPosition || "70% 50%",
                 filter: "saturate(0.98) contrast(1.02)",
               }}
+              unoptimized={isExternal(normalizeImgSrc(hero.image))}
             />
             <div style={styles.heroOverlay} />
 
@@ -598,7 +619,7 @@ export default function CollegeContent({ locale = "id" }) {
               </div>
             </div>
 
-            {/* responsive helpers (tanpa override layout mobile) */}
+            {/* responsive helpers */}
             <style>{`
               @supports (height: 100dvh) {
                 .hero-frame { height: calc(100dvh - var(--nav-h, 88px)); }
@@ -664,7 +685,7 @@ export default function CollegeContent({ locale = "id" }) {
           <div style={styles.uni.list}>
             {pageItems.map((u, idx) => {
               const src = normalizeImgSrc(u.logo_url);
-              const external = /^https?:\/\//i.test(src);
+              const external = isExternal(src);
               const jpMatch = jpMatchesByCollegeId[String(u.id)] || null;
               const matchCount =
                 (jpMatch?.jurusan?.length || 0) + (jpMatch?.prodi?.length || 0);
@@ -910,7 +931,7 @@ export default function CollegeContent({ locale = "id" }) {
 
         html, body { overflow-x: clip; }
 
-        /* <=768px: search & filter STACK (kembali ke semula) */
+        /* <=768px: search & filter STACK */
         @media (max-width: 768px){
           :root { --nav-h: 72px; }
           .hero-search-row{

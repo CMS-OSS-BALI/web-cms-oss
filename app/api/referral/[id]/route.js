@@ -3,8 +3,8 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendWhatsAppMessage, formatPhoneNumber } from "@/app/utils/watzap";
+import storageClient from "@/app/utils/storageClient";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -12,20 +12,100 @@ export const runtime = "nodejs";
 const STATUSES = ["PENDING", "REJECTED", "VERIFIED"];
 const GENDERS = ["MALE", "FEMALE"];
 
-const json = (b, i) => NextResponse.json(sanitize(b), i);
-const sanitize = (v) =>
-  v == null
-    ? v
-    : typeof v === "bigint"
-    ? v.toString()
-    : Array.isArray(v)
-    ? v.map(sanitize)
-    : typeof v === "object"
-    ? Object.fromEntries(
-        Object.entries(v).map(([k, val]) => [k, sanitize(val)])
-      )
-    : v;
+const PUBLIC_PREFIX = "cms-oss";
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MAX_UPLOAD_SIZE = 5 * 1024 * 1024; // 5MB
 
+/* =========================
+   Public URL helpers
+========================= */
+function computePublicBase() {
+  const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return "";
+  try {
+    const u = new URL(base);
+    const host = u.host.replace(/^storage\./, "cdn.");
+    return `${u.protocol}//${host}`;
+  } catch {
+    return base;
+  }
+}
+function ensurePrefixedKey(key) {
+  const clean = String(key || "").replace(/^\/+/, "");
+  return clean.startsWith(PUBLIC_PREFIX + "/")
+    ? clean
+    : `${PUBLIC_PREFIX}/${clean}`;
+}
+function toPublicUrl(keyOrUrl) {
+  if (!keyOrUrl) return null;
+  const s = String(keyOrUrl).trim();
+  if (/^https?:\/\//i.test(s)) return s;
+  const cdn = computePublicBase();
+  const path = ensurePrefixedKey(s);
+  const base =
+    cdn || (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return `/${path}`;
+  return `${base}/public/${path}`;
+}
+
+/* URL -> storage key */
+function toStorageKey(u) {
+  if (!u) return null;
+  const s = String(u).trim();
+  if (!/^https?:\/\//i.test(s)) {
+    return s.replace(/^\/+/, "");
+  }
+  const idx = s.indexOf("/public/");
+  if (idx >= 0) {
+    return s.slice(idx + "/public/".length).replace(/^\/+/, "");
+  }
+  return null;
+}
+
+/* Best-effort remover (batch) */
+async function removeStorageObjects(urlsOrKeys = []) {
+  const keys = urlsOrKeys.map(toStorageKey).filter(Boolean);
+  if (!keys.length) return;
+  const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
+  if (!base) return;
+
+  try {
+    const res = await fetch(`${base}/api/storage/remove`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": process.env.OSS_STORAGE_API_KEY || "",
+      },
+      body: JSON.stringify({ keys }),
+    });
+    if (!res.ok) {
+      await fetch(`${base}/api/storage/delete`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": process.env.OSS_STORAGE_API_KEY || "",
+        },
+        body: JSON.stringify({ keys }),
+      }).catch(() => {});
+    }
+  } catch (_) {}
+}
+
+/* =========================
+   JSON & Auth helpers
+========================= */
+const json = (b, i) => NextResponse.json(sanitize(b), i);
+function sanitize(v) {
+  if (v == null) return v;
+  if (typeof v === "bigint") return v.toString();
+  if (Array.isArray(v)) return v.map(sanitize);
+  if (typeof v === "object") {
+    const o = {};
+    for (const [k, val] of Object.entries(v)) o[k] = sanitize(val);
+    return o;
+  }
+  return v;
+}
 async function requireAdmin() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id && !session?.user?.email) {
@@ -74,26 +154,25 @@ const withTs = (row) =>
       }
     : row;
 
-function getPublicUrl(path) {
-  if (!path) return null;
-  const { data } = supabaseAdmin.storage
-    .from(process.env.SUPABASE_BUCKET)
-    .getPublicUrl(path);
-  return data?.publicUrl || null;
+/* =========================
+   Upload helpers (OSS)
+========================= */
+async function assertImageFileOrThrow(file) {
+  const type = file?.type || "";
+  if (!ALLOWED_IMAGE_TYPES.has(type)) throw new Error("UNSUPPORTED_TYPE");
+  const size =
+    typeof file?.size === "number"
+      ? file.size
+      : (await file.arrayBuffer()).byteLength;
+  if (size > MAX_UPLOAD_SIZE) throw new Error("PAYLOAD_TOO_LARGE");
 }
-async function generateUniqueReferralCode() {
-  const year = new Date().getFullYear();
-  const prefix = `OSSBALI/${year}/REFERRAL-66B`;
-  for (let i = 0; i < 20; i++) {
-    const suffix = String(Math.floor(Math.random() * 1000)).padStart(3, "0");
-    const code = `${prefix}${suffix}`;
-    const exists = await prisma.referral.count({ where: { code } });
-    if (exists === 0) return code;
-  }
-  return `${prefix}${String(Math.floor(Math.random() * 1000)).padStart(
-    3,
-    "0"
-  )}`;
+async function uploadReferralFront(file, nik) {
+  await assertImageFileOrThrow(file);
+  const res = await storageClient.uploadBufferWithPresign(file, {
+    folder: `${PUBLIC_PREFIX}/referral/${nik}`,
+    isPublic: true,
+  });
+  return res.publicUrl || null;
 }
 
 /* ===== GET ===== */
@@ -107,11 +186,10 @@ export async function GET(_req, { params }) {
   const id = String(params?.id || "");
   if (!id) return json({ error: { code: "BAD_REQUEST" } }, { status: 400 });
 
-  // return all columns then add *_ts (pekerjaan ikut terembet)
   const row = await prisma.referral.findUnique({ where: { id } });
   if (!row) return json({ error: { code: "NOT_FOUND" } }, { status: 404 });
 
-  const previews = { front: getPublicUrl(row.front_url) };
+  const previews = { front: toPublicUrl(row.front_url) };
   return json({ data: withTs(row), previews });
 }
 
@@ -128,40 +206,36 @@ export async function PATCH(req, { params }) {
   const ct = req.headers.get("content-type") || "";
   const data = {};
   let replacedFront = false;
+  let previousFrontUrl = null; // for cleanup
 
   if (ct.includes("multipart/form-data")) {
     const form = await req.formData();
 
     const f = form.get("front");
     if (f instanceof File) {
-      const MAX = 5 * 1024 * 1024;
-      const allowed = ["image/jpeg", "image/png", "image/webp"];
-      if ((f.size || 0) > MAX)
-        return json({ error: { code: "PAYLOAD_TOO_LARGE" } }, { status: 413 });
-      if (!allowed.includes(f.type))
-        return json({ error: { code: "UNSUPPORTED_TYPE" } }, { status: 415 });
+      try {
+        await assertImageFileOrThrow(f);
+      } catch (e) {
+        if (e?.message === "PAYLOAD_TOO_LARGE")
+          return json(
+            { error: { code: "PAYLOAD_TOO_LARGE" } },
+            { status: 413 }
+          );
+        if (e?.message === "UNSUPPORTED_TYPE")
+          return json({ error: { code: "UNSUPPORTED_TYPE" } }, { status: 415 });
+        return json({ error: { code: "SERVER_ERROR" } }, { status: 500 });
+      }
 
       const existing = await prisma.referral.findUnique({
         where: { id },
-        select: { nik: true },
+        select: { nik: true, front_url: true },
       });
       if (!existing)
         return json({ error: { code: "NOT_FOUND" } }, { status: 404 });
 
-      const ext = (f.name?.split(".").pop() || "").toLowerCase();
-      const safe = `${Date.now()}-${Math.random().toString(36).slice(2)}${
-        ext ? "." + ext : ""
-      }`;
-      const objectPath = `referral/${existing.nik}/${safe}`;
-      const bytes = new Uint8Array(await f.arrayBuffer());
-      const { error } = await supabaseAdmin.storage
-        .from(process.env.SUPABASE_BUCKET)
-        .upload(objectPath, bytes, {
-          contentType: f.type || "application/octet-stream",
-          upsert: false,
-        });
-      if (error) throw new Error(error.message);
-      data.front_url = objectPath;
+      previousFrontUrl = existing.front_url || null;
+      const newPublicUrl = await uploadReferralFront(f, existing.nik);
+      data.front_url = newPublicUrl;
       replacedFront = true;
     }
 
@@ -192,7 +266,7 @@ export async function PATCH(req, { params }) {
       } else data.pic_consultant_id = null;
     }
 
-    // ⬇️ allow update pekerjaan via multipart
+    // allow update pekerjaan via multipart
     if (form.has("pekerjaan")) {
       data.pekerjaan = trimStr(form.get("pekerjaan"), 100) ?? null;
     }
@@ -232,7 +306,7 @@ export async function PATCH(req, { params }) {
       "postal_code",
       "domicile",
       "notes",
-      "pekerjaan", // ⬅️ allow update pekerjaan via JSON
+      "pekerjaan",
     ].forEach((k) => {
       if (body[k] !== undefined)
         data[k] =
@@ -284,6 +358,7 @@ export async function PATCH(req, { params }) {
         whatsapp_e164: true,
         status: true,
         code: true,
+        front_url: true,
       },
     });
     if (!before) return json({ error: { code: "NOT_FOUND" } }, { status: 404 });
@@ -307,16 +382,18 @@ export async function PATCH(req, { params }) {
         code: true,
         pic_consultant_id: true,
         notes: true,
-        pekerjaan: true, // ⬅️ return pekerjaan
+        pekerjaan: true,
       },
     });
 
+    // WhatsApp notifs
     const wasVerified = before.status === "VERIFIED";
     const isVerified = updated.status === "VERIFIED";
     const becameVerified = !wasVerified && isVerified;
 
     let codeCreatedNow = false;
     if (isVerified && !updated.code) {
+      // generate unique code
       for (let i = 0; i < 5; i++) {
         const candidate = await generateUniqueReferralCode();
         try {
@@ -340,9 +417,9 @@ export async function PATCH(req, { params }) {
         const msg =
           `Halo ${updated.full_name}, pengajuan referral Anda telah *VERIFIED*.\n` +
           (updated.code
-            ? `Kode referral Anda: *${updated.code}*.`
-            : `Kode referral belum dapat diterbitkan saat ini.`) +
-          `\nTerima kasih sudah mendaftar di OSS Bali.`;
+            ? `Kode referral Anda: *${updated.code}*.\n`
+            : `Kode referral belum dapat diterbitkan saat ini.\n`) +
+          `Terima kasih sudah mendaftar di OSS Bali.`;
         sendWhatsAppMessage(phone, msg).catch(() => {});
       } else if (isVerified && codeCreatedNow) {
         const msg = `Halo ${updated.full_name}, kode referral Anda telah diterbitkan: *${updated.code}*.\nBagikan kode ini ke calon leads.`;
@@ -355,7 +432,18 @@ export async function PATCH(req, { params }) {
       }
     }
 
-    const preview = replacedFront ? getPublicUrl(updated.front_url) : null;
+    // cleanup best-effort jika foto diganti
+    try {
+      if (replacedFront) {
+        const prev = previousFrontUrl || before.front_url || null;
+        const next = updated.front_url || null;
+        if (prev && next && prev !== next) {
+          await removeStorageObjects([prev]);
+        }
+      }
+    } catch {}
+
+    const preview = replacedFront ? toPublicUrl(updated.front_url) : null;
     return json({
       data: withTs(updated),
       replaced_front: replacedFront,
@@ -369,7 +457,7 @@ export async function PATCH(req, { params }) {
   }
 }
 
-/* ===== DELETE ===== */
+/* ===== DELETE (soft delete) ===== */
 export async function DELETE(_req, { params }) {
   try {
     await requireAdmin();
@@ -397,4 +485,20 @@ export async function DELETE(_req, { params }) {
     console.error("DELETE /api/referral/[id] error:", err);
     return json({ error: { code: "SERVER_ERROR" } }, { status: 500 });
   }
+}
+
+/* ===== helpers ===== */
+async function generateUniqueReferralCode() {
+  const year = new Date().getFullYear();
+  const prefix = `OSSBALI/${year}/REFERRAL-66B`;
+  for (let i = 0; i < 20; i++) {
+    const suffix = String(Math.floor(Math.random() * 1000)).padStart(3, "0");
+    const code = `${prefix}${suffix}`;
+    const exists = await prisma.referral.count({ where: { code } });
+    if (exists === 0) return code;
+  }
+  return `${prefix}${String(Math.floor(Math.random() * 1000)).padStart(
+    3,
+    "0"
+  )}`;
 }
