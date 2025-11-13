@@ -141,28 +141,55 @@ export default function BlogContent({ initialLocale = "id" }) {
 
   const rows = useMemo(() => vm.blogs || [], [vm.blogs]);
 
-  /* ===== Upload guards (match referensi) ===== */
+  /* ===== Upload guards (match referensi + error message) ===== */
   const isImg = (f) =>
     ["image/jpeg", "image/png", "image/webp"].includes(f?.type || "");
-  const tooBig = (f, mb = 10) => (f?.size || 0) / 1024 / 1024 > mb; // 10MB seperti referensi
+  const tooBig = (f, mb = 10) => (f?.size || 0) / 1024 / 1024 > mb; // 10MB seperti backend
   const normList = (e) => (Array.isArray(e) ? e : e?.fileList || []);
 
   const beforeCoverCreate = useCallback(
     (file) => {
-      if (!isImg(file) || tooBig(file, 10)) return Upload.LIST_IGNORE;
+      if (!isImg(file)) {
+        toast.err(
+          "File tidak didukung",
+          "Gunakan gambar dengan format JPEG, PNG, atau WebP."
+        );
+        return Upload.LIST_IGNORE;
+      }
+      if (tooBig(file, 10)) {
+        toast.err(
+          "File terlalu besar",
+          "Ukuran maksimum 10MB. Kompres gambar terlebih dahulu."
+        );
+        return Upload.LIST_IGNORE;
+      }
       try {
         const url = URL.createObjectURL(file);
         if (coverPrevCreate) URL.revokeObjectURL(coverPrevCreate);
         setCoverPrevCreate(url);
       } catch {}
-      return false; // prevent auto upload
+      // upload ditangani manual via Form, bukan auto-upload antd
+      return false;
     },
-    [coverPrevCreate]
+    [coverPrevCreate, toast]
   );
 
   const beforeCoverEdit = useCallback(
     (file) => {
-      if (!isImg(file) || tooBig(file, 10)) return Upload.LIST_IGNORE;
+      if (!isImg(file)) {
+        toast.err(
+          "File tidak didukung",
+          "Gunakan gambar dengan format JPEG, PNG, atau WebP."
+        );
+        return Upload.LIST_IGNORE;
+      }
+      if (tooBig(file, 10)) {
+        toast.err(
+          "File terlalu besar",
+          "Ukuran maksimum 10MB. Kompres gambar terlebih dahulu."
+        );
+        return Upload.LIST_IGNORE;
+      }
       try {
         const url = URL.createObjectURL(file);
         if (coverPrevEdit) URL.revokeObjectURL(coverPrevEdit);
@@ -170,7 +197,7 @@ export default function BlogContent({ initialLocale = "id" }) {
       } catch {}
       return false;
     },
-    [coverPrevEdit]
+    [coverPrevEdit, toast]
   );
 
   /* ===== Detail (fallback jika VM tidak expose getBlog) ===== */
@@ -181,7 +208,12 @@ export default function BlogContent({ initialLocale = "id" }) {
         const res = await fetch(
           `/api/blog/${encodeURIComponent(id)}?include_category=1`
         );
-        if (!res.ok) throw new Error("Gagal memuat detail");
+        if (!res.ok) {
+          const info = await res.json().catch(() => null);
+          throw new Error(
+            info?.error?.message || info?.message || "Gagal memuat detail blog."
+          );
+        }
         const json = await res.json();
         return { ok: true, data: json?.data };
       } catch (e) {
@@ -214,7 +246,7 @@ export default function BlogContent({ initialLocale = "id" }) {
     } else {
       toast.err("Gagal", out.error || "Gagal membuat blog");
     }
-  }, [formCreate, vm, coverPrevCreate]);
+  }, [formCreate, vm, coverPrevCreate, toast]);
 
   const openEdit = useCallback(
     async (row) => {
@@ -240,7 +272,7 @@ export default function BlogContent({ initialLocale = "id" }) {
         d.image_url || d.image_public_url || row.image_src || ""
       );
     },
-    [formEdit, getBlogDetail]
+    [formEdit, getBlogDetail, toast]
   );
 
   const onEditSubmit = useCallback(async () => {
@@ -266,7 +298,7 @@ export default function BlogContent({ initialLocale = "id" }) {
     } else {
       toast.err("Gagal", res.error || "Gagal menyimpan");
     }
-  }, [activeRow, formEdit, vm, coverPrevEdit]);
+  }, [activeRow, formEdit, vm, coverPrevEdit, toast]);
 
   const onDelete = useCallback(
     async (id) => {
@@ -276,7 +308,7 @@ export default function BlogContent({ initialLocale = "id" }) {
       }
       toast.ok("Terhapus", "Berita berhasil dihapus.");
     },
-    [vm]
+    [vm, toast]
   );
 
   const openView = useCallback(
@@ -293,7 +325,7 @@ export default function BlogContent({ initialLocale = "id" }) {
       }
       setDetailData(data);
     },
-    [getBlogDetail]
+    [getBlogDetail, toast]
   );
 
   const goPrev = useCallback(() => vm.setPage(Math.max(1, vm.page - 1)), [vm]);
@@ -357,7 +389,7 @@ export default function BlogContent({ initialLocale = "id" }) {
     >
       {contextHolder}
 
-      {/* === Global style untuk uploader 16:9 (match referensi) === */}
+      {/* === Global style untuk uploader 16:9 === */}
       <style jsx global>{`
         .landscape-uploader.ant-upload.ant-upload-select-picture-card {
           width: 320px !important;
@@ -411,7 +443,7 @@ export default function BlogContent({ initialLocale = "id" }) {
               <div style={styles.totalBadgeWrap}>
                 <div style={styles.totalBadgeLabel}>{T.totalLabel}</div>
                 <div style={styles.totalBadgeValue}>
-                  {vm.total ?? rows.length ?? "â€”"}
+                  {vm.total ?? rows.length ?? "—"}
                 </div>
               </div>
             </div>
@@ -456,7 +488,7 @@ export default function BlogContent({ initialLocale = "id" }) {
                   suffixIcon={<FilterOutlined />}
                 />
 
-                {/* Kategori dari /api/blog-categories â†’ filter by ID */}
+                {/* Kategori dari /api/blog-categories → filter by ID */}
                 <Select
                   allowClear
                   placeholder="Kategori"
@@ -618,6 +650,11 @@ export default function BlogContent({ initialLocale = "id" }) {
                   </div>
                 </Upload>
               </Form.Item>
+              <div style={styles.coverHint}>
+                Sistem akan otomatis memotong gambar ke rasio{" "}
+                <b>16:9 (landscape)</b> dan menyimpannya dalam format WebP.
+                Gunakan gambar horizontal agar hasil lebih maksimal.
+              </div>
             </div>
             <Form.Item
               label={T.blogTitle}
@@ -700,6 +737,10 @@ export default function BlogContent({ initialLocale = "id" }) {
                     </div>
                   </Upload>
                 </Form.Item>
+                <div style={styles.coverHint}>
+                  Gambar baru juga akan dipotong otomatis ke rasio <b>16:9</b>{" "}
+                  saat disimpan.
+                </div>
               </div>
               <Form.Item
                 label={T.blogTitle}
@@ -972,6 +1013,7 @@ const styles = {
     justifyItems: "center",
     marginTop: 6,
     marginBottom: 10,
+    gap: 6,
   },
 
   // penting: biar ngikut ukuran card dari .landscape-uploader
@@ -997,8 +1039,13 @@ const styles = {
   coverImgRead: { width: "100%", height: "auto", display: "block" },
 
   coverPlaceholder: { fontWeight: 700, color: "#0b56c9", userSelect: "none" },
+  coverHint: {
+    fontSize: 11,
+    color: "#64748b",
+    textAlign: "center",
+    maxWidth: 420,
+  },
 
   modalFooter: { marginTop: 8, display: "grid", placeItems: "center" },
   saveBtn: { minWidth: 200, height: 40, borderRadius: 12 },
 };
-

@@ -65,6 +65,12 @@ function toFormData(payload = {}) {
   return fd;
 }
 
+// Ambil pesan error yang bener dari response API
+function extractErrorMessage(json, fallback = "Terjadi kesalahan.") {
+  if (!json || typeof json !== "object") return fallback;
+  return json?.error?.message || json?.message || json?.error?.hint || fallback;
+}
+
 export default function useBlogViewModel() {
   // list filters
   const [q, setQ] = useState("");
@@ -191,7 +197,8 @@ export default function useBlogViewModel() {
 
       if (!res.ok) {
         const info = await res.json().catch(() => null);
-        throw new Error(info?.message || "Gagal menambah blog");
+        const msg = extractErrorMessage(info, "Gagal menambah blog");
+        throw new Error(msg);
       }
 
       // Penting: artikel baru biasanya ada di page 1 (sort desc)
@@ -223,7 +230,8 @@ export default function useBlogViewModel() {
 
       if (!res.ok) {
         const info = await res.json().catch(() => null);
-        throw new Error(info?.message || "Gagal memperbarui blog");
+        const msg = extractErrorMessage(info, "Gagal memperbarui blog");
+        throw new Error(msg);
       }
 
       // Tidak perlu ubah page; cukup revalidate
@@ -244,7 +252,8 @@ export default function useBlogViewModel() {
       });
       if (!res.ok) {
         const info = await res.json().catch(() => null);
-        throw new Error(info?.message || "Gagal menghapus blog");
+        const msg = extractErrorMessage(info, "Gagal menghapus blog");
+        throw new Error(msg);
       }
 
       // Clamp page agar tidak tersisa halaman kosong
@@ -285,7 +294,8 @@ export default function useBlogViewModel() {
       );
       if (!res.ok) {
         const info = await res.json().catch(() => null);
-        throw new Error(info?.message || "Gagal memuat detail");
+        const msg = extractErrorMessage(info, "Gagal memuat detail blog");
+        throw new Error(msg);
       }
       const json = await res.json();
       const data = json?.data ?? json;

@@ -5,7 +5,7 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
 import { randomUUID } from "crypto";
 import { translate } from "@/app/utils/geminiTranslator";
-import { cropFileTo16x9Webp } from "@/app/utils/cropper";
+import { cropFileTo9x16Webp } from "@/app/utils/cropper";
 
 // === Storage client (baru, mengikuti pola consultants)
 import storageClient from "@/app/utils/storageClient";
@@ -148,11 +148,11 @@ function parseFields(req) {
 
 /* =========================
    Upload helper (pakai storageClient)
-   - Crop 16:9 ke WebP
+   - Crop 9:16 ke WebP
    - Upload ke folder publik
    - Return URL publik siap pakai
 ========================= */
-async function uploadTestimonialImage16x9(file) {
+async function uploadTestimonialImage9x16(file) {
   if (typeof File === "undefined" || !(file instanceof File)) {
     throw new Error("NO_FILE");
   }
@@ -164,9 +164,8 @@ async function uploadTestimonialImage16x9(file) {
       : (await file.arrayBuffer()).byteLength;
   if (size > MAX_UPLOAD_SIZE) throw new Error("PAYLOAD_TOO_LARGE");
 
-  const processed = await cropFileTo16x9Webp(file, {
-    width: 1280,
-    height: 720,
+  const processed = await cropFileTo9x16Webp(file, {
+    height: 1920, // portrait full-HD-ish
     quality: 90,
   });
 
@@ -498,7 +497,7 @@ export async function POST(req) {
       let storedPhotoUrl = trimOrNull(body.photo_url, 255);
       if (file && typeof File !== "undefined" && file instanceof File) {
         try {
-          storedPhotoUrl = await uploadTestimonialImage16x9(file); // URL publik
+          storedPhotoUrl = await uploadTestimonialImage9x16(file); // URL publik
         } catch (e) {
           if (e?.message === "PAYLOAD_TOO_LARGE")
             return NextResponse.json(

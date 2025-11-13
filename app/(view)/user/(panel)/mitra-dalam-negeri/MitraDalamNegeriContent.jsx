@@ -163,6 +163,8 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
           margin: "0 0 12px",
         },
       },
+
+      /* ====== LUAR NEGERI (square card) ====== */
       merchant: {
         wrap: {
           width: "100vw",
@@ -171,24 +173,31 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
           padding: "10px 0 26px",
           background: "#fff",
         },
-        slide: { width: "var(--merchant-card-w, 380px)" },
+        /* slide mengikuti lebar kartu, supaya benar2 square */
+        slide: { width: "var(--merchant-card-size, 300px)" },
         card: {
-          width: "var(--merchant-card-w, 380px)",
-          height: "var(--merchant-card-h, 300px)",
+          width: "var(--merchant-card-size, 300px)",
+          height: "var(--merchant-card-size, 300px)",
+          aspectRatio: "1 / 1",
           background: "#FFFFFF",
           border: "1px solid rgba(14,30,62,.06)",
           borderRadius: 22,
           boxShadow:
             "0 2px 4px rgba(15,23,42,.06), 0 8px 16px rgba(15,23,42,.10), 0 20px 40px rgba(15,23,42,.12)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
+          display: "grid",
+          placeItems: "center",
           overflow: "hidden",
           transition: "box-shadow .22s ease, transform .22s ease",
           marginTop: "50px",
           willChange: "transform",
         },
-        logo: { maxWidth: "82%", maxHeight: "82%", objectFit: "contain" },
+        /* logo fit ke dalam 1:1 tanpa kepotong */
+        logo: {
+          width: "86%",
+          height: "86%",
+          objectFit: "contain",
+          display: "block",
+        },
         empty: {
           padding: 20,
           color: "#64748b",
@@ -196,6 +205,8 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
           fontWeight: 600,
         },
       },
+
+      /* ====== DALAM NEGERI (square card) ====== */
       organization: {
         wrap: {
           width: "100vw",
@@ -204,24 +215,29 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
           padding: "10px 0 26px",
           background: "#fff",
         },
-        slide: { width: "var(--org-card-w, 380px)" },
+        slide: { width: "var(--org-card-size, 300px)" },
         card: {
-          width: "var(--org-card-w, 380px)",
-          height: "var(--org-card-h, 300px)",
+          width: "var(--org-card-size, 300px)",
+          height: "var(--org-card-size, 300px)",
+          aspectRatio: "1 / 1",
           background: "#FFFFFF",
           border: "1px solid rgba(14,30,62,.06)",
           borderRadius: 22,
           boxShadow:
             "0 2px 4px rgba(15,23,42,.06), 0 8px 16px rgba(15,23,42,.10), 0 20px 40px rgba(15,23,42,.12)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
+          display: "grid",
+          placeItems: "center",
           overflow: "hidden",
           transition: "box-shadow .22s ease, transform .22s ease",
           marginTop: "50px",
           willChange: "transform",
         },
-        logo: { maxWidth: "82%", maxHeight: "82%", objectFit: "contain" },
+        logo: {
+          width: "86%",
+          height: "86%",
+          objectFit: "contain",
+          display: "block",
+        },
         empty: {
           padding: 20,
           color: "#64748b",
@@ -229,6 +245,7 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
           fontWeight: 600,
         },
       },
+
       cta: {
         section: {
           width: "100vw",
@@ -299,7 +316,6 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
         <div style={styles.hero.bleed}>
           <div
             ref={heroRef}
-            style={styles.hero.frame}
             className="reveal"
             data-anim="zoom"
             style={{ ...styles.hero.frame, ["--rvd"]: "20ms" }}
@@ -327,8 +343,8 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
           data-anim="up"
           style={{
             ...styles.merchant.wrap,
-            "--merchant-card-w": "380px",
-            "--merchant-card-h": "300px",
+            // atur besar kartu 1:1 di sini
+            "--merchant-card-size": "380px",
             ["--rvd"]: "100ms",
           }}
         >
@@ -390,8 +406,7 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
           data-anim="up"
           style={{
             ...styles.organization.wrap,
-            "--org-card-w": "380px",
-            "--org-card-h": "300px",
+            "--org-card-size": "380px",
             ["--rvd"]: "100ms",
           }}
         >
@@ -455,12 +470,10 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
             </h2>
             <Link
               href="/user/form-mitra"
-              style={styles.cta.btn}
               className="cta-btn hero-cta--pulse hero-cta--bob reveal"
               data-anim="up"
               aria-label={cta.primary}
-              // delay halus
-              {...{ style: { ...styles.cta.btn, ["--rvd"]: "140ms" } }}
+              style={{ ...styles.cta.btn, ["--rvd"]: "140ms" }}
             >
               {cta.primary}
             </Link>

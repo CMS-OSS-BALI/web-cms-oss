@@ -6,6 +6,7 @@ import prisma from "@/lib/prisma";
 import { translate } from "@/app/utils/geminiTranslator";
 import storageClient from "@/app/utils/storageClient";
 import { randomUUID } from "crypto";
+import { cropFileTo1x1Webp } from "@/app/utils/cropper";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -153,6 +154,36 @@ async function uploadPublicFile(file, folder) {
     isPublic: true,
   });
   return res?.publicUrl || null;
+}
+
+/* =============== NEW: upload square 1:1 =============== */
+async function uploadLogoSquare1x1(file, folder) {
+  await assertImageFileOrThrow(file);
+
+  // SVG tidak dicrop
+  if (String(file.type).toLowerCase() === "image/svg+xml") {
+    return uploadPublicFile(file, folder);
+  }
+
+  const processed = await cropFileTo1x1Webp(file, { size: 1080, quality: 92 });
+  let { buffer, contentType } = processed || {};
+  if (!buffer) {
+    const ab = await file.arrayBuffer();
+    buffer = Buffer.from(ab);
+  } else if (buffer instanceof ArrayBuffer) {
+    buffer = Buffer.from(buffer);
+  } else if (ArrayBuffer.isView(buffer)) {
+    buffer = Buffer.from(buffer.buffer);
+  }
+  if (!Buffer.isBuffer(buffer)) buffer = Buffer.from(buffer);
+  if (!buffer?.length) throw new Error("EMPTY_FILE_BUFFER");
+
+  const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.webp`;
+  const outFile = new File([buffer], filename, {
+    type: contentType || "image/webp",
+  });
+
+  return uploadPublicFile(outFile, folder);
 }
 
 /* =========================
@@ -379,7 +410,7 @@ export async function PUT(req, ctx) {
   return PATCH(req, ctx);
 }
 
-/* ---------- PATCH (admin, + storage baru) ---------- */
+/* ---------- PATCH (admin, + storage baru, + CROP 1:1) ---------- */
 export async function PATCH(req, { params }) {
   try {
     const admin = await assertAdmin(req);
@@ -490,16 +521,15 @@ export async function PATCH(req, { params }) {
       body.merchant_name = trimmed;
     }
 
-    // Upload image baru (opsional) di luar transaksi
+    // Upload image baru (opsional) di luar transaksi, crop 1:1
     let postCleanupImageUrl = null;
     if (imageFile) {
       try {
-        await assertImageFileOrThrow(imageFile);
         const existing = await prisma.mitra.findUnique({
           where: { id },
           select: { image_url: true },
         });
-        const newUrl = await uploadPublicFile(imageFile, `mitra/${id}`);
+        const newUrl = await uploadLogoSquare1x1(imageFile, `mitra/${id}`);
         data.image_url = newUrl;
         if (existing?.image_url && existing.image_url !== newUrl) {
           postCleanupImageUrl = existing.image_url;

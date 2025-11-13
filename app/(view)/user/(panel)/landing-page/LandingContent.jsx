@@ -953,17 +953,7 @@ export default function LandingContent({ locale = "id" }) {
             }
             speed={7000}
             allowTouchMove={hasMultipleTesti}
-            autoplay={
-              hasMultipleTesti
-                ? {
-                    delay: 0,
-                    disableOnInteraction: false,
-                    pauseOnMouseEnter: false,
-                    stopOnLastSlide: false,
-                    waitForTransition: false,
-                  }
-                : false
-            }
+            autoplay={testiAutoplay}
             observer
             observeParents
             watchSlidesProgress
@@ -1810,19 +1800,22 @@ export default function LandingContent({ locale = "id" }) {
           pointer-events: none;
         }
 
-        /* foto di tengah atas, agak “mengambang” */
+        /* foto di tengah atas, pakai rasio 9:16 */
         .consult3-photo {
           position: absolute;
           inset: clamp(18px, 3vw, 28px) 0 auto 0;
-          display: grid;
-          place-items: center;
+          display: flex;
+          justify-content: center;
           pointer-events: none;
         }
         .consult3-photo img {
-          width: min(86%, 360px);
+          width: min(52%, 240px);
+          aspect-ratio: 9 / 16;
           height: auto;
-          object-fit: contain;
+          object-fit: cover;
           display: block;
+          border-radius: 24px;
+          overflow: hidden;
           filter: drop-shadow(0 18px 26px rgba(0, 0, 0, 0.32));
           transform: translateY(6px);
         }
@@ -1871,7 +1864,7 @@ export default function LandingContent({ locale = "id" }) {
             --consult3-minh: 380px;
           }
           .consult3-photo img {
-            width: min(92%, 340px);
+            width: min(64%, 220px);
           }
         }
 

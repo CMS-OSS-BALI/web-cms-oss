@@ -1,5 +1,4 @@
-﻿// app/(view)/admin/testimonials/TestimonialsContent.jsx
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -101,8 +100,7 @@ const isImg = (f) =>
 const tooBig = (f, mb = 10) => f.size / 1024 / 1024 > mb;
 const stripTags = (s) => (s ? String(s).replace(/<[^>]*>/g, "") : "");
 
-// Grid kolom (header & row HARUS sama persis)
-//  Nama | Pesan | Rating | Kategori | YouTube | Kampus | Aksi
+// Grid kolom
 const GRID_COLS = "1.6fr 2.4fr 0.9fr 1fr 0.8fr 1.1fr 0.9fr";
 
 // helper cache-buster
@@ -193,7 +191,6 @@ export default function TestimonialsContent({ locale = "id" }) {
     if (!out?.ok)
       return err("Gagal membuat testimoni", out?.error || "Gagal menyimpan");
 
-    // refresh agar data + URL public sinkron
     await vm.refresh?.();
     ok("Berhasil", "Testimoni berhasil dibuat");
     setCreateOpen(false);
@@ -253,7 +250,6 @@ export default function TestimonialsContent({ locale = "id" }) {
     if (!res?.ok)
       return err("Gagal memperbarui", res?.error || "Gagal menyimpan");
 
-    // refresh agar URL gambar baru terbaca & bust cache
     await vm.refresh?.();
 
     ok("Berhasil", "Perubahan berhasil disimpan");
@@ -303,9 +299,11 @@ export default function TestimonialsContent({ locale = "id" }) {
       <style jsx global>{`
         /* Uploader 9:16 (portrait) */
         .rect916-uploader.ant-upload.ant-upload-select-picture-card {
-          width: 180px !important;
-          height: 320px !important; /* 9:16 */
+          width: min(180px, 60vw) !important;
+          aspect-ratio: 9 / 16;
+          height: auto !important;
           padding: 0 !important;
+          line-height: normal !important;
         }
         .rect916-uploader .ant-upload {
           width: 100% !important;
@@ -710,7 +708,7 @@ export default function TestimonialsContent({ locale = "id" }) {
             <Form.Item
               label={T.nameId}
               name="name_id"
-              rules={req("Nama wajib diisi")}
+              rules={[{ required: true, message: "Nama wajib diisi" }]}
             >
               <Input placeholder="Contoh: Nadya Kirana" />
             </Form.Item>
@@ -718,7 +716,7 @@ export default function TestimonialsContent({ locale = "id" }) {
             <Form.Item
               label={T.msgId}
               name="message_id"
-              rules={req("Pesan wajib diisi")}
+              rules={[{ required: true, message: "Pesan wajib diisi" }]}
             >
               <Input.TextArea rows={4} placeholder="Tulis testimoni..." />
             </Form.Item>
@@ -1005,7 +1003,7 @@ const styles = {
 
   tableHeader: {
     display: "grid",
-    gridTemplateColumns: GRID_COLS,
+    gridTemplateColumns: "1.6fr 2.4fr 0.9fr 1fr 0.8fr 1.1fr 0.9fr",
     gap: 8,
     marginBottom: 4,
     color: "#0b3e91",
@@ -1016,7 +1014,7 @@ const styles = {
 
   row: {
     display: "grid",
-    gridTemplateColumns: GRID_COLS,
+    gridTemplateColumns: "1.6fr 2.4fr 0.9fr 1fr 0.8fr 1.1fr 0.9fr",
     gap: 8,
     alignItems: "center",
     background: "#f5f8ff",

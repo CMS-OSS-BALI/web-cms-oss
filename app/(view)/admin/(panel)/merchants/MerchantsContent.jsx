@@ -148,16 +148,13 @@ const T = {
   totalLabel: "Mitra",
   listTitle: "Data Mitra",
   searchPh: "Search",
-  // table
   nameCol: "Mitra",
   statusCol: "Status",
   typeCol: "Tipe",
   dateCol: "Tanggal",
   action: "Aksi",
-  // filters
   category: "Kategori",
   status: "Status",
-  // detail / edit labels
   merchant: "Nama Mitra",
   nik: "NIK",
   email: "Email",
@@ -180,7 +177,6 @@ const T = {
   review_notes: "Catatan Review",
 };
 
-/* ===== OSS public URL helpers (ganti Supabase) ===== */
 const PUBLIC_PREFIX = "cms-oss";
 
 function computePublicBase() {
@@ -231,7 +227,6 @@ function toStorageKey(keyOrUrl) {
 }
 const baseName = (p = "") => String(p).split("/").pop() || "file";
 
-/* ===== utils lainnya ===== */
 const monthsId = [
   "Januari",
   "Februari",
@@ -437,7 +432,7 @@ export default function MerchantsContent({ vm }) {
         return url;
       });
     } catch {}
-    return false;
+    return false; // jangan upload otomatis; kita proses saat submit
   };
 
   const openEdit = async (row) => {
@@ -498,7 +493,7 @@ export default function MerchantsContent({ vm }) {
       .filter(Boolean);
 
     const payload = {
-      file,
+      file, // akan di-crop 1:1 di VM sebelum dikirim
       merchant_name: v.merchant_name,
       nik: v.nik || null,
       email: v.email,
@@ -1234,7 +1229,7 @@ export default function MerchantsContent({ vm }) {
                   getValueFromEvent={(e) =>
                     Array.isArray(e) ? e : e?.fileList || []
                   }
-                  label={T.logo}
+                  label={`${T.logo} — akan di-crop otomatis saat simpan`}
                   style={{ marginBottom: 8 }}
                 >
                   <Upload

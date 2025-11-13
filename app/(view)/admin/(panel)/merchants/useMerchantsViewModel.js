@@ -1,38 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  ConfigProvider,
-  Button,
-  Modal,
-  Form,
-  Input,
-  Upload,
-  Empty,
-  Skeleton,
-  Popconfirm,
-  Tooltip,
-  Spin,
-  Select,
-  notification,
-} from "antd";
-import {
-  PlusCircleOutlined,
-  EyeOutlined,
-  DeleteOutlined,
-  EditOutlined,
-  LeftOutlined,
-  RightOutlined,
-  SearchOutlined,
-} from "@ant-design/icons";
+/* ==== NEW: import cropper 1:1 ==== */
+import { cropCenterAndResize1x1 } from "@/app/utils/cropper";
 
-/* ===================== Constants ===================== */
 const DEFAULT_SORT = "created_at:desc";
 const DEFAULT_LOCALE = "id";
 const fallbackFor = (loc) =>
   String(loc || "").toLowerCase() === "id" ? "en" : "id";
 
-/* ===================== Utils ===================== */
 function buildKey({
   page,
   perPage,
@@ -66,7 +42,6 @@ const csvSafe = (v) => {
 /** Normalisasi struktur counts dari berbagai bentuk respons */
 function normalizeCounts(obj) {
   if (!obj) return null;
-
   const src =
     obj?.meta?.counts ||
     obj?.data?.counts ||
@@ -86,12 +61,10 @@ function normalizeCounts(obj) {
     lower.pending ??
     lower.awaiting ??
     (Number.isFinite(lower["pending"]) ? lower["pending"] : undefined);
-
   const approved =
     lower.approved ??
     lower.accepted ??
     (Number.isFinite(lower["approved"]) ? lower["approved"] : undefined);
-
   const declined =
     lower.declined ??
     lower.rejected ??
@@ -154,9 +127,7 @@ export default function useMerchantsViewModel() {
       signal,
     });
     const json = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(json?.error?.message || "Failed summary");
-    }
+    if (!res.ok) throw new Error(json?.error?.message || "Failed summary");
     const counts = normalizeCounts(json);
     if (!counts) throw new Error("Summary missing counts");
     return counts;
@@ -230,7 +201,7 @@ export default function useMerchantsViewModel() {
     }
   }, [locale, fetchSummaryOnce, fetchCountByStatus]);
 
-  /* ========== reload list (mendukung override page/perPage) ========== */
+  /* ========== reload list ========== */
   const reload = useCallback(
     async (opts = {}) => {
       const effPage = opts.page ?? page;
@@ -331,13 +302,23 @@ export default function useMerchantsViewModel() {
       setOpLoading(true);
       try {
         let body;
+
         if (payload instanceof FormData) {
           body = payload;
         } else {
           const fd = new FormData();
 
-          const file = payload?.file;
-          if (file) fd.set("image", file);
+          // ==== NEW: crop 1:1 sebelum kirim ====
+          const rawFile = payload?.file || null;
+          if (rawFile) {
+            try {
+              const squared = await cropCenterAndResize1x1(rawFile, 720); // 720x720 default
+              fd.set("image", squared);
+            } catch {
+              // fallback kirim file asli kalau crop gagal
+              fd.set("image", rawFile);
+            }
+          }
 
           const attachmentsNew = Array.isArray(payload?.attachments_new)
             ? payload.attachments_new

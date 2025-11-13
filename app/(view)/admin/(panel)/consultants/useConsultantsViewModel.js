@@ -267,16 +267,20 @@ export default function useConsultantsViewModel() {
     }
   }
 
-  /* ===== UPDATE ===== */
+  /* ===== UPDATE (text + avatar + optional append images) ===== */
   async function updateConsultant(id, payload) {
     setOpLoading(true);
     try {
-      // UPDATE: autoTranslate OFF secara default agar PATCH cepat
-      const fd = toFormData({
-        ...payload,
-        autoTranslate: payload.autoTranslate ?? false,
-        program_images_mode: payload.imagesMode || "replace",
-      });
+      const { imagesMode, ...rest } = payload || {};
+      const toSend = {
+        ...rest,
+        autoTranslate: payload?.autoTranslate ?? false,
+      };
+      if (imagesMode) {
+        toSend.program_images_mode = imagesMode; // "append" / "replace"
+      }
+
+      const fd = toFormData(toSend);
 
       const reqInit = {
         method: "PATCH",
@@ -376,6 +380,35 @@ export default function useConsultantsViewModel() {
     }
   }
 
+  /* ===== UPDATE 1 FOTO PROGRAM (16:9) ===== */
+  async function updateProgramImage(consultantId, imageId, file) {
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+
+      const res = await fetch(
+        `/api/consultants/${encodeURIComponent(
+          consultantId
+        )}/program-images/${encodeURIComponent(imageId)}`,
+        {
+          method: "PUT",
+          body: fd,
+          credentials: "include",
+          cache: "no-store",
+        }
+      );
+
+      const info = await readJsonIfAny(res);
+      if (!res.ok) {
+        return buildErrorResult(res, info, "Gagal mengganti foto");
+      }
+
+      return { ok: true, data: info?.data };
+    } catch (e) {
+      return { ok: false, error: e?.message || "Gagal mengganti foto" };
+    }
+  }
+
   const listError = listErrorObj?.message || "";
 
   return {
@@ -425,6 +458,7 @@ export default function useConsultantsViewModel() {
     updateConsultant,
     deleteConsultant,
     deleteProgramImage,
+    updateProgramImage,
     refresh,
   };
 }

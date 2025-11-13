@@ -1,5 +1,4 @@
-﻿// app/(view)/admin/testimonials/useTestimonialsViewModel.js
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -215,14 +214,33 @@ export default function useTestimonialsViewModel({
   const maybeClientCrop9x16 = async (file) => {
     try {
       const mod = await import("@/app/utils/cropper");
+
+      // 1) Prioritas: cropFileTo9x16Webp -> ambil .file (browser)
+      if (typeof mod.cropFileTo9x16Webp === "function") {
+        const out = await mod.cropFileTo9x16Webp(file, {
+          height: 1920,
+          quality: 90,
+        });
+        if (out?.file instanceof File) return out.file;
+        if (out?.buffer) {
+          // fallback: bentuk File dari buffer
+          return new File(
+            [out.buffer],
+            file.name.replace(/\.[^/.]+$/, "") + ".webp",
+            {
+              type: "image/webp",
+            }
+          );
+        }
+      }
+
+      // 2) Fallback: cropCenterAndResize9x16(heightOnly)
       if (typeof mod.cropCenterAndResize9x16 === "function") {
-        // target panjang sisi terpanjang ~1280px (portrait → tinggi)
-        return await mod.cropCenterAndResize9x16(file, 1280);
+        return await mod.cropCenterAndResize9x16(file, 1920);
       }
-      if (typeof mod.cropTo9x16Webp === "function") {
-        return await mod.cropTo9x16Webp(file, { height: 1280, quality: 0.9 });
-      }
-      return file; // fallback, biar server yang crop
+
+      // 3) fallback final: kirim original (server akan crop)
+      return file;
     } catch {
       return file;
     }

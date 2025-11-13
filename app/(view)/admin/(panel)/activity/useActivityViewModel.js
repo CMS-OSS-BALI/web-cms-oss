@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/lib/swr/fetcher";
+import { cropFileTo16x9Webp } from "@/app/utils/cropper";
 
 /* ===================== Defaults ===================== */
 const DEFAULT_SORT = "sort:asc";
@@ -148,21 +149,55 @@ export default function useActivityViewModel(init = {}) {
 
   const refresh = useCallback(() => mutateList(), [mutateList]);
 
+  /* ===================== File helpers ===================== */
+  async function normalize16x9FileFromPayload(payload) {
+    const rawFile =
+      payload?.file instanceof File
+        ? payload.file
+        : payload?.image instanceof File
+        ? payload.image
+        : payload?.image_file instanceof File
+        ? payload.image_file
+        : null;
+
+    if (!rawFile) return null;
+
+    // Crop ke 16:9 di client (canvas) – server juga masih aman karena hybrid.
+    try {
+      const { file: cropped } = await cropFileTo16x9Webp(rawFile, {
+        width: 1280,
+        quality: 90,
+      });
+      if (cropped instanceof File) return cropped;
+      return rawFile;
+    } catch (e) {
+      console.warn("cropFileTo16x9Webp gagal, pakai file asli:", e);
+      return rawFile;
+    }
+  }
+
+  function stripFileFields(payload = {}) {
+    const clone = { ...payload };
+    delete clone.file;
+    delete clone.image;
+    delete clone.image_file;
+    return clone;
+  }
+
   /* ===================== CRUD ===================== */
   async function createActivity(payload) {
     setOpLoading(true);
     try {
-      const hasFile =
-        payload?.file instanceof File ||
-        payload?.image instanceof File ||
-        payload?.image_file instanceof File;
+      const file = await normalize16x9FileFromPayload(payload);
+      const hasFile = file instanceof File;
 
+      const base = stripFileFields(payload);
       const body = hasFile
         ? toFormData({
-            ...payload,
-            image: payload.file || payload.image || payload.image_file,
+            ...base,
+            image: file,
           })
-        : JSON.stringify(payload);
+        : JSON.stringify(base);
 
       const headers = hasFile
         ? undefined
@@ -186,17 +221,16 @@ export default function useActivityViewModel(init = {}) {
   async function updateActivity(id, payload) {
     setOpLoading(true);
     try {
-      const hasFile =
-        payload?.file instanceof File ||
-        payload?.image instanceof File ||
-        payload?.image_file instanceof File;
+      const file = await normalize16x9FileFromPayload(payload);
+      const hasFile = file instanceof File;
 
+      const base = stripFileFields(payload);
       const body = hasFile
         ? toFormData({
-            ...payload,
-            image: payload.file || payload.image || payload.image_file,
+            ...base,
+            image: file,
           })
-        : JSON.stringify(payload);
+        : JSON.stringify(base);
 
       const headers = hasFile
         ? undefined

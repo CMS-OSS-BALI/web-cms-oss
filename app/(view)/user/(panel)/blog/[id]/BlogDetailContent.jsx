@@ -26,14 +26,39 @@ function useIsNarrow(breakpoint = 768) {
 const ROOT = "blog-detail-page";
 
 /** Gaya ringkas + responsif */
-const styles = {
-  page: { width: "100%", background: "#fff" },
-  container: { width: "min(980px, 92%)", margin: "0 auto" },
+const PAGE_BG =
+  "linear-gradient(180deg, #FFFFFF 0%, #ECF3FF 22%, #FFFFFF 100%)";
 
-  // header spacing
+const styles = {
+  page: {
+    width: "100%",
+    minHeight: "100%",
+    background: PAGE_BG,
+  },
+  container: {
+    width: "100%",
+    margin: "0 auto",
+    padding: "0 clamp(20px, 5vw, 80px)",
+    boxSizing: "border-box",
+  },
+  contentInner: {
+    width: "min(1240px, 100%)",
+    margin: "0 auto",
+  },
+  visualInner: {
+    width: "min(1440px, 100%)",
+    margin: "0 auto",
+    padding: "0 clamp(18px, 5vw, 56px)",
+    boxSizing: "border-box",
+  },
+
   headSpace: { height: 10 },
 
-  titleWrap: { textAlign: "center", margin: "20px 0 8px", marginTop: "-20px" },
+  titleWrap: {
+    textAlign: "center",
+    margin: "20px 0 8px",
+    marginTop: "-20px",
+  },
   titleMain: {
     fontSize: "clamp(22px, 5vw, 40px)",
     fontWeight: 900,
@@ -43,16 +68,15 @@ const styles = {
     lineHeight: 1.15,
   },
   titleSub: {
-    fontSize: "clamp(14px, 3.2vw, 22px)",
-    fontWeight: 800,
+    fontSize: "clamp(14px, 3.2vw, 18px)",
+    fontWeight: 600,
     letterSpacing: "0.03em",
     color: "#0B3E91",
     margin: "6px 0 0",
   },
 
-  // area gambar dengan latar gradient lembut
   visualBlock: {
-    background: "linear-gradient(180deg, #EAF4FF 0%, rgba(234,244,255,0) 60%)",
+    background: PAGE_BG,
     padding: "clamp(12px, 3vw, 18px) 0 clamp(18px, 4vw, 28px)",
     marginTop: 10,
     marginBottom: 8,
@@ -61,31 +85,23 @@ const styles = {
     display: "block",
     width: "100%",
     height: "auto",
-    borderRadius: 8,
-    boxShadow: "0 10px 30px rgba(13, 52, 116, .12)",
+    borderRadius: 18,
+    boxShadow: "0 18px 40px rgba(13, 52, 116, .18)",
   },
 
-  // “News Description”
-  sectionHeadingWrap: { textAlign: "center", margin: "22px 0 8px" },
-  sectionHeading: {
-    fontWeight: 900,
-    letterSpacing: "0.08em",
-    color: "#0B3E91",
-    margin: 0,
-    fontSize: "clamp(14px, 3.2vw, 16px)",
+  mainRow: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 32,
+    marginTop: 24,
+    marginBottom: 24,
   },
-  sectionUnderline: {
-    width: "clamp(120px, 28vw, 160px)",
-    height: 3,
-    background: "#2A66C5",
-    margin: "8px auto 0",
-    borderRadius: 2,
-    opacity: 0.9,
+  leftCol: {
+    flex: "1 1 0",
+    minWidth: 0,
   },
 
-  // body
   article: {
-    marginTop: 18,
     fontSize: "clamp(14px, 3.2vw, 16px)",
     lineHeight: 1.9,
     color: "#0e1726",
@@ -99,13 +115,42 @@ const styles = {
     hyphens: "auto",
   },
 
-  // source & share
+  rightCol: {
+    flex: "0 0 340px",
+    maxWidth: 360,
+    width: "100%",
+  },
+  leadCard: {
+    width: "100%",
+    background: "#ffffff",
+    borderRadius: 14,
+    padding: "16px 18px 18px",
+    boxShadow: "0 24px 50px rgba(15,37,67,0.18)",
+    border: "1px solid #E3EDFF",
+  },
+  leadFieldGroup: {
+    marginBottom: 10,
+  },
+  leadLabel: {
+    display: "block",
+    fontSize: 12,
+    fontWeight: 600,
+    color: "#0F172A",
+    marginBottom: 4,
+  },
+  leadButtonWrap: { marginTop: 4 },
+  leadHelper: {
+    marginTop: 6,
+    fontSize: 11,
+    color: "#94A3B8",
+  },
+
   metaRow: {
     display: "flex",
     flexWrap: "wrap",
     gap: 12,
     alignItems: "center",
-    marginTop: 18,
+    marginTop: 4,
   },
   metaLabel: {
     fontWeight: 800,
@@ -149,13 +194,17 @@ export default function BlogDetailContent({
   image,
   html,
   source,
+  form,
+  submitting,
+  onChange,
+  submitLead,
+  formText, // dari view model (multilingual)
 }) {
   const [shareUrl, setShareUrl] = useState("");
-  const isNarrow = useIsNarrow(768);
+  const isNarrow = useIsNarrow(900);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      // hapus fragment supaya URL lebih bersih
       const url = window.location.href.split("#")[0];
       setShareUrl(url);
     }
@@ -190,23 +239,19 @@ export default function BlogDetailContent({
     if (!shareUrl) return;
     const text = encodeURIComponent(`${shareTitle}\n${shareUrl}`);
     const url = `https://wa.me/?text=${text}`;
-    // di mobile akan buka app WA; desktop buka WhatsApp Web
     window.open(url, "_blank", "noopener,noreferrer");
   }, [shareUrl, shareTitle]);
 
   const onShareInstagram = useCallback(async () => {
     if (!shareUrl) return;
-    // Instagram tidak punya web share resmi.
-    // 1) Jika Web Share API tersedia, gunakan share sheet OS.
     if (typeof navigator !== "undefined" && navigator.share) {
       try {
         await navigator.share({ title: shareTitle, url: shareUrl });
         return;
       } catch {
-        // user cancel / error → fallback ke clipboard
+        // ignore
       }
     }
-    // 2) Fallback: copy link ke clipboard
     try {
       await navigator.clipboard.writeText(`${shareTitle} — ${shareUrl}`);
       message.success("Link berita disalin. Tempel di Instagram bio/story.");
@@ -218,7 +263,9 @@ export default function BlogDetailContent({
   if (loading) {
     return (
       <div style={{ ...styles.page, padding: "40px 0" }}>
-        <div style={styles.container}>Loading…</div>
+        <div style={styles.container}>
+          <div style={styles.contentInner}>Loading…</div>
+        </div>
       </div>
     );
   }
@@ -226,7 +273,9 @@ export default function BlogDetailContent({
     return (
       <div style={{ ...styles.page, padding: "40px 0" }}>
         <div style={styles.container} role="alert" aria-live="assertive">
-          <strong style={{ color: "#ef4444" }}>Gagal memuat:</strong> {error}
+          <div style={styles.contentInner}>
+            <strong style={{ color: "#ef4444" }}>Gagal memuat:</strong> {error}
+          </div>
         </div>
       </div>
     );
@@ -238,22 +287,24 @@ export default function BlogDetailContent({
         style={{ ...styles.headSpace, ...(isNarrow ? { height: 6 } : null) }}
       />
 
+      {/* ===== Title ===== */}
       <section style={styles.container}>
-        {/* Title */}
-        <div
-          style={{
-            ...styles.titleWrap,
-            ...(isNarrow ? { marginTop: 0 } : null),
-          }}
-        >
-          {titleMain ? <h1 style={styles.titleMain}>{titleMain}</h1> : null}
-          {titleSub ? <h2 style={styles.titleSub}>{titleSub}</h2> : null}
+        <div style={styles.contentInner}>
+          <div
+            style={{
+              ...styles.titleWrap,
+              ...(isNarrow ? { marginTop: 0 } : null),
+            }}
+          >
+            {titleMain ? <h1 style={styles.titleMain}>{titleMain}</h1> : null}
+            {titleSub ? <h2 style={styles.titleSub}>{titleSub}</h2> : null}
+          </div>
         </div>
       </section>
 
-      {/* Visual */}
+      {/* ===== Visual ===== */}
       <section style={styles.visualBlock}>
-        <div style={styles.container}>
+        <div style={styles.visualInner}>
           {image ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -262,7 +313,7 @@ export default function BlogDetailContent({
               loading="lazy"
               style={{
                 ...styles.heroImg,
-                ...(isNarrow ? { borderRadius: 6 } : null),
+                ...(isNarrow ? { borderRadius: 12 } : null),
               }}
               onError={(e) => {
                 e.currentTarget.onerror = null;
@@ -273,101 +324,225 @@ export default function BlogDetailContent({
         </div>
       </section>
 
-      {/* News Description */}
+      {/* ===== Konten + Form ===== */}
       <section style={styles.container}>
-        <div style={styles.sectionHeadingWrap}>
-          <h3 style={styles.sectionHeading}>NEWS DESCRIPTION</h3>
-          <div style={styles.sectionUnderline} />
-        </div>
-
-        <article style={styles.article}>
+        <div style={styles.contentInner}>
           <div
-            className="articleInner"
-            style={styles.articleInner}
-            // pastikan HTML sudah disanitasi dari sisi server
-            dangerouslySetInnerHTML={{ __html: html || "" }}
-          />
-        </article>
+            style={{
+              ...styles.mainRow,
+              ...(isNarrow ? { flexDirection: "column", gap: 22 } : null),
+            }}
+          >
+            {/* LEFT: Article */}
+            <div style={styles.leftCol}>
+              <article style={styles.article}>
+                <div
+                  className="articleInner"
+                  style={styles.articleInner}
+                  dangerouslySetInnerHTML={{ __html: html || "" }}
+                />
+              </article>
+            </div>
 
-        {/* Source (opsional) */}
-        {source ? (
-          <div style={{ ...styles.metaRow, marginTop: 18 }}>
-            <div style={styles.metaLabel}>SUMBER:</div>
-            <a
-              href={/^https?:\/\//i.test(source) ? source : `https://${source}`}
-              target="_blank"
-              rel="noreferrer"
-              style={styles.sourceLink}
+            {/* RIGHT: Lead form */}
+            <aside
+              style={{
+                ...styles.rightCol,
+                ...(isNarrow ? { maxWidth: "100%" } : null),
+              }}
             >
-              {source}
-            </a>
+              <div style={styles.leadCard}>
+                <form onSubmit={submitLead} noValidate>
+                  {/* full name */}
+                  <div style={styles.leadFieldGroup}>
+                    <label style={styles.leadLabel} htmlFor="full_name">
+                      {formText.fullNameLabel}
+                    </label>
+                    <input
+                      id="full_name"
+                      name="full_name"
+                      className={`${ROOT}__lead-input`}
+                      placeholder={formText.fullNamePlaceholder}
+                      value={form.full_name}
+                      onChange={onChange}
+                    />
+                  </div>
+
+                  {/* domicile */}
+                  <div style={styles.leadFieldGroup}>
+                    <label style={styles.leadLabel} htmlFor="domicile">
+                      {formText.domicileLabel}
+                    </label>
+                    <input
+                      id="domicile"
+                      name="domicile"
+                      className={`${ROOT}__lead-input`}
+                      placeholder={formText.domicilePlaceholder}
+                      value={form.domicile}
+                      onChange={onChange}
+                    />
+                  </div>
+
+                  {/* whatsapp */}
+                  <div style={styles.leadFieldGroup}>
+                    <label style={styles.leadLabel} htmlFor="whatsapp">
+                      {formText.whatsappLabel}
+                    </label>
+                    <input
+                      id="whatsapp"
+                      name="whatsapp"
+                      className={`${ROOT}__lead-input`}
+                      placeholder={formText.whatsappPlaceholder}
+                      value={form.whatsapp}
+                      onChange={onChange}
+                    />
+                  </div>
+
+                  {/* email */}
+                  <div style={styles.leadFieldGroup}>
+                    <label style={styles.leadLabel} htmlFor="email">
+                      {formText.emailLabel}
+                    </label>
+                    <input
+                      id="email"
+                      name="email"
+                      className={`${ROOT}__lead-input`}
+                      placeholder={formText.emailPlaceholder}
+                      value={form.email}
+                      onChange={onChange}
+                    />
+                  </div>
+
+                  {/* education_last */}
+                  <div style={styles.leadFieldGroup}>
+                    <label style={styles.leadLabel} htmlFor="education_last">
+                      {formText.educationLabel}
+                    </label>
+                    <input
+                      id="education_last"
+                      name="education_last"
+                      className={`${ROOT}__lead-input`}
+                      placeholder={formText.educationPlaceholder}
+                      value={form.education_last}
+                      onChange={onChange}
+                    />
+                  </div>
+
+                  {/* referral_code */}
+                  <div style={styles.leadFieldGroup}>
+                    <label style={styles.leadLabel} htmlFor="referral_code">
+                      {formText.referralLabel}
+                    </label>
+                    <input
+                      id="referral_code"
+                      name="referral_code"
+                      className={`${ROOT}__lead-input`}
+                      placeholder={formText.referralPlaceholder}
+                      value={form.referral_code}
+                      onChange={onChange}
+                    />
+                  </div>
+
+                  <div style={styles.leadButtonWrap}>
+                    <button
+                      type="submit"
+                      className={`${ROOT}__lead-button`}
+                      disabled={submitting}
+                    >
+                      {submitting
+                        ? formText.buttonSubmitting
+                        : formText.buttonSubmit}
+                    </button>
+                  </div>
+
+                  <p style={styles.leadHelper}>{formText.helperText}</p>
+                </form>
+              </div>
+            </aside>
           </div>
-        ) : null}
 
-        {/* Share */}
-        <div style={{ marginTop: 16 }}>
-          <div style={styles.metaLabel}>SHARE BERITA</div>
-          <div style={styles.shareWrap}>
-            {/* Facebook */}
-            <a
-              role="button"
-              tabIndex={0}
-              onClick={(e) => {
-                e.preventDefault();
-                onShareFacebook();
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") onShareFacebook();
-              }}
-              title="Share to Facebook"
-              aria-label="Facebook"
-              style={styles.shareLink}
-            >
-              <FacebookFilled style={styles.shareIcon} />
-            </a>
+          {/* Source (opsional) */}
+          {source ? (
+            <div style={{ ...styles.metaRow, marginTop: 8 }}>
+              <div style={styles.metaLabel}>SUMBER:</div>
+              <a
+                href={
+                  /^https?:\/\//i.test(source) ? source : `https://${source}`
+                }
+                target="_blank"
+                rel="noreferrer"
+                style={styles.sourceLink}
+              >
+                {source}
+              </a>
+            </div>
+          ) : null}
 
-            {/* Instagram (copy link / web share) */}
-            <a
-              role="button"
-              tabIndex={0}
-              onClick={(e) => {
-                e.preventDefault();
-                onShareInstagram();
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") onShareInstagram();
-              }}
-              title="Share to Instagram"
-              aria-label="Instagram"
-              style={styles.shareLink}
-            >
-              <InstagramOutlined style={styles.shareIcon} />
-            </a>
+          {/* Share */}
+          <div style={{ marginTop: 16, marginBottom: 12 }}>
+            <div style={styles.metaLabel}>SHARE BERITA</div>
+            <div style={styles.shareWrap}>
+              {/* Facebook */}
+              <a
+                role="button"
+                tabIndex={0}
+                onClick={(e) => {
+                  e.preventDefault();
+                  onShareFacebook();
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") onShareFacebook();
+                }}
+                title="Share to Facebook"
+                aria-label="Facebook"
+                style={styles.shareLink}
+              >
+                <FacebookFilled style={styles.shareIcon} />
+              </a>
 
-            {/* WhatsApp */}
-            <a
-              role="button"
-              tabIndex={0}
-              onClick={(e) => {
-                e.preventDefault();
-                onShareWhatsApp();
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") onShareWhatsApp();
-              }}
-              title="Share to WhatsApp"
-              aria-label="WhatsApp"
-              style={styles.shareLink}
-            >
-              <WhatsAppOutlined style={styles.shareIcon} />
-            </a>
+              {/* Instagram */}
+              <a
+                role="button"
+                tabIndex={0}
+                onClick={(e) => {
+                  e.preventDefault();
+                  onShareInstagram();
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") onShareInstagram();
+                }}
+                title="Share to Instagram"
+                aria-label="Instagram"
+                style={styles.shareLink}
+              >
+                <InstagramOutlined style={styles.shareIcon} />
+              </a>
+
+              {/* WhatsApp */}
+              <a
+                role="button"
+                tabIndex={0}
+                onClick={(e) => {
+                  e.preventDefault();
+                  onShareWhatsApp();
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") onShareWhatsApp();
+                }}
+                title="Share to WhatsApp"
+                aria-label="WhatsApp"
+                style={styles.shareLink}
+              >
+                <WhatsAppOutlined style={styles.shareIcon} />
+              </a>
+            </div>
           </div>
         </div>
       </section>
 
       <div style={{ height: 28 }} />
 
-      {/* ====== Global tweaks khusus konten HTML agar responsif ====== */}
+      {/* ====== Global tweaks ====== */}
       <style jsx global>{`
         .${ROOT} .articleInner img,
         .${ROOT} .articleInner video {
@@ -415,6 +590,56 @@ export default function BlogDetailContent({
         .${ROOT} .articleInner ol {
           padding-left: 18px;
           margin: 0 0 16px;
+        }
+
+        .${ROOT}__lead-input {
+          width: 100%;
+          box-sizing: border-box;
+          border-radius: 6px;
+          border: 1px solid #e2e8f0;
+          background: #f9fbff;
+          padding: 8px 10px;
+          font-size: 13px;
+          outline: none;
+          transition: border-color 0.18s ease, box-shadow 0.18s ease,
+            background 0.18s ease;
+        }
+        .${ROOT}__lead-input::placeholder {
+          color: #cbd5f5;
+        }
+        .${ROOT}__lead-input:focus {
+          border-color: #0b56c9;
+          box-shadow: 0 0 0 1px rgba(11, 86, 201, 0.18);
+          background: #ffffff;
+        }
+
+        .${ROOT}__lead-button {
+          width: 100%;
+          border: none;
+          border-radius: 6px;
+          padding: 9px 14px;
+          font-size: 14px;
+          font-weight: 600;
+          color: #ffffff;
+          background: #0b56c9;
+          box-shadow: 0 12px 30px rgba(11, 86, 201, 0.45);
+          cursor: pointer;
+          transition: transform 0.15s ease, box-shadow 0.15s ease,
+            background 0.15s ease;
+        }
+        .${ROOT}__lead-button:hover:not(:disabled) {
+          background: #084a94;
+          transform: translateY(-1px);
+          box-shadow: 0 16px 34px rgba(11, 86, 201, 0.5);
+        }
+        .${ROOT}__lead-button:active:not(:disabled) {
+          transform: translateY(0);
+          box-shadow: 0 10px 24px rgba(11, 86, 201, 0.42);
+        }
+        .${ROOT}__lead-button:disabled {
+          opacity: 0.65;
+          cursor: default;
+          box-shadow: none;
         }
 
         @media (max-width: 768px) {

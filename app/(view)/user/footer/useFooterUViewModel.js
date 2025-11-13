@@ -52,33 +52,50 @@ export default function useFooterUViewModel(opts = {}) {
       {
         title: t("Kampus", "Campus"),
         links: [
-          { label: "Student Visa", href: withLang("/user/visa#student") },
-          { label: "Visitor/Tourist", href: withLang("/user/visa#visitor") },
-          { label: "Visa Extention", href: withLang("/user/visa#extension") },
-          { label: "Scholarship", href: withLang("/user/visa#scholarship") },
+          { label: t("Tentang OSS", "About OSS"), href: withLang("/user/aboutus") },
+          {
+            label: t("Kampus Mitra", "Partner Colleges"),
+            href: withLang("/user/college"),
+          },
+          {
+            label: t("Mitra Dalam Negeri", "Domestic Partners"),
+            href: withLang("/user/mitra-dalam-negeri"),
+          },
+          { label: "Blog", href: withLang("/user/blog") },
         ],
       },
       {
         title: t("Layanan", "Services"),
         links: [
-          { label: "Overseas Study", href: withLang("/user/overseas-study") },
+          {
+            label: t("Studi Luar Negeri", "Overseas Study"),
+            href: withLang("/user/overseas-study"),
+          },
           { label: "Visa Apply", href: withLang("/user/visa-apply") },
           { label: "English Course", href: withLang("/user/english-course") },
           {
             label: t("Akomodasi", "Accommodation"),
             href: withLang("/user/accommodation"),
           },
+          { label: "Doc Translate", href: withLang("/user/doc.translate") },
         ],
       },
       {
         title: t("Dukungan", "Support"),
         links: [
           {
-            label: t("Career With US", "Career With US"),
-            href: withLang("/user/career?menu=career"),
+            label: t("Karier di OSS", "Career With OSS"),
+            href: withLang("/user/career"),
           },
-          { label: "Event", href: withLang("/user/event") },
-          { label: "Mitra", href: withLang("/user/partners") },
+          { label: "Events", href: withLang("/user/events") },
+          {
+            label: t("Form Mitra", "Partner Form"),
+            href: withLang("/user/form-mitra"),
+          },
+          {
+            label: t("Form Representative", "Representative Form"),
+            href: withLang("/user/form-rep"),
+          },
           { label: "Calculator", href: withLang("/user/calculator") },
         ],
       },

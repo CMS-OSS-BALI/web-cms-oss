@@ -6,6 +6,7 @@ import prisma from "@/lib/prisma";
 import { translate } from "@/app/utils/geminiTranslator";
 import storageClient from "@/app/utils/storageClient";
 import { randomUUID } from "crypto";
+import { cropFileTo1x1Webp } from "@/app/utils/cropper";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -161,6 +162,37 @@ async function uploadPublicFile(file, folder) {
     isPublic: true,
   });
   return res?.publicUrl || null;
+}
+
+/* =============== NEW: upload square 1:1 =============== */
+async function uploadLogoSquare1x1(file, folder) {
+  await assertImageFileOrThrow(file);
+
+  // SVG tidak dicrop (biarkan asli)
+  if (String(file.type).toLowerCase() === "image/svg+xml") {
+    return uploadPublicFile(file, folder);
+  }
+
+  // Crop ke 1:1 → WebP (server pakai sharp)
+  const processed = await cropFileTo1x1Webp(file, { size: 1080, quality: 92 });
+  let { buffer, contentType } = processed || {};
+  if (!buffer) {
+    const ab = await file.arrayBuffer();
+    buffer = Buffer.from(ab);
+  } else if (buffer instanceof ArrayBuffer) {
+    buffer = Buffer.from(buffer);
+  } else if (ArrayBuffer.isView(buffer)) {
+    buffer = Buffer.from(buffer.buffer);
+  }
+  if (!Buffer.isBuffer(buffer)) buffer = Buffer.from(buffer);
+  if (!buffer?.length) throw new Error("EMPTY_FILE_BUFFER");
+
+  const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.webp`;
+  const outFile = new File([buffer], filename, {
+    type: contentType || "image/webp",
+  });
+
+  return uploadPublicFile(outFile, folder);
 }
 
 /* =========================
@@ -501,7 +533,7 @@ export async function GET(req) {
   }
 }
 
-/* ---------- POST (PUBLIC, + upload ke storage baru) ---------- */
+/* ---------- POST (PUBLIC, + upload ke storage baru, + CROP 1:1) ---------- */
 export async function POST(req) {
   try {
     const { body, imageFile, attachments } = await readBodyAndFiles(req);
@@ -533,7 +565,13 @@ export async function POST(req) {
       );
     if (!nik)
       return json(
-        { error: { code: "BAD_REQUEST", message: "NIK wajib diisi", field: "nik" } },
+        {
+          error: {
+            code: "BAD_REQUEST",
+            message: "NIK wajib diisi",
+            field: "nik",
+          },
+        },
         { status: 400 }
       );
     if (nik.length !== NIK_LENGTH)
@@ -651,11 +689,10 @@ export async function POST(req) {
       },
     });
 
-    // 2) Upload logo (opsional) DI LUAR transaksi, lalu update kolom
+    // 2) Upload logo (opsional) DI LUAR transaksi, crop 1:1
     if (imageFile && !image_url) {
       try {
-        await assertImageFileOrThrow(imageFile);
-        const publicUrl = await uploadPublicFile(
+        const publicUrl = await uploadLogoSquare1x1(
           imageFile,
           `mitra/${created.id}`
         );

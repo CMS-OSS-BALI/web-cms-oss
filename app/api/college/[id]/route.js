@@ -7,6 +7,8 @@ import { translate } from "@/app/utils/geminiTranslator";
 
 // Storage client baru (konsisten dengan consultants)
 import storageClient from "@/app/utils/storageClient";
+// Cropper 1:1 WebP
+import { cropFileTo1x1Webp } from "@/app/utils/cropper";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -179,7 +181,7 @@ async function readBodyAndFile(req) {
   return { body, file: null };
 }
 
-/* ---------- Upload (pakai storageClient) ---------- */
+/* ---------- Upload (pakai storageClient + CROP 1:1 WebP) ---------- */
 const ALLOWED_IMAGE_TYPES = new Set([
   "image/jpeg",
   "image/png",
@@ -198,13 +200,47 @@ async function assertImageFileOrThrow(file) {
       : (await file.arrayBuffer()).byteLength;
   if (size > MAX_UPLOAD_SIZE) throw new Error("PAYLOAD_TOO_LARGE");
 }
+
+function cropResultToFileLike(cropResult, collegeId) {
+  if (cropResult?.file && typeof cropResult.file.arrayBuffer === "function") {
+    return cropResult.file;
+  }
+  if (typeof Buffer === "undefined") {
+    throw new Error("Buffer is not available in this environment.");
+  }
+  const raw = cropResult?.buffer;
+  const nodeBuffer =
+    raw && Buffer.isBuffer(raw) ? raw : Buffer.from(raw || []);
+  const slice = nodeBuffer.buffer.slice(
+    nodeBuffer.byteOffset,
+    nodeBuffer.byteOffset + nodeBuffer.byteLength
+  );
+  const ext = cropResult?.ext || "webp";
+  return {
+    name: `logo-${collegeId || "new"}.${ext}`,
+    type: cropResult?.contentType || "image/webp",
+    size: nodeBuffer.byteLength,
+    arrayBuffer: async () => slice,
+  };
+}
+
 async function uploadCollegeLogo(file, collegeId) {
   if (!file) return null;
+
   await assertImageFileOrThrow(file);
-  const res = await storageClient.uploadBufferWithPresign(file, {
+
+  const cropped = await cropFileTo1x1Webp(file, {
+    size: 720,
+    quality: 90,
+  });
+
+  const fileLike = cropResultToFileLike(cropped, collegeId);
+
+  const res = await storageClient.uploadBufferWithPresign(fileLike, {
     folder: `${PUBLIC_PREFIX}/colleges/${collegeId}`,
     isPublic: true,
   });
+
   return res.publicUrl || null;
 }
 
@@ -362,6 +398,7 @@ export async function PATCH(req, { params }) {
     let newLogoUrl = null;
     if (file) {
       try {
+        // FILE → crop 1:1 dan upload
         newLogoUrl = await uploadCollegeLogo(file, id);
       } catch (e) {
         if (e?.message === "UNSUPPORTED_TYPE")
@@ -383,6 +420,7 @@ export async function PATCH(req, { params }) {
           { message: "logo_url must be at most 1024 characters" },
           { status: 400 }
         );
+      // string logo_url tidak di-crop
       newLogoUrl = trimmed || null;
     }
     if (newLogoUrl !== null) patch.logo_url = newLogoUrl;

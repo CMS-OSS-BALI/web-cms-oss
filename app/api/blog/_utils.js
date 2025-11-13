@@ -6,6 +6,8 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
 // === Storage client (baru, sama seperti consultants)
 import storageClient from "@/app/utils/storageClient";
+// === Cropper (16:9 WebP untuk blog image)
+import { cropFileTo16x9Webp } from "@/app/utils/cropper";
 
 /* =========================
    Config & Defaults
@@ -226,11 +228,12 @@ export async function readBodyAndFile(req) {
 }
 
 /* =========================
-   Upload (pakai storageClient)
+   Upload (pakai storageClient + cropper 16:9)
 ========================= */
 async function assertImageFileOrThrow(file) {
   const type = file?.type || "";
   if (!ALLOWED_IMAGE_TYPES.has(type)) throw new Error("UNSUPPORTED_TYPE");
+
   const size =
     typeof file?.size === "number"
       ? file.size
@@ -238,16 +241,60 @@ async function assertImageFileOrThrow(file) {
   if (size > MAX_UPLOAD_SIZE) throw new Error("PAYLOAD_TOO_LARGE");
 }
 
-/** Upload gambar blog → simpan URL publik langsung di DB */
+/**
+ * Upload gambar blog:
+ *  - Validasi tipe & ukuran
+ *  - Crop center 16:9 + resize (Sharp di server / Canvas di client)
+ *  - Encode ke WebP
+ *  - Upload via storageClient.uploadBufferWithPresign
+ */
 export async function uploadBlogImage(file, blogId) {
   if (!(file instanceof File)) throw new Error("NO_FILE");
   await assertImageFileOrThrow(file);
-  const res = await storageClient.uploadBufferWithPresign(file, {
+
+  // Crop ke 16:9 WebP (server: pakai sharp, client: canvas)
+  const cropped = await cropFileTo16x9Webp(file, {
+    width: 1280, // thumbnail/hero blog standar 1280x720
+    quality: 90,
+  });
+
+  const fileLike = ensureFileLike(cropped, blogId);
+
+  const res = await storageClient.uploadBufferWithPresign(fileLike, {
     folder: `${PUBLIC_PREFIX}/blog/${blogId}`,
     isPublic: true,
   });
+
   if (!res?.publicUrl) throw new Error("UPLOAD_FAILED");
   return res.publicUrl; // simpan URL publik langsung
+}
+
+function ensureFileLike(cropResult, blogId) {
+  if (
+    cropResult?.file &&
+    typeof cropResult.file.arrayBuffer === "function" &&
+    typeof cropResult.file.size === "number"
+  ) {
+    return cropResult.file;
+  }
+  if (typeof Buffer === "undefined") {
+    throw new Error("Buffer is not available in this environment.");
+  }
+  const raw = cropResult?.buffer;
+  const nodeBuffer =
+    raw && Buffer.isBuffer(raw) ? raw : Buffer.from(raw || []);
+  const slice = nodeBuffer.buffer.slice(
+    nodeBuffer.byteOffset,
+    nodeBuffer.byteOffset + nodeBuffer.byteLength
+  );
+  const ext = cropResult?.ext || "webp";
+  const type = cropResult?.contentType || "image/webp";
+  return {
+    name: `blog-${blogId || "new"}.${ext}`,
+    type,
+    size: nodeBuffer.byteLength,
+    arrayBuffer: async () => slice,
+  };
 }
 
 /* =========================

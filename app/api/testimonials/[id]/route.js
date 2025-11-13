@@ -4,7 +4,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
 import { randomUUID } from "crypto";
-import { cropFileTo16x9Webp } from "@/app/utils/cropper";
+import { cropFileTo9x16Webp } from "@/app/utils/cropper";
 
 // Storage client baru
 import storageClient from "@/app/utils/storageClient";
@@ -153,9 +153,9 @@ function parseId(params) {
 }
 
 /* =========================
-   Upload (crop 16:9 → WebP)
+   Upload (crop 9:16 → WebP)
 ========================= */
-async function uploadTestimonialImage16x9(file) {
+async function uploadTestimonialImage9x16(file) {
   if (typeof File === "undefined" || !(file instanceof File)) {
     throw new Error("NO_FILE");
   }
@@ -167,9 +167,8 @@ async function uploadTestimonialImage16x9(file) {
       : (await file.arrayBuffer()).byteLength;
   if (size > MAX_UPLOAD_SIZE) throw new Error("PAYLOAD_TOO_LARGE");
 
-  const processed = await cropFileTo16x9Webp(file, {
-    width: 1280,
-    height: 720,
+  const processed = await cropFileTo9x16Webp(file, {
+    height: 1920,
     quality: 90,
   });
 
@@ -406,7 +405,7 @@ export async function PATCH(req, { params }) {
   let newPhotoUrl = undefined;
   if (uploadFile && typeof File !== "undefined" && uploadFile instanceof File) {
     try {
-      newPhotoUrl = await uploadTestimonialImage16x9(uploadFile); // URL publik
+      newPhotoUrl = await uploadTestimonialImage9x16(uploadFile); // URL publik
     } catch (e) {
       if (e?.message === "PAYLOAD_TOO_LARGE")
         return NextResponse.json({ message: "Maksimal 10MB" }, { status: 413 });

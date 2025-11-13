@@ -206,7 +206,6 @@ export async function PATCH(req, { params }) {
                         updated_at: new Date(),
                       },
                       create: {
-                        id_aktivitas: id,
                         locale: DEFAULT_LOCALE,
                         name: String(name_id ?? "(no title)").slice(0, 191),
                         description: description_id ?? null,
@@ -233,7 +232,6 @@ export async function PATCH(req, { params }) {
                         updated_at: new Date(),
                       },
                       create: {
-                        id_aktivitas: id,
                         locale: EN_LOCALE,
                         name: String(name_en ?? "(no title)").slice(0, 191),
                         description: description_en ?? null,

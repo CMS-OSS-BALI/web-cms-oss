@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Typography } from "antd";
 import { Swiper, SwiperSlide } from "swiper/react";
-import { Autoplay, FreeMode } from "swiper/modules";
+import { Autoplay } from "swiper/modules";
 import "swiper/css";
 
 const { Paragraph } = Typography;
@@ -156,14 +156,22 @@ const styles = {
 
   /* ===== HERO / VISION / MISSION / VIDEO ===== */
   heroWrap: {
-    paddingTop: "clamp(16px, 6vw, 150px)",
-    paddingBottom: "clamp(40px, 10vw, 72px)",
+    paddingTop: "clamp(16px, 3.5vw, 90px)",
+    paddingBottom: "clamp(32px, 7vw, 68px)",
     marginBottom: -75,
-    marginTop: 20,
+    marginTop: 0,
     position: "relative",
     isolation: "isolate",
+    minHeight: "min(620px, 90vh)",
+    display: "flex",
+    alignItems: "center",
   },
-  heroGrid: { display: "grid", gridTemplateColumns: "1.1fr .9fr", gap: "28px" },
+  heroGrid: {
+    display: "grid",
+    gridTemplateColumns: "1.1fr .9fr",
+    gap: "28px",
+    alignItems: "center",
+  },
   heroTitle: {
     color: BRAND_BLUE,
     fontWeight: 900,
@@ -194,7 +202,8 @@ const styles = {
     display: "grid",
     placeItems: "center",
     minHeight: 280,
-    transform: "translateY(-90px)",
+    paddingTop: "clamp(0px, 4vw, 30px)",
+    paddingBottom: "clamp(0px, 3vw, 24px)",
   },
   heroBgCircle: {
     position: "absolute",
@@ -474,6 +483,34 @@ export default function AboutUsContent({
   const imgH = Math.round((slideW * 9) / 16);
 
   const activityItems = Array.isArray(activities.items) ? activities.items : [];
+
+  // === CONFIG SWIPER AKTIVITAS (mengikuti referensi country) ===
+  const activityLoop = activityItems.length > 1;
+  const activitySpeed = useMemo(() => {
+    if (reduced) return 600;
+    const base = Math.max(1, activityItems.length);
+    const computed = base * 900;
+    return Math.max(5000, Math.min(14000, computed));
+  }, [activityItems.length, reduced]);
+
+  const activityAutoplay = useMemo(
+    () =>
+      activityLoop && !reduced
+        ? {
+            delay: 0,
+            disableOnInteraction: false,
+            pauseOnMouseEnter: true,
+            waitForTransition: false,
+          }
+        : false,
+    [activityLoop, reduced]
+  );
+
+  const activitySwiperKey = useMemo(
+    () => `${activityLoop ? "loop" : "single"}-${activityItems.length}`,
+    [activityLoop, activityItems.length]
+  );
+
   const [play, setPlay] = useState(false);
   const embedUrl = useMemo(() => toEmbed(video?.url || ""), [video?.url]);
   const thumbUrl = useMemo(() => toThumb(video?.url || ""), [video?.url]);
@@ -754,31 +791,27 @@ export default function AboutUsContent({
         </h2>
 
         <Swiper
+          key={activitySwiperKey}
           className={ACT_SWIPER_CLASS}
           style={styles.activity3.fullBleed}
-          modules={[Autoplay, FreeMode]}
+          modules={[Autoplay]}
           slidesPerView="auto"
           spaceBetween={isMobile ? 12 : isTablet ? 16 : 18}
-          loop
-          speed={reduced ? 1800 : 5200}
-          allowTouchMove
-          slidesOffsetBefore={0}
-          slidesOffsetAfter={0}
-          autoplay={
-            reduced
-              ? false
-              : {
-                  delay: 0,
-                  disableOnInteraction: false,
-                  reverseDirection: false,
-                  pauseOnMouseEnter: true,
-                }
+          loop={activityLoop}
+          loopAdditionalSlides={
+            activityLoop ? Math.max(10, activityItems.length) : 0
           }
-          freeMode={{ enabled: true, momentum: false, sticky: false }}
+          speed={activitySpeed}
+          allowTouchMove={activityLoop}
+          autoplay={activityAutoplay}
+          observer
+          observeParents
+          watchSlidesProgress
+          preloadImages={false}
         >
           {activityItems.map((a, idx) => (
             <SwiperSlide
-              key={a.id}
+              key={a.id || idx}
               className="reveal"
               data-anim="up"
               style={{
@@ -961,7 +994,7 @@ export default function AboutUsContent({
           }
         }
 
-        /* Swiper base */
+        /* Swiper base for Activity (marquee style) */
         .${ACT_SWIPER_CLASS} {
           overflow: hidden;
         }

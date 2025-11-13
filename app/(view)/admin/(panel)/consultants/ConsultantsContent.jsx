@@ -456,7 +456,7 @@ export default function ConsultantsContent({ vm }) {
                           width: "100%",
                           height: "100%",
                           objectFit: "cover",
-                          borderRadius: "50%",
+                          borderRadius: "inherit",
                         }}
                       />
                     ) : (
@@ -577,7 +577,7 @@ export default function ConsultantsContent({ vm }) {
                             width: "100%",
                             height: "100%",
                             objectFit: "cover",
-                            borderRadius: "50%",
+                            borderRadius: "inherit",
                           }}
                         />
                       ) : (
@@ -714,7 +714,7 @@ export default function ConsultantsContent({ vm }) {
                       width: "100%",
                       height: "100%",
                       objectFit: "cover",
-                      borderRadius: "50%",
+                      borderRadius: "inherit",
                     }}
                   />
                 ) : (
@@ -782,7 +782,7 @@ export default function ConsultantsContent({ vm }) {
   );
 }
 
-/* ===== Styles (sudah rapih) ===== */
+/* ===== Styles (updated avatar 9:16) ===== */
 const styles = {
   cardOuter: {
     background: "#ffffff",
@@ -881,16 +881,18 @@ const styles = {
 
   avatarSmImg: {
     width: 40,
-    height: 40,
-    borderRadius: "50%",
+    aspectRatio: "9 / 16",
+    height: "auto",
+    borderRadius: 10,
     objectFit: "cover",
     border: "2px solid #e6eeff",
     boxShadow: "0 2px 6px rgba(11,86,201,0.12)",
   },
   avatarSmFallback: {
     width: 40,
-    height: 40,
-    borderRadius: "50%",
+    aspectRatio: "9 / 16",
+    height: "auto",
+    borderRadius: 10,
     display: "grid",
     placeItems: "center",
     fontWeight: 700,
@@ -941,8 +943,9 @@ const styles = {
   },
   avatarCircle: {
     width: 220,
-    height: 220,
-    borderRadius: "50%",
+    aspectRatio: "9 / 16",
+    height: "auto",
+    borderRadius: 24,
     border: "2px dashed #c0c8d8",
     background: "transparent",
     display: "grid",

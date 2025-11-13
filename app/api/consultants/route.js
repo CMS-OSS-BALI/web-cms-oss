@@ -6,6 +6,7 @@ import prisma from "@/lib/prisma";
 import { randomUUID } from "crypto";
 import { translate } from "@/app/utils/geminiTranslator";
 import storageClient from "@/app/utils/storageClient";
+import { cropFileTo9x16Webp } from "@/app/utils/cropper";
 
 /* =========================
    Runtime & Defaults
@@ -143,17 +144,37 @@ async function assertImageFileOrThrow(file) {
   if (size > MAX_UPLOAD_SIZE) throw new Error("PAYLOAD_TOO_LARGE");
 }
 
+/**
+ * Semua gambar program dikrop 9:16 (WebP) sebelum upload
+ */
 async function uploadConsultantProgramImage(file, consultantId) {
   await assertImageFileOrThrow(file);
-  const res = await storageClient.uploadBufferWithPresign(file, {
+
+  // crop 9:16 → WebP (server: pakai sharp)
+  const { file: croppedFile } = await cropFileTo9x16Webp(file, {
+    height: 1920, // boleh diubah kalau perlu
+    quality: 90,
+  });
+
+  const res = await storageClient.uploadBufferWithPresign(croppedFile, {
     folder: `${PUBLIC_PREFIX}/consultants/${consultantId}`,
     isPublic: true,
   });
   return res.publicUrl || null;
 }
+
+/**
+ * Foto profil konsultan juga dikrop 9:16
+ */
 async function uploadConsultantProfileImage(file, consultantId) {
   await assertImageFileOrThrow(file);
-  const res = await storageClient.uploadBufferWithPresign(file, {
+
+  const { file: croppedFile } = await cropFileTo9x16Webp(file, {
+    height: 1920,
+    quality: 90,
+  });
+
+  const res = await storageClient.uploadBufferWithPresign(croppedFile, {
     folder: `${PUBLIC_PREFIX}/consultants/${consultantId}`,
     isPublic: true,
   });

@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
 import storageClient from "@/app/utils/storageClient";
+import { cropFileTo16x9Webp } from "@/app/utils/cropper";
 
 /* -------------------- config -------------------- */
 export const dynamic = "force-dynamic";
@@ -157,10 +158,35 @@ async function assertImageFileOrThrow(file) {
   if (size > MAX_UPLOAD_SIZE) throw new Error("PAYLOAD_TOO_LARGE");
 }
 
+/**
+ * Upload gambar aktivitas:
+ * - Server akan crop center ke rasio 16:9 (pakai cropper.js helper).
+ * - Output di-convert ke WebP (via Sharp di server).
+ * - Kalau proses crop gagal, fallback upload file original.
+ */
 export async function uploadAktivitasImage(file, id) {
   if (!file) return null;
   await assertImageFileOrThrow(file);
-  const res = await storageClient.uploadBufferWithPresign(file, {
+
+  let fileToUpload = file;
+
+  try {
+    // Crop ke 16:9 dan resize (default width 1280, bisa diatur)
+    const { file: croppedFile } = await cropFileTo16x9Webp(file, {
+      width: 1280,
+      quality: 90,
+    });
+    if (croppedFile) {
+      fileToUpload = croppedFile;
+    }
+  } catch (err) {
+    console.warn(
+      "cropFileTo16x9Webp gagal, fallback ke file original:",
+      err?.message || err
+    );
+  }
+
+  const res = await storageClient.uploadBufferWithPresign(fileToUpload, {
     folder: `${PUBLIC_PREFIX}/aktivitas/${id || "misc"}`,
     isPublic: true,
   });

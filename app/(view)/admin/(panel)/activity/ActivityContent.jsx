@@ -342,14 +342,14 @@ export default function ActivityContent({ vm: externalVm, locale = "id" }) {
     >
       {contextHolder}
 
-      {/* paksa rasio 9:16 untuk Upload */}
+      {/* paksa frame 16:9 untuk Upload (landscape) */}
       <style jsx global>{`
-        .portrait-uploader.ant-upload.ant-upload-select-picture-card {
-          width: 180px !important;
-          height: 320px !important;
+        .landscape-uploader.ant-upload.ant-upload-select-picture-card {
+          width: 320px !important;
+          height: 180px !important;
           padding: 0 !important;
         }
-        .portrait-uploader .ant-upload {
+        .landscape-uploader .ant-upload {
           width: 100% !important;
           height: 100% !important;
         }
@@ -570,7 +570,7 @@ export default function ActivityContent({ vm: externalVm, locale = "id" }) {
                   listType="picture-card"
                   showUploadList={false}
                   beforeUpload={beforeUploadCreate}
-                  className="portrait-uploader"
+                  className="landscape-uploader"
                 >
                   <div style={L.coverBox}>
                     {coverPrevCreate ? (
@@ -580,7 +580,7 @@ export default function ActivityContent({ vm: externalVm, locale = "id" }) {
                         style={L.coverImg}
                       />
                     ) : (
-                      <div style={L.coverPlaceholder}>+ Gambar (9:16)</div>
+                      <div style={L.coverPlaceholder}>+ Gambar (16:9)</div>
                     )}
                   </div>
                 </Upload>
@@ -659,7 +659,7 @@ export default function ActivityContent({ vm: externalVm, locale = "id" }) {
                     listType="picture-card"
                     showUploadList={false}
                     beforeUpload={beforeUploadEdit}
-                    className="portrait-uploader"
+                    className="landscape-uploader"
                   >
                     <div style={L.coverBox}>
                       {coverPrevEdit ? (
@@ -669,7 +669,7 @@ export default function ActivityContent({ vm: externalVm, locale = "id" }) {
                           style={L.coverImg}
                         />
                       ) : (
-                        <div style={L.coverPlaceholder}>+ Gambar (9:16)</div>
+                        <div style={L.coverPlaceholder}>+ Gambar (16:9)</div>
                       )}
                     </div>
                   </Upload>

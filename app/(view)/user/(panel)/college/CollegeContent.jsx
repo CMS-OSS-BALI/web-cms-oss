@@ -385,14 +385,18 @@ const styles = {
       borderRadius: 999,
       margin: "8px auto 0",
     },
+
+    // ⬇️ SQUARE CARD 1:1
     card: {
       background: "#fff",
       borderRadius: 18,
       boxShadow: "0 10px 26px rgba(15,23,42,.10)",
       padding: 18,
-      height: 132,
-      display: "grid",
-      placeItems: "center",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      width: "100%",
+      aspectRatio: "1 / 1", // <- memastikan kotak 1:1
       transition: "transform .18s ease, box-shadow .18s ease",
     },
     logoBox: {

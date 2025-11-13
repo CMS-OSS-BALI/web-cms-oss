@@ -1,9 +1,30 @@
-// app/utils/cropper.js  (BROWSER ONLY)
+// app/utils/cropper.js  (BROWSER + SERVER HYBRID)
 /**
  * Crop center sesuai rasio lalu resize ke target size.
  * - Menghormati EXIF orientation (via createImageBitmap bila tersedia).
- * - Prefer WebP bila didukung, fallback ke JPEG/PNG.
+ * - Client: pakai Canvas; Server: gunakan Sharp pada helper khusus WebP.
+ * - Prefer WebP bila didukung, fallback ke JPEG/PNG di client.
  */
+
+function makePseudoFileFromBuffer(buffer, { name, type }) {
+  if (typeof Buffer === "undefined") {
+    throw new Error("Buffer is not available in this environment.");
+  }
+  const nodeBuffer =
+    buffer && Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer || []);
+  const size = nodeBuffer.byteLength;
+  const slice = nodeBuffer.buffer.slice(
+    nodeBuffer.byteOffset,
+    nodeBuffer.byteOffset + nodeBuffer.byteLength
+  );
+  return {
+    name,
+    type,
+    size,
+    arrayBuffer: async () => slice,
+  };
+}
+
 export async function cropCenterAndResize(
   imageFile,
   {
@@ -115,7 +136,7 @@ export async function cropCenterAndResize(
 
     if (!asFile) return blob;
 
-    const ext = pickExt(blob.type || typeWanted || "image/jpeg");
+    const ext = pickExt(blob.type || typeWanted);
     const base = imageFile.name.replace(/\.[^/.]+$/, "");
     const newName = `${base}_${aw}x${ah}_${canvas.width}x${canvas.height}.${ext}`;
     return new File([blob], newName, { type: blob.type || typeWanted });
@@ -131,7 +152,7 @@ export async function cropCenterAndResize(
   }
 }
 
-/* Helpers untuk rasio spesifik */
+/* ===== Helpers untuk rasio spesifik (Canvas/Client) ===== */
 export function cropCenterAndResize16x9(imageFile, width = 1280, height) {
   return cropCenterAndResize(imageFile, { aspect: "16:9", width, height });
 }
@@ -147,7 +168,7 @@ export function cropCenterAndResize1x1(imageFile, size = 1080) {
 }
 
 /* =========================
-   Util internal
+   Util internal (client)
 ========================= */
 function parseAspect(a) {
   if (typeof a === "number") return { aw: a, ah: 1 };
@@ -238,11 +259,21 @@ async function preferWebP() {
   return _webpSupport;
 }
 
+/* ===========================================================
+   HYBRID (SERVER via sharp / CLIENT via canvas) -> Return WebP
+   - Server: { buffer, contentType: "image/webp", ext: "webp" }
+   - Client: { file, buffer, contentType, ext }
+   Catatan: Di server (route handlers) gunakan object.buffer untuk upload.
+=========================================================== */
+
+/* ===== 16:9 WebP ===== */
 export async function cropFileTo16x9Webp(
   file,
   { width = 1280, height, quality = 90 } = {}
 ) {
-  const targetWidth = Number.isFinite(width) ? Math.max(1, Math.trunc(width)) : 1280;
+  const targetWidth = Number.isFinite(width)
+    ? Math.max(1, Math.trunc(width))
+    : 1280;
   const targetHeight = Number.isFinite(height)
     ? Math.max(1, Math.trunc(height))
     : Math.round((targetWidth * 9) / 16);
@@ -265,13 +296,20 @@ export async function cropFileTo16x9Webp(
         .webp({ quality: q })
         .toBuffer();
       return {
+        file: makePseudoFileFromBuffer(processed, {
+          name: `crop-${targetWidth}x${targetHeight}.webp`,
+          type: "image/webp",
+        }),
         buffer: processed,
         contentType: "image/webp",
         ext: "webp",
       };
-    } catch (err) {
-      // Fallback: gunakan file asli tanpa transform supaya tetap ter-upload.
+    } catch (_) {
       return {
+        file: makePseudoFileFromBuffer(inputBuffer, {
+          name: `crop-${targetWidth}x${targetHeight}.${extFromFile(file) || pickExt(file.type || "") || "bin"}`,
+          type: file.type || "application/octet-stream",
+        }),
         buffer: inputBuffer,
         contentType: file.type || "application/octet-stream",
         ext: extFromFile(file) || pickExt(file.type || "") || "bin",
@@ -288,7 +326,6 @@ export async function cropFileTo16x9Webp(
     asFile: true,
   });
   const blobBuffer = await processed.arrayBuffer();
-
   return {
     file: processed,
     buffer: blobBuffer,
@@ -296,3 +333,140 @@ export async function cropFileTo16x9Webp(
     ext: pickExt(processed.type || "image/webp"),
   };
 }
+
+/* ===== 9:16 WebP ===== */
+export async function cropFileTo9x16Webp(
+  file,
+  { height = 1920, width, quality = 90 } = {}
+) {
+  const targetHeight = Number.isFinite(height)
+    ? Math.max(1, Math.trunc(height))
+    : 1920;
+  const targetWidth = Number.isFinite(width)
+    ? Math.max(1, Math.trunc(width))
+    : Math.round((targetHeight * 9) / 16);
+  const q = Math.max(1, Math.min(100, Math.trunc(quality || 90)));
+
+  if (typeof window === "undefined") {
+    const arrayBuffer = await file.arrayBuffer();
+    const inputBuffer = Buffer.from(arrayBuffer);
+    try {
+      const sharpModule = await import("sharp");
+      const sharp = sharpModule.default || sharpModule;
+      const processed = await sharp(inputBuffer)
+        .rotate()
+        .resize({
+          width: targetWidth,
+          height: targetHeight,
+          fit: "cover",
+          position: "centre",
+        })
+        .webp({ quality: q })
+        .toBuffer();
+      return {
+        file: makePseudoFileFromBuffer(processed, {
+          name: `crop-${targetWidth}x${targetHeight}.webp`,
+          type: "image/webp",
+        }),
+        buffer: processed,
+        contentType: "image/webp",
+        ext: "webp",
+      };
+    } catch (_) {
+      return {
+        file: makePseudoFileFromBuffer(inputBuffer, {
+          name: `crop-${targetWidth}x${targetHeight}.${extFromFile(file) || pickExt(file.type || "") || "bin"}`,
+          type: file.type || "application/octet-stream",
+        }),
+        buffer: inputBuffer,
+        contentType: file.type || "application/octet-stream",
+        ext: extFromFile(file) || pickExt(file.type || "") || "bin",
+      };
+    }
+  }
+
+  const processed = await cropCenterAndResize(file, {
+    aspect: "9:16",
+    width: targetWidth,
+    height: targetHeight,
+    mimeType: "image/webp",
+    quality: q / 100,
+    asFile: true,
+  });
+  const blobBuffer = await processed.arrayBuffer();
+  return {
+    file: processed,
+    buffer: blobBuffer,
+    contentType: processed.type || "image/webp",
+    ext: pickExt(processed.type || "image/webp"),
+  };
+}
+
+/* ===== 1:1 WebP ===== */
+export async function cropFileTo1x1Webp(
+  file,
+  { size = 720, quality = 90 } = {}
+) {
+  const target = Number.isFinite(size) ? Math.max(1, Math.trunc(size)) : 720;
+  const q = Math.max(1, Math.min(100, Math.trunc(quality || 90)));
+
+  if (typeof window === "undefined") {
+    const arrayBuffer = await file.arrayBuffer();
+    const inputBuffer = Buffer.from(arrayBuffer);
+    try {
+      const sharpModule = await import("sharp");
+      const sharp = sharpModule.default || sharpModule;
+      const processed = await sharp(inputBuffer)
+        .rotate()
+        .resize({
+          width: target,
+          height: target,
+          fit: "cover",
+          position: "centre",
+        })
+        .webp({ quality: q })
+        .toBuffer();
+      return {
+        file: makePseudoFileFromBuffer(processed, {
+          name: `crop-${target}x${target}.webp`,
+          type: "image/webp",
+        }),
+        buffer: processed,
+        contentType: "image/webp",
+        ext: "webp",
+      };
+    } catch (_) {
+      // fallback: kirim file asli agar upload tidak gagal total
+      return {
+        file: makePseudoFileFromBuffer(inputBuffer, {
+          name: `crop-${target}x${target}.${extFromFile(file) || pickExt(file.type || "") || "bin"}`,
+          type: file.type || "application/octet-stream",
+        }),
+        buffer: inputBuffer,
+        contentType: file.type || "application/octet-stream",
+        ext: extFromFile(file) || pickExt(file.type || "") || "bin",
+      };
+    }
+  }
+
+  const processed = await cropCenterAndResize(file, {
+    aspect: "1:1",
+    width: target,
+    height: target,
+    mimeType: "image/webp",
+    quality: q / 100,
+    asFile: true,
+  });
+  const blobBuffer = await processed.arrayBuffer();
+  return {
+    file: processed,
+    buffer: blobBuffer,
+    contentType: processed.type || "image/webp",
+    ext: pickExt(processed.type || "image/webp"),
+  };
+}
+
+/* ===== alias kompatibilitas ===== */
+export const cropTo16x9Webp = cropFileTo16x9Webp;
+export const cropTo9x16Webp = cropFileTo9x16Webp;
+export const cropTo1x1Webp = cropFileTo1x1Webp;

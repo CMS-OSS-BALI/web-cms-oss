@@ -133,7 +133,7 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
     }
   }, []);
 
-  // ===== Requirements API =====
+  /* ==================== REQUIREMENTS API ==================== */
   const listRequirements = useCallback(
     async (collegeId, { prodi_id } = {}) => {
       const p = new URLSearchParams();
@@ -256,13 +256,10 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
     },
     [createRequirement, locale]
   );
-  // ===========================================
 
-  // ---- CRUD College ----
+  /* ==================== CRUD COLLEGE ==================== */
 
-  // Helper clamp page setelah delete (pakai meta total jika ada; fallback dari panjang rows)
   const clampPageAfterDelete = useCallback(() => {
-    // Jika kita punya total meta → hitung dari sana
     if (Number.isFinite(total)) {
       const newTotal = Math.max(0, Number(total) - 1);
       const nextTotalPages = Math.max(
@@ -272,12 +269,12 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
       setPage((p) => Math.min(p, nextTotalPages));
       return;
     }
-    // Fallback: kalau di halaman ini tinggal 1 item dan >1 page, mundur 1 halaman
     if (colleges.length <= 1 && page > 1) {
       setPage(page - 1);
     }
   }, [total, perPage, colleges.length, page]);
 
+  /* ---------- CREATE COLLEGE ---------- */
   const createCollege = useCallback(
     async ({
       file,
@@ -318,6 +315,8 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
       if (jenjang != null && jenjang !== "")
         form.set("jenjang", String(jenjang));
       form.set("autoTranslate", String(Boolean(autoTranslate)));
+
+      // ⬇⬇⬇ DI SINI DI-FIX → backend butuh field "file"
       if (file) form.set("file", file);
 
       const res = await fetch("/api/college", { method: "POST", body: form });
@@ -329,15 +328,15 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
       }
       const json = await res.json().catch(() => ({}));
 
-      // 🔁 Reset ke halaman 1 agar item baru langsung terlihat
       if (page !== 1) setPage(1);
-      await mutate(); // revalidate list
+      await mutate();
 
       return { ok: true, data: json };
     },
     [locale, mutate, page]
   );
 
+  /* ---------- GET COLLEGE DETAIL ---------- */
   const getCollege = useCallback(
     async (id) => {
       const url = `/api/college/${encodeURIComponent(
@@ -350,14 +349,19 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
     [locale, fallback]
   );
 
+  /* ---------- UPDATE COLLEGE ---------- */
   const updateCollege = useCallback(
     async (id, payload = {}) => {
       const form = new FormData();
+
+      // ⬇⬇⬇ DI SINI DI-FIX → backend butuh field "file"
       if (payload.file) form.set("file", payload.file);
+
       if ("name" in payload) {
         form.set("locale", locale);
         form.set("name", payload.name || "");
       }
+
       for (const k of [
         "country",
         "city",
@@ -376,6 +380,7 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
           form.set(k, String(payload[k]));
         }
       }
+
       if ("jenjang" in payload && payload.jenjang !== undefined) {
         const v = payload.jenjang;
         if (v === null || v === "") form.set("jenjang", "");
@@ -389,6 +394,7 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
           payload.description === null ? "" : String(payload.description || "")
         );
       }
+
       if ("autoTranslate" in payload) {
         form.set("autoTranslate", String(Boolean(payload.autoTranslate)));
       }
@@ -397,19 +403,23 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
         method: "PATCH",
         body: form,
       });
+
       if (!res.ok) {
         return {
           ok: false,
           error: (await res.json().catch(() => ({})))?.message || res.status,
         };
       }
+
       const json = await res.json().catch(() => ({}));
-      await mutate(); // update tidak perlu adjust page
+      await mutate();
+
       return { ok: true, data: json };
     },
     [locale, mutate]
   );
 
+  /* ---------- DELETE ---------- */
   const deleteCollege = useCallback(
     async (id) => {
       const res = await fetch(`/api/college/${encodeURIComponent(id)}`, {
@@ -421,11 +431,9 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
           error: (await res.json().catch(() => ({})))?.message || res.status,
         };
       }
+
       englishCache.current.delete(id);
-
-      // 🔁 Clamp halaman terhadap total baru agar tidak tersisa di page kosong
       clampPageAfterDelete();
-
       await mutate();
       return { ok: true };
     },

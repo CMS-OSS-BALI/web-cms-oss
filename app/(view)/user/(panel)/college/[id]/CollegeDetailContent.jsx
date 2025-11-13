@@ -68,24 +68,29 @@ const STICKY_TOP = "clamp(72px, 9vw, 108px)";
 const CLICK_OFFSET_PX = 96;
 
 const shell = {
-  page: { background: "#fff", fontFamily: FONT_FAMILY },
+  page: {
+    background: "#fff",
+    fontFamily: FONT_FAMILY,
+    overflowX: "hidden",
+    paddingTop: "clamp(48px, 8vw, 84px)",
+    paddingBottom: "clamp(32px, 6vw, 64px)",
+  },
   inner: { width: "min(1180px, 96%)", margin: "0 auto" },
 };
 
 /* ============================ HERO ============================ */
 const heroStyles = {
   wrapBleed: {
-    width: "100vw",
-    marginLeft: "calc(50% - 50vw)",
+    width: "100%",
     marginTop: `calc(-1 * ${HEADER_OFFSET})`,
   },
   frame: {
     position: "relative",
-    width: "100vw",
+    width: "100%",
     height: "clamp(520px, 58vw, 700px)",
     overflow: "hidden",
     background: "#eaf2ff",
-    borderRadius: 28,
+    borderRadius: 0,
     boxShadow: "0 24px 60px rgba(15,23,42,.25)",
   },
   overlay: {
@@ -304,8 +309,7 @@ const tuitionStyles = {
 /* ============================ CTA ============================ */
 const ctaStyles = {
   wrapBleed: {
-    width: "100vw",
-    marginLeft: "calc(50% - 50vw)",
+    width: "100%",
     padding: "clamp(28px,4vw,48px) 0",
     background:
       "linear-gradient(180deg, #FFFFFF 0%, #FFFFFF 12%, #F3F9FF 28%, #EAF6FF 55%, #FFFFFF 100%)",
@@ -358,6 +362,7 @@ const ctaStyles = {
     width: "min(420px, 42vw)",
     height: "min(320px, 36vw)",
     justifySelf: "end",
+    marginRight: "50px",
   },
   media: `
     @media (max-width: 980px){
@@ -376,15 +381,82 @@ const globalCSS = `
   a.cd-cta-btn:focus { text-decoration: none !important; }
 `;
 const modalCSS = `
-  .cd-modal-backdrop { position: fixed; inset: 0; background: rgba(3,16,46,.55); display: grid; place-items: center; z-index: 9999; }
-  .cd-modal { width: min(720px, 94vw); background: #fff; border-radius: 18px; box-shadow: 0 30px 80px rgba(15,23,42,.35); padding: 18px; }
-  .cd-modal__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
-  .cd-modal__title { margin: 0; color: #0B2F74; font-weight: 900; letter-spacing: .02em; font-size: clamp(18px, 2.6vw, 22px); }
-  .cd-modal__close { border: 0; background: #0B4DA6; color: #fff; width: 36px; height: 36px; border-radius: 10px; cursor: pointer; font-size: 18px; font-weight: 800; box-shadow: 0 10px 22px rgba(11,77,166,.35); }
-  .cd-modal__body { color: #2b3a5e; line-height: 1.7; }
-  .cd-modal__row { display: grid; grid-template-columns: 140px 1fr; gap: 10px; margin: 6px 0; }
+  .cd-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(3,16,46,.55);
+    display: grid;
+    place-items: center;
+    z-index: 9999;
+    padding: 12px;
+  }
+  .cd-modal {
+    width: min(720px, 94vw);
+    max-height: min(640px, 90vh);
+    background: #fff;
+    border-radius: 18px;
+    box-shadow: 0 30px 80px rgba(15,23,42,.35);
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .cd-modal__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .cd-modal__title {
+    margin: 0;
+    color: #0B2F74;
+    font-weight: 900;
+    letter-spacing: .02em;
+    font-size: clamp(18px, 2.6vw, 22px);
+  }
+  .cd-modal__close {
+    border: 0;
+    background: #0B4DA6;
+    color: #fff;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 18px;
+    font-weight: 800;
+    box-shadow: 0 10px 22px rgba(11,77,166,.35);
+  }
+  .cd-modal__body {
+    color: #2b3a5e;
+    line-height: 1.7;
+    overflow-y: auto;
+    padding-right: 6px;
+    margin-right: -6px;
+    flex: 1;
+    min-height: 0;
+  }
+  .cd-modal__body::-webkit-scrollbar { width: 6px; }
+  .cd-modal__body::-webkit-scrollbar-thumb { background: rgba(11,77,166,.35); border-radius: 3px; }
+  .cd-modal__row {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: 10px;
+    margin: 6px 0;
+  }
   .cd-modal__label { color: #5b6a92; font-weight: 700; font-size: 14px; }
   .cd-modal__value { color: #0B2F74; font-weight: 700; }
+  @media (max-width: 640px){
+    .cd-modal {
+      width: min(96vw, 420px);
+      max-height: 90vh;
+      border-radius: 14px;
+      padding: 16px;
+    }
+    .cd-modal__row {
+      grid-template-columns: 1fr;
+    }
+  }
 `;
 const hideAsideCSS = `@media (max-width: 980px){ .cd-aside { display: none !important; } }`;
 
@@ -490,7 +562,7 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
     : [];
 
   return (
-    <main style={shell.page}>
+    <main style={shell.page} data-shell="full">
       <style dangerouslySetInnerHTML={{ __html: globalCSS }} />
       <style dangerouslySetInnerHTML={{ __html: modalCSS }} />
 
@@ -585,7 +657,7 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
 
           {/* Body */}
           <div>
-            <section id="umum" style={layout.content}>
+            <section id="umum" style={{ ...layout.content, marginLeft: -22 }}>
               <h2 style={layout.h2}>
                 {locale === "en" ? "General Information" : "Informasi Umum"}
               </h2>
@@ -598,7 +670,10 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
               />
             </section>
 
-            <section id="biaya" style={{ ...layout.content, marginTop: 22 }}>
+            <section
+              id="biaya"
+              style={{ ...layout.content, marginTop: 22, marginLeft: -22 }}
+            >
               <h2 style={layout.h2}>
                 {locale === "en"
                   ? "Tuition & Living Cost"
@@ -619,7 +694,10 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
               </div>
             </section>
 
-            <section id="fakultas" style={{ ...layout.content, marginTop: 22 }}>
+            <section
+              id="fakultas"
+              style={{ ...layout.content, marginTop: 22, marginLeft: -22 }}
+            >
               <style>{facultyStyles.media}</style>
               <h2 style={layout.h2}>
                 {locale === "en" ? "Departments & Programs" : "Jurusan & Prodi"}
@@ -718,7 +796,10 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
               </div>
             </section>
 
-            <section id="syarat" style={{ ...layout.content, marginTop: 22 }}>
+            <section
+              id="syarat"
+              style={{ ...layout.content, marginTop: 22, marginLeft: -22 }}
+            >
               <h2 style={layout.h2}>
                 {locale === "en" ? "Requirements" : "Persyaratan"}
               </h2>
@@ -779,7 +860,7 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
           </div>
           <div className="cd-cta-illo" style={ctaStyles.illobox}>
             <Image
-              src={normalizeSrc("/images/loading.png")}
+              src={normalizeSrc("/images/cta-detail.svg")}
               alt={locale === "en" ? "Mascot illustration" : "Ilustrasi maskot"}
               fill
               sizes="480px"
