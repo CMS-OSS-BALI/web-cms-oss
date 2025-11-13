@@ -12,8 +12,6 @@ export const runtime = "nodejs";
 /* -------------------- utils -------------------- */
 const DEFAULT_LOCALE = "id";
 const EN_LOCALE = "en";
-const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
-
 function normalizeLocale(v, fallback = DEFAULT_LOCALE) {
   return (v || fallback).toLowerCase().slice(0, 5);
 }
@@ -46,14 +44,6 @@ function notFound() {
   return NextResponse.json({ message: "Not found" }, { status: 404 });
 }
 async function assertAdmin(req) {
-  const key = req.headers.get("x-admin-key");
-  if (key && ADMIN_TEST_KEY && key === ADMIN_TEST_KEY) {
-    const anyAdmin = await prisma.admin_users.findFirst({
-      select: { id: true },
-    });
-    if (!anyAdmin) throw new Response("Forbidden", { status: 403 });
-    return { adminId: anyAdmin.id, via: "header" };
-  }
   const session = await getServerSession(authOptions);
   if (!session?.user?.email)
     throw new Response("Unauthorized", { status: 401 });

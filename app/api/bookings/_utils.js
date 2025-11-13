@@ -5,9 +5,6 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { randomUUID } from "crypto";
 
-/* ============ Config ============ */
-export const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
-
 /* ============ JSON helpers ============ */
 export function sanitize(v) {
   if (v == null) return v;
@@ -73,24 +70,14 @@ export function sanitizeCode(s) {
     .slice(0, 64);
 }
 
-/* ============ Auth & debug ============ */
+/* ============ Auth ============ */
 export async function assertAdmin(req) {
-  const key = req.headers.get("x-admin-key");
-  if (key && ADMIN_TEST_KEY && key === ADMIN_TEST_KEY) {
-    const any = await prisma.admin_users.findFirst({ select: { id: true } });
-    if (!any) throw new Response("Forbidden", { status: 403 });
-    return any;
-  }
   const session = await getServerSession(authOptions);
   const email = session?.user?.email;
   if (!email) throw new Response("Unauthorized", { status: 401 });
   const admin = await prisma.admin_users.findUnique({ where: { email } });
   if (!admin) throw new Response("Forbidden", { status: 403 });
   return admin;
-}
-export function isAdminDebug(req) {
-  const key = req.headers.get("x-admin-key");
-  return Boolean(key && ADMIN_TEST_KEY && key === ADMIN_TEST_KEY);
 }
 
 /* ============ Domain helpers ============ */

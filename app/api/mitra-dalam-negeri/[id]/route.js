@@ -13,7 +13,6 @@ export const runtime = "nodejs";
 
 const DEFAULT_LOCALE = "id";
 const EN_LOCALE = "en";
-const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
 const NIK_LENGTH = 16;
 const DIGIT_ONLY = /\D+/g;
 
@@ -215,19 +214,29 @@ function pickTrans(
   return by(primary) || by(fallback) || null;
 }
 async function assertAdmin(req) {
-  const headerKey = req.headers.get("x-admin-key");
-  if (headerKey && ADMIN_TEST_KEY && headerKey === ADMIN_TEST_KEY) {
-    const anyAdmin = await prisma.admin_users.findFirst({
+  const session = await getServerSession(authOptions);
+  if (
+    session?.user?.role !== "admin" ||
+    (!session.user?.id && !session.user?.email)
+  )
+    throw Object.assign(new Error("UNAUTHORIZED"), { status: 401 });
+  if (session.user?.email) {
+    const admin = await prisma.admin_users.findUnique({
+      where: { email: session.user.email },
       select: { id: true, email: true },
     });
-    if (!anyAdmin)
-      throw Object.assign(new Error("UNAUTHORIZED"), { status: 401 });
-    return { id: anyAdmin.id, email: anyAdmin.email, via: "header" };
+    if (!admin) throw Object.assign(new Error("FORBIDDEN"), { status: 403 });
+    return admin;
   }
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id && !session?.user?.email)
-    throw Object.assign(new Error("UNAUTHORIZED"), { status: 401 });
-  return session.user;
+  if (session.user?.id) {
+    const admin = await prisma.admin_users.findUnique({
+      where: { id: String(session.user.id) },
+      select: { id: true, email: true },
+    });
+    if (!admin) throw Object.assign(new Error("FORBIDDEN"), { status: 403 });
+    return admin;
+  }
+  throw Object.assign(new Error("UNAUTHORIZED"), { status: 401 });
 }
 
 function buildUpdateData(payload) {

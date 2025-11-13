@@ -22,7 +22,7 @@ export const runtime = "nodejs";
    GET /api/leads  (ADMIN)
    ========================= */
 export async function GET(req) {
-  // auth: session or x-admin-key
+  // auth: NextAuth admin session
   try {
     await assertAdmin(req);
   } catch (err) {

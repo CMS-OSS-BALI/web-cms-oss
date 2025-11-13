@@ -15,9 +15,6 @@ import { cropFileTo16x9Webp } from "@/app/utils/cropper";
 export const DEFAULT_LOCALE = "id";
 export const EN_LOCALE = "en";
 
-// Untuk akses admin via header (opsional)
-export const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
-
 // Semua aset publik berada di bawah prefix ini
 const PUBLIC_PREFIX = "cms-oss";
 
@@ -178,18 +175,9 @@ export async function removeStorageObjects(urlsOrKeys = []) {
 }
 
 /* =========================
-   Auth (session OR x-admin-key)
+   Auth (NextAuth admin session)
 ========================= */
 export async function assertAdmin(req) {
-  // Header override (opsional untuk internal tools)
-  const key = req.headers.get("x-admin-key");
-  if (key && ADMIN_TEST_KEY && key === ADMIN_TEST_KEY) {
-    const anyAdmin = await prisma.admin_users.findFirst({
-      select: { id: true },
-    });
-    if (!anyAdmin) throw new Response("Forbidden", { status: 403 });
-    return { adminId: anyAdmin.id, via: "header" };
-  }
   const session = await getServerSession(authOptions);
   if (!session?.user?.email)
     throw new Response("Unauthorized", { status: 401 });

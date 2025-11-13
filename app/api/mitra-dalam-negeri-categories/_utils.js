@@ -4,9 +4,6 @@ import prisma from "@/lib/prisma";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
-/* ===== env ===== */
-const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
-
 /* ===== JSON helpers (BigInt-safe) ===== */
 export function sanitize(v) {
   if (v === null || v === undefined) return v;
@@ -47,16 +44,8 @@ export function notFound(message = "Tidak ditemukan.") {
   return json({ error: { code: "NOT_FOUND", message } }, { status: 404 });
 }
 
-/* ===== auth: session OR x-admin-key ===== */
+/* ===== auth: NextAuth admin session ===== */
 export async function assertAdmin(req) {
-  const key = req.headers.get("x-admin-key");
-  if (key && ADMIN_TEST_KEY && key === ADMIN_TEST_KEY) {
-    const anyAdmin = await prisma.admin_users.findFirst({
-      select: { id: true },
-    });
-    if (!anyAdmin) throw Object.assign(new Error("FORBIDDEN"), { status: 403 });
-    return { adminId: anyAdmin.id, via: "header" };
-  }
   const session = await getServerSession(authOptions);
   const email = session?.user?.email;
   if (!email) throw Object.assign(new Error("UNAUTHORIZED"), { status: 401 });

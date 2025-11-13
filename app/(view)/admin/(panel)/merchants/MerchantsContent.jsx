@@ -29,7 +29,10 @@ import {
   PaperClipOutlined,
   ReloadOutlined,
 } from "@ant-design/icons";
-import storageClient from "@/app/utils/storageClient";
+import {
+  ensurePublicStorageKey,
+  toPublicStorageUrl,
+} from "@/app/utils/publicCdnClient";
 
 /* =======================
    Lightweight Donut Pie
@@ -177,52 +180,25 @@ const T = {
   review_notes: "Catatan Review",
 };
 
-const PUBLIC_PREFIX = "cms-oss";
-
-function computePublicBase() {
-  const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
-  if (!base) return "";
-  try {
-    const u = new URL(base);
-    const host = u.host.replace(/^storage\./, "cdn.");
-    return `${u.protocol}//${host}`;
-  } catch {
-    return base;
-  }
-}
-function ensurePrefixedKey(key) {
-  const clean = String(key || "").replace(/^\/+/, "");
-  return clean.startsWith(PUBLIC_PREFIX + "/")
-    ? clean
-    : `${PUBLIC_PREFIX}/${clean}`;
-}
 function toPublicUrl(keyOrUrl) {
-  if (!keyOrUrl) return "";
-  const s = String(keyOrUrl).trim();
-  if (/^https?:\/\//i.test(s)) return s;
-  const cdn = computePublicBase();
-  const path = ensurePrefixedKey(s);
-  const base =
-    cdn || (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
-  if (!base) return `/${path}`;
-  return `${base}/public/${path}`;
+  return toPublicStorageUrl(keyOrUrl);
 }
 function toStorageKey(keyOrUrl) {
   if (!keyOrUrl) return "";
   const s = String(keyOrUrl).trim();
   if (!/^https?:\/\//i.test(s)) {
-    return ensurePrefixedKey(s);
+    return ensurePublicStorageKey(s);
   }
   try {
     const u = new URL(s);
     const idx = u.pathname.indexOf("/public/");
     if (idx >= 0) {
       const after = u.pathname.slice(idx + "/public/".length);
-      return ensurePrefixedKey(after);
+      return ensurePublicStorageKey(after);
     }
-    return ensurePrefixedKey(u.pathname.replace(/^\/+/, ""));
+    return ensurePublicStorageKey(u.pathname);
   } catch {
-    return ensurePrefixedKey(s);
+    return ensurePublicStorageKey(s);
   }
 }
 const baseName = (p = "") => String(p).split("/").pop() || "file";
@@ -259,17 +235,45 @@ const isImg = (f) =>
   );
 const tooBig = (f, mb = 10) => f.size / 1024 / 1024 > mb;
 
+async function requestSignedDownloadUrl(key, expiresIn = 60) {
+  const res = await fetch("/api/storage/download", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ key, expiresIn }),
+  });
+
+  let payload = null;
+  try {
+    payload = await res.json();
+  } catch {
+    // ignore JSON parse errors; handled below
+  }
+
+  if (!res.ok) {
+    const message =
+      payload?.message ||
+      `Tidak bisa membuat link unduhan (status ${res.status}).`;
+    throw new Error(message);
+  }
+
+  const url =
+    payload?.url ||
+    payload?.downloadUrl ||
+    payload?.download_url ||
+    payload?.signedUrl ||
+    payload?.signed_url ||
+    payload?.publicUrl ||
+    payload?.public_url;
+
+  if (!url) throw new Error("URL download tidak tersedia.");
+  return url;
+}
+
 /** Download handler (ganti /api/supabase/download) */
 async function handleDownloadClick(keyOrUrl, name, toast) {
   try {
     const key = toStorageKey(keyOrUrl);
-    const res = await storageClient.createDownload({ key, expiresIn: 60 });
-    const url =
-      res?.url ||
-      res?.downloadUrl ||
-      res?.download_url ||
-      res?.signedUrl ||
-      res?.signed_url;
+    const url = await requestSignedDownloadUrl(key, 60);
 
     if (!url) throw new Error("URL download tidak tersedia.");
     const a = document.createElement("a");

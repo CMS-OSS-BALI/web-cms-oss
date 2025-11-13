@@ -14,7 +14,6 @@ import {
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
 const CRON_SECRET = process.env.CRON_SECRET || "";
 const ALLOW_PUBLIC_RECONCILE =
   String(process.env.ALLOW_PUBLIC_RECONCILE || "").trim() === "1";
@@ -57,9 +56,6 @@ async function readBodyFlexible(req) {
   return (await req.json().catch(() => ({}))) ?? {};
 }
 async function assertAdminOrCron(req) {
-  const key = req.headers.get("x-admin-key");
-  if (key && ADMIN_TEST_KEY && key === ADMIN_TEST_KEY) return true;
-
   const cron = req.headers.get("x-cron-key");
   if (cron && CRON_SECRET && cron === CRON_SECRET) return true;
 

@@ -119,13 +119,6 @@ export default function useRepresentativesViewModel() {
     [total, perPage]
   );
 
-  // Optional admin header (x-admin-key) — untuk Postman/testing
-  const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_TEST_KEY || "";
-  const adminHeaders = useMemo(
-    () => (ADMIN_KEY ? { "x-admin-key": ADMIN_KEY } : {}),
-    [ADMIN_KEY]
-  );
-
   /* =======================
      Builders
   ======================== */
@@ -157,10 +150,7 @@ export default function useRepresentativesViewModel() {
     setLoading(true);
     try {
       const key = buildListKey();
-      const res = await fetchJson(key, {
-        headers: { ...adminHeaders },
-        signal: ctrl.signal,
-      });
+      const res = await fetchJson(key, { signal: ctrl.signal });
       if (res?.error) throw new Error(res.error?.message || "Fetch error");
 
       const data = res?.data || res?.rows || [];
@@ -192,7 +182,7 @@ export default function useRepresentativesViewModel() {
     } finally {
       if (mountRef.current) setLoading(false);
     }
-  }, [buildListKey, adminHeaders]);
+  }, [buildListKey]);
 
   // Load kategori untuk dropdown kategori
   const fetchCategories = useCallback(async () => {
@@ -279,9 +269,7 @@ export default function useRepresentativesViewModel() {
   const getBooking = useCallback(
     async (id) => {
       try {
-        const res = await fetchJson(BOOKING_ITEM_URL(id), {
-          headers: { ...adminHeaders },
-        });
+        const res = await fetchJson(BOOKING_ITEM_URL(id));
         if (res?.error) return { ok: false, error: res.error?.message };
         const data = res?.data || res;
         return { ok: true, data };
@@ -289,7 +277,7 @@ export default function useRepresentativesViewModel() {
         return { ok: false, error: e?.message || "Gagal memuat detail" };
       }
     },
-    [adminHeaders]
+    []
   );
 
   const cancelBooking = useCallback(
@@ -299,7 +287,6 @@ export default function useRepresentativesViewModel() {
         setOpLoadingId(id);
         const res = await fetchJson(BOOKING_ITEM_URL(id), {
           method: "DELETE",
-          headers: { ...adminHeaders },
         });
         setOpLoadingId(null);
         setOpType("");
@@ -311,7 +298,7 @@ export default function useRepresentativesViewModel() {
         return { ok: false, error: e?.message || "Gagal membatalkan" };
       }
     },
-    [adminHeaders]
+    []
   );
 
   /* =======================
@@ -328,7 +315,6 @@ export default function useRepresentativesViewModel() {
 
         const res = await fetchJson(PAY_CHARGE_URL, {
           method: "POST",
-          headers: { ...adminHeaders },
           body,
         });
 
@@ -350,7 +336,7 @@ export default function useRepresentativesViewModel() {
         return { ok: false, error: e?.message || "Gagal membuat pembayaran" };
       }
     },
-    [adminHeaders]
+    []
   );
 
   const check = useCallback(
@@ -359,7 +345,7 @@ export default function useRepresentativesViewModel() {
         setOpType("check");
         setOpLoadingId(order_id);
         const url = `${PAY_CHECK_URL}?order_id=${encodeURIComponent(order_id)}`;
-        const res = await fetchJson(url, { headers: { ...adminHeaders } });
+        const res = await fetchJson(url);
         setOpLoadingId(null);
         setOpType("");
         if (res?.error) return { ok: false, error: res.error?.message };
@@ -370,7 +356,7 @@ export default function useRepresentativesViewModel() {
         return { ok: false, error: e?.message || "Gagal mengecek status" };
       }
     },
-    [adminHeaders]
+    []
   );
 
   const reconcile = useCallback(
@@ -380,7 +366,6 @@ export default function useRepresentativesViewModel() {
         body.set("order_id", order_id);
         const res = await fetchJson(PAY_RECONCILE_URL, {
           method: "POST",
-          headers: { "x-public-reconcile": "1", ...adminHeaders },
           body,
         });
         if (res?.error) return { ok: false, error: res.error?.message };
@@ -389,7 +374,7 @@ export default function useRepresentativesViewModel() {
         return { ok: false, error: e?.message || "Gagal rekonsiliasi" };
       }
     },
-    [adminHeaders]
+    []
   );
 
   /* =======================
@@ -401,16 +386,14 @@ export default function useRepresentativesViewModel() {
         const qs = new URLSearchParams();
         if (code) qs.set("code", String(code).trim());
         if (event_id) qs.set("event_id", String(event_id).trim());
-        const res = await fetchJson(`${VOUCHERS_URL}?${qs.toString()}`, {
-          headers: { ...adminHeaders },
-        });
+        const res = await fetchJson(`${VOUCHERS_URL}?${qs.toString()}`);
         if (res?.valid === true) return { ok: true, data: res.data };
         return { ok: false, error: res?.reason || "Voucher tidak valid" };
       } catch (e) {
         return { ok: false, error: e?.message || "Gagal validasi voucher" };
       }
     },
-    [adminHeaders]
+    []
   );
 
   /* =======================

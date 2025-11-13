@@ -187,16 +187,8 @@ export async function removeStorageObjects(urlsOrKeys = []) {
 /* =========================
    Auth
 ========================= */
-/** session OR x-admin-key (untuk Postman). Return: { adminId, via } */
+/** NextAuth admin session only. Return: { adminId, via } */
 export async function assertAdmin(req) {
-  const key = req.headers.get("x-admin-key");
-  if (key && process.env.ADMIN_TEST_KEY && key === process.env.ADMIN_TEST_KEY) {
-    const anyAdmin = await prisma.admin_users.findFirst({
-      select: { id: true },
-    });
-    if (!anyAdmin) throw Object.assign(new Error("FORBIDDEN"), { status: 403 });
-    return { adminId: anyAdmin.id, via: "header" };
-  }
   const session = await getServerSession(authOptions);
   const email = session?.user?.email;
   if (!email) throw Object.assign(new Error("UNAUTHORIZED"), { status: 401 });

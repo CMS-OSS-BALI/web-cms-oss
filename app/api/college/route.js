@@ -21,7 +21,6 @@ export const runtime = "nodejs";
 ========================= */
 const DEFAULT_LOCALE = "id";
 const EN_LOCALE = "en";
-const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
 
 // Currency dikunci IDR, field "type" dihapus → gunakan TEXT "jenjang"
 const ALWAYS_CURRENCY = "IDR";
@@ -101,16 +100,8 @@ async function ensureUniqueSlug(base) {
   }
 }
 
-/* ---------- Auth (session OR x-admin-key) ---------- */
+/* ---------- Auth (NextAuth admin session) ---------- */
 async function assertAdmin(req) {
-  const key = req.headers.get("x-admin-key");
-  if (key && ADMIN_TEST_KEY && key === ADMIN_TEST_KEY) {
-    const anyAdmin = await prisma.admin_users.findFirst({
-      select: { id: true },
-    });
-    if (!anyAdmin) throw new Response("Forbidden", { status: 403 });
-    return { adminId: anyAdmin.id, via: "header" };
-  }
   const session = await getServerSession(authOptions);
   if (!session?.user?.email)
     throw new Response("Unauthorized", { status: 401 });

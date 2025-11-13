@@ -11,7 +11,6 @@ import {
   validateVoucher,
   computeDiscount,
   genOrderId,
-  isAdminDebug,
 } from "./_utils";
 
 export const dynamic = "force-dynamic";
@@ -103,14 +102,6 @@ export async function POST(req) {
       message: "Booking booth dibuat. Silakan lanjutkan pembayaran.",
       data: created, // { id, event_id }
     };
-
-    if (isAdminDebug(req)) {
-      res.meta = {
-        base_price: basePrice,
-        discount_applied: discount,
-        amount,
-      };
-    }
 
     return json(res, { status: 201 });
   } catch (err) {

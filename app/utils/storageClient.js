@@ -1,3 +1,5 @@
+import "server-only";
+
 // utils/storageClient.js
 // Lightweight client for external object storage service (OSS)
 // Wraps POST /api/storage/create-upload, POST /api/storage/confirm,

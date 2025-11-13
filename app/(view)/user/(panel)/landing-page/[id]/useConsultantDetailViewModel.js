@@ -3,50 +3,14 @@
 import { useMemo } from "react";
 import useSWR from "swr";
 import { fetcher } from "../../../../../utils/fetcher";
+import { toPublicStorageUrl } from "@/app/utils/publicCdnClient";
 
 const DEFAULT_LOCALE = "id";
 const fallbackFor = (loc) => (String(loc).toLowerCase() === "id" ? "en" : "id");
 
-/* ================= ENV (client-side) ================= */
-// Ambil base dari NEXT_PUBLIC_OSS_STORAGE_BASE_URL (kalau ada), fallback ke OSS_STORAGE_BASE_URL.
-const OSS_BASE = (
-  process.env.NEXT_PUBLIC_OSS_STORAGE_BASE_URL ||
-  process.env.OSS_STORAGE_BASE_URL ||
-  ""
-).replace(/\/+$/, "");
-
-// Samakan prefix public folder dengan server (CONSISTENT)
-const PUBLIC_PREFIX = "cms-oss";
-
-/** computePublicBase(): ganti subdomain storage. -> cdn. (konsisten dgn server) */
-function computePublicBase() {
-  if (!OSS_BASE) return "";
-  try {
-    const u = new URL(OSS_BASE);
-    const host = u.host.replace(/^storage\./, "cdn.");
-    return `${u.protocol}//${host}`;
-  } catch {
-    return OSS_BASE;
-  }
-}
-
-/** ensurePublicUrl():
- * - Jika sudah http(s) -> return apa adanya
- * - Jika path/key -> bangun URL cdn + "/public/cms-oss/<path>"
- * - Fallback "/" kalau base tidak tersedia (tetap prefiks cms-oss untuk konsistensi)
- */
+/* ================= CDN helper ================= */
 function ensurePublicUrl(src) {
-  const v = String(src || "").trim();
-  if (!v) return "";
-  if (/^https?:\/\//i.test(v)) return v;
-
-  const base = computePublicBase();
-  const clean = v.replace(/^\/+/, "");
-  const withPrefix = clean.startsWith(`${PUBLIC_PREFIX}/`)
-    ? clean
-    : `${PUBLIC_PREFIX}/${clean}`;
-  if (!base) return `/${withPrefix}`;
-  return `${base}/public/${withPrefix}`;
+  return toPublicStorageUrl(src);
 }
 
 /* ================= Dummy & helpers ================= */

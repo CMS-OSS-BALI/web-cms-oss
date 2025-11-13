@@ -1,39 +1,14 @@
 ﻿"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { toPublicStorageUrl } from "@/app/utils/publicCdnClient";
 
 /* ========== Fonts / static ========== */
 const FONT_FAMILY = '"Public Sans", sans-serif';
 
 /* ========== Helpers: CDN public URL resolver ========== */
-const PUBLIC_PREFIX = "cms-oss";
-function computePublicBase() {
-  const base = (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
-  if (!base) return "";
-  try {
-    const u = new URL(base);
-    const host = u.host.replace(/^storage\./, "cdn.");
-    return `${u.protocol}//${host}`;
-  } catch {
-    return base;
-  }
-}
-function ensurePrefixedKey(key) {
-  const clean = String(key || "").replace(/^\/+/, "");
-  return clean.startsWith(PUBLIC_PREFIX + "/")
-    ? clean
-    : `${PUBLIC_PREFIX}/${clean}`;
-}
 function toPublicUrl(keyOrUrl) {
-  if (!keyOrUrl) return "";
-  const s = String(keyOrUrl).trim();
-  if (/^https?:\/\//i.test(s)) return s;
-  const cdn = computePublicBase();
-  const path = ensurePrefixedKey(s);
-  const base =
-    cdn || (process.env.OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
-  if (!base) return `/${path}`;
-  return `${base}/public/${path}`;
+  return toPublicStorageUrl(keyOrUrl);
 }
 
 /* ========== Small fetch util ========== */

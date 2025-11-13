@@ -12,7 +12,6 @@ export const runtime = "nodejs";
 
 export const DEFAULT_LOCALE = "id";
 export const EN_LOCALE = "en";
-export const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
 
 /* Storage config (align with consultants) */
 export const PUBLIC_PREFIX = "cms-oss";
@@ -100,14 +99,6 @@ export const toMs = (d) => {
 
 /* -------------------- auth -------------------- */
 export async function assertAdmin(req) {
-  const key = req.headers.get("x-admin-key");
-  if (key && ADMIN_TEST_KEY && key === ADMIN_TEST_KEY) {
-    const anyAdmin = await prisma.admin_users.findFirst({
-      select: { id: true },
-    });
-    if (!anyAdmin) throw new Response("Forbidden", { status: 403 });
-    return { adminId: anyAdmin.id, via: "header" };
-  }
   const session = await getServerSession(authOptions);
   if (!session?.user?.email)
     throw new Response("Unauthorized", { status: 401 });

@@ -5,47 +5,20 @@ import Image from "next/image";
 import Link from "next/link";
 import useCollegeDetailViewModel from "./useCollegeDetailViewModel";
 import { sanitizeHtml } from "@/app/utils/dompurify";
+import { isExternalAsset, toPublicStorageUrl } from "@/app/utils/publicCdnClient";
 
 /* ================== Storage helpers (gateway/CDN) ================== */
-const PUBLIC_PREFIX = "cms-oss";
-
-function computePublicBase() {
-  const base = (
-    process.env.NEXT_PUBLIC_OSS_STORAGE_BASE_URL ||
-    process.env.OSS_STORAGE_BASE_URL ||
-    ""
-  ).replace(/\/+$/, "");
-  if (!base) return "";
-  try {
-    const u = new URL(base);
-    const host = u.host.replace(/^storage\./, "cdn.");
-    return `${u.protocol}//${host}`;
-  } catch {
-    return base;
-  }
-}
-function ensurePrefixedKey(key) {
-  const clean = String(key || "").replace(/^\/+/, "");
-  return clean.startsWith(PUBLIC_PREFIX + "/")
-    ? clean
-    : `${PUBLIC_PREFIX}/${clean}`;
-}
 function toPublicUrlMaybe(input) {
   const raw = String(input || "").trim();
   if (!raw) return "";
-  if (/^(https?:|data:|blob:)/i.test(raw)) return raw;
+  if (isExternalAsset(raw)) return raw;
   if (raw.startsWith("/")) return raw;
-  const base =
-    computePublicBase() ||
-    (process.env.NEXT_PUBLIC_OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
-  const path = ensurePrefixedKey(raw);
-  if (!base) return `/${path}`;
-  return `${base}/public/${path}`;
+  return toPublicStorageUrl(raw);
 }
 const normalizeSrc = (s = "") =>
   toPublicUrlMaybe(s) ||
   "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>";
-const shouldUnoptimize = (s = "") => /^(https?:|data:|blob:)/i.test(s);
+const shouldUnoptimize = (s = "") => isExternalAsset(s);
 
 /* ============================ Hooks ============================ */
 function useIsNarrow(breakpoint = 980) {

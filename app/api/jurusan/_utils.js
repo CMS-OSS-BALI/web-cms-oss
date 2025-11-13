@@ -4,9 +4,6 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { Decimal as PrismaDecimal } from "@prisma/client/runtime/library"; // ← NEW
 
-/* ===== env ===== */
-const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
-
 /* ===== core json helpers ===== */
 export function sanitize(v) {
   if (v === null || v === undefined) return v;
@@ -143,12 +140,6 @@ export function notFound(message = "Not found") {
 
 /* ===== auth ===== */
 export async function assertAdmin(req) {
-  const key = req.headers.get("x-admin-key");
-  if (key && ADMIN_TEST_KEY && key === ADMIN_TEST_KEY) {
-    const any = await prisma.admin_users.findFirst({ select: { id: true } });
-    if (!any) throw Object.assign(new Error("FORBIDDEN"), { status: 403 });
-    return { adminId: any.id, via: "header" };
-  }
   const session = await getServerSession(authOptions);
   if (!session?.user?.email)
     throw Object.assign(new Error("UNAUTHORIZED"), { status: 401 });

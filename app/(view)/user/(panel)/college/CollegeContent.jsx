@@ -8,52 +8,23 @@ import { Autoplay, FreeMode } from "swiper/modules";
 import "swiper/css";
 import "swiper/css/free-mode";
 import { Pagination } from "antd";
+import { isExternalAsset, toPublicStorageUrl } from "@/app/utils/publicCdnClient";
 import "antd/dist/reset.css";
 
 /* ---------- Storage helpers (gateway/CDN) ---------- */
-const PUBLIC_PREFIX = "cms-oss";
-
-/** Ubah storage.* ke cdn.* bila memungkinkan */
-function computePublicBase() {
-  const base = (
-    process.env.NEXT_PUBLIC_OSS_STORAGE_BASE_URL ||
-    process.env.OSS_STORAGE_BASE_URL ||
-    ""
-  ).replace(/\/+$/, "");
-  if (!base) return "";
-  try {
-    const u = new URL(base);
-    const host = u.host.replace(/^storage\./, "cdn.");
-    return `${u.protocol}//${host}`;
-  } catch {
-    return base;
-  }
-}
-function ensurePrefixedKey(key) {
-  const clean = String(key || "").replace(/^\/+/, "");
-  return clean.startsWith(PUBLIC_PREFIX + "/")
-    ? clean
-    : `${PUBLIC_PREFIX}/${clean}`;
-}
 function toPublicUrlMaybe(input) {
   const raw = String(input || "").trim();
   if (!raw) return "";
-  if (/^(https?:|data:|blob:)/i.test(raw)) return raw;
+  if (isExternalAsset(raw)) return raw;
   if (raw.startsWith("/")) return raw;
-  const base =
-    computePublicBase() ||
-    (process.env.NEXT_PUBLIC_OSS_STORAGE_BASE_URL || "").replace(/\/+$/, "");
-  const path = ensurePrefixedKey(raw);
-  if (!base) return `/${path}`;
-  return `${base}/public/${path}`;
+  return toPublicStorageUrl(raw);
 }
 function normalizeImgSrc(input) {
-  const out =
+  return (
     toPublicUrlMaybe(input) ||
-    "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>";
-  return out;
+    "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>"
+  );
 }
-const isExternal = (s) => /^(https?:|data:|blob:)/i.test(String(s || ""));
 
 /* ---------- Icons ---------- */
 const BulletIcon = ({ type }) => {
@@ -521,7 +492,7 @@ export default function CollegeContent({ locale = "id" }) {
                 objectPosition: hero.objectPosition || "70% 50%",
                 filter: "saturate(0.98) contrast(1.02)",
               }}
-              unoptimized={isExternal(normalizeImgSrc(hero.image))}
+              unoptimized={isExternalAsset(normalizeImgSrc(hero.image))}
             />
             <div style={styles.heroOverlay} />
 
@@ -689,7 +660,7 @@ export default function CollegeContent({ locale = "id" }) {
           <div style={styles.uni.list}>
             {pageItems.map((u, idx) => {
               const src = normalizeImgSrc(u.logo_url);
-              const external = isExternal(src);
+              const external = isExternalAsset(src);
               const jpMatch = jpMatchesByCollegeId[String(u.id)] || null;
               const matchCount =
                 (jpMatch?.jurusan?.length || 0) + (jpMatch?.prodi?.length || 0);

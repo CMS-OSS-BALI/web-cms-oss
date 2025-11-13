@@ -7,7 +7,6 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 /* ============ Config ============ */
 export const DEFAULT_LOCALE = "id";
 export const EN_LOCALE = "en";
-export const ADMIN_TEST_KEY = process.env.ADMIN_TEST_KEY || "";
 
 /* ============ JSON helpers ============ */
 export function sanitize(v) {
@@ -70,16 +69,8 @@ export function pickTrans(list, primary, fallback) {
   return by(primary) || by(fallback) || null;
 }
 
-/* ============ Auth (session OR x-admin-key) ============ */
+/* ============ Auth (NextAuth admin session) ============ */
 export async function assertAdmin(req) {
-  const key = req.headers?.get?.("x-admin-key");
-  if (key && ADMIN_TEST_KEY && key === ADMIN_TEST_KEY) {
-    const anyAdmin = await prisma.admin_users.findFirst({
-      select: { id: true },
-    });
-    if (!anyAdmin) throw new Response("Forbidden", { status: 403 });
-    return { adminId: anyAdmin.id, via: "header" };
-  }
   const session = await getServerSession(authOptions);
   if (!session?.user?.email)
     throw new Response("Unauthorized", { status: 401 });
