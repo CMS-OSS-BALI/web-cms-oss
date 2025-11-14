@@ -466,12 +466,8 @@ function EventCard({
         @media (max-width: 1200px) {
           .ev-card {
             grid-template-columns: 1fr !important;
-            grid-template-areas:
-              "title"
-              "poster"
-              "desc"
-              "meta"
-              "cta" !important;
+            gridtemplateareas: "title" "poster" "desc" "meta" "cta" !important;
+            grid-template-areas: "title" "poster" "desc" "meta" "cta" !important;
             row-gap: 18px !important;
           }
           .ev-title,
@@ -748,6 +744,144 @@ function WhySection({ vm }) {
   );
 }
 
+/* ===== PREVIOUS EVENTS SECTION ===== */
+const prevEv = {
+  wrap: {
+    ...CONTAINER,
+    ...CENTER,
+    marginTop: 40,
+    marginBottom: 56,
+    textAlign: "center",
+    position: "relative",
+    zIndex: Z.topSection,
+  },
+  title: {
+    margin: 0,
+    fontWeight: 900,
+    color: "#0b3e91",
+    fontSize: "clamp(24px, 3vw, 32px)",
+    letterSpacing: ".02em",
+  },
+  subtitle: {
+    marginTop: 8,
+    marginBottom: 0,
+    color: "#64748b",
+    fontSize: "clamp(13px, 1.4vw, 15px)",
+  },
+  scrollerOuter: {
+    marginTop: 26,
+    paddingBottom: 14,
+    overflowX: "auto",
+    overflowY: "hidden",
+  },
+  track: {
+    display: "flex",
+    gap: 18,
+    padding: "4px 4px 6px",
+    scrollSnapType: "x mandatory",
+  },
+  card: {
+    flex: "0 0 clamp(230px, 24vw, 320px)",
+    background: "#ffffff",
+    borderRadius: 20,
+    padding: 8,
+    boxShadow: "0 14px 30px rgba(15,23,42,.10)",
+    border: "1px solid #e5ecff",
+    scrollSnapAlign: "start",
+  },
+  frame: {
+    position: "relative",
+    width: "100%",
+    aspectRatio: "16 / 9",
+    borderRadius: 16,
+    overflow: "hidden",
+    background: "#f1f5ff",
+  },
+  img: {
+    position: "absolute",
+    inset: 0,
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    display: "block",
+  },
+};
+
+function PreviousEventsSection({ title, subtitle, photos = [] }) {
+  if (!photos || photos.length === 0) return null;
+
+  return (
+    <section style={prevEv.wrap}>
+      <h2
+        className="reveal"
+        data-anim="down"
+        style={{ ...prevEv.title, ["--rvd"]: "40ms" }}
+      >
+        {safeText(title)}
+      </h2>
+      {subtitle ? (
+        <p
+          className="reveal"
+          data-anim="up"
+          style={{ ...prevEv.subtitle, ["--rvd"]: "120ms" }}
+        >
+          {safeText(subtitle)}
+        </p>
+      ) : null}
+
+      <div
+        className="reveal"
+        data-anim="up"
+        style={{ ...prevEv.scrollerOuter, ["--rvd"]: "180ms" }}
+      >
+        <div className="prev-track" style={prevEv.track}>
+          {photos.map((p, idx) => (
+            <article
+              key={p.id || idx}
+              className="prev-card"
+              style={prevEv.card}
+            >
+              <div style={prevEv.frame}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={p.src}
+                  alt={safeText(p.alt)}
+                  title={safeText(p.alt)}
+                  style={prevEv.img}
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src =
+                      "https://images.unsplash.com/photo-1521737604893-d14cc237f11d?q=80&w=1200&auto=format&fit=crop";
+                  }}
+                />
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
+
+      <style jsx>{`
+        .prev-track::-webkit-scrollbar {
+          height: 6px;
+        }
+        .prev-track::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .prev-track::-webkit-scrollbar-thumb {
+          background: rgba(148, 163, 184, 0.6);
+          border-radius: 999px;
+        }
+
+        @media (max-width: 768px) {
+          .prev-card {
+            flex: 0 0 clamp(220px, 70vw, 320px) !important;
+          }
+        }
+      `}</style>
+    </section>
+  );
+}
+
 /* ===== REP CTA ===== */
 const repCta = {
   shell: {
@@ -1012,7 +1146,11 @@ export default function EventsUContent({ locale = "id" }) {
   const vm = useEventsUViewModel({ locale });
 
   const heroRef = useRef(null);
-  useRevealOnScroll([vm.studentEvents.length, vm.repEvents.length]);
+  useRevealOnScroll([
+    vm.studentEvents.length,
+    vm.repEvents.length,
+    vm.previousEventPhotos?.length || 0,
+  ]);
   useHeroParallax(heroRef);
 
   const [pageStu, setPageStu] = useState(1);
@@ -1152,8 +1290,15 @@ export default function EventsUContent({ locale = "id" }) {
         </>
       )}
 
-      {/* WHY (pindah ke atas REP) */}
+      {/* WHY */}
       <WhySection vm={vm} />
+
+      {/* PREVIOUS EVENTS (Keseruan Event Sebelumnya) */}
+      <PreviousEventsSection
+        title={vm.previousEventsTitle}
+        subtitle={vm.previousEventsSubtitle}
+        photos={vm.previousEventPhotos}
+      />
 
       {/* REP CTA */}
       {hasRep && (

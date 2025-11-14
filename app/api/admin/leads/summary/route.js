@@ -46,26 +46,22 @@ export async function GET(req) {
 
   // Ambil agregat per bulan (MySQL) — cepat & hemat memori
   // Catatan: nama tabel = leads, kolom = created_at, assigned_to, deleted_at (ikuti schema-mu).
-  const rowsAll = await prisma.$queryRawUnsafe(
-    `SELECT MONTH(created_at) AS m, COUNT(*) AS c
-     FROM leads
-     WHERE created_at BETWEEN ? AND ?
-       AND deleted_at IS NULL
-     GROUP BY m`,
-    from,
-    to
-  );
+  const rowsAll = await prisma.$queryRaw`
+    SELECT MONTH(created_at) AS m, COUNT(*) AS c
+    FROM leads
+    WHERE created_at BETWEEN ${from} AND ${to}
+      AND deleted_at IS NULL
+    GROUP BY m
+  `;
 
-  const rowsReps = await prisma.$queryRawUnsafe(
-    `SELECT MONTH(created_at) AS m, COUNT(*) AS c
-     FROM leads
-     WHERE created_at BETWEEN ? AND ?
-       AND deleted_at IS NULL
-       AND assigned_to IS NOT NULL
-     GROUP BY m`,
-    from,
-    to
-  );
+  const rowsReps = await prisma.$queryRaw`
+    SELECT MONTH(created_at) AS m, COUNT(*) AS c
+    FROM leads
+    WHERE created_at BETWEEN ${from} AND ${to}
+      AND deleted_at IS NULL
+      AND assigned_to IS NOT NULL
+    GROUP BY m
+  `;
 
   // Bentuk array 12 bulan (index 0..11)
   const allMonthly = new Array(12).fill(0);

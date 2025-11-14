@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,6 +33,13 @@ function parsePeriod(period) {
   else if (unit === "y") start.setFullYear(start.getFullYear() - n);
   return { start, end, label: `${n}${unit}` };
 }
+
+const GROUP_EXPRESSIONS = {
+  day: Prisma.sql`DATE_FORMAT(created_at, '%Y-%m-%d')`,
+  week: Prisma.sql`DATE_FORMAT(created_at, '%x-W%v')`,
+  month: Prisma.sql`DATE_FORMAT(created_at, '%Y-%m')`,
+  year: Prisma.sql`DATE_FORMAT(created_at, '%Y')`,
+};
 
 function toISODate(d) {
   return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
@@ -77,20 +85,16 @@ export async function GET(req) {
       const end = new Date(Date.UTC(y + 1, 0, 1));
 
       if (GROUP === "month") {
-        const rows = await prisma.$queryRawUnsafe(
-          `
+        const rows = await prisma.$queryRaw`
           SELECT DATE_FORMAT(created_at, '%Y-%m') AS ym,
                  COUNT(*)                   AS pageviews,
                  COUNT(DISTINCT session_id) AS sessions,
                  COUNT(DISTINCT visitor_id) AS visitors
           FROM analytics_pageviews
-          WHERE created_at >= ? AND created_at < ?
+          WHERE created_at >= ${start} AND created_at < ${end}
           GROUP BY ym
           ORDER BY ym ASC
-        `,
-          start,
-          end
-        );
+        `;
 
         const series = Array.from({ length: 12 }, (_, i) => {
           const key = `${y}-${String(i + 1).padStart(2, "0")}`;
@@ -106,20 +110,16 @@ export async function GET(req) {
       }
 
       // Daily for a year — force string 'YYYY-MM-DD'
-      const rows = await prisma.$queryRawUnsafe(
-        `
+      const rows = await prisma.$queryRaw`
         SELECT DATE_FORMAT(created_at, '%Y-%m-%d') AS bucket,
                COUNT(*)                   AS pageviews,
                COUNT(DISTINCT session_id) AS sessions,
                COUNT(DISTINCT visitor_id) AS visitors
         FROM analytics_pageviews
-        WHERE created_at >= ? AND created_at < ?
+        WHERE created_at >= ${start} AND created_at < ${end}
         GROUP BY bucket
         ORDER BY bucket ASC
-      `,
-        start,
-        end
-      );
+      `;
 
       const series = rows.map((r) => ({
         bucket: String(r.bucket), // already 'YYYY-MM-DD'
@@ -149,24 +149,20 @@ export async function GET(req) {
     }
 
     // group expr — make day always a string 'YYYY-MM-DD'
-    let groupExpr = "DATE_FORMAT(created_at, '%Y-%m-%d')";
-    if (GROUP === "week") groupExpr = "DATE_FORMAT(created_at, '%x-W%v')";
-    else if (GROUP === "month") groupExpr = "DATE_FORMAT(created_at, '%Y-%m')";
-    else if (GROUP === "year") groupExpr = "DATE_FORMAT(created_at, '%Y')";
+    const groupExpr =
+      GROUP_EXPRESSIONS[GROUP] ?? GROUP_EXPRESSIONS.day;
 
-    const rows = await prisma.$queryRawUnsafe(
+    const rows = await prisma.$queryRaw(
+      Prisma.sql`
+        SELECT ${groupExpr} AS bucket,
+               COUNT(*)                   AS pageviews,
+               COUNT(DISTINCT session_id) AS sessions,
+               COUNT(DISTINCT visitor_id) AS visitors
+        FROM analytics_pageviews
+        WHERE created_at >= ${start} AND created_at < ${end}
+        GROUP BY bucket
+        ORDER BY bucket ASC
       `
-      SELECT ${groupExpr} AS bucket,
-             COUNT(*)                   AS pageviews,
-             COUNT(DISTINCT session_id) AS sessions,
-             COUNT(DISTINCT visitor_id) AS visitors
-      FROM analytics_pageviews
-      WHERE created_at >= ? AND created_at < ?
-      GROUP BY bucket
-      ORDER BY bucket ASC
-    `,
-      start,
-      end
     );
 
     const series = rows.map((r) => ({

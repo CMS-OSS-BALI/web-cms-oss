@@ -28,6 +28,7 @@ model admin_users {
   fcm_tokens                             fcm_tokens[]
   mitra_mitra_admin_user_idToadmin_users mitra[]                 @relation("mitra_admin_user_idToadmin_users")
   mitra_mitra_reviewed_byToadmin_users   mitra[]                 @relation("mitra_reviewed_byToadmin_users")
+  previous_event_photos                  previous_event_photos[]
   reset_password_tokens                  reset_password_tokens[]
   services                               services[]
   testimonials                           testimonials[]
@@ -801,37 +802,36 @@ model fcm_topic_subscriptions {
 }
 
 model mitra {
-  id                 String       @id @db.VarChar(36)
-  admin_user_id      String?      @db.VarChar(36)
-  address            String       @db.Text
-  email              String
-  phone              String       @db.VarChar(64)
-  created_at         DateTime     @default(now()) @db.DateTime(6)
-  updated_at         DateTime     @db.DateTime(6)
-  deleted_at         DateTime?    @db.DateTime(6)
-  mou_url            String?
-  instagram          String?
-  twitter            String?
-  website            String?
-  image_url          String?      @db.VarChar(1024)
-  city               String?      @db.VarChar(64)
-  contact_name       String?      @db.VarChar(150)
-  contact_position   String?      @db.VarChar(100)
-  contact_whatsapp   String?      @db.VarChar(32)
-  postal_code        String?      @db.VarChar(10)
-  province           String?      @db.VarChar(64)
-  review_notes       String?      @db.VarChar(512)
-  reviewed_at        DateTime?    @db.DateTime(6)
-  reviewed_by        String?      @db.VarChar(36)
-  status             mitra_status @default(PENDING)
-  nik                String?      @db.VarChar(16)
-
-  category_id        String?      @db.VarChar(36)
+  id                                           String            @id @db.VarChar(36)
+  admin_user_id                                String?           @db.VarChar(36)
+  address                                      String            @db.Text
+  email                                        String
+  phone                                        String            @db.VarChar(64)
+  created_at                                   DateTime          @default(now()) @db.DateTime(6)
+  updated_at                                   DateTime          @db.DateTime(6)
+  deleted_at                                   DateTime?         @db.DateTime(6)
+  mou_url                                      String?
+  instagram                                    String?
+  twitter                                      String?
+  website                                      String?
+  image_url                                    String?           @db.VarChar(1024)
+  city                                         String?           @db.VarChar(64)
+  contact_name                                 String?           @db.VarChar(150)
+  contact_position                             String?           @db.VarChar(100)
+  contact_whatsapp                             String?           @db.VarChar(32)
+  postal_code                                  String?           @db.VarChar(10)
+  province                                     String?           @db.VarChar(64)
+  review_notes                                 String?           @db.VarChar(512)
+  reviewed_at                                  DateTime?         @db.DateTime(6)
+  reviewed_by                                  String?           @db.VarChar(36)
+  status                                       mitra_status      @default(PENDING)
+  category_id                                  String?           @db.VarChar(36)
+  nik                                          String?           @db.VarChar(16)
   admin_users_mitra_admin_user_idToadmin_users admin_users?      @relation("mitra_admin_user_idToadmin_users", fields: [admin_user_id], references: [id], map: "fk_merchants_admin")
   admin_users_mitra_reviewed_byToadmin_users   admin_users?      @relation("mitra_reviewed_byToadmin_users", fields: [reviewed_by], references: [id], map: "fk_merchants_reviewer")
-  mitra_categories   mitra_categories? @relation(fields: [category_id], references: [id], map: "fk_mitra_category")
-  files              mitra_files[]
-  mitra_translate    mitra_translate[]
+  mitra_categories                             mitra_categories? @relation(fields: [category_id], references: [id], map: "fk_mitra_category")
+  files                                        mitra_files[]
+  mitra_translate                              mitra_translate[]
 
   @@index([admin_user_id], map: "fk_merchants_admin")
   @@index([reviewed_by], map: "fk_merchants_reviewer")
@@ -842,7 +842,6 @@ model mitra {
   @@index([status], map: "idx_mitra_status")
   @@index([nik], map: "idx_mitra_nik")
 }
-
 
 model mitra_categories {
   id                         String                       @id @db.VarChar(36)
@@ -883,6 +882,19 @@ model mitra_translate {
 
   @@unique([id_merchants, locale], map: "uniq_merchants_locale")
   @@index([locale], map: "idx_mitra_tr_locale")
+}
+
+model previous_event_photos {
+  id            String      @id @db.VarChar(36)
+  admin_user_id String      @db.VarChar(36)
+  image_url     String      @db.VarChar(512)
+  is_published  Boolean     @default(false)
+  created_at    DateTime    @default(now()) @db.DateTime(6)
+  updated_at    DateTime    @default(now()) @db.DateTime(6)
+  deleted_at    DateTime?   @db.DateTime(6)
+  admin_users   admin_users @relation(fields: [admin_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_prev_event_photos_admin")
+
+  @@index([admin_user_id], map: "idx_prev_event_photos_admin")
 }
 
 /// =========================

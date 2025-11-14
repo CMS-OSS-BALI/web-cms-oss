@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,23 +46,27 @@ export async function GET(req) {
     const { start, end } = parsePeriod(period);
 
     // When prefix provided, add WHERE path LIKE 'prefix%'
-    let sql = `
-      SELECT path,
-             COUNT(*)                   AS pageviews,
-             COUNT(DISTINCT session_id) AS sessions,
-             COUNT(DISTINCT visitor_id) AS visitors
-      FROM analytics_pageviews
-      WHERE created_at >= ? AND created_at < ?
-    `;
-    const params = [start, end];
+    const whereParts = [
+      Prisma.sql`created_at >= ${start}`,
+      Prisma.sql`created_at < ${end}`,
+    ];
     if (prefix) {
-      sql += ` AND path LIKE CONCAT(?, '%') `;
-      params.push(prefix);
+      whereParts.push(Prisma.sql`path LIKE ${`${prefix}%`}`);
     }
-    sql += ` GROUP BY path ORDER BY pageviews DESC LIMIT ?`;
-    params.push(limit);
 
-    const rows = await prisma.$queryRawUnsafe(sql, ...params);
+    const rows = await prisma.$queryRaw(
+      Prisma.sql`
+        SELECT path,
+               COUNT(*)                   AS pageviews,
+               COUNT(DISTINCT session_id) AS sessions,
+               COUNT(DISTINCT visitor_id) AS visitors
+        FROM analytics_pageviews
+        WHERE ${Prisma.join(whereParts, Prisma.sql` AND `)}
+        GROUP BY path
+        ORDER BY pageviews DESC
+        LIMIT ${limit}
+      `
+    );
     const out = rows.map((r) => ({
       path: r.path,
       pageviews: Number(r.pageviews || 0),

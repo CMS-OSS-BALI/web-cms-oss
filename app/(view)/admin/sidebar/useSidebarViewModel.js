@@ -31,6 +31,9 @@ export const MENU = [
       { label: "Data Student", href: "/admin/events/students" },
       { label: "Data Representative", href: "/admin/events/representatives" },
       { label: "Kode Voucher", href: "/admin/events/vouchers" },
+
+      // ⬇️ NEW: menu Foto Event (previous_event_photos)
+      { label: "Foto Event", href: "/admin/events/photos" },
     ],
   },
 

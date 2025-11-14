@@ -93,12 +93,24 @@ export default function useEventsUViewModel({ locale = "id" } = {}) {
   sp.set("locale", locale);
   sp.set("fallback", locale === "id" ? "en" : "id");
 
+  // Event list
   const { data, error } = useSWR(`/api/events?${sp.toString()}`, fetcher, {
     revalidateOnFocus: false,
     shouldRetryOnError: false,
   });
 
+  // Previous event photos (16:9 gallery)
+  const { data: prevData, error: prevError } = useSWR(
+    "/api/previous-event-photos?published=1&limit=20",
+    fetcher,
+    {
+      revalidateOnFocus: false,
+      shouldRetryOnError: false,
+    }
+  );
+
   const rows = Array.isArray(data?.data) ? data.data : [];
+  const prevRows = Array.isArray(prevData?.data) ? prevData.data : [];
 
   // Countdown → ke event paling dekat
   const nearestStartISO = pickNearestFutureStart(rows);
@@ -221,6 +233,28 @@ export default function useEventsUViewModel({ locale = "id" } = {}) {
       },
     ];
 
+    /* ===== PREVIOUS EVENT PHOTOS (gallery) ===== */
+    const previousEventsTitle = t(
+      locale,
+      "Keseruan Event Sebelumnya",
+      "Highlights from Previous Events"
+    );
+    const previousEventsSubtitle = t(
+      locale,
+      "Lihat momen-momen seru dari event kami yang sudah berlangsung.",
+      "See some highlights from our past events."
+    );
+
+    const previousEventPhotos = prevRows.map((p, idx) => ({
+      id: p.id,
+      src: p.image_public_url || p.image_url || "",
+      alt: `${t(
+        locale,
+        "Keseruan Event Sebelumnya",
+        "Previous Event Highlights"
+      )} #${idx + 1}`,
+    }));
+
     return {
       // HERO
       titleLine1: t(
@@ -267,9 +301,18 @@ export default function useEventsUViewModel({ locale = "id" } = {}) {
       why2Title,
       why2Cards,
 
+      // PREVIOUS EVENTS (gallery)
+      previousEventsTitle,
+      previousEventsSubtitle,
+      previousEventPhotos,
+
       // flags
       ready: !error && !!data,
-      errorMessage: error?.message || (data?.error?.message ?? ""),
+      errorMessage:
+        error?.message ||
+        (data?.error?.message ?? "") ||
+        prevError?.message ||
+        "",
     };
-  }, [locale, cd, rows, data, error]);
+  }, [locale, cd, rows, data, error, prevRows, prevError]);
 }
