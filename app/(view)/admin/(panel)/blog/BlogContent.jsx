@@ -641,7 +641,7 @@ export default function BlogContent({ initialLocale = "id" }) {
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={coverPrevCreate}
-                        alt="cover"
+                        alt="cover" title="cover"
                         style={styles.coverImg}
                       />
                     ) : (
@@ -726,7 +726,7 @@ export default function BlogContent({ initialLocale = "id" }) {
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={coverPrevEdit}
-                          alt="cover"
+                          alt="cover" title="cover"
                           style={styles.coverImg}
                         />
                       ) : (
@@ -800,7 +800,7 @@ export default function BlogContent({ initialLocale = "id" }) {
                   activeRow?.image_src ||
                   ""
                 }
-                alt="cover"
+                alt="cover" title="cover"
                 style={styles.coverImgRead}
               />
             </div>

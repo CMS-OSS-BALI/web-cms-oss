@@ -840,7 +840,7 @@ export default function CollegeContent({ locale = "id" }) {
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={src}
-                            alt={`${c.name || "campus"} logo`}
+                            alt={`${c.name || "campus"} title={`${c.name || "campus"} logo`}
                             loading="lazy"
                             style={{
                               width: "100%",

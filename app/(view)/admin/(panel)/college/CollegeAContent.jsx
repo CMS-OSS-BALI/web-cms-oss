@@ -936,7 +936,7 @@ export default function CollegeAContent(props) {
                               {r.logo_url ? (
                                 <img
                                   src={r.logo_url}
-                                  alt=""
+                                  alt="" title=""
                                   style={styles.logoImg}
                                 />
                               ) : (
@@ -1074,7 +1074,7 @@ export default function CollegeAContent(props) {
                     {logoPrevCreate ? (
                       <img
                         src={logoPrevCreate}
-                        alt="logo"
+                        alt="logo" title="logo"
                         style={styles.coverImg}
                       />
                     ) : (
@@ -1286,7 +1286,7 @@ export default function CollegeAContent(props) {
                       {logoPrevEdit ? (
                         <img
                           src={logoPrevEdit}
-                          alt="logo"
+                          alt="logo" title="logo"
                           style={styles.coverImg}
                         />
                       ) : (
@@ -1452,7 +1452,7 @@ export default function CollegeAContent(props) {
                 {detailData?.logo_url ? (
                   <img
                     src={detailData.logo_url}
-                    alt="logo"
+                    alt="logo" title="logo"
                     style={styles.coverImgRead}
                     onLoad={(e) =>
                       setViewImgMeta({

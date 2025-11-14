@@ -284,7 +284,7 @@ export default function ProfileContent({ vm }) {
                   {preview ? (
                     <img
                       src={preview}
-                      alt={`Avatar ${form.getFieldValue("name") || ""}`}
+                      alt={`Avatar ${form.getFieldValue("name") || ""} title={`Avatar ${form.getFieldValue("name") || ""}`}
                       style={{
                         width: "100%",
                         height: "100%",

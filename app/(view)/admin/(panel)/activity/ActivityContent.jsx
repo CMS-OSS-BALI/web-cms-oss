@@ -428,7 +428,7 @@ export default function ActivityContent({ vm: externalVm, locale = "id" }) {
                         {r.image_src ? (
                           <img
                             src={r.image_src}
-                            alt=""
+                            alt="" title=""
                             style={L.logoImg}
                             loading="lazy"
                           />
@@ -576,7 +576,7 @@ export default function ActivityContent({ vm: externalVm, locale = "id" }) {
                     {coverPrevCreate ? (
                       <img
                         src={coverPrevCreate}
-                        alt="cover"
+                        alt="cover" title="cover"
                         style={L.coverImg}
                       />
                     ) : (
@@ -665,7 +665,7 @@ export default function ActivityContent({ vm: externalVm, locale = "id" }) {
                       {coverPrevEdit ? (
                         <img
                           src={coverPrevEdit}
-                          alt="cover"
+                          alt="cover" title="cover"
                           style={L.coverImg}
                         />
                       ) : (
@@ -731,7 +731,7 @@ export default function ActivityContent({ vm: externalVm, locale = "id" }) {
               {detailData?.image_url || activeRow?.image_src ? (
                 <img
                   src={detailData?.image_url || activeRow?.image_src}
-                  alt="cover"
+                  alt="cover" title="cover"
                   style={L.coverImgRead}
                 />
               ) : (

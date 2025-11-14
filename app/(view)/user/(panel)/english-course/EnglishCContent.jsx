@@ -218,7 +218,7 @@ function Img({ src, alt, style }) {
   return (
     <img
       src={src}
-      alt={alt || ""}
+      alt={alt || ""} title={alt || ""}
       style={style}
       onError={(e) => {
         e.currentTarget.onerror = null;

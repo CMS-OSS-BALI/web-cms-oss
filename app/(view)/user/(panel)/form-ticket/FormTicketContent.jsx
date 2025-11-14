@@ -295,7 +295,7 @@ export default function FormTicketContent({ locale = "id" }) {
                       key={ticketCode}
                       className="qr"
                       src={qrSrc}
-                      alt="Ticket QR"
+                      alt="Ticket QR" title="Ticket QR"
                       loading="eager"
                       onError={(e) => {
                         e.currentTarget.onerror = null;
@@ -309,7 +309,7 @@ export default function FormTicketContent({ locale = "id" }) {
                     <img
                       className="qr-logo"
                       src="/images/loading.png"
-                      alt="OSS logo"
+                      alt="OSS logo" title="OSS logo"
                       aria-hidden="true"
                     />
                   </div>

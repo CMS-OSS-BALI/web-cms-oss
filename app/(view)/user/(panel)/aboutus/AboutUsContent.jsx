@@ -595,7 +595,7 @@ export default function AboutUsContent({
               {hero?.image ? (
                 <img
                   src={hero.image}
-                  alt={hero?.imgAlt || "About OSS Bali"}
+                  alt={hero?.imgAlt || "About OSS Bali"} title={hero?.imgAlt || "About OSS Bali"}
                   style={styles.heroImg}
                   loading="eager"
                   decoding="async"
@@ -661,7 +661,7 @@ export default function AboutUsContent({
                 {m.image ? (
                   <img
                     src={m.image}
-                    alt=""
+                    alt="" title=""
                     style={styles.missionImg}
                     loading="lazy"
                     decoding="async"
@@ -708,7 +708,7 @@ export default function AboutUsContent({
               <>
                 <img
                   src={thumbUrl}
-                  alt={video?.title || "Video thumbnail"}
+                  alt={video?.title || "Video thumbnail"} title={video?.title || "Video thumbnail"}
                   style={styles.videoThumb}
                   onError={(e) => (e.currentTarget.src = "/images/loading.png")}
                   loading="lazy"
@@ -765,7 +765,7 @@ export default function AboutUsContent({
                   {s.icon ? (
                     <img
                       src={s.icon}
-                      alt=""
+                      alt="" title=""
                       aria-hidden="true"
                       style={styles.support.icon}
                       loading="lazy"
@@ -825,7 +825,7 @@ export default function AboutUsContent({
               >
                 <img
                   src={a.image}
-                  alt={a?.title || "Aktivitas"}
+                  alt={a?.title || "Aktivitas"} title={a?.title || "Aktivitas"}
                   style={styles.activity3.img}
                   loading="lazy"
                   decoding="async"

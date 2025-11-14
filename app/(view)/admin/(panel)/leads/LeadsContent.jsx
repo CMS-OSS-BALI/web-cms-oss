@@ -362,7 +362,7 @@ export default function LeadsContent({ vm }) {
               >
                 <img
                   src="/image266.svg"
-                  alt=""
+                  alt="" title=""
                   aria-hidden="true"
                   style={{ width: 32, height: 32, objectFit: "contain" }}
                 />
@@ -407,7 +407,7 @@ export default function LeadsContent({ vm }) {
               >
                 <img
                   src="/image266.svg"
-                  alt=""
+                  alt="" title=""
                   aria-hidden="true"
                   style={{ width: 32, height: 32, objectFit: "contain" }}
                 />

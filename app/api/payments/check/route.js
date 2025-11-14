@@ -7,6 +7,12 @@ import {
   detectChannelFromMidtrans,
   grossUp,
 } from "@/lib/pgfees";
+import {
+  authenticatePaymentRequest,
+  getSignedPaymentToken,
+} from "@/lib/security/paymentAccess";
+import { getClientIp } from "@/lib/security/requestUtils";
+import { consumeRateLimit } from "@/lib/security/rateLimit";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -34,12 +40,58 @@ function bad(m, f) {
 function notFound(m = "Booking tidak ditemukan.") {
   return json({ error: { code: "NOT_FOUND", message: m } }, { status: 404 });
 }
+function unauthorized() {
+  return json(
+    {
+      error: {
+        code: "UNAUTHORIZED",
+        message: "Tidak boleh mengakses status pembayaran.",
+      },
+    },
+    { status: 401 }
+  );
+}
+function tooManyRequests() {
+  return json(
+    {
+      error: {
+        code: "RATE_LIMITED",
+        message: "Terlalu banyak percobaan. Coba lagi nanti.",
+      },
+    },
+    { status: 429 }
+  );
+}
 
 export async function GET(req) {
   try {
     const url = new URL(req.url);
     const order_id = (url.searchParams.get("order_id") || "").trim();
+    const ip = getClientIp(req);
+    const rate = consumeRateLimit(`payments-check:${ip}`, {
+      limit: 30,
+      windowMs: 60_000,
+    });
+    if (!rate.success) {
+      console.warn("[payments-check] rate limited", { order_id, ip });
+      return tooManyRequests();
+    }
     if (!order_id) return bad("order_id wajib diisi", "order_id");
+
+    const auth = await authenticatePaymentRequest(req, {
+      orderId: order_id,
+      allowSignedNonce: true,
+    });
+    if (!auth.ok) {
+      const hasToken = Boolean(getSignedPaymentToken(req));
+      console.warn("[payments-check] unauthorized attempt", {
+        order_id,
+        ip,
+        hasToken,
+        ua: req.headers.get("user-agent"),
+      });
+      return unauthorized();
+    }
 
     const booking = await prisma.event_booth_bookings.findFirst({
       where: { order_id },

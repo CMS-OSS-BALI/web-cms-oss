@@ -403,6 +403,7 @@ function EventCard({
           <img
             src={poster}
             alt={safeText(title)}
+            title={safeText(title)}
             style={cardCss.posterImg}
             onError={(e) => {
               e.currentTarget.onerror = null;
@@ -713,6 +714,7 @@ function WhySection({ vm }) {
               <img
                 src={c.img}
                 alt={safeText(c.title)}
+                title={safeText(c.title)}
                 style={why.img}
                 onError={(e) => (e.currentTarget.style.display = "none")}
               />
@@ -840,6 +842,7 @@ function RepCTA({ title, images = [], options = [], locale = "id" }) {
               <img
                 src={imgs[0]?.src}
                 alt={safeText(imgs[0]?.alt || "Representative 1")}
+                title={safeText(imgs[0]?.alt || "Representative 1")}
                 style={repCta.img}
                 onError={(e) => {
                   e.currentTarget.onerror = null;
@@ -857,6 +860,7 @@ function RepCTA({ title, images = [], options = [], locale = "id" }) {
                 <img
                   src={imgs[1]?.src}
                   alt={safeText(imgs[1]?.alt || "Representative 2")}
+                  title={safeText(imgs[1]?.alt || "Representative 2")}
                   style={repCta.img}
                   onError={(e) => {
                     e.currentTarget.onerror = null;
@@ -872,6 +876,7 @@ function RepCTA({ title, images = [], options = [], locale = "id" }) {
                 <img
                   src={imgs[2]?.src}
                   alt={safeText(imgs[2]?.alt || "Representative 3")}
+                  title={safeText(imgs[2]?.alt || "Representative 3")}
                   style={repCta.img}
                   onError={(e) => {
                     e.currentTarget.onerror = null;
@@ -889,6 +894,7 @@ function RepCTA({ title, images = [], options = [], locale = "id" }) {
               <img
                 src={imgs[3]?.src}
                 alt={safeText(imgs[3]?.alt || "Representative 4")}
+                title={safeText(imgs[3]?.alt || "Representative 4")}
                 style={repCta.img}
                 onError={(e) => {
                   e.currentTarget.onerror = null;
@@ -1146,6 +1152,9 @@ export default function EventsUContent({ locale = "id" }) {
         </>
       )}
 
+      {/* WHY (pindah ke atas REP) */}
+      <WhySection vm={vm} />
+
       {/* REP CTA */}
       {hasRep && (
         <RepCTA
@@ -1155,9 +1164,6 @@ export default function EventsUContent({ locale = "id" }) {
           locale={locale}
         />
       )}
-
-      {/* WHY */}
-      <WhySection vm={vm} />
 
       <style jsx>{`
         /* Countdown grid clamp */

@@ -1,9 +1,47 @@
 "use client";
-
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { useEffect } from "react"; // Tambahkan useEffect
 import useEventsRViewModel from "./useEventsRViewModel";
 
+/* ===== Hooks dari Referensi (Untuk Reveal On Scroll) ===== */
+function useRevealOnScroll(deps = []) {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const prefersReduce = window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    ).matches;
+    const markVisible = (els) =>
+      els.forEach((el) => el.classList.add("is-visible"));
+    if (prefersReduce) {
+      markVisible(Array.from(document.querySelectorAll(".reveal")));
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            e.target.classList.add("is-visible");
+            io.unobserve(e.target);
+          }
+        });
+      },
+      { threshold: 0.16, rootMargin: "0px 0px -10% 0px" }
+    );
+    const observeAll = () => {
+      document
+        .querySelectorAll(".reveal:not(.is-visible)")
+        .forEach((el) => io.observe(el));
+    };
+    observeAll();
+    const mo = new MutationObserver(observeAll);
+    mo.observe(document.body, { childList: true, subtree: true });
+    return () => {
+      io.disconnect();
+      mo.disconnect();
+    };
+  }, deps);
+}
 /* ===== Tokens ===== */
 const CONTAINER = { width: "92%", maxWidth: 1220, margin: "0 auto" };
 const BLUE = "#0b56c9";
@@ -249,18 +287,133 @@ const emptyCss = {
   sub: { marginTop: 8, color: "#476aa4" },
 };
 
+/* Komponen terpisah untuk global styles */
+function GlobalStyles() {
+  return (
+    <style jsx global>{`
+      /* Tweak global body/html untuk memastikan background penuh dan mencegah overflow horizontal */
+      html,
+      body {
+        /* Penting: Pastikan tidak ada warna background default yang menutupi */
+        background-color: transparent !important;
+        overflow-x: clip;
+      }
+      body {
+        min-height: 100vh; /* Memastikan body setinggi viewport */
+      }
+
+      /* ===== Latar global gradasi diterapkan pada class wrapper ===== */
+      .events-page-wrap {
+        /* Menerapkan background ke main/div container */
+        background: radial-gradient(
+            1000px 500px at 10% 50%,
+            rgba(11, 86, 201, 0.08),
+            transparent 60%
+          ),
+          radial-gradient(
+            800px 400px at 90% 50%,
+            rgba(11, 86, 201, 0.06),
+            transparent 65%
+          ),
+          linear-gradient(180deg, #f7f9ff 0%, #ffffff 100%);
+        /* min-height 100% untuk mengisi body */
+        min-height: 100%;
+        overflow-x: clip;
+      }
+
+      /* Hover Card CTA */
+      @media (hover: hover) {
+        .cta-card {
+          transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .cta-card:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 12px 28px rgba(15, 23, 42, 0.1),
+            0 28px 60px rgba(15, 23, 42, 0.14);
+        }
+        .cta-btn {
+          transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .cta-btn:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 14px 32px rgba(11, 86, 201, 0.4);
+        }
+      }
+
+      /* Hero CTA micro-motions */
+      @keyframes pulse-soft {
+        0%,
+        100% {
+          box-shadow: 0 12px 28px rgba(11, 86, 201, 0.35);
+        }
+        50% {
+          box-shadow: 0 16px 36px rgba(11, 86, 201, 0.45);
+        }
+      }
+      .cta-btn--pulse {
+        animation: pulse-soft 2.8s ease-in-out infinite;
+      }
+
+      /* ===== Reveal utilities (referensi) ===== */
+      .reveal {
+        opacity: 0;
+        transform: var(--reveal-from, translate3d(0, 16px, 0));
+        transition: opacity 700ms ease,
+          transform 700ms cubic-bezier(0.21, 1, 0.21, 1);
+        transition-delay: var(--rvd, 0ms);
+        will-change: opacity, transform;
+      }
+      .reveal[data-anim="up"] {
+        --reveal-from: translate3d(0, 18px, 0);
+      }
+      .reveal[data-anim="down"] {
+        --reveal-from: translate3d(0, -18px, 0);
+      }
+      .reveal[data-anim="left"] {
+        --reveal-from: translate3d(-18px, 0, 0);
+      }
+      .reveal[data-anim="right"] {
+        --reveal-from: translate3d(18px, 0, 0);
+      }
+      .reveal[data-anim="zoom"] {
+        --reveal-from: scale(0.96);
+      }
+      .reveal.is-visible {
+        opacity: 1;
+        transform: none;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .reveal {
+          transition: none !important;
+          opacity: 1 !important;
+          transform: none !important;
+        }
+        .cta-btn--pulse {
+          animation: none !important;
+        }
+      }
+    `}</style>
+  );
+}
+
 export default function EventsRContent({ locale = "id" }) {
   const sp = useSearchParams();
   const eventId = sp.get("id") || "";
   const vm = useEventsRViewModel({ locale, eventId });
 
+  // Panggil hook useRevealOnScroll
+  useRevealOnScroll([vm.benefits?.length]);
+
   if (!vm.item) {
     return (
-      <main>
-        <section style={emptyCss.wrap}>
+      <main className="events-page-wrap">
+        {" "}
+        {/* Tambahkan class untuk background */}
+        <section style={emptyCss.wrap} className="reveal" data-anim="zoom">
           <h2 style={emptyCss.big}>{safeText(vm.emptyTitle)}</h2>
           <p style={emptyCss.sub}>{safeText(vm.emptySub)}</p>
         </section>
+        <GlobalStyles /> {/* Panggil GlobalStyles */}
       </main>
     );
   }
@@ -281,24 +434,29 @@ export default function EventsRContent({ locale = "id" }) {
       )}&lang=${encodeURIComponent(locale)}`
     : `/user/form-rep?lang=${encodeURIComponent(locale)}`;
 
-  const mascotSrc = "/images/loading.png";
+  const mascotSrc = "/maskot-terbang.svg";
 
   return (
-    <main>
+    <main className="events-page-wrap">
+      {" "}
+      {/* Tambahkan class untuk background */}
       {/* ===== HERO ===== */}
       <section style={hero.wrap}>
-        <h1 style={hero.title}>{safeText(it.title)}</h1>
+        <h1 className="reveal" data-anim="down" style={hero.title}>
+          {safeText(it.title)}
+        </h1>
 
         <div
           className="hero-grid"
           style={{ ...hero.grid, ["--poster-h"]: "340px" }}
         >
           {/* Poster */}
-          <div style={hero.poster}>
+          <div className="reveal" data-anim="zoom" style={hero.poster}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={it.poster}
               alt={safeText(it.title)}
+              title={safeText(it.title)}
               style={hero.img}
               onError={(e) => {
                 e.currentTarget.onerror = null;
@@ -311,7 +469,11 @@ export default function EventsRContent({ locale = "id" }) {
           {/* Right column */}
           <div className="hero-right" style={hero.right}>
             {it.description && (
-              <div className="desc-wrap" style={hero.descWrap}>
+              <div
+                className="desc-wrap reveal"
+                data-anim="up"
+                style={{ ...hero.descWrap, ["--rvd"]: "80ms" }}
+              >
                 <p style={hero.lead}>{safeText(it.description)}</p>
                 {showTrimIndicators && (
                   <>
@@ -323,7 +485,11 @@ export default function EventsRContent({ locale = "id" }) {
             )}
 
             <div className="meta-box" style={hero.metaBox}>
-              <div style={hero.metaRow}>
+              <div
+                className="reveal"
+                data-anim="right"
+                style={{ ...hero.metaRow, ["--rvd"]: "160ms" }}
+              >
                 <div className="icon-box" style={hero.iconBox}>
                   🗓️
                 </div>
@@ -332,7 +498,11 @@ export default function EventsRContent({ locale = "id" }) {
                 </div>
               </div>
 
-              <div style={hero.metaRow}>
+              <div
+                className="reveal"
+                data-anim="right"
+                style={{ ...hero.metaRow, ["--rvd"]: "220ms" }}
+              >
                 <div className="icon-box" style={hero.iconBox}>
                   ⏱️
                 </div>
@@ -341,7 +511,11 @@ export default function EventsRContent({ locale = "id" }) {
                 </div>
               </div>
 
-              <div style={hero.metaRow}>
+              <div
+                className="reveal"
+                data-anim="right"
+                style={{ ...hero.metaRow, ["--rvd"]: "280ms" }}
+              >
                 <div className="icon-box" style={hero.iconBox}>
                   📍
                 </div>
@@ -350,7 +524,11 @@ export default function EventsRContent({ locale = "id" }) {
                 </div>
               </div>
 
-              <div style={hero.metaRow}>
+              <div
+                className="reveal"
+                data-anim="right"
+                style={{ ...hero.metaRow, ["--rvd"]: "340ms" }}
+              >
                 <div className="icon-box" style={hero.iconBox}>
                   💰
                 </div>
@@ -425,13 +603,20 @@ export default function EventsRContent({ locale = "id" }) {
           }
         `}</style>
       </section>
-
       {/* ===== BENEFITS ===== */}
       {vm.benefits?.length ? (
         <section style={benefitsCss.wrap}>
-          <h2 style={benefitsCss.title}>{safeText(vm.benefitTitle)}</h2>
+          <h2 className="reveal" data-anim="down" style={benefitsCss.title}>
+            {safeText(vm.benefitTitle)}
+          </h2>
           {vm.benefitSubtitle ? (
-            <p style={benefitsCss.subTitle}>{safeText(vm.benefitSubtitle)}</p>
+            <p
+              className="reveal"
+              data-anim="down"
+              style={{ ...benefitsCss.subTitle, ["--rvd"]: "80ms" }}
+            >
+              {safeText(vm.benefitSubtitle)}
+            </p>
           ) : null}
 
           <div className="benefits-grid" style={benefitsCss.grid}>
@@ -439,13 +624,22 @@ export default function EventsRContent({ locale = "id" }) {
               const isSvg =
                 typeof b.icon === "string" && b.icon.trim().startsWith("/");
               return (
-                <div key={i} style={benefitsCss.item}>
+                <div
+                  key={i}
+                  className="reveal"
+                  data-anim="up"
+                  style={{
+                    ...benefitsCss.item,
+                    ["--rvd"]: `${(i % 6) * 70}ms`,
+                  }}
+                >
                   <div style={benefitsCss.iconWrap}>
                     {isSvg ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={b.icon}
                         alt=""
+                        title=""
                         style={benefitsCss.iconImg}
                         loading="lazy"
                       />
@@ -479,26 +673,31 @@ export default function EventsRContent({ locale = "id" }) {
           `}</style>
         </section>
       ) : null}
-
       {/* ===== CTA ===== */}
       <section style={cta.wrap}>
         <div className="cta-grid" style={cta.grid}>
           {/* Left: Card */}
-          <div style={cta.card}>
+          <div className="cta-card reveal" data-anim="left" style={cta.card}>
             <h3 style={cta.title}>{ctaTitle}</h3>
             <p style={cta.sub}>{ctaSub}</p>
 
-            <Link href={boothHref} prefetch={false} style={cta.btn}>
+            <Link
+              href={boothHref}
+              prefetch={false}
+              className="cta-btn cta-btn--pulse"
+              style={cta.btn}
+            >
               {ctaBtn}
             </Link>
           </div>
 
           {/* Right: Mascot */}
-          <div style={cta.right}>
+          <div className="reveal" data-anim="zoom" style={cta.right}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={mascotSrc}
               alt="OSS Mascot"
+              title="OSS Mascot"
               style={cta.mascot}
               onError={(e) => {
                 e.currentTarget.onerror = null;
@@ -518,6 +717,7 @@ export default function EventsRContent({ locale = "id" }) {
           }
         `}</style>
       </section>
+      <GlobalStyles /> {/* Panggil GlobalStyles */}
     </main>
   );
 }

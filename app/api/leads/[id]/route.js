@@ -17,6 +17,10 @@ import { sendWhatsAppMessage, formatPhoneNumber } from "@/app/utils/watzap";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+const ENABLE_ASSIGNMENT_WA =
+  String(process.env.WATZAP_ENABLE_ASSIGNMENT_WA || "").toLowerCase() ===
+  "true";
+
 /* ===== whatsapp helpers ===== */
 function normalizePhone(value) {
   if (!value) return "";
@@ -27,6 +31,7 @@ function normalizePhone(value) {
   }
 }
 async function sendAssignmentWA(lead, consultant) {
+  if (!ENABLE_ASSIGNMENT_WA) return;
   const apiKey = process.env.API_KEY_WATZAP;
   const numberKey = process.env.NUMBER_KEY_WATZAP;
   if (!consultant?.whatsapp || !apiKey || !numberKey) return;
@@ -52,9 +57,11 @@ async function sendAssignmentWA(lead, consultant) {
   try {
     await sendWhatsAppMessage(phone, msg);
   } catch (err) {
-    console.error("[watzap] gagal kirim WA:", err?.message || err);
-    if (err?.response?.data)
-      console.error("[watzap] response:", err.response.data);
+    console.error("[watzap] gagal kirim WA assignment", {
+      message: err?.message,
+      status: err?.response?.status,
+      code: err?.code,
+    });
   }
 }
 

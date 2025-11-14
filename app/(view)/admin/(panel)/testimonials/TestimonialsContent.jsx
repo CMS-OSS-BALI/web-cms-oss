@@ -492,7 +492,7 @@ export default function TestimonialsContent({ locale = "id" }) {
                               {image ? (
                                 <img
                                   src={image}
-                                  alt=""
+                                  alt="" title=""
                                   style={styles.thumbImg}
                                 />
                               ) : (
@@ -694,7 +694,7 @@ export default function TestimonialsContent({ locale = "id" }) {
                     {imgPrevCreate ? (
                       <img
                         src={imgPrevCreate}
-                        alt="cover"
+                        alt="cover" title="cover"
                         style={styles.coverImg}
                       />
                     ) : (
@@ -796,7 +796,7 @@ export default function TestimonialsContent({ locale = "id" }) {
                       {imgPrevEdit ? (
                         <img
                           src={imgPrevEdit}
-                          alt="cover"
+                          alt="cover" title="cover"
                           style={styles.coverImg}
                         />
                       ) : (
@@ -881,7 +881,7 @@ export default function TestimonialsContent({ locale = "id" }) {
                           detailData.photo_url,
                         detailData.updated_at
                       )}
-                      alt="cover"
+                      alt="cover" title="cover"
                       style={styles.coverImgRead}
                     />
                   ) : (

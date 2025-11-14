@@ -309,7 +309,7 @@ export default function BlogDetailContent({
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={image}
-              alt={titleMain || ""}
+              alt={titleMain || ""} title={titleMain || ""}
               loading="lazy"
               style={{
                 ...styles.heroImg,

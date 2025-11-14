@@ -73,7 +73,7 @@ export default function CreateEventModal({
               >
                 <div style={styles.coverBox}>
                   {imgPrev ? (
-                    <img src={imgPrev} alt="cover" style={styles.coverImg} />
+                    <img src={imgPrev} alt="cover" title="cover" style={styles.coverImg} />
                   ) : (
                     <div style={styles.coverPlaceholder}>+ Banner (16:9)</div>
                   )}

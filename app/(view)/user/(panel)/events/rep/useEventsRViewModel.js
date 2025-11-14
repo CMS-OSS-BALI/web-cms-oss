@@ -55,10 +55,10 @@ const fmtTimeRange = (startTs, endTs, locale) => {
   if (!startTs || !endTs) return "-";
   const s = new Date(Number(startTs));
   const e = new Date(Number(endTs));
-  const h1 = pad2(s.getHours()),
-    m1 = pad2(s.getMinutes());
-  const h2 = pad2(e.getHours()),
-    m2 = pad2(e.getMinutes());
+  const h1 = pad2(s.getHours());
+  const m1 = pad2(s.getMinutes());
+  const h2 = pad2(e.getHours());
+  const m2 = pad2(e.getMinutes());
   const offMin = -s.getTimezoneOffset();
   const hours = Math.round(offMin / 60);
   const gmt = `GMT${hours >= 0 ? "+" : ""}${hours}`;
@@ -136,7 +136,7 @@ export default function useEventsRViewModel({ locale = "id", eventId } = {}) {
           location: safeText(row.location || "-"),
           poster: row.banner_url || FALLBACK_POSTER,
           priceLabel: isEN ? "Booth Fee" : "Biaya Booth",
-          priceText, // <= booth_price dalam IDR (atau 'Hubungi kami')
+          priceText,
           quota: Number(row.booth_quota ?? 0) || 0,
           ctaHref: `/user/events/${row.id}#booth`,
           ctaText: isEN ? "Book a Booth" : "Booking Booth",
@@ -145,92 +145,96 @@ export default function useEventsRViewModel({ locale = "id", eventId } = {}) {
 
     // ===== Ikon (public assets) =====
     const icon = {
+      student: "/intrep.svg",
+      brand: "/ecert.svg",
       network: "/accglb.svg",
-      lead: "/intrep.svg",
-      branding: "/ecert.svg",
-      lounge: "/freesd.svg",
-      talk: "/freeielts.svg",
-      support: "/stuvis.svg",
+      data: "/stuvis.svg",
+      facility: "/freesd.svg",
+      collab: "/freeielts.svg",
     };
 
     /* =======================
        BENEFITS COPY (match design)
+       ID: persis seperti di slide
     ======================= */
     const idBenefits = [
       {
-        icon: icon.branding,
+        icon: icon.student,
         iconType: "svg",
-        title: "Peningkatan Branding",
-        desc: "Perkuat personal branding dengan seluruh peserta",
+        title: "Peluang mendapatkan siswa potensial",
+        desc: "Menjangkau segmen siswa internasional yang aktif mencari peluang studi luar negeri.",
+      },
+      {
+        icon: icon.brand,
+        iconType: "svg",
+        title: "Brand Exposure & Positioning",
+        desc: "Peningkatan brand awareness kampus di kalangan pelajar, sekolah, dan orang tua.",
       },
       {
         icon: icon.network,
         iconType: "svg",
-        title: "Kesempatan Berjejaring",
-        desc: "Peluang membangun kerjasama international",
+        title: "Kegiatan Engagement & Networking",
+        desc: "Sesi presentasi institusi, workshop, dan counseling langsung dengan peserta.",
       },
       {
-        icon: icon.support,
+        icon: icon.data,
         iconType: "svg",
-        title: "Keuntungan Setelah Acara",
-        desc: "Kesempatan dijadikan highlight di media sosial penyelenggara event",
+        title: "Data & Insight Strategis",
+        desc: "Mendapatkan feedback dan tren minat siswa Indonesia terhadap program, negara, dan jurusan tertentu.",
       },
       {
-        icon: icon.lead,
+        icon: icon.facility,
         iconType: "svg",
-        title: "Keterlibatan Mahasiswa Langsung",
-        desc: "Berinteraksi langsung dengan student yang ingin ke luar negeri",
+        title: "Fasilitas Eksklusif Selama Event",
+        desc: "Booth eksklusif premium dan dukungan tim OSS Bali untuk logistik, interpreter, dan koordinasi lapangan.",
       },
       {
-        icon: icon.talk,
+        icon: icon.collab,
         iconType: "svg",
-        title: "Insight Eksklusif Dari Leads Potensial",
-        desc: "Mendapat leads student potensial (prospective student leads)",
-      },
-      {
-        icon: icon.lounge,
-        iconType: "svg",
-        title: "Optimalisasi Reputasi Global Kampus",
-        desc: "Tingkatkan daya tarik melalui promosi program internasional.",
+        title: "Peluang Kolaborasi Strategis",
+        desc: "OSS Bali akan menyediakan support promosi dan operasional lokal seperti ikutserta dalam sosialisasi ke sekolah dan iklan sosial media eksklusif.",
       },
     ];
 
+    /* =======================
+       EN version (natural translation)
+    ======================= */
     const enBenefits = [
       {
-        icon: icon.branding,
+        icon: icon.student,
         iconType: "svg",
-        title: "Stronger Branding",
-        desc: "Reinforce your brand with all attendees.",
+        title: "Opportunity to Reach Potential Students",
+        desc: "Reach international-minded students who are actively seeking study abroad opportunities.",
+      },
+      {
+        icon: icon.brand,
+        iconType: "svg",
+        title: "Brand Exposure & Positioning",
+        desc: "Increase your campus brand awareness among students, schools, and parents.",
       },
       {
         icon: icon.network,
         iconType: "svg",
-        title: "Networking Opportunities",
-        desc: "Build international collaborations.",
+        title: "Engagement & Networking Activities",
+        desc: "Host institution presentations, workshops, and direct counseling sessions with participants.",
       },
       {
-        icon: icon.support,
+        icon: icon.data,
         iconType: "svg",
-        title: "Post-Event Benefits",
-        desc: "Chance to be highlighted on the organizer’s social media.",
+        title: "Strategic Data & Insights",
+        desc: "Gain feedback and trend data on Indonesian students’ interests by program, country, and major.",
       },
       {
-        icon: icon.lead,
+        icon: icon.facility,
         iconType: "svg",
-        title: "Direct Student Engagement",
-        desc: "Interact directly with students pursuing study abroad.",
+        title: "Exclusive On-Site Facilities",
+        desc: "Premium booth space and OSS Bali team support for logistics, interpreters, and on-ground coordination.",
       },
       {
-        icon: icon.talk,
+        icon: icon.collab,
         iconType: "svg",
-        title: "Exclusive Insights From Potential Leads",
-        desc: "Gain prospective student leads for follow-ups.",
-      },
-      {
-        icon: icon.lounge,
-        iconType: "svg",
-        title: "Enhanced Global Reputation",
-        desc: "Increase appeal via international program promotion.",
+        title: "Strategic Collaboration Opportunities",
+        desc: "OSS Bali provides promotional and local operational support such as school roadshows and exclusive social-media campaigns.",
       },
     ];
 

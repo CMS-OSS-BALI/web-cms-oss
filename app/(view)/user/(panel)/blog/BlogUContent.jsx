@@ -92,6 +92,7 @@ const Img = memo(function Img({ src, alt, style }) {
     <img
       src={src || PLACEHOLDER}
       alt={alt || ""}
+      title={alt || ""}
       style={style}
       onError={(e) => {
         e.currentTarget.onerror = null;
@@ -961,6 +962,7 @@ export default function BlogUContent({ locale = "id" }) {
               <img
                 src="/maskot-terbang.svg"
                 alt=""
+                title="OSS Mascot"
                 className="hero-mascot--bob reveal"
                 data-anim="right"
                 style={{ ...HERO.mascot, ["--rvd"]: "160ms" }}

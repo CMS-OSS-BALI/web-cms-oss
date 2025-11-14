@@ -578,7 +578,7 @@ export default function ReferralContent({ vm }) {
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={detailData.previews.front}
-                        alt="KTP"
+                        alt="KTP" title="KTP"
                         style={{ maxWidth: "100%", borderRadius: 8 }}
                       />
                     ) : (

@@ -435,7 +435,7 @@ function Img({ src, alt, style, className }) {
   return (
     <img
       src={src}
-      alt={alt || ""}
+      alt={alt || ""} title={alt || ""}
       className={className}
       style={style}
       loading="lazy"

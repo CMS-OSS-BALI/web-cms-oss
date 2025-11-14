@@ -366,7 +366,7 @@ export default function ReferralContent({
               >
                 <img
                   src={values.document.front_preview}
-                  alt="Preview Kartu Identitas"
+                  alt="Preview Kartu Identitas" title="Preview Kartu Identitas"
                   style={styles.previewImg}
                 />
                 <div style={styles.deleteOverlay} data-role="delov">

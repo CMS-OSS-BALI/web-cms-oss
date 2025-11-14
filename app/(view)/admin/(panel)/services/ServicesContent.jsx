@@ -491,7 +491,7 @@ export default function ServicesContent({ locale = "id" }) {
                               {r.image_public_url ? (
                                 <img
                                   src={r.image_public_url}
-                                  alt=""
+                                  alt="" title=""
                                   style={styles.thumbImg}
                                 />
                               ) : (
@@ -637,7 +637,7 @@ export default function ServicesContent({ locale = "id" }) {
                     {imgPrevCreate ? (
                       <img
                         src={imgPrevCreate}
-                        alt="cover"
+                        alt="cover" title="cover"
                         style={styles.coverImg}
                       />
                     ) : (
@@ -779,7 +779,7 @@ export default function ServicesContent({ locale = "id" }) {
                       {imgPrevEdit ? (
                         <img
                           src={imgPrevEdit}
-                          alt="cover"
+                          alt="cover" title="cover"
                           style={styles.coverImg}
                         />
                       ) : (
@@ -894,7 +894,7 @@ export default function ServicesContent({ locale = "id" }) {
                 {detailData?.image_public_url ? (
                   <img
                     src={detailData.image_public_url}
-                    alt="cover"
+                    alt="cover" title="cover"
                     style={styles.coverImgRead}
                     onLoad={(e) =>
                       setViewImgMeta({

@@ -345,7 +345,7 @@ function Img({ src, alt, style, className }) {
         src ||
         "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=1200&auto=format&fit=crop"
       }
-      alt={alt || ""}
+      alt={alt || ""} title={alt || ""}
       className={className}
       style={style}
       loading="lazy"

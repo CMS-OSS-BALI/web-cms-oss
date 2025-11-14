@@ -338,7 +338,7 @@ export default function ConsultantDetailContent({
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={hero?.image}
-                    alt={hero?.name || "Consultant photo"}
+                    alt={hero?.name || "Consultant photo"} title={hero?.name || "Consultant photo"}
                     style={styles.hero.photoImg}
                     loading="eager"
                     onError={(e) =>
@@ -379,7 +379,7 @@ export default function ConsultantDetailContent({
             <div className="about-left" style={styles.about.leftCard}>
               <img
                 src={about?.leftImg || "/images/fallback.jpg"}
-                alt="About left"
+                alt="About left" title="About left"
                 style={styles.about.imgEl}
                 loading="lazy"
                 onError={(e) => (e.currentTarget.src = "/images/fallback.jpg")}
@@ -389,7 +389,7 @@ export default function ConsultantDetailContent({
             <div className="about-right" style={styles.about.rightCard}>
               <img
                 src={about?.rightImg || "/images/fallback.jpg"}
-                alt="About right"
+                alt="About right" title="About right"
                 style={styles.about.imgEl}
                 loading="lazy"
                 onError={(e) => (e.currentTarget.src = "/images/fallback.jpg")}
@@ -478,7 +478,7 @@ export default function ConsultantDetailContent({
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={p.thumb || "/images/fallback.jpg"}
-                        alt={p.title || "Program image"}
+                        alt={p.title || "Program image"} title={p.title || "Program image"}
                         style={styles.programs.imgFull}
                         loading="lazy"
                         onError={(e) =>
@@ -530,7 +530,7 @@ export default function ConsultantDetailContent({
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/tanya.svg"
-                alt="Maskot bertanya"
+                alt="Maskot bertanya" title="Maskot bertanya"
                 style={styles.cta.artImg}
                 loading="lazy"
                 onError={(e) => (e.currentTarget.src = "/tanya.svg")}

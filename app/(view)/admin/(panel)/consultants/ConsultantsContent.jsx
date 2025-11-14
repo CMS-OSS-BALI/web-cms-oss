@@ -247,7 +247,7 @@ export default function ConsultantsContent({ vm }) {
   };
 
   const renderAvatar = (url, name) => {
-    if (url) return <img src={url} alt={name} style={styles.avatarSmImg} />;
+    if (url) return <img src={url} alt={name} title={name} style={styles.avatarSmImg} />;
     const first = (name || "?").trim().charAt(0).toUpperCase();
     return <div style={styles.avatarSmFallback}>{first}</div>;
   };
@@ -451,7 +451,7 @@ export default function ConsultantsContent({ vm }) {
                     {avatarPreviewCreate ? (
                       <img
                         src={avatarPreviewCreate}
-                        alt="avatar"
+                        alt="avatar" title="avatar"
                         style={{
                           width: "100%",
                           height: "100%",
@@ -572,7 +572,7 @@ export default function ConsultantsContent({ vm }) {
                       {avatarPreviewEdit ? (
                         <img
                           src={avatarPreviewEdit}
-                          alt="avatar"
+                          alt="avatar" title="avatar"
                           style={{
                             width: "100%",
                             height: "100%",
@@ -636,7 +636,7 @@ export default function ConsultantsContent({ vm }) {
                     const src = pi.image_url || "";
                     return (
                       <div key={pi.id} style={styles.thumb}>
-                        <img src={src} alt="program" style={styles.thumbImg} />
+                        <img src={src} alt="program" title="program" style={styles.thumbImg} />
                         <Popconfirm
                           title="Hapus foto ini?"
                           okText="Hapus"
@@ -709,7 +709,7 @@ export default function ConsultantsContent({ vm }) {
                 {viewAvatar ? (
                   <img
                     src={viewAvatar}
-                    alt="avatar"
+                    alt="avatar" title="avatar"
                     style={{
                       width: "100%",
                       height: "100%",
@@ -767,7 +767,7 @@ export default function ConsultantsContent({ vm }) {
                   const src = pi.image_url || "";
                   return (
                     <div key={pi.id} style={styles.thumb}>
-                      <img src={src} alt="program" style={styles.thumbImg} />
+                      <img src={src} alt="program" title="program" style={styles.thumbImg} />
                     </div>
                   );
                 })}

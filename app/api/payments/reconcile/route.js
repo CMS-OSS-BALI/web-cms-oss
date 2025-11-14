@@ -2,20 +2,25 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { fetchStatus, mapStatus } from "@/lib/midtrans";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { sendBoothInvoiceEmail } from "@/lib/mailer";
 import {
   isPassthroughEnabled,
   detectChannelFromMidtrans,
   grossUp,
 } from "@/lib/pgfees";
+import {
+  authenticatePaymentRequest,
+  getSignedPaymentToken,
+} from "@/lib/security/paymentAccess";
+import { getClientIp } from "@/lib/security/requestUtils";
+import { consumeRateLimit } from "@/lib/security/rateLimit";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const CRON_SECRET = process.env.CRON_SECRET || "";
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
 const ALLOW_PUBLIC_RECONCILE =
+  !IS_PRODUCTION &&
   String(process.env.ALLOW_PUBLIC_RECONCILE || "").trim() === "1";
 
 function sanitize(v) {
@@ -55,21 +60,6 @@ async function readBodyFlexible(req) {
   }
   return (await req.json().catch(() => ({}))) ?? {};
 }
-async function assertAdminOrCron(req) {
-  const cron = req.headers.get("x-cron-key");
-  if (cron && CRON_SECRET && cron === CRON_SECRET) return true;
-
-  const session = await getServerSession(authOptions);
-  if (session?.user?.email) {
-    const admin = await prisma.admin_users.findUnique({
-      where: { email: session.user.email },
-      select: { id: true },
-    });
-    if (admin) return true;
-  }
-  throw new Response("Unauthorized", { status: 401 });
-}
-
 async function reconcileOne(order_id) {
   const booking = await prisma.event_booth_bookings.findFirst({
     where: { order_id },
@@ -222,23 +212,68 @@ async function reconcileOne(order_id) {
 
 export async function POST(req) {
   try {
+    const ip = getClientIp(req);
+    const rate = consumeRateLimit(`payments-reconcile:${ip}`, {
+      limit: 8,
+      windowMs: 60_000,
+    });
+    if (!rate.success) {
+      console.warn("[payments-reconcile] rate limited", { ip });
+      return json(
+        {
+          error: {
+            code: "RATE_LIMITED",
+            message: "Terlalu banyak percobaan rekonsiliasi.",
+          },
+        },
+        { status: 429 }
+      );
+    }
+
     const isPublicHeader = req.headers.get("x-public-reconcile") === "1";
+    if (isPublicHeader && !ALLOW_PUBLIC_RECONCILE) {
+      console.warn("[payments-reconcile] public reconcile flag refused", {
+        ip,
+        env: process.env.NODE_ENV,
+      });
+    }
+
     const body = await readBodyFlexible(req);
     const order_id =
       typeof body?.order_id === "string" ? body.order_id.trim() : "";
+    const bodyToken =
+      typeof body?.token === "string" ? body.token.trim() : undefined;
 
-    if (isPublicHeader && ALLOW_PUBLIC_RECONCILE) {
-      if (!order_id) return bad("order_id wajib diisi", "order_id");
-      const res = await reconcileOne(order_id);
-      const status = res.ok
-        ? 200
-        : res.reason === "BOOKING_NOT_FOUND"
-        ? 404
-        : 400;
-      return json({ message: "OK", data: res }, { status });
+    if (isPublicHeader && ALLOW_PUBLIC_RECONCILE && !order_id) {
+      return bad("order_id wajib diisi", "order_id");
     }
 
-    await assertAdminOrCron(req);
+    const auth = await authenticatePaymentRequest(req, {
+      orderId: order_id || undefined,
+      allowSignedNonce:
+        Boolean(order_id) && isPublicHeader && ALLOW_PUBLIC_RECONCILE,
+      extraToken: bodyToken,
+    });
+
+    if (!auth.ok) {
+      const hasToken =
+        Boolean(bodyToken) || Boolean(getSignedPaymentToken(req, bodyToken));
+      console.warn("[payments-reconcile] unauthorized attempt", {
+        order_id,
+        ip,
+        isPublicHeader,
+        hasToken,
+      });
+      return json(
+        {
+          error: {
+            code: "UNAUTHORIZED",
+            message: "Tidak boleh mengakses rekonsiliasi pembayaran.",
+          },
+        },
+        { status: 401 }
+      );
+    }
 
     if (order_id) {
       const res = await reconcileOne(order_id);

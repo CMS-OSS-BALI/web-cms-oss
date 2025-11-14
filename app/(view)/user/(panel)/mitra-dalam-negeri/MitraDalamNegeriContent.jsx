@@ -377,7 +377,7 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
                   >
                     <img
                       src={m.logo}
-                      alt={m.name}
+                      alt={m.name} title={m.name}
                       style={styles.merchant.logo}
                       onError={(e) => (e.currentTarget.src = "/noimage.svg")}
                     />
@@ -445,7 +445,7 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
                   >
                     <img
                       src={o.logo}
-                      alt={o.name}
+                      alt={o.name} title={o.name}
                       style={styles.organization.logo}
                       onError={(e) => (e.currentTarget.src = "/noimage.svg")}
                     />

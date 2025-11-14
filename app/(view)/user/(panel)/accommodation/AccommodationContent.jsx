@@ -375,7 +375,7 @@ function Img({ src, alt, style }) {
         src ||
         "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=1200&auto=format&fit=crop"
       }
-      alt={alt || ""}
+      alt={alt || ""} title={alt || ""}
       style={style}
       loading="lazy"
       onError={(e) => {

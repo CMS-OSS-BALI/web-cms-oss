@@ -24,7 +24,7 @@ export default function ViewEventModal({ open, loading, data, onClose }) {
                   {data.banner_url ? (
                     <img
                       src={data.banner_url}
-                      alt="banner"
+                      alt="banner" title="banner"
                       style={styles.coverImg}
                     />
                   ) : (

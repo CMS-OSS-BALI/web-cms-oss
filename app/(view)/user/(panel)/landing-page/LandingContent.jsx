@@ -970,6 +970,7 @@ export default function LandingContent({ locale = "id" }) {
                     <img
                       src={t.photoUrl || "/images/avatars/default.jpg"}
                       alt={t.name || "avatar"}
+                      title={t.name || "avatar"}
                       onError={(e) => {
                         e.currentTarget.src = "/images/avatars/default.jpg";
                       }}
@@ -1034,6 +1035,7 @@ export default function LandingContent({ locale = "id" }) {
               <img
                 src={FAQ?.illustration || "/images/loading.png"}
                 alt="OSS Bali Mascot"
+                title="OSS Bali Mascot"
                 style={{
                   width: "min(360px, 90%)",
                   height: "auto",
@@ -1095,6 +1097,7 @@ export default function LandingContent({ locale = "id" }) {
                         <img
                           src={c.photo || "/images/avatars/default.jpg"}
                           alt={c.name || "Consultant"}
+                          title={c.name || "Consultant"}
                           loading="lazy"
                           onError={(e) =>
                             (e.currentTarget.src =
@@ -1192,6 +1195,7 @@ export default function LandingContent({ locale = "id" }) {
                         <img
                           src={c.cover || "/images/country-fallback.jpg"}
                           alt={c.name}
+                          title={c.name}
                           loading="lazy"
                           onError={(e) => {
                             e.currentTarget.src =
@@ -1202,6 +1206,7 @@ export default function LandingContent({ locale = "id" }) {
                           <img
                             src={c.flag}
                             alt={`${c.name} flag`}
+                            title={`${c.name} flag`}
                             loading="lazy"
                             onError={(e) => {
                               e.currentTarget.src = "/flags/gb.svg";
@@ -1265,6 +1270,7 @@ export default function LandingContent({ locale = "id" }) {
                         <img
                           src={c.cover || "/images/country-fallback.jpg"}
                           alt={c.name}
+                          title={c.name}
                           loading="lazy"
                           onError={(e) => {
                             e.currentTarget.src =
@@ -1275,6 +1281,7 @@ export default function LandingContent({ locale = "id" }) {
                           <img
                             src={c.flag}
                             alt={`${c.name} flag`}
+                            title={`${c.name} flag`}
                             loading="lazy"
                             onError={(e) => {
                               e.currentTarget.src = "/flags/gb.svg";

@@ -51,6 +51,7 @@ function FlagDropdown({ lang, langs, onChange, variant = "desktop" }) {
             className="flagdd__img"
             src={current.flag}
             alt={flagAlt(current.value)}
+            title={flagAlt(current.value)}
             width={20}
             height={14}
           />
@@ -81,6 +82,7 @@ function FlagDropdown({ lang, langs, onChange, variant = "desktop" }) {
                   className="flagdd__img"
                   src={opt.flag}
                   alt={flagAlt(opt.value)}
+                  title={flagAlt(opt.value)}
                   width={20}
                   height={14}
                   loading="lazy"
@@ -112,7 +114,7 @@ export default function HeaderUser({ initialLang = "id" }) {
     <header className="user-header">
       <div className="user-header__inner">
         <a className="user-header__brand" href={logo.href}>
-          <img src={logo.src} alt={logo.alt} />
+          <img src={logo.src} alt={logo.alt} title={logo.alt || "Logo"} />
         </a>
 
         <nav

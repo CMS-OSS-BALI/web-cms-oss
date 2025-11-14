@@ -660,7 +660,7 @@ export default function MerchantsContent({ vm }) {
               <div style={styles.statIconBox}>
                 <img
                   src="/image266.svg"
-                  alt=""
+                  alt="" title=""
                   aria-hidden="true"
                   style={styles.statIconImg}
                 />
@@ -672,7 +672,7 @@ export default function MerchantsContent({ vm }) {
               <div style={styles.statIconBox}>
                 <img
                   src="/image266.svg"
-                  alt=""
+                  alt="" title=""
                   aria-hidden="true"
                   style={styles.statIconImg}
                 />
@@ -684,7 +684,7 @@ export default function MerchantsContent({ vm }) {
               <div style={styles.statIconBox}>
                 <img
                   src="/image266.svg"
-                  alt=""
+                  alt="" title=""
                   aria-hidden="true"
                   style={styles.statIconImg}
                 />
@@ -900,7 +900,7 @@ export default function MerchantsContent({ vm }) {
                               {image ? (
                                 <img
                                   src={image}
-                                  alt=""
+                                  alt="" title=""
                                   style={styles.thumbImg}
                                 />
                               ) : (
@@ -1037,7 +1037,7 @@ export default function MerchantsContent({ vm }) {
                     {detailData.image_url ? (
                       <img
                         src={toPublicUrl(detailData.image_url)}
-                        alt="logo"
+                        alt="logo" title="logo"
                         style={styles.coverImgRead}
                       />
                     ) : (
@@ -1247,7 +1247,7 @@ export default function MerchantsContent({ vm }) {
                       {imgPrevEdit ? (
                         <img
                           src={imgPrevEdit}
-                          alt="logo"
+                          alt="logo" title="logo"
                           style={styles.coverImg}
                         />
                       ) : (

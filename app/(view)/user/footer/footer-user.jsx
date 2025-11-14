@@ -100,7 +100,7 @@ export default function FooterUser({ initialLang = "id" }) {
         {/* Brand + Kontak (logo di tengah) */}
         <div className="oss-footer__col oss-footer__col--brand">
           <div className="oss-footer__brand">
-            <img src={logo.src} alt={logo.alt} loading="lazy" />
+            <img src={logo.src} alt={logo.alt} title={logo.alt} loading="lazy" />
           </div>
 
           <ul className="oss-footer__contact">

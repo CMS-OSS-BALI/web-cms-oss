@@ -655,7 +655,7 @@ export default function CareerContent({
               <>
                 <img
                   src={thumbUrl}
-                  alt="Sahabat Referral"
+                  alt="Sahabat Referral" title="Sahabat Referral"
                   style={styles.refThumb}
                   onError={(e) => (e.currentTarget.src = "/images/loading.png")}
                   loading="lazy"
@@ -699,7 +699,7 @@ export default function CareerContent({
               <div style={styles.benIco} aria-hidden>
                 <img
                   src={b.icon || "/icons/benefit-placeholder.svg"}
-                  alt=""
+                  alt="" title=""
                   style={styles.benIcoImg}
                   onError={(e) => (e.currentTarget.src = "/images/loading.png")}
                 />
@@ -746,7 +746,7 @@ export default function CareerContent({
                 <div style={{ ...styles.levLogoBox, justifyItems: "center" }}>
                   <img
                     src={lv.logo || "/logo-oss-cube.svg"}
-                    alt="OSS cube"
+                    alt="OSS cube" title="OSS cube"
                     style={{
                       ...styles.levLogoMark,
                       width: "clamp(72px, 18vw, 120px)",
