@@ -8,7 +8,10 @@ import { Autoplay, FreeMode } from "swiper/modules";
 import "swiper/css";
 import "swiper/css/free-mode";
 import { Pagination } from "antd";
-import { isExternalAsset, toPublicStorageUrl } from "@/app/utils/publicCdnClient";
+import {
+  isExternalAsset,
+  toPublicStorageUrl,
+} from "@/app/utils/publicCdnClient";
 import "antd/dist/reset.css";
 
 /* ---------- Storage helpers (gateway/CDN) ---------- */
@@ -840,7 +843,8 @@ export default function CollegeContent({ locale = "id" }) {
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={src}
-                            alt={`${c.name || "campus"} title={`${c.name || "campus"} logo`}
+                            alt={`${c.name || "campus"} logo`}
+                            title={c.name || "campus"}
                             loading="lazy"
                             style={{
                               width: "100%",

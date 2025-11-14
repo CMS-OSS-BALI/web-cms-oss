@@ -77,7 +77,7 @@ export function useLandingViewModel(arg) {
   /* ===== HERO (baru) ===== */
   const hero = {
     background: "",
-    title: "#WE MAKE YOU PRIORITY",
+    title: "#WEMAKEYOUPRIORITY",
     description: t(
       "37.000+ alumni sukses bersama OSS Bali",
       "37,000+ successful alumni with OSS Bali"

@@ -227,7 +227,7 @@ export default function useCollegeDetailViewModel({ id, locale = "id" } = {}) {
   // ===== utils: pickFlag =====
   const FLAG_PATH = {
     au: "/flags/au.svg",
-    ca: "/flags/cn.svg",
+    ca: "/flags/ca.svg",
     nz: "/flags/nz.svg",
     nl: "/flags/nl.svg",
     us: "/flags/us.svg",

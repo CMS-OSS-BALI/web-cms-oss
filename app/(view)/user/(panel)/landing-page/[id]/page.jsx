@@ -10,10 +10,44 @@ const ConsultantDetailContentLazy = lazy(() =>
   import("./ConsultantDetailContent")
 );
 
-/* Locale picker: prefer query (?locale or ?lang), then browser, default 'id' */
-function pickLocale(q1, q2, browserLang) {
-  const raw = (q1 || q2 || browserLang || "id").slice(0, 2).toLowerCase();
-  return raw === "en" ? "en" : "id";
+const LANG_STORAGE_KEY = "oss.lang";
+
+/* Locale picker: prefer URL lang, fallback to stored/html/browser language */
+function pickLocale({
+  localeParam,
+  langParam,
+  storedLang,
+  htmlLang,
+  browserLang,
+}) {
+  const raw =
+    localeParam ||
+    langParam ||
+    storedLang ||
+    htmlLang ||
+    browserLang ||
+    "id";
+  const normalized = String(raw).slice(0, 2).toLowerCase();
+  return normalized === "en" ? "en" : "id";
+}
+
+function readStoredLang() {
+  if (typeof window === "undefined") return "";
+  try {
+    return window.localStorage?.getItem(LANG_STORAGE_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+function readHtmlLang() {
+  if (typeof document === "undefined") return "";
+  return document.documentElement.getAttribute("lang") || "";
+}
+
+function readBrowserLang() {
+  if (typeof navigator === "undefined") return "";
+  return navigator.language || "";
 }
 
 export default function ConsultantDetailPage() {
@@ -25,9 +59,13 @@ export default function ConsultantDetailPage() {
 
   // Compute locale once (avoids hydration mismatches)
   const locale = useMemo(() => {
-    const browser =
-      typeof navigator !== "undefined" ? navigator.language : "id";
-    return pickLocale(search?.get?.("locale"), search?.get?.("lang"), browser);
+    return pickLocale({
+      localeParam: search?.get?.("locale"),
+      langParam: search?.get?.("lang"),
+      storedLang: readStoredLang(),
+      htmlLang: readHtmlLang(),
+      browserLang: readBrowserLang(),
+    });
   }, [search]);
 
   // If no id (unlikely), keep the loading UI

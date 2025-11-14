@@ -80,15 +80,15 @@ function fmtPriceLabel(v, locale) {
   }).format(n);
 }
 
-/** Map API program_images → array untuk slider. (API baru sudah toPublicUrl server-side, tapi tetap robust) */
+/** Map API program_images → array untuk slider. */
 function mapImagesToPrograms(imgs = [], locale = DEFAULT_LOCALE) {
   return imgs.map((it, idx) => {
     const rawThumb =
-      it.image_url || // field baru (sudah public)
-      it.image_public_url || // legacy
-      it.public_url || // legacy
-      it.url || // legacy
-      it.image || // legacy
+      it.image_url ||
+      it.image_public_url ||
+      it.public_url ||
+      it.url ||
+      it.image ||
       "";
     const thumb = ensurePublicUrl(rawThumb);
 
@@ -118,7 +118,7 @@ export default function useConsultantDetailViewModel({
   const key = useMemo(
     () =>
       consultantDetailKey({
-        id, // bisa numeric id atau uuid
+        id,
         locale,
         fallback: fallbackFor(locale),
         isPublic: true,
@@ -131,23 +131,28 @@ export default function useConsultantDetailViewModel({
     shouldRetryOnError: false,
   });
 
-  // API detail: { data: { id, name, description, profile_image_url, program_images: [...] , ... } }
   const api = data?.data || {};
 
   const name = (api.name || DUMMY.name || "").trim();
   const descriptionRaw = (api.description || "").trim();
-  const role = api.role || "Consultant Education"; // role belum keluar dari API → fallback
+  const role =
+    api.role ||
+    (locale === "en" ? "Consultant Education" : "Konsultan Pendidikan");
 
-  // dari API detail: program_images: [{ id, image_url, sort }]
   const programImages = Array.isArray(api.program_images)
     ? api.program_images
     : [];
 
   const mappedPrograms = mapImagesToPrograms(programImages, locale);
 
+  // ===== HERO copy by locale =====
+  const heroCopy =
+    locale === "en"
+      ? { greet: "Hey there,", title: "It's Consultant" }
+      : { greet: "Halo,", title: "Ini Konsultan" };
+
   const hero = {
-    greet: "Hey there,",
-    title: "It’s Consultant",
+    ...heroCopy,
     name,
     role,
     image: pickConsultantImage(api) || DUMMY.heroImage,
@@ -182,6 +187,42 @@ export default function useConsultantDetailViewModel({
       locale === "en" ? "Click for more consultation" : "Klik More Konsultasi",
   };
 
+  // ===== CTA copywriting dipusatkan di view model =====
+  const cta = useMemo(
+    () =>
+      locale === "en"
+        ? {
+            title: "Consult now, feel free to ask first",
+            description:
+              "Together with our consultants, turn your study plan into a confident step toward a global future.",
+            buttonLabel: "Try Free Consultation",
+            href: "/user/leads",
+          }
+        : {
+            title: "Konsultasikan Sekarang, Tanya Aja Dulu Boleh",
+            description:
+              "Bersama Konsultan Kami, Wujudkan Rencana Studimu Ke Tingkat Global Dengan Percaya Diri.",
+            buttonLabel: "Coba Konsultasi Gratis",
+            href: "/user/leads",
+          },
+    [locale]
+  );
+
+  // ===== UI label lain (programs section) =====
+  const ui = useMemo(
+    () =>
+      locale === "en"
+        ? {
+            programsTitle: "CONSULTANT PROGRAMS",
+            noProgramsCopy: "No consultant program images yet.",
+          }
+        : {
+            programsTitle: "PROGRAM KONSULTAN",
+            noProgramsCopy: "Belum ada gambar program konsultan.",
+          },
+    [locale]
+  );
+
   return {
     locale,
     isLoading,
@@ -190,5 +231,7 @@ export default function useConsultantDetailViewModel({
     about,
     programs: mappedPrograms,
     wa,
+    cta,
+    ui,
   };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useMemo, useEffect, useRef } from "react";
 import { Typography, Skeleton } from "antd";
 import { Autoplay, FreeMode, Navigation } from "swiper/modules";
 import { Swiper, SwiperSlide } from "swiper/react";
@@ -16,17 +16,123 @@ const FALLBACK_ABOUT_MESSAGE_ID =
 const FALLBACK_ABOUT_MESSAGE_EN =
   "Consultant description is not available just yet.";
 
+const SECTION_MAX_WIDTH = "1240px";
+const SECTION_GUTTER = "clamp(16px, 5vw, 56px)";
+
+/* ====== HOOK: reveal on scroll (pakai referensi landing) ====== */
+function useRevealOnScroll(deps = []) {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const prefersReduce = window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    ).matches;
+
+    const markVisible = (els) =>
+      els.forEach((el) => el.classList.add("is-visible"));
+
+    if (prefersReduce) {
+      markVisible(Array.from(document.querySelectorAll(".reveal")));
+      return;
+    }
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            e.target.classList.add("is-visible");
+            io.unobserve(e.target);
+          }
+        });
+      },
+      { threshold: 0.16, rootMargin: "0px 0px -10% 0px" }
+    );
+
+    const observeAll = () => {
+      document
+        .querySelectorAll(".reveal:not(.is-visible)")
+        .forEach((el) => io.observe(el));
+    };
+
+    observeAll();
+
+    const mo = new MutationObserver(observeAll);
+    mo.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      io.disconnect();
+      mo.disconnect();
+    };
+  }, deps);
+}
+
+/* ====== HOOK: hero parallax (copy dari landing, disimplify) ====== */
+function useHeroParallax(ref) {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const root = ref.current;
+    if (!root) return;
+
+    const prefersReduce = window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    ).matches;
+    const isDesktop = () => window.innerWidth >= 992;
+    if (prefersReduce || !isDesktop()) return;
+
+    const copy = root.querySelector(".js-hero-copy");
+    if (!copy) return;
+
+    const onMove = (e) => {
+      const r = root.getBoundingClientRect();
+      const cx = (e.clientX - r.left) / r.width - 0.5;
+      const cy = (e.clientY - r.top) / r.height - 0.5;
+      copy.style.transform = `translate3d(${cx * 6}px, ${cy * 6}px, 0)`;
+    };
+    const onLeave = () => {
+      copy.style.transform = "";
+    };
+    root.addEventListener("mousemove", onMove);
+    root.addEventListener("mouseleave", onLeave);
+    return () => {
+      root.removeEventListener("mousemove", onMove);
+      root.removeEventListener("mouseleave", onLeave);
+    };
+  }, [ref]);
+}
+
 const styles = {
   sectionInner: {
-    width: "min(1360px, 96%)",
+    width: "100%",
+    maxWidth: SECTION_MAX_WIDTH,
     margin: "0 auto",
     fontFamily: FONT_FAMILY,
+    paddingLeft: SECTION_GUTTER,
+    paddingRight: SECTION_GUTTER,
+  },
+  sectionLabel: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 10,
+    fontSize: 13,
+    fontWeight: 700,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    color: "#7581a1",
+    marginBottom: 12,
+  },
+  sectionDot: {
+    width: 10,
+    height: 10,
+    borderRadius: "50%",
+    background: "linear-gradient(135deg, #0b56c9, #2fb0ff)",
+    display: "inline-flex",
   },
 
-  /* ============== HERO ============== */
+  /* ============== HERO (baru, sesuai desain) ============== */
   hero: {
     section: {
-      marginTop: "calc(-1 * clamp(48px, 8vw, 84px))",
+      marginTop: 0,
+      paddingTop: 0,
       background: "#fff",
     },
     bleed: {
@@ -37,96 +143,113 @@ const styles = {
     wrapper: {
       position: "relative",
       isolation: "isolate",
-      background:
-        "linear-gradient(180deg, #0b56c9 0%, #1f6de2 55%, #1b66d6 100%)",
-      minHeight: "clamp(520px, 64vw, 760px)",
-      padding: "clamp(28px, 4vw, 48px) clamp(20px, 4vw, 44px)",
-      display: "grid",
-      gridTemplateColumns: "1.1fr 0.9fr",
+      background: "#004A9E", // solid biru seperti desain
+      minHeight: "calc(100vh - 96px)",
+      padding: "clamp(40px, 6vw, 72px) clamp(24px, 7vw, 110px)",
+      display: "flex",
       alignItems: "center",
+      justifyContent: "space-between",
       overflow: "hidden",
+      gap: "clamp(24px, 5vw, 80px)",
     },
-    curveWrap: {
-      position: "absolute",
-      left: 0,
-      bottom: 0,
-      width: "100%",
-      height: "clamp(140px, 20vw, 300px)",
-      zIndex: 2,
-      pointerEvents: "none",
-    },
-    curveSvg: { width: "100%", height: "100%", display: "block" },
     copy: {
       position: "relative",
-      zIndex: 3,
+      zIndex: 2,
       color: "#fff",
-      marginTop: "-220px",
+      maxWidth: "min(540px, 100%)",
     },
-    hello: {
-      fontWeight: 800,
-      fontSize: "clamp(28px, 5.4vw, 64px)",
-      lineHeight: 1.04,
-      color: "#fff",
+    greet: {
+      margin: "0 0 8px",
+      fontSize: "clamp(16px, 1.6vw, 18px)",
+      fontWeight: 500,
+    },
+    heading: {
+      fontWeight: 700,
+      fontSize: "clamp(32px, 3.4vw, 40px)",
+      lineHeight: 1.2,
       margin: 0,
-      textShadow: "0 10px 28px rgba(0,0,0,.15)",
     },
-    role: {
-      marginTop: "clamp(10px, 1.2vw, 14px)",
-      color: "#e9f1ff",
-      fontSize: "clamp(14px, 1.8vw, 18px)",
-      fontWeight: 600,
-      letterSpacing: 0.2,
+    headingName: {
+      display: "block",
+      fontWeight: 700,
+    },
+    subtitle: {
+      marginTop: "clamp(16px, 1.8vw, 20px)",
+      fontSize: "clamp(15px, 1.6vw, 18px)",
+      lineHeight: 1.7,
+      maxWidth: "36rem",
     },
     art: {
       position: "relative",
       height: "100%",
-      display: "grid",
-      placeItems: "center",
-      marginTop: "-230px",
       zIndex: 1,
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      textAlign: "center",
+      gap: 12,
     },
-    ring: {
+    photoFrame: {
       position: "relative",
-      width: "min(380px, 38vw)",
-      aspectRatio: "1/1",
-      borderRadius: "50%",
-      background: "#ffd21e",
-      padding: "clamp(10px, 2vw, 20px)",
-      boxShadow: "0 24px 48px rgba(0,0,0,.20)",
-      transform: "translateY(4%)",
-      display: "grid",
-      placeItems: "center",
-      zIndex: 3,
-    },
-    photoMask: {
-      width: "100%",
-      height: "100%",
-      borderRadius: "50%",
+      width: "min(260px, 28vw)",
+      aspectRatio: "9 / 16", // 9:16 portrait
+      borderRadius: 0,
       overflow: "hidden",
-      background: "#ffffff",
-      display: "grid",
-      placeItems: "center",
+      background: "transparent",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
     },
     photoImg: {
       width: "100%",
       height: "100%",
-      objectFit: "cover",
+      objectFit: "contain", // biar foto 9:16 tidak ke-crop & transparan kelihatan
       display: "block",
+      backgroundColor: "transparent",
+    },
+    metaBlock: {
+      marginTop: "clamp(12px, 2vw, 18px)",
+      textAlign: "center",
+      color: "#fff",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      gap: 6,
+    },
+    metaName: {
+      fontWeight: 700,
+      fontSize: "clamp(18px, 1.8vw, 22px)",
+      letterSpacing: "-0.01em",
+    },
+    metaRole: {
+      fontSize: "clamp(13px, 1.3vw, 15px)",
+      opacity: 0.9,
     },
   },
 
   /* ============== ABOUT ============== */
   about: {
-    section: { padding: "clamp(48px, 0px, 96px) 0 0", marginTop: "-75px" },
+    section: {
+      padding: "clamp(64px, 9vw, 130px) 0",
+      marginTop: 0,
+      background: "linear-gradient(180deg, #f6f8ff 0%, #ffffff 100%)",
+    },
+    surface: {
+      background: "#fff",
+      borderRadius: 32,
+      border: "1px solid #e6ecfa",
+      boxShadow: "0 30px 80px rgba(8, 24, 68, 0.08)",
+      padding: "clamp(28px, 5vw, 64px)",
+    },
     grid: {
       display: "grid",
-      /* NOTE: kita TIDAK set gridTemplateColumns di inline lagi agar bisa di-override by CSS */
       gridTemplateRows: "auto 1fr",
-      columnGap: "clamp(18px, 2.4vw, 28px)",
-      rowGap: "clamp(14px, 2vw, 20px)",
+      columnGap: "clamp(22px, 3vw, 34px)",
+      rowGap: "clamp(18px, 2vw, 26px)",
       alignItems: "stretch",
     },
-    header: { marginBottom: 4 },
+    header: { marginBottom: 8 },
     title: {
       margin: 0,
       fontWeight: 900,
@@ -136,30 +259,30 @@ const styles = {
       lineHeight: 1.2,
     },
     intro: {
-      marginTop: 10,
-      maxWidth: "min(760px, 92%)",
-      fontSize: "clamp(14px, 1.6vw, 16px)",
+      marginTop: 14,
+      maxWidth: "65ch",
+      fontSize: "clamp(14px, 1.5vw, 17px)",
       lineHeight: 1.9,
-      color: "#2a3e65",
+      color: "#253757",
       textAlign: "justify",
     },
     leftCard: {
       position: "relative",
       background: "#fff",
-      borderRadius: 18,
+      borderRadius: 26,
       overflow: "hidden",
-      border: "1px solid #E6EEF9",
-      boxShadow: "0 18px 34px rgba(8,42,116,0.10)",
-      height: "clamp(260px, 32vw, 420px)",
+      border: "1px solid #e1e9f9",
+      boxShadow: "0 18px 34px rgba(8, 42, 116, 0.12)",
+      minHeight: "clamp(260px, 32vw, 420px)",
     },
     rightCard: {
       position: "relative",
       background: "#fff",
-      borderRadius: 18,
+      borderRadius: 26,
       overflow: "hidden",
-      border: "1px solid #E6EEF9",
-      boxShadow: "0 18px 34px rgba(8,42,116,0.10)",
-      height: "100%",
+      border: "1px solid #e1e9f9",
+      boxShadow: "0 18px 34px rgba(8, 42, 116, 0.12)",
+      minHeight: "clamp(220px, 30vw, 360px)",
       alignSelf: "stretch",
     },
     imgEl: {
@@ -172,7 +295,11 @@ const styles = {
 
   /* ============== PROGRAMS ============== */
   programs: {
-    section: { padding: "36px 0 8px" },
+    section: {
+      padding: "clamp(72px, 11vw, 160px) 0",
+      background:
+        "linear-gradient(180deg, #ffffff 0%, #eef3ff 80%, #ffffff 100%)",
+    },
     title: {
       textAlign: "center",
       marginBottom: 22,
@@ -183,16 +310,33 @@ const styles = {
       lineHeight: 1.05,
       textTransform: "uppercase",
     },
+    subtitle: {
+      textAlign: "center",
+      marginTop: -8,
+      color: "#5e6b89",
+      fontSize: "clamp(14px, 1.6vw, 16px)",
+    },
+    shell: {
+      position: "relative",
+      marginTop: "clamp(28px, 4vw, 56px)",
+      background:
+        "radial-gradient(circle at top, rgba(255,255,255,0.18), transparent), #06183f",
+      borderRadius: 34,
+      padding: "clamp(22px, 4vw, 60px)",
+      boxShadow: "0 40px 80px rgba(7, 24, 69, 0.35)",
+      border: "1px solid rgba(255,255,255,0.08)",
+    },
     wrap: { position: "relative" },
     card: {
       position: "relative",
       borderRadius: 22,
-      height: 420,
+      height: "clamp(320px, 40vw, 420px)",
       overflow: "hidden",
-      marginTop: "75px",
-      transform: "scale(0.96)",
-      transition: "transform .28s ease",
+      marginTop: "72px",
+      transition: "transform .32s ease, box-shadow .32s ease",
       background: "#0b56c9",
+      boxShadow: "0 20px 40px rgba(11, 63, 160, 0.45)",
+      willChange: "transform",
     },
     imgFull: {
       width: "100%",
@@ -208,64 +352,69 @@ const styles = {
       width: 42,
       height: 42,
       borderRadius: "999px",
-      border: "1px solid rgba(15,23,42,.12)",
-      background: "#2d3748",
+      border: "1px solid rgba(255,255,255,0.3)",
+      background: "rgba(255,255,255,0.16)",
       color: "#fff",
       display: "grid",
       placeItems: "center",
-      boxShadow: "0 10px 20px rgba(0,0,0,.22)",
+      boxShadow: "0 10px 20px rgba(0, 0, 0, 0.25)",
       cursor: "pointer",
       opacity: 0.95,
     },
-    navPrev: { left: -56 },
-    navNext: { right: -56 },
     navIcon: { display: "block" },
   },
 
   /* ============== CTA ============== */
   cta: {
-    section: { padding: "36px 0 88px" },
+    section: { padding: "clamp(72px, 11vw, 160px) 0 clamp(96px, 12vw, 180px)" },
     container: {
-      background: "#fff",
-      borderRadius: 20,
-      boxShadow: "0 18px 44px rgba(9, 28, 76, 0.14)",
-      border: "1px solid #E6EEF9",
+      background:
+        "linear-gradient(130deg, #0b3a82 0%, #1c6bea 60%, #32afff 110%)",
+      borderRadius: 34,
+      boxShadow: "0 40px 80px rgba(7, 19, 46, 0.4)",
+      border: "1px solid rgba(255,255,255,0.35)",
       display: "grid",
-      gridTemplateColumns: "1.15fr .85fr",
+      gridTemplateColumns: "minmax(0, 1.15fr) minmax(0, 0.85fr)",
       alignItems: "center",
-      gap: 24,
-      padding: "clamp(18px, 3vw, 28px)",
+      gap: "clamp(16px, 3vw, 28px)",
+      padding: "clamp(26px, 4vw, 48px)",
+      overflow: "hidden",
     },
-    copy: { padding: "clamp(8px, 1.6vw, 10px) clamp(6px,1.2vw,10px)" },
+    copy: {
+      padding: "clamp(8px, 1.6vw, 10px) clamp(4px, 1.2vw, 12px)",
+      color: "#fff",
+    },
     title: {
       margin: 0,
       fontWeight: 900,
-      color: "#0b3a82",
+      color: "#fff",
       fontSize: "clamp(22px, 3.8vw, 32px)",
       lineHeight: 1.2,
-      textTransform: "uppercase",
     },
     desc: {
       marginTop: 10,
-      color: "#3a4a6a",
+      color: "rgba(255,255,255,0.9)",
       fontSize: "clamp(12px, 1.4vw, 14px)",
       lineHeight: 1.8,
       maxWidth: 640,
     },
     btnWrap: { marginTop: 16 },
     button: {
-      display: "inline-block",
-      padding: "16px 32px",
-      borderRadius: 12,
-      background: "#1056c8",
-      boxShadow: "0 12px 24px rgba(16,86,200,.28)",
-      color: "#fff",
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: "16px 36px",
+      borderRadius: 14,
+      background: "#fff",
+      boxShadow: "0 16px 30px rgba(11, 28, 58, 0.25)",
+      color: "#0b3a82",
       fontWeight: 800,
       letterSpacing: ".6px",
       textTransform: "uppercase",
-      border: "none",
+      border: "1px solid transparent",
       userSelect: "none",
       textDecoration: "none",
+      transition: "transform .2s ease, box-shadow .2s ease",
     },
     artWrap: { display: "grid", placeItems: "center" },
     artImg: {
@@ -284,8 +433,12 @@ export default function ConsultantDetailContent({
   about,
   programs,
   wa,
+  cta,
+  ui = {},
   locale,
 }) {
+  const heroRef = useRef(null);
+
   const aboutHtml = useMemo(() => {
     const raw = about?.html || "";
     const sanitized = sanitizeHtml(raw);
@@ -294,57 +447,127 @@ export default function ConsultantDetailContent({
       : null;
   }, [about?.html]);
 
+  // ===== hero fallback by locale =====
+  const defaultHeroGreet =
+    locale === "en" ? "Hey there," : "Hai, aku konsultan";
+  const defaultHeroTitle = locale === "en" ? "" : ""; // kita pakai name saja, title tidak wajib
+  const defaultHeroRole =
+    locale === "en"
+      ? "Consultant & Student Recruitment"
+      : "Konsultan & Student Recruitment";
+
+  const heroSubtitle =
+    hero?.subtitle ||
+    (locale === "en"
+      ? "Schedule a free consultation, online or offline."
+      : "Agendakan jadwal konsultasi gratis, bisa offline dan online.");
+
+  // ===== CTA text =====
+  const ctaTitle =
+    cta?.title ||
+    (locale === "en"
+      ? "Consult now, feel free to ask first"
+      : "Konsultasikan Sekarang, Tanya Aja Dulu Boleh");
+  const ctaDesc =
+    cta?.description ||
+    (locale === "en"
+      ? "Together with our consultants, turn your study plan into a confident step toward a global future."
+      : "Bersama Konsultan Kami, Wujudkan Rencana Studimu Ke Tingkat Global Dengan Percaya Diri.");
+  const ctaBtnLabel =
+    cta?.buttonLabel ||
+    (locale === "en" ? "Try Free Consultation" : "Coba Konsultasi Gratis");
+  const ctaHref = cta?.href || "/user/leads";
+
+  // ===== Programs text =====
+  const programsTitle =
+    ui.programsTitle ||
+    (locale === "en" ? "CONSULTANT PROGRAMS" : "PROGRAM KONSULTAN");
+  const noProgramsCopy =
+    ui.noProgramsCopy ||
+    (locale === "en"
+      ? "No consultant program images yet."
+      : "Belum ada gambar program konsultan.");
+  const programsSubtitle =
+    locale === "en"
+      ? "Snapshots from recent mentoring, workshop, and sharing sessions."
+      : "Cuplikan kegiatan mentoring, workshop, dan sesi sharing terbaru.";
+
+  // ==== jalankan animasi (reveal + parallax) ====
+  useRevealOnScroll([
+    Array.isArray(programs) ? programs.length : 0,
+    aboutHtml ? 1 : 0,
+  ]);
+  useHeroParallax(heroRef);
+
   if (isLoading) {
     return (
-      <div style={{ ...styles.sectionInner, padding: "64px 0" }}>
+      <div
+        style={{
+          ...styles.sectionInner,
+          paddingTop: "64px",
+          paddingBottom: "64px",
+        }}
+      >
         <Skeleton active paragraph={{ rows: 8 }} />
       </div>
     );
   }
 
+  const displayName = (hero?.name || "Your Name").trim();
+
   return (
-    <>
-      {/* ===== HERO ===== */}
-      <section style={styles.hero.section}>
+    <div className="consultant-detail-page" data-shell="full">
+      {/* ===== HERO (baru) ===== */}
+      <section className="hero-section" style={styles.hero.section}>
         <div style={styles.hero.bleed}>
-          <div className="heroGrid" style={styles.hero.wrapper}>
-            <div style={styles.hero.curveWrap} aria-hidden="true">
-              <svg
-                viewBox="0 0 1440 280"
-                preserveAspectRatio="none"
-                style={styles.hero.curveSvg}
+          <div className="heroGrid" style={styles.hero.wrapper} ref={heroRef}>
+            <div className="hero-copy js-hero-copy" style={styles.hero.copy}>
+              <p
+                className="reveal"
+                data-anim="down"
+                style={{ ...styles.hero.greet, ["--rvd"]: "20ms" }}
               >
-                <path
-                  d="M0,150 C 360,240 1080,40 1440,160 L1440,280 L0,280 Z"
-                  fill="#ffffff"
-                />
-              </svg>
-            </div>
-
-            <div style={styles.hero.copy}>
-              <h1 style={styles.hero.hello}>
-                {(hero?.greet || "Hey there,").trim()} <br />
-                {(hero?.title || "It's Consultant").trim()} <br />
-                {(hero?.name || "Your Name").trim()}
+                {hero?.greet || defaultHeroGreet}
+              </p>
+              <h1
+                className="reveal"
+                data-anim="down"
+                style={{ ...styles.hero.heading, ["--rvd"]: "80ms" }}
+              >
+                {hero?.title || defaultHeroTitle}
+                <span style={styles.hero.headingName}>{displayName}</span>
               </h1>
-              <div style={styles.hero.role}>
-                {hero?.role || "Consultant Education"}
-              </div>
+              <p
+                className="reveal"
+                data-anim="up"
+                style={{ ...styles.hero.subtitle, ["--rvd"]: "140ms" }}
+              >
+                {heroSubtitle}
+              </p>
             </div>
 
-            <div style={styles.hero.art}>
-              <div style={styles.hero.ring}>
-                <div style={styles.hero.photoMask}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={hero?.image}
-                    alt={hero?.name || "Consultant photo"} title={hero?.name || "Consultant photo"}
-                    style={styles.hero.photoImg}
-                    loading="eager"
-                    onError={(e) =>
-                      (e.currentTarget.src = "/images/avatars/default.jpg")
-                    }
-                  />
+            <div
+              className="hero-art reveal"
+              data-anim="up"
+              style={{ ...styles.hero.art, ["--rvd"]: "200ms" }}
+            >
+              <div style={styles.hero.photoFrame}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={hero?.image}
+                  alt={displayName || "Consultant photo"}
+                  title={displayName || "Consultant photo"}
+                  style={styles.hero.photoImg}
+                  loading="eager"
+                  onError={(e) =>
+                    (e.currentTarget.src = "/images/avatars/default.jpg")
+                  }
+                />
+              </div>
+              <div className="hero-meta" style={styles.hero.metaBlock}>
+                <div style={styles.hero.metaName}>{displayName}</div>
+                <div style={styles.hero.metaRole}>
+                  {hero?.role || defaultHeroRole}
                 </div>
               </div>
             </div>
@@ -354,46 +577,70 @@ export default function ConsultantDetailContent({
 
       {/* ===== ABOUT ===== */}
       <section style={styles.about.section}>
-        <div style={styles.sectionInner}>
-          <div className="aboutGrid" style={styles.about.grid}>
-            <div className="about-header" style={styles.about.header}>
-              <h2 style={styles.about.title}>
-                {about?.title || `About Kak ${hero?.name || ""}!`}
-              </h2>
+        <div className="section-inner" style={styles.sectionInner}>
+          <div
+            className="reveal"
+            data-anim="zoom"
+            style={{ ...styles.about.surface, ["--rvd"]: "40ms" }}
+          >
+            <div className="aboutGrid" style={styles.about.grid}>
+              <div
+                className="about-header reveal"
+                data-anim="down"
+                style={{ ...styles.about.header, ["--rvd"]: "80ms" }}
+              >
+                <h2 style={styles.about.title}>
+                  {about?.title || `About Kak ${displayName}!`}
+                </h2>
 
-              {aboutHtml ? (
-                <div
-                  className="about-intro"
-                  style={styles.about.intro}
-                  dangerouslySetInnerHTML={{ __html: aboutHtml }}
+                {aboutHtml ? (
+                  <div
+                    className="about-intro"
+                    style={styles.about.intro}
+                    dangerouslySetInnerHTML={{ __html: aboutHtml }}
+                  />
+                ) : (
+                  <p className="about-intro" style={styles.about.intro}>
+                    {locale === "en"
+                      ? FALLBACK_ABOUT_MESSAGE_EN
+                      : FALLBACK_ABOUT_MESSAGE_ID}
+                  </p>
+                )}
+              </div>
+
+              <div
+                className="about-left reveal"
+                data-anim="up"
+                style={{ ...styles.about.leftCard, ["--rvd"]: "140ms" }}
+              >
+                <img
+                  src={about?.leftImg || "/images/fallback.jpg"}
+                  alt="About left"
+                  title="About left"
+                  style={styles.about.imgEl}
+                  loading="lazy"
+                  onError={(e) =>
+                    (e.currentTarget.src = "/images/fallback.jpg")
+                  }
                 />
-              ) : (
-                <p className="about-intro" style={styles.about.intro}>
-                  {locale === "en"
-                    ? FALLBACK_ABOUT_MESSAGE_EN
-                    : FALLBACK_ABOUT_MESSAGE_ID}
-                </p>
-              )}
-            </div>
+              </div>
 
-            <div className="about-left" style={styles.about.leftCard}>
-              <img
-                src={about?.leftImg || "/images/fallback.jpg"}
-                alt="About left" title="About left"
-                style={styles.about.imgEl}
-                loading="lazy"
-                onError={(e) => (e.currentTarget.src = "/images/fallback.jpg")}
-              />
-            </div>
-
-            <div className="about-right" style={styles.about.rightCard}>
-              <img
-                src={about?.rightImg || "/images/fallback.jpg"}
-                alt="About right" title="About right"
-                style={styles.about.imgEl}
-                loading="lazy"
-                onError={(e) => (e.currentTarget.src = "/images/fallback.jpg")}
-              />
+              <div
+                className="about-right reveal"
+                data-anim="up"
+                style={{ ...styles.about.rightCard, ["--rvd"]: "200ms" }}
+              >
+                <img
+                  src={about?.rightImg || "/images/fallback.jpg"}
+                  alt="About right"
+                  title="About right"
+                  style={styles.about.imgEl}
+                  loading="lazy"
+                  onError={(e) =>
+                    (e.currentTarget.src = "/images/fallback.jpg")
+                  }
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -401,102 +648,124 @@ export default function ConsultantDetailContent({
 
       {/* ===== PROGRAMS ===== */}
       <section style={styles.programs.section}>
-        <div style={styles.sectionInner}>
-          <Title level={1} style={styles.programs.title}>
-            PROGRAM KONSULTAN
+        <div className="section-inner" style={styles.sectionInner}>
+          <Title
+            level={1}
+            className="reveal"
+            data-anim="down"
+            style={{ ...styles.programs.title, ["--rvd"]: "40ms" }}
+          >
+            {programsTitle}
           </Title>
+          <p
+            className="reveal"
+            data-anim="up"
+            style={{ ...styles.programs.subtitle, ["--rvd"]: "100ms" }}
+          >
+            {programsSubtitle}
+          </p>
 
           {Array.isArray(programs) && programs.length > 0 ? (
-            <div style={styles.programs.wrap}>
-              <button
-                className="prog-prev"
-                aria-label="Previous"
-                style={{
-                  ...styles.programs.navBtnBase,
-                  ...styles.programs.navPrev,
-                }}
-              >
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  style={styles.programs.navIcon}
+            <div
+              className="reveal"
+              data-anim="zoom"
+              style={{ ...styles.programs.shell, ["--rvd"]: "160ms" }}
+            >
+              <div style={styles.programs.wrap}>
+                <button
+                  className="prog-prev"
+                  style={styles.programs.navBtnBase}
+                  aria-label="Previous program"
                 >
-                  <path
-                    d="M15 6l-6 6 6 6"
-                    stroke="white"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
-              <button
-                className="prog-next"
-                aria-label="Next"
-                style={{
-                  ...styles.programs.navBtnBase,
-                  ...styles.programs.navNext,
-                }}
-              >
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  style={styles.programs.navIcon}
+                  <svg
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    style={styles.programs.navIcon}
+                  >
+                    <path
+                      d="M15 18l-6-6 6-6"
+                      stroke="white"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+                <button
+                  className="prog-next"
+                  style={styles.programs.navBtnBase}
+                  aria-label="Next program"
                 >
-                  <path
-                    d="M9 6l6 6-6 6"
-                    stroke="white"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
+                  <svg
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    style={styles.programs.navIcon}
+                  >
+                    <path
+                      d="M9 6l6 6-6 6"
+                      stroke="white"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
 
-              <Swiper
-                modules={[Autoplay, FreeMode, Navigation]}
-                freeMode
-                loop
-                centeredSlides
-                autoplay={{ delay: 2800, disableOnInteraction: false }}
-                navigation={{ prevEl: ".prog-prev", nextEl: ".prog-next" }}
-                slidesPerView={1.16}
-                spaceBetween={20}
-                breakpoints={{
-                  600: { slidesPerView: 2.1, spaceBetween: 22 },
-                  980: { slidesPerView: 3.1, spaceBetween: 24 },
-                }}
-                className="progSwiper"
-              >
-                {programs.map((p) => (
-                  <SwiperSlide key={p.id}>
-                    <div className="progCard" style={styles.programs.card}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={p.thumb || "/images/fallback.jpg"}
-                        alt={p.title || "Program image"} title={p.title || "Program image"}
-                        style={styles.programs.imgFull}
-                        loading="lazy"
-                        onError={(e) =>
-                          (e.currentTarget.src = "/images/fallback.jpg")
-                        }
-                      />
-                    </div>
-                  </SwiperSlide>
-                ))}
-              </Swiper>
+                <Swiper
+                  modules={[Autoplay, FreeMode, Navigation]}
+                  freeMode
+                  loop
+                  centeredSlides
+                  autoplay={{ delay: 2800, disableOnInteraction: false }}
+                  navigation={{ prevEl: ".prog-prev", nextEl: ".prog-next" }}
+                  slidesPerView={1.16}
+                  spaceBetween={20}
+                  breakpoints={{
+                    600: { slidesPerView: 2.1, spaceBetween: 22 },
+                    980: { slidesPerView: 3.1, spaceBetween: 24 },
+                  }}
+                  className="progSwiper"
+                >
+                  {programs.map((p) => (
+                    <SwiperSlide key={p.id}>
+                      <div className="progCard" style={styles.programs.card}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={p.thumb || "/images/fallback.jpg"}
+                          alt={p.title || "Program image"}
+                          title={p.title || "Program image"}
+                          style={styles.programs.imgFull}
+                          loading="lazy"
+                          onError={(e) =>
+                            (e.currentTarget.src = "/images/fallback.jpg")
+                          }
+                        />
+                      </div>
+                    </SwiperSlide>
+                  ))}
+                </Swiper>
+              </div>
             </div>
           ) : (
             <div
-              style={{ textAlign: "center", opacity: 0.75, padding: "24px 0" }}
+              className="reveal"
+              data-anim="up"
+              style={{
+                textAlign: "center",
+                opacity: 0.85,
+                padding: "40px clamp(24px, 5vw, 64px)",
+                marginTop: "clamp(24px, 4vw, 48px)",
+                borderRadius: 26,
+                border: "1px dashed #c3d7ff",
+                background: "#fff",
+                ["--rvd"]: "160ms",
+              }}
             >
-              {locale === "en"
-                ? "No consultant program images yet."
-                : "Belum ada gambar program konsultan."}
+              {noProgramsCopy}
             </div>
           )}
         </div>
@@ -504,33 +773,44 @@ export default function ConsultantDetailContent({
 
       {/* ===== CTA ===== */}
       <section style={styles.cta.section}>
-        <div style={styles.sectionInner}>
-          <div className="ctaContainer" style={styles.cta.container}>
+        <div className="section-inner" style={styles.sectionInner}>
+          <div
+            className="ctaContainer reveal"
+            data-anim="zoom"
+            style={{ ...styles.cta.container, ["--rvd"]: "40ms" }}
+          >
             <div style={styles.cta.copy}>
-              <h3 style={styles.cta.title}>
-                KONSULTASI SEKARANG,
-                <br />
-                RAIH IMPIANMU
+              <h3
+                className="reveal"
+                data-anim="down"
+                style={{ ...styles.cta.title, ["--rvd"]: "80ms" }}
+              >
+                {ctaTitle}
               </h3>
-              <p style={styles.cta.desc}>
-                Bersama Konsultan Kami, Wujudkan Rencana Studimu ke Tingkat
-                Global dengan Percaya Diri.
+              <p
+                className="reveal"
+                data-anim="up"
+                style={{ ...styles.cta.desc, ["--rvd"]: "140ms" }}
+              >
+                {ctaDesc}
               </p>
               <div style={styles.cta.btnWrap}>
                 <Link
-                  href="/user/leads"
-                  className="ctaBtn"
-                  style={styles.cta.button}
+                  href={ctaHref}
+                  className="ctaBtn hero-cta hero-cta--pulse reveal"
+                  data-anim="up"
+                  style={{ ...styles.cta.button, ["--rvd"]: "200ms" }}
                 >
-                  KONSULTASI
+                  {ctaBtnLabel}
                 </Link>
               </div>
             </div>
-            <div style={styles.cta.artWrap}>
+            <div style={styles.cta.artWrap} className="reveal" data-anim="up">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src="/tanya.svg"
-                alt="Maskot bertanya" title="Maskot bertanya"
+                src="/cta-detail.svg"
+                alt="Maskot bertanya"
+                title="Maskot bertanya"
                 style={styles.cta.artImg}
                 loading="lazy"
                 onError={(e) => (e.currentTarget.src = "/tanya.svg")}
@@ -541,11 +821,80 @@ export default function ConsultantDetailContent({
       </section>
 
       <style jsx>{`
-        /* ===== ABOUT grid columns (dipindah dari inline agar bisa responsive) ===== */
-        .aboutGrid {
-          grid-template-columns: 1.25fr 1fr; /* desktop: 2 kolom */
+        .consultant-detail-page {
+          width: 100%;
+          overflow-x: hidden;
         }
-        /* header hanya di kolom kiri pada desktop */
+        .hero-section {
+          margin: 0;
+          padding-top: 0;
+        }
+        .section-inner {
+          width: 100%;
+        }
+        .heroGrid {
+          padding-left: 0;
+          padding-right: 0;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: clamp(24px, 5vw, 80px);
+        }
+        .prog-prev {
+          left: clamp(12px, 2vw, 32px);
+        }
+        .prog-next {
+          right: clamp(12px, 2vw, 32px);
+        }
+        .progCard {
+          transition: transform 0.35s ease, box-shadow 0.35s ease;
+        }
+        .progCard:hover {
+          transform: translateY(-14px) scale(1.02);
+          box-shadow: 0 32px 60px rgba(3, 12, 32, 0.55);
+        }
+        .ctaBtn:hover {
+          transform: translateY(-3px);
+          box-shadow: 0 22px 40px rgba(8, 19, 46, 0.4);
+        }
+
+        /* ===== HERO responsive ===== */
+        @media (max-width: 768px) {
+          .heroGrid {
+            flex-direction: column;
+            text-align: center;
+            padding-left: clamp(16px, 6vw, 32px);
+            padding-right: clamp(16px, 6vw, 32px);
+          }
+          .section-inner {
+            padding-left: clamp(16px, 6vw, 32px);
+            padding-right: clamp(16px, 6vw, 32px);
+          }
+          .hero-section {
+            padding-top: 0;
+          }
+          .hero-art {
+            width: 100%;
+          }
+          .hero-meta {
+            text-align: center !important;
+          }
+        }
+
+        @media (max-width: 900px) {
+          .ctaContainer {
+            grid-template-columns: 1fr !important;
+            text-align: center;
+          }
+          .ctaBtn {
+            width: 100%;
+          }
+        }
+
+        /* ===== ABOUT grid columns ===== */
+        .aboutGrid {
+          grid-template-columns: 1.25fr 1fr;
+        }
         .about-header {
           grid-column: 1 / 2;
           grid-row: 1 / 2;
@@ -559,7 +908,6 @@ export default function ConsultantDetailContent({
           grid-row: 1 / span 2;
         }
 
-        /* Tablet & Mobile: collapse ke 1 kolom penuh (hilangin “space kanan”) */
         @media (max-width: 1024px) {
           .aboutGrid {
             grid-template-columns: 1fr !important;
@@ -572,7 +920,6 @@ export default function ConsultantDetailContent({
           }
         }
 
-        /* Mobile: sembunyikan gambar about */
         @media (max-width: 640px) {
           .about-right,
           .about-left {
@@ -583,7 +930,6 @@ export default function ConsultantDetailContent({
           }
         }
 
-        /* Justify helper untuk konten rich text */
         .about-intro {
           text-align: justify;
           text-justify: inter-word;
@@ -595,6 +941,78 @@ export default function ConsultantDetailContent({
           margin: 0.4em 0;
         }
       `}</style>
-    </>
+
+      {/* ===== GLOBAL ANIMATION STYLES (reveal + CTA micro motion) ===== */}
+      <style jsx global>{`
+        .reveal {
+          opacity: 0;
+          transform: var(--reveal-from, translate3d(0, 16px, 0));
+          transition: opacity 700ms ease,
+            transform 700ms cubic-bezier(0.21, 1, 0.21, 1);
+          transition-delay: var(--rvd, 0ms);
+          will-change: opacity, transform;
+        }
+        .reveal[data-anim="up"] {
+          --reveal-from: translate3d(0, 18px, 0);
+        }
+        .reveal[data-anim="down"] {
+          --reveal-from: translate3d(0, -18px, 0);
+        }
+        .reveal[data-anim="left"] {
+          --reveal-from: translate3d(-18px, 0, 0);
+        }
+        .reveal[data-anim="right"] {
+          --reveal-from: translate3d(18px, 0, 0);
+        }
+        .reveal[data-anim="zoom"] {
+          --reveal-from: scale(0.96);
+        }
+        .reveal.is-visible {
+          opacity: 1;
+          transform: none;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .reveal {
+            transition: none !important;
+            opacity: 1 !important;
+            transform: none !important;
+          }
+          .hero-cta--bob,
+          .hero-cta--pulse {
+            animation: none !important;
+          }
+        }
+
+        @keyframes y-bob {
+          0%,
+          100% {
+            transform: translateY(0);
+          }
+          50% {
+            transform: translateY(-4px);
+          }
+        }
+        .hero-cta--bob {
+          animation: y-bob 3s ease-in-out infinite;
+        }
+        @keyframes pulse-soft {
+          0%,
+          100% {
+            box-shadow: 0 16px 30px rgba(11, 28, 58, 0.25);
+          }
+          50% {
+            box-shadow: 0 22px 42px rgba(11, 28, 58, 0.35);
+          }
+        }
+        .hero-cta--pulse {
+          animation: pulse-soft 2.8s ease-in-out infinite;
+        }
+        .hero-cta:focus-visible {
+          outline: 3px solid #5aa8ff;
+          outline-offset: 3px;
+          border-radius: 999px;
+        }
+      `}</style>
+    </div>
   );
 }
