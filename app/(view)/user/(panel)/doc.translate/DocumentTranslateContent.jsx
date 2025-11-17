@@ -140,33 +140,16 @@ const styles = {
       color: "rgba(255,255,255,.94)",
       maxWidth: 640,
     },
-    illoWrap: {
-      position: "relative",
-      width: 360,
-      height: 360,
-      justifySelf: "end",
-    },
-    sun: {
-      position: "absolute",
-      right: 0,
-      top: "8%",
-      width: 300,
-      height: 300,
-      borderRadius: "50%",
-      background:
-        "radial-gradient(85% 85% at 50% 50%, #FFC44D 0%, #FFB229 60%, #FFA600 100%)",
-      boxShadow: "0 18px 36px rgba(255,166,0,.30)",
-      zIndex: 0,
-    },
+    // tidak ada pembungkus / sun lagi, ilustrasi langsung jadi grid item
     illo: {
-      position: "absolute",
-      right: 22,
-      top: 28,
-      width: 260,
-      height: 260,
+      justifySelf: "end",
+      alignSelf: "end",
+      width: 420,
+      height: 420,
       objectFit: "contain",
-      zIndex: 1,
       filter: "drop-shadow(0 10px 20px rgba(0,0,0,.18))",
+      zIndex: 1,
+      display: "block",
     },
   },
 
@@ -199,7 +182,6 @@ const styles = {
     section: { padding: "12px 0 56px" },
     band: {
       background: "#0b56c9",
-      // biar ada ruang kiri/kanan di mobile
       paddingInline: "clamp(12px, 4vw, 28px)",
       minHeight: 56,
       display: "grid",
@@ -216,7 +198,6 @@ const styles = {
       fontFamily: FONT_FAMILY,
       fontWeight: 900,
       letterSpacing: ".01em",
-      /* KUNCI: font fluid + tidak melipat baris */
       fontSize: "clamp(12px, 3.6vw, 28px)",
       whiteSpace: "nowrap",
       lineHeight: 1.1,
@@ -435,7 +416,8 @@ function Img({ src, alt, style, className }) {
   return (
     <img
       src={src}
-      alt={alt || ""} title={alt || ""}
+      alt={alt || ""}
+      title={alt || ""}
       className={className}
       style={style}
       loading="lazy"
@@ -521,7 +503,7 @@ export default function DocumentTranslateContent({
         ? "1.05fr .95fr"
         : "1.15fr .85fr",
       padding: isNarrow ? "28px 22px" : isTablet ? "44px 48px" : "56px 64px",
-      minHeight: isNarrow ? 240 : isTablet ? 320 : 360,
+      minHeight: isNarrow ? 260 : isTablet ? 340 : 380,
       borderTopRightRadius: isNarrow ? 72 : 120,
       borderBottomLeftRadius: isNarrow ? 72 : 120,
     }),
@@ -537,34 +519,12 @@ export default function DocumentTranslateContent({
     [isNarrow, isTablet]
   );
 
-  const illoWrapStyle = useMemo(
-    () => ({
-      ...styles.hero.illoWrap,
-      width: isNarrow ? 220 : isTablet ? 300 : 360,
-      height: isNarrow ? 220 : isTablet ? 300 : 360,
-      justifySelf: isNarrow ? "start" : "end",
-      marginTop: isNarrow ? 12 : 0,
-    }),
-    [isNarrow, isTablet]
-  );
-
-  const sunStyle = useMemo(
-    () => ({
-      ...styles.hero.sun,
-      width: isNarrow ? 180 : isTablet ? 260 : 300,
-      height: isNarrow ? 180 : isTablet ? 260 : 300,
-      top: isNarrow ? 0 : "8%",
-    }),
-    [isNarrow, isTablet]
-  );
-
   const illoStyle = useMemo(
     () => ({
       ...styles.hero.illo,
-      width: isNarrow ? 160 : isTablet ? 220 : 260,
-      height: isNarrow ? 160 : isTablet ? 220 : 260,
-      right: isNarrow ? 12 : 22,
-      top: isNarrow ? 8 : 28,
+      width: isNarrow ? 260 : isTablet ? 340 : 420,
+      height: isNarrow ? 260 : isTablet ? 340 : 420,
+      justifySelf: isNarrow ? "center" : "end",
     }),
     [isNarrow, isTablet]
   );
@@ -656,22 +616,16 @@ export default function DocumentTranslateContent({
               )}
             </div>
 
-            <div
-              style={illoWrapStyle}
-              className="reveal"
-              data-anim="right"
-              aria-hidden
-            >
-              <div style={sunStyle} className="anim-sun" />
-              {isLoading ? null : content?.hero?.illustration ? (
-                <Img
-                  src={content.hero.illustration}
-                  alt=""
-                  style={illoStyle}
-                  className="anim-illo"
-                />
-              ) : null}
-            </div>
+            {/* ilustrasi langsung tanpa pembungkus sun */}
+            {!isLoading && content?.hero?.illustration ? (
+              <Img
+                src={content.hero.illustration}
+                alt=""
+                style={illoStyle}
+                className="anim-illo"
+                aria-hidden
+              />
+            ) : null}
           </div>
         </div>
       </section>
@@ -856,9 +810,8 @@ export default function DocumentTranslateContent({
         </div>
       </section>
 
-      {/* ---------- GLOBAL STYLES (Animations/Interactions) ---------- */}
+      {/* ---------- GLOBAL STYLES ---------- */}
       <style jsx global>{`
-        /* selection */
         ::selection {
           background: #0b56c9;
           color: #fff;
@@ -868,7 +821,6 @@ export default function DocumentTranslateContent({
           overflow-x: clip;
         }
 
-        /* Reveal */
         .reveal {
           opacity: 0;
           transform: var(--reveal-from, translate3d(0, 16px, 0));
@@ -897,7 +849,6 @@ export default function DocumentTranslateContent({
           transform: none;
         }
 
-        /* Micro-interactions */
         .service-card:focus-visible {
           outline: 3px solid #b9d6ff;
           outline-offset: 2px;
@@ -917,7 +868,6 @@ export default function DocumentTranslateContent({
           }
         }
 
-        /* Gentle float for hero visuals */
         @keyframes floatY {
           0% {
             transform: translateY(0);
@@ -929,14 +879,10 @@ export default function DocumentTranslateContent({
             transform: translateY(0);
           }
         }
-        .anim-sun {
-          animation: floatY 6.5s ease-in-out infinite;
-        }
         .anim-illo {
           animation: floatY 7s ease-in-out infinite;
         }
 
-        /* Rich content defaults */
         .desc-content p {
           margin: 10px 0 0;
         }
@@ -964,25 +910,18 @@ export default function DocumentTranslateContent({
           margin: 10px 0;
         }
 
-        /* Respect reduced motion */
         @media (prefers-reduced-motion: reduce) {
           .reveal {
             transition: none !important;
             opacity: 1 !important;
             transform: none !important;
           }
-          .anim-sun,
           .anim-illo {
             animation: none !important;
           }
         }
 
-        /* Responsive tweaks */
-        @media (max-width: 1024px) {
-          /* keep grid changes handled in JS memo; extra spacing if needed */
-        }
         @media (max-width: 640px) {
-          /* enlarge tap targets for accessibility */
           .service-card {
             padding: 26px 18px 22px;
           }

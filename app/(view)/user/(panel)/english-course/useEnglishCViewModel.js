@@ -39,6 +39,7 @@ function getBenefitsByName(name, locale) {
     .toLowerCase()
     .trim();
   const F = (idArr, enArr) => (locale === "en" ? enArr : idArr);
+
   const fallback = F(
     [
       "20x Pertemuan",
@@ -53,13 +54,14 @@ function getBenefitsByName(name, locale) {
       "Structured materials",
     ]
   );
+
   if (n.includes("intensive"))
     return F(
       [
         "20x Pertemuan",
         "Jadwal fleksibel ditentukan siswa",
         "1 Siswa 1 Guru",
-        "Guru kompeten & bersertifikat",
+        "Guru kompeten dan bersertifikat",
       ],
       [
         "20 Sessions",
@@ -68,36 +70,39 @@ function getBenefitsByName(name, locale) {
         "Qualified & certified tutor",
       ]
     );
+
   if (n.includes("group"))
     return F(
       [
         "20x Pertemuan",
         "Min. 3 siswa per kelas",
         "Bisa diskusi tugas sekolah",
-        "Membahas Kisi-kisi UAS",
+        "Membahas kisi-kisi UAS",
       ],
       [
         "20 Sessions",
-        "Min. 3 students/class",
-        "Homework discussion welcome",
-        "Covers school exam grids",
+        "Min. 3 students per class",
+        "School homework discussion",
+        "Covers exam preparation",
       ]
     );
+
   if (n.includes("ielts"))
     return F(
       [
         "30x Pertemuan",
         "1 Siswa 1 Guru",
         "Jadwal fleksibel ditentukan siswa",
-        "Target skor terukur (IELTS)",
+        "Fokus persiapan tes IELTS",
       ],
       [
         "30 Sessions",
         "1 Student 1 Tutor",
         "Student-picked flexible schedule",
-        "Measured target (IELTS)",
+        "Focused IELTS preparation",
       ]
     );
+
   if (n.includes("profesional") || n.includes("professional"))
     return F(
       [
@@ -113,6 +118,7 @@ function getBenefitsByName(name, locale) {
         "Industry-experienced instructors",
       ]
     );
+
   return fallback;
 }
 
@@ -128,36 +134,36 @@ export default function useEnglishCViewModel({
 
   const hero = useMemo(
     () => ({
-      title: t(safeLocale, "KURSUS BAHASA INGGRIS", "ENGLISH COURSE"),
+      title: t(safeLocale, "Kursus Bahasa Inggris", "English Course"),
       subtitle: t(
         safeLocale,
-        "Raih skor TOEFL/IELTS terbaikmu dengan pendampingan intensif dan materi terstruktur.",
-        "Achieve your best TOEFL/IELTS score with intensive guidance and structured materials."
+        "Raih skor terbaik TOEFL/IELTS Anda melalui bimbingan intensif dan materi belajar yang terstruktur.",
+        "Reach your best TOEFL/IELTS score with intensive guidance and structured learning materials."
       ),
       bullets: [
         {
           id: "free-consult",
-          label: t(safeLocale, "Konsultasi Gratis", "Free Consultation"),
+          label: t(safeLocale, "1 Siswa 1 Guru", "1 Student 1 Tutor"),
         },
         {
           id: "flex",
-          label: t(safeLocale, "Jadwal Fleksibel", "Flexible Schedule"),
+          label: t(
+            safeLocale,
+            "Akses materi lewat LMS",
+            "Learning materials on LMS"
+          ),
         },
       ],
-      whatsapp: {
-        label: t(safeLocale, "Chat Konsultan", "Chat Consultant"),
-        href: LEAD_URL,
-      },
       illustration: "/buku.svg",
     }),
     [safeLocale]
   );
 
-  // TEKS SAMA DENGAN DESAIN
+  // Copy deskripsi disesuaikan dengan tone promosi kelas
   const description = t(
     safeLocale,
-    "Layanan kursus Bahasa Inggris di OSS Bali dirancang untuk membantu peserta meningkatkan kemampuan berbahasa Inggris, baik untuk keperluan akademik, profesional, maupun komunikasi sehari-hari. Program ini mencakup berbagai tingkat kemampuan, dari pemula hingga lanjutan, dengan metode pengajaran yang interaktif dan berbasis kebutuhan peserta. Program kursus bahasa inggris kami merupakan program paling lengkap yang ada di Bali mulai dari IELTS, TOEFL, TOEIC, PTE, Duolingo, Basic, CAE, IPT, dan lainnya.",
-    "OSS Bali's English course is designed to help learners improve their English for academic, professional, and everyday communication. It covers all levels—from beginner to advanced—with interactive, needs-based teaching. Our program is among the most complete in Bali, including IELTS, TOEFL, TOEIC, PTE, Duolingo, Basic, CAE, IPT, and more."
+    "Layanan kursus Bahasa Inggris di OSS Bali dirancang untuk membantu peserta meningkatkan kemampuan berbahasa Inggris, baik untuk keperluan akademik, profesional, maupun komunikasi sehari-hari. Program ini mencakup berbagai tingkat kemampuan, dari pemula hingga lanjutan, dengan metode pengajaran yang interaktif dan berbasis kebutuhan peserta. Program kursus kami juga mencakup persiapan berbagai jenis tes seperti IELTS, TOEFL, TOEIC, PTE, Duolingo, CAE, IPT, dan lainnya.",
+    "OSS Bali's English course is designed to help learners improve their English for academic, professional, and everyday communication. It covers all levels—from beginner to advanced—with interactive, needs-based teaching. Our program also includes preparation for major tests such as IELTS, TOEFL, TOEIC, PTE, Duolingo, CAE, IPT, and more."
   );
 
   const servicesKey = useMemo(() => {
@@ -192,21 +198,30 @@ export default function useEnglishCViewModel({
         p.image_public_url ||
         p.image_url ||
         PLACEHOLDER;
-      // Kalau signed URL (ada token=), jangan tambahkan ?v=
       const imgSrc =
         typeof base === "string" && base.includes("token=") ? base : base + ver;
+
+      const rawName = p.name || "";
+      const n = rawName.toLowerCase();
+      let title = rawName || t(safeLocale, "(Tanpa judul)", "(No title)");
+
+      // Normalisasi judul supaya konsisten dengan desain
+      if (n.includes("intensive")) {
+        title = t(safeLocale, "INTENSIVE CLASS", "INTENSIVE CLASS");
+      } else if (n.includes("group")) {
+        title = t(safeLocale, "GROUP CLASS", "GROUP CLASS");
+      }
 
       return {
         id: p.id,
         price: Number(p.price ?? 0),
-        title: p.name || t(safeLocale, "(Tanpa judul)", "(No title)"),
+        title,
         image: imgSrc,
         desc: p.description || "",
-        benefits: getBenefitsByName(p.name, safeLocale),
-        icon: "/tutoring.svg",
+        benefits: getBenefitsByName(rawName, safeLocale),
         cta: {
           label: t(safeLocale, "Daftar Sekarang", "Enroll Now"),
-          href: LEAD_URL, // arahkan semua ke /user/leads
+          href: LEAD_URL,
         },
       };
     });

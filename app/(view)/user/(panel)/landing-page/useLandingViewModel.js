@@ -74,9 +74,11 @@ export function useLandingViewModel(arg) {
 
   const t = (id, en) => (locale === "en" ? en : id);
 
-  /* ===== HERO (baru) ===== */
+  /* ===== HERO (baru) - video background ===== */
   const hero = {
-    background: "",
+    backgroundType: "video",
+    backgroundSrc: "/assets/video/hero-background.mp4",
+    background: "", // fallback image (kalau mau pakai image nanti)
     title: "#WEMAKEYOUPRIORITY",
     description: t(
       "37.000+ alumni sukses bersama OSS Bali",
@@ -136,7 +138,7 @@ export function useLandingViewModel(arg) {
     ctaText: t("Bandingkan Sekarang", "Compare Now"),
     ctaHref: "/user/services/compare",
 
-    // keep legacy title/subtitle if used somewhere else
+    // legacy title/subtitle (kalau masih dipakai di tempat lain)
     title: t("PROGRAM POPULER KAMI", "OUR POPULAR PROGRAM"),
     subtitle: t(
       "Kami menawarkan program unggulan ...",
@@ -162,12 +164,12 @@ export function useLandingViewModel(arg) {
       {
         id: "visa-apply",
         image: "/visa-landing.svg",
-        label: t("PENGAJUAN VISA", "VISA APPLICATION"), // atau "PENGURUSAN VISA"
+        label: t("PENGAJUAN VISA", "VISA APPLICATION"),
       },
       {
         id: "accommodation",
         image: "/accom-landing.svg",
-        label: t("AKOMODASI", "ACCOMMODATION"), // atau "TEMPAT TINGGAL"
+        label: t("AKOMODASI", "ACCOMMODATION"),
       },
     ],
   };
@@ -251,6 +253,8 @@ export function useLandingViewModel(arg) {
         c?.description_id ??
         c?.description_en ??
         "",
+      role: c?.role || c?.title || "",
+      slug: c?.slug || null,
     }));
   }, [consultantsJson, locale]);
 
@@ -302,11 +306,10 @@ export function useLandingViewModel(arg) {
     ],
   };
 
-  /* ===== Country Partners (static list, with covers & flags) ===== */
+  /* ===== Country Partners (static list) ===== */
   const countryPartners = {
     title: t("Negara Partner", "Partner Countries"),
     items: [
-      // baris 1 & 2 akan dibagi otomatis di Content
       {
         id: "nz",
         name: t("New Zealand", "New Zealand"),
@@ -343,7 +346,6 @@ export function useLandingViewModel(arg) {
         flag: "/flags/jp.svg",
         cover: "/countries/jp.svg",
       },
-
       {
         id: "tw",
         name: t("Taiwan", "Taiwan"),
@@ -410,15 +412,8 @@ export function useLandingViewModel(arg) {
         flag: "/flags/my.svg",
         cover: "/countries/my.svg",
       },
-      {
-        id: "it",
-        name: t("Italia", "Italy"),
-        flag: "/flags/it.svg",
-        cover: "/countries/it.svg",
-      },
     ],
   };
-  // Catatan: pastikan file cover tersedia. Jika belum ada, UI fallback ke /images/country-fallback.svg.
 
   return {
     hero,

@@ -124,71 +124,52 @@ const styles = {
     },
     card: {
       position: "relative",
-      background: "#fff",
-      borderRadius: 20,
-      border: "1px solid #e5e7eb",
-      boxShadow: "0 10px 28px rgba(8,12,24,.06)",
+      background: "#ffffff",
+      borderRadius: 28,
+      border: "1px solid #f1f5f9",
+      boxShadow: "0 20px 40px rgba(15,23,42,.10)",
       overflow: "hidden",
       zIndex: 1,
       transition: "transform .18s ease, box-shadow .18s ease",
       willChange: "transform",
     },
-    body: { padding: 20 },
-    pricePill: {
-      position: "absolute",
-      top: -20,
-      left: "50%",
-      transform: "translateX(-50%)",
-      background: "#f24e6a",
-      color: "#fff",
-      fontWeight: 800,
-      fontSize: 18,
-      padding: "10px 26px",
-      borderRadius: 999,
-      boxShadow: "0 10px 20px rgba(242,78,106,.25)",
-      letterSpacing: ".01em",
-      zIndex: 5,
-      pointerEvents: "none",
-      whiteSpace: "nowrap",
-    },
+    body: { padding: 28 },
     imageWrap: {
       width: "100%",
       height: 190,
-      borderRadius: 18,
+      borderRadius: 24,
       overflow: "hidden",
-      border: "1px solid #e5e7eb",
-      marginTop: 16,
-    },
-    iconWrap: {
-      display: "grid",
-      placeItems: "center",
-      marginTop: 16,
-      marginBottom: 8,
+      background: "#e5e7eb",
+      marginBottom: 22,
     },
     heading: {
-      margin: "0 0 8px",
+      margin: "0 0 6px",
       textAlign: "center",
       fontWeight: 800,
-      fontSize: 24,
-      letterSpacing: ".02em",
+      fontSize: 22,
+      letterSpacing: ".08em",
+      textTransform: "uppercase",
       color: "#0f172a",
     },
     sub: {
-      textAlign: "justify",
+      textAlign: "center",
       color: "#64748b",
       marginRight: 10,
       marginLeft: 10,
+      marginTop: 4,
       lineHeight: 1.6,
       letterSpacing: ".01em",
+      fontSize: 14,
     },
     benefitTitle: {
-      marginTop: 14,
-      marginBottom: 8,
+      marginTop: 18,
+      marginBottom: 10,
       textAlign: "center",
-      fontSize: 24,
+      fontSize: 20,
       fontWeight: 800,
-      letterSpacing: ".02em",
+      letterSpacing: ".06em",
       color: "#0f172a",
+      textTransform: "uppercase",
     },
     benefitList: {
       margin: 0,
@@ -199,15 +180,86 @@ const styles = {
       color: "#334155",
     },
     benefitItem: { display: "flex", alignItems: "center", gap: 8 },
-    ctaWrap: { marginTop: 16, display: "flex", justifyContent: "center" },
+    pricePill: {
+      marginTop: 22,
+      marginBottom: 12,
+      background: "linear-gradient(135deg,#ff4b6a 0%,#ff7b8a 100%)",
+      color: "#ffffff",
+      fontWeight: 800,
+      fontSize: 18,
+      padding: "12px 26px",
+      borderRadius: 999,
+      boxShadow: "0 10px 20px rgba(242,78,106,.25)",
+      letterSpacing: ".02em",
+      textAlign: "center",
+      width: "min(260px, 90%)",
+      marginLeft: "auto",
+      marginRight: "auto",
+      whiteSpace: "nowrap",
+    },
+    ctaWrap: {
+      marginTop: 6,
+      display: "flex",
+      justifyContent: "center",
+    },
     ctaBtn: {
-      background: "linear-gradient(180deg,#2f7aff 0%, #1e4fd9 100%)",
+      background: "linear-gradient(180deg,#2563eb 0%, #1d4ed8 100%)",
       border: 0,
-      padding: "14px 22px",
+      padding: "12px 24px",
       height: "auto",
       borderRadius: 999,
       fontWeight: 800,
-      boxShadow: "0 12px 24px rgba(47,122,255,.28)",
+      boxShadow: "0 14px 28px rgba(37,99,235,.30)",
+      minWidth: 220,
+      width: "min(260px, 90%)",
+    },
+  },
+
+  /* ---------- BOTTOM CTA BANNER ---------- */
+  ctaBanner: {
+    wrap: {
+      position: "relative",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 20,
+      padding: "18px 28px",
+      paddingLeft: 40,
+      borderRadius: 20,
+      background:
+        "linear-gradient(135deg, #def3ff 0%, #bae6ff 45%, #a5ddff 100%)",
+      border: "1px solid #bfdbfe",
+      boxShadow: "0 18px 40px rgba(15,23,42,0.10)",
+      overflow: "hidden",
+      flexWrap: "wrap",
+      marginTop: 75,
+    },
+    accent: {
+      position: "absolute",
+      insetBlock: 0,
+      left: 0,
+      width: 10,
+      background: "#0b56c9",
+      borderRadius: "20px 0 0 20px",
+    },
+    text: {
+      margin: 0,
+      fontFamily: FONT_FAMILY,
+      fontWeight: 700,
+      fontSize: 20,
+      lineHeight: 1.4,
+      color: "#0050a6",
+    },
+    button: {
+      background: "#0050a6",
+      border: "2px solid #0b56c9",
+      color: "#ffffff",
+      fontWeight: 700,
+      padding: "10px 24px",
+      height: "auto",
+      borderRadius: 999,
+      boxShadow: "0 12px 24px rgba(15,23,42,.20)",
+      whiteSpace: "nowrap",
     },
   },
 };
@@ -218,7 +270,8 @@ function Img({ src, alt, style }) {
   return (
     <img
       src={src}
-      alt={alt || ""} title={alt || ""}
+      alt={alt || ""}
+      title={alt || ""}
       style={style}
       onError={(e) => {
         e.currentTarget.onerror = null;
@@ -246,7 +299,7 @@ function ChipIcon({ type }) {
 
 const tt = (locale, id, en) => (locale === "en" ? en : id);
 
-/* ===== Reveal on scroll (simple, from your reference) ===== */
+/* ===== Reveal on scroll ===== */
 function useRevealOnScroll(deps = []) {
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -302,14 +355,18 @@ export default function EnglishCContent({
   error,
 }) {
   const {
-    title = tt(locale, "KURSUS BAHASA INGGRIS", "ENGLISH COURSE"),
-    subtitle = "",
+    // fallback copy disamakan dengan desain
+    title = tt(locale, "Kursus Bahasa Inggris", "English Course"),
+    subtitle = tt(
+      locale,
+      "Raih skor terbaik TOEFL/IELTS Anda melalui bimbingan intensif dan materi pembelajaran yang terstruktur.",
+      "Reach your best TOEFL/IELTS score with intensive guidance and structured learning materials."
+    ),
     bullets = [],
     illustration,
   } = hero || {};
   const heroBullets = Array.isArray(bullets) ? bullets : [];
 
-  // Currency/number formatter
   const priceFmt = useMemo(
     () =>
       new Intl.NumberFormat(locale === "en" ? "en-US" : "id-ID", {
@@ -335,7 +392,6 @@ export default function EnglishCContent({
     };
   }, []);
 
-  // reveal anim when data comes in
   useRevealOnScroll([packages?.length, loading]);
 
   const sectionInnerStyle = useMemo(
@@ -389,7 +445,11 @@ export default function EnglishCContent({
   return (
     <div
       className="page-wrap"
-      style={{ paddingBottom: 48, fontFamily: FONT_FAMILY }}
+      style={{
+        paddingBottom: 48,
+        fontFamily: FONT_FAMILY,
+        background: "#f4f5f7",
+      }}
     >
       {/* ===== HERO ===== */}
       <section style={{ padding: "0 0 24px" }}>
@@ -451,7 +511,7 @@ export default function EnglishCContent({
         </div>
       </section>
 
-      {/* ===== DESCRIPTION (justify) ===== */}
+      {/* ===== DESCRIPTION ===== */}
       <section style={sectionStyle}>
         <div style={sectionInnerStyle}>
           <div style={styles.desc.wrap}>
@@ -473,18 +533,19 @@ export default function EnglishCContent({
             className="reveal"
             data-anim="down"
             style={{
-              marginTop: "75px",
-              marginBottom: "100px",
+              marginTop: 40,
+              marginBottom: 48,
               fontFamily: FONT_FAMILY,
               textAlign: "center",
               fontWeight: 800,
               fontSize: 40,
               lineHeight: 1.1,
               color: "#0f172a",
-              letterSpacing: "0.01em",
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
             }}
           >
-            {tt(locale, "Paket Kursus", "Course Packages")}
+            {tt(locale, "PAKET KELAS BAHASA INGGRIS", "ENGLISH CLASS PACKAGES")}
           </Title>
 
           {error ? (
@@ -505,17 +566,13 @@ export default function EnglishCContent({
             {(loading ? Array.from({ length: 4 }) : packages).map((p, idx) => (
               <Col key={p?.id || idx} xs={24} md={12}>
                 <div
-                  style={styles.pack.wrap}
+                  style={{
+                    ...styles.pack.wrap,
+                    ["--rvd"]: `${(idx % 6) * 60}ms`,
+                  }}
                   className="reveal"
                   data-anim={idx % 2 ? "right" : "left"}
-                  data-rvd={`${(idx % 6) * 60}ms`}
                 >
-                  {!loading && (
-                    <div style={styles.pack.pricePill}>
-                      {priceFmt.format(p?.price || 0)}
-                    </div>
-                  )}
-
                   <Card
                     bordered={false}
                     style={styles.pack.card}
@@ -528,8 +585,8 @@ export default function EnglishCContent({
                         style={{
                           width: "100%",
                           height: 190,
-                          borderRadius: 18,
-                          marginTop: 16,
+                          borderRadius: 24,
+                          marginBottom: 22,
                         }}
                       />
                     ) : (
@@ -544,22 +601,6 @@ export default function EnglishCContent({
                           }}
                         />
                       </div>
-                    )}
-
-                    {loading ? null : p.icon ? (
-                      <div style={styles.pack.iconWrap}>
-                        <Img
-                          src={p.icon}
-                          alt="icon"
-                          style={{
-                            width: 56,
-                            height: 56,
-                            objectFit: "contain",
-                          }}
-                        />
-                      </div>
-                    ) : (
-                      <div style={{ height: 8 }} />
                     )}
 
                     {loading ? (
@@ -582,7 +623,7 @@ export default function EnglishCContent({
                     ) : (
                       <>
                         <h4 style={styles.pack.benefitTitle}>
-                          {tt(locale, "MANFAAT", "BENEFITS")}
+                          {tt(locale, "BENEFIT", "BENEFITS")}
                         </h4>
                         <ul style={styles.pack.benefitList}>
                           {p.benefits.map((b, i) => (
@@ -592,6 +633,11 @@ export default function EnglishCContent({
                             </li>
                           ))}
                         </ul>
+
+                        {/* PRICE PILL – inside card, seperti desain */}
+                        <div style={styles.pack.pricePill}>
+                          {priceFmt.format(p?.price || 0)}
+                        </div>
                       </>
                     )}
 
@@ -619,9 +665,37 @@ export default function EnglishCContent({
         </div>
       </section>
 
-      {/* ==== GLOBAL STYLES: reveal + micro-interaction + responsive tweaks ==== */}
+      {/* ===== BOTTOM CTA BANNER ===== */}
+      <section style={{ padding: "8px 0 32px" }}>
+        <div style={sectionInnerStyle}>
+          <div
+            style={styles.ctaBanner.wrap}
+            className="english-cta-banner reveal"
+            data-anim="up"
+          >
+            <div style={styles.ctaBanner.accent} />
+            <p style={styles.ctaBanner.text}>
+              {tt(
+                locale,
+                "Temukan Kelas Bahasa Inggrismu\nDengan Harga Yang Bersahabat",
+                "Find Your English Class\nat a Friendly Price"
+              )}
+            </p>
+            <Link href="/user/leads" prefetch={false}>
+              <Button
+                type="primary"
+                style={styles.ctaBanner.button}
+                className="english-cta-button"
+              >
+                {tt(locale, "Pesan Kelas Sekarang", "Book a Class Now")}
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ==== GLOBAL STYLES ==== */}
       <style jsx global>{`
-        /* Reveal */
         .reveal {
           opacity: 0;
           transform: var(--reveal-from, translate3d(0, 16px, 0));
@@ -650,11 +724,6 @@ export default function EnglishCContent({
           transform: none;
         }
 
-        /* read custom delay if provided via data-rvd */
-        .reveal[data-rvd] {
-          transition-delay: attr(data-rvd);
-        }
-
         @media (prefers-reduced-motion: reduce) {
           .reveal {
             transition: none !important;
@@ -663,36 +732,41 @@ export default function EnglishCContent({
           }
         }
 
-        /* Card hover micro interaction */
         @media (hover: hover) {
           .pkg-card:hover {
             transform: translateY(-2px);
-            box-shadow: 0 16px 36px rgba(8, 12, 24, 0.12);
+            box-shadow: 0 22px 44px rgba(15, 23, 42, 0.16);
           }
         }
 
-        /* CTA focus style */
-        .cta-anim:focus-visible {
+        .cta-anim:focus-visible,
+        .english-cta-button:focus-visible {
           outline: 3px solid #5aa8ff !important;
           outline-offset: 2px;
         }
 
-        /* Responsiveness */
         @media (max-width: 960px) {
-          /* Smaller hero pill & fonts */
           .ant-typography h3 {
             line-height: 1.2;
           }
         }
+        @media (max-width: 768px) {
+          .english-cta-banner {
+            flex-direction: column;
+            align-items: flex-start;
+          }
+          .english-cta-button {
+            width: 100%;
+            max-width: 260px;
+          }
+        }
         @media (max-width: 640px) {
-          /* Price pill shrink to avoid overlap */
           .pkg-card + .ant-card-body,
           .pkg-card .ant-card-body {
-            padding: 16px !important;
+            padding: 20px !important;
           }
         }
 
-        /* Avoid horizontal scroll */
         html,
         body {
           overflow-x: clip;

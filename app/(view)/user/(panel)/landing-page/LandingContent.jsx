@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { useMemo, useEffect, useRef } from "react";
-import { Card, Col, Image, Row, Typography, Collapse } from "antd";
+import { Col, Image, Row, Typography, Collapse } from "antd";
 import { Swiper, SwiperSlide } from "swiper/react";
 import { Navigation, Autoplay } from "swiper/modules";
 import "swiper/css";
@@ -22,10 +22,9 @@ const POPULAR_ROUTE_MAP = {
   "translate-doc": "/user/doc.translate",
   "study-overseas": "/user/overseas-study",
   "visa-apply": "/user/visa-apply",
-  accommodation: "/user/accommodation", // sesuai permintaan (1 m)
+  accommodation: "/user/accommodation",
 };
 
-/* helpers */
 const A = (v) => (Array.isArray(v) ? v : []);
 const slugify = (s = "") =>
   String(s)
@@ -233,7 +232,7 @@ const toYouTubeEmbed = (input) => {
   }
 };
 
-/* ===== reveal on scroll (auto observe konten baru) ===== */
+/* ===== reveal on scroll ===== */
 function useRevealOnScroll(deps = []) {
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -270,7 +269,6 @@ function useRevealOnScroll(deps = []) {
 
     observeAll();
 
-    // Konten SWR masuk -> observe otomatis
     const mo = new MutationObserver(observeAll);
     mo.observe(document.body, { childList: true, subtree: true });
 
@@ -281,7 +279,7 @@ function useRevealOnScroll(deps = []) {
   }, deps);
 }
 
-/* subtle hero parallax (non-intrusive) */
+/* subtle hero parallax */
 function useHeroParallax(ref) {
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -324,23 +322,49 @@ const hero = {
     position: "relative",
     overflow: "hidden",
   },
-  inner: (bg) => ({
-    position: "relative",
-    isolation: "isolate",
-    background: bg
-      ? `url(${bg}) center / cover no-repeat`
-      : "linear-gradient(180deg, #f2f7ff 0%, #e9f2ff 100%)",
-    height:
-      "min(max(520px, calc(100dvh - var(--nav-h, 80px))), calc(100svh - var(--nav-h, 80px)))",
-    display: "grid",
-    placeItems: "center",
-    padding: "24px 14px",
-  }),
+  inner: (H) => {
+    const isVideo = H?.backgroundType === "video" && H?.backgroundSrc;
+    const imageSrc =
+      H?.backgroundType === "image" ? H?.backgroundSrc : H?.background;
+
+    let backgroundStyle = "linear-gradient(180deg, #f2f7ff 0%, #e9f2ff 100%)";
+
+    if (imageSrc) {
+      backgroundStyle = `url(${imageSrc}) center / cover no-repeat`;
+    } else if (isVideo) {
+      backgroundStyle = "transparent";
+    }
+
+    return {
+      position: "relative",
+      isolation: "isolate",
+      background: backgroundStyle,
+      height:
+        "min(max(520px, calc(100dvh - var(--nav-h, 80px))), calc(100svh - var(--nav-h, 80px)))",
+      display: "grid",
+      placeItems: "center",
+      padding: "24px 14px",
+    };
+  },
+  video: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    zIndex: -2,
+    // 👉 videonya sedikit digelapin
+    filter: "brightness(0.55) contrast(1.05)",
+    pointerEvents: "none",
+  },
   overlay: {
     position: "absolute",
     inset: 0,
+    // 👉 overlay hitam yang lebih kuat supaya teks kebaca
     background:
-      "linear-gradient(180deg, rgba(0,0,0,.06) 0%, rgba(0,0,0,.10) 40%, rgba(0,0,0,.06) 100%)",
+      "radial-gradient(circle at center, rgba(0,0,0,.15) 0%, rgba(0,0,0,.55) 55%, rgba(0,0,0,.75) 100%)",
+    mixBlendMode: "multiply",
     zIndex: 0,
     pointerEvents: "none",
   },
@@ -356,22 +380,25 @@ const hero = {
   },
   title: {
     marginTop: -56,
-    color: "#0B3E91",
+    color: "#0B56C9",
     textTransform: "uppercase",
     fontWeight: 900,
-    fontSize: "clamp(28px, 8vw, 72px)",
-    letterSpacing: "0.06em",
-    textShadow:
-      "0 1px 0 #fff, 0 6px 20px rgba(0,36,96,.18), 0 0 24px rgba(90,166,255,.24)",
+    // ⬇️ font di-kecilkan untuk mobile
+    fontSize: "clamp(22px, 5.2vw, 72px)",
+    // ⬇️ letter-spacing sedikit dikurangi biar nggak kepanjangan
+    letterSpacing: "0.045em",
+    textShadow: "0 0 26px rgba(0,0,0,.9), 0 3px 18px rgba(0,0,0,.85)",
+    WebkitTextStroke: "1px rgba(255,255,255,.6)",
     lineHeight: 1.06,
   },
   desc: {
     margin: 0,
-    color: "#0B3E91",
+    // 👉 copy jadi putih biar aman di semua frame video
+    color: "#FFFFFF",
     fontSize: "clamp(14px, 3.6vw, 20px)",
     fontWeight: 700,
     lineHeight: 1.6,
-    textShadow: "0 1px 0 rgba(255,255,255,.7)",
+    textShadow: "0 0 18px rgba(0,0,0,.95)",
   },
   ctaDock: {
     position: "absolute",
@@ -390,7 +417,7 @@ const hero = {
     fontWeight: 900,
     letterSpacing: "0.02em",
     fontSize: "clamp(14px, 2.6vw, 20px)",
-    boxShadow: "0 14px 28px rgba(11,86,201,.28)",
+    boxShadow: "0 14px 28px rgba(0,0,0,.45)",
     textDecoration: "none",
     whiteSpace: "nowrap",
   },
@@ -499,9 +526,8 @@ export default function LandingContent({ locale = "id" }) {
   const popularItems = A(popularProgram?.items);
   const testiContent = A(testimonialsList);
   const consItems = A(CONS?.items);
-
-  // NEW: country partners split rows
   const cpItems = A(CP?.items);
+
   const cpHalf = Math.ceil(cpItems.length / 2);
   const cpTop = cpItems.slice(0, cpHalf);
   const cpBottom = cpItems.slice(cpHalf);
@@ -512,13 +538,7 @@ export default function LandingContent({ locale = "id" }) {
   const cpBottomKey =
     cpBottom.map((c) => c?.id ?? c?.name ?? "").join("|") ||
     "country-bottom-empty";
-  const countrySpeed = useMemo(() => {
-    const base = Math.max(1, cpItems.length);
-    const computed = base * 900;
-    return Math.max(5000, Math.min(14000, computed));
-  }, [cpItems.length]);
 
-  // observe reveal saat data async datang
   useRevealOnScroll([
     testiContent.length,
     consItems.length,
@@ -546,26 +566,6 @@ export default function LandingContent({ locale = "id" }) {
     [hasMultipleTesti, testiContent.length]
   );
 
-  const countryAutoplayBase = useMemo(
-    () => ({
-      delay: 0,
-      disableOnInteraction: false,
-      pauseOnMouseEnter: true,
-      waitForTransition: false,
-    }),
-    []
-  );
-
-  const cpTopAutoplay = useMemo(
-    () => (cpTopLoop ? countryAutoplayBase : false),
-    [cpTopLoop, countryAutoplayBase]
-  );
-
-  const cpBottomAutoplay = useMemo(
-    () => (cpBottomLoop ? countryAutoplayBase : false),
-    [cpBottomLoop, countryAutoplayBase]
-  );
-
   const faqItems = useMemo(
     () =>
       A(FAQ?.items).map((item, i) => ({
@@ -590,7 +590,21 @@ export default function LandingContent({ locale = "id" }) {
     <>
       {/* HERO */}
       <header style={hero.shell}>
-        <div style={hero.inner(H?.background)} ref={heroRef}>
+        <div style={hero.inner(H)} ref={heroRef}>
+          {H?.backgroundType === "video" && H?.backgroundSrc ? (
+            <video
+              autoPlay
+              loop
+              muted
+              playsInline
+              className="hero-video-bg"
+              style={hero.video}
+            >
+              <source src={H.backgroundSrc} type="video/mp4" />
+              Browser Anda tidak mendukung tag video.
+            </video>
+          ) : null}
+
           <div style={hero.overlay} aria-hidden />
           <div style={hero.copy} className="js-hero-copy">
             <Title
@@ -614,7 +628,7 @@ export default function LandingContent({ locale = "id" }) {
           {H?.ctaText ? (
             <div style={hero.ctaDock}>
               <Link
-                href={LEADS_PATH}
+                href={H?.ctaHref || LEADS_PATH}
                 className="hero-cta hero-cta--bob reveal"
                 data-anim="up"
                 style={{ ...hero.cta, ["--rvd"]: "220ms" }}
@@ -685,7 +699,6 @@ export default function LandingContent({ locale = "id" }) {
           >
             <div style={vid.box}>
               <Row gutter={[20, 20]} align="middle" wrap>
-                {/* gunakan prop order responsif supaya konsisten */}
                 <Col
                   xs={{ span: 24, order: 2 }}
                   md={{ span: 14, order: 1 }}
@@ -778,7 +791,7 @@ export default function LandingContent({ locale = "id" }) {
             {(H?.ctaText || H?.ctaHref) && (
               <div style={{ marginTop: 18 }}>
                 <Link
-                  href={LEADS_PATH}
+                  href={H?.ctaHref || LEADS_PATH}
                   className="hero-cta hero-cta--pulse reveal"
                   data-anim="up"
                   style={{ ...hero.cta, ["--rvd"]: "260ms" }}
@@ -795,7 +808,6 @@ export default function LandingContent({ locale = "id" }) {
       <section style={popular.section}>
         <div style={CONTAINER}>
           <Row gutter={[24, 24]} align="middle" wrap>
-            {/* Left copy */}
             <Col xs={24} md={11} className="popular-copy">
               <Title
                 level={2}
@@ -817,7 +829,7 @@ export default function LandingContent({ locale = "id" }) {
 
               {popularProgram?.ctaText ? (
                 <Link
-                  href={LEADS_PATH}
+                  href={popularProgram?.ctaHref || LEADS_PATH}
                   className="popular-cta reveal"
                   data-anim="up"
                   style={{ ["--rvd"]: "200ms" }}
@@ -827,7 +839,6 @@ export default function LandingContent({ locale = "id" }) {
               ) : null}
             </Col>
 
-            {/* Right slider */}
             <Col xs={24} md={13}>
               <div
                 className="popular-slider reveal"
@@ -918,7 +929,7 @@ export default function LandingContent({ locale = "id" }) {
         </div>
       </section>
 
-      {/* TESTIMONIALS — autoplay marquee */}
+      {/* TESTIMONIALS */}
       <section style={testi.section}>
         <div style={CONTAINER}>
           <Title
@@ -1054,7 +1065,6 @@ export default function LandingContent({ locale = "id" }) {
       {/* CONSULTANTS */}
       <section style={consultants.section}>
         <div style={CONTAINER}>
-          {/* Ganti className ke faqV2-title supaya sama seperti bagian FAQ */}
           <Title
             level={2}
             className="faqV2-title reveal"
@@ -1092,7 +1102,6 @@ export default function LandingContent({ locale = "id" }) {
                     aria-label={c?.name}
                   >
                     <article className="consult3-card">
-                      {/* foto PNG transparan (full/half body) */}
                       <div className="consult3-photo">
                         <img
                           src={c.photo || "/images/avatars/default.jpg"}
@@ -1106,7 +1115,6 @@ export default function LandingContent({ locale = "id" }) {
                         />
                       </div>
 
-                      {/* copy di bawah */}
                       <div className="consult3-bottom">
                         <h4 className="consult3-name">
                           {(c.name || "").trim()}
@@ -1125,7 +1133,6 @@ export default function LandingContent({ locale = "id" }) {
                         />
                       </div>
 
-                      {/* aksen halus */}
                       <span className="consult3-shine" aria-hidden />
                     </article>
                   </Link>
@@ -1136,7 +1143,7 @@ export default function LandingContent({ locale = "id" }) {
         </div>
       </section>
 
-      {/* ====== COUNTRY PARTNERS (NEW) ====== */}
+      {/* COUNTRY PARTNERS */}
       <section className="country-section">
         <div style={CONTAINER}>
           <Title
@@ -1148,7 +1155,6 @@ export default function LandingContent({ locale = "id" }) {
             {CP?.title || "Negara Partner"}
           </Title>
 
-          {/* Row Top - ke kanan */}
           {cpTop.length > 0 ? (
             <div
               className="country-row reveal"
@@ -1223,7 +1229,6 @@ export default function LandingContent({ locale = "id" }) {
             </div>
           ) : null}
 
-          {/* Row Bottom - ke kiri */}
           {cpBottom.length > 0 ? (
             <div
               className="country-row reveal"
@@ -1300,7 +1305,7 @@ export default function LandingContent({ locale = "id" }) {
         </div>
       </section>
 
-      {/* ==== GLOBAL STYLES ==== */}
+      {/* GLOBAL STYLES */}
       <style jsx global>{`
         :root {
           --popular-card-w: clamp(240px, 28vw, 360px);
@@ -1308,7 +1313,18 @@ export default function LandingContent({ locale = "id" }) {
           --country-card-w: clamp(220px, 26vw, 300px);
         }
 
-        /* ===== Fix: Swiper height di mobile ===== */
+        .hero-video-bg {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          z-index: -2;
+          filter: brightness(0.8) contrast(1.1);
+          pointer-events: none;
+        }
+
         .testiV2-swiper,
         .landing-popular-swiper--hero {
           height: auto !important;
@@ -1316,7 +1332,7 @@ export default function LandingContent({ locale = "id" }) {
         .testiV2-swiper .swiper-slide,
         .landing-popular-swiper--hero .swiper-slide {
           display: flex;
-          justify-content: center; /* center horizontal */
+          justify-content: center;
           height: auto;
         }
         .testiV2-swiper .swiper-wrapper,
@@ -1329,7 +1345,6 @@ export default function LandingContent({ locale = "id" }) {
           }
         }
 
-        /* ===== Reveal utilities ===== */
         .reveal {
           opacity: 0;
           transform: var(--reveal-from, translate3d(0, 16px, 0));
@@ -1369,7 +1384,6 @@ export default function LandingContent({ locale = "id" }) {
           }
         }
 
-        /* ===== Hero CTA micro-motions ===== */
         @keyframes y-bob {
           0%,
           100% {
@@ -1400,7 +1414,6 @@ export default function LandingContent({ locale = "id" }) {
           border-radius: 999px;
         }
 
-        /* ===== Popular board ===== */
         .popular-board {
           position: relative;
           border-radius: 16px;
@@ -1503,10 +1516,10 @@ export default function LandingContent({ locale = "id" }) {
           will-change: transform;
           position: relative;
           isolation: isolate;
-          cursor: pointer; /* tanda bisa diklik */
+          cursor: pointer;
         }
         .popular-link {
-          display: block; /* biar anchor seluas kartu */
+          display: block;
           text-decoration: none;
           color: inherit;
         }
@@ -1565,7 +1578,6 @@ export default function LandingContent({ locale = "id" }) {
           box-shadow: 0 8px 16px rgba(8, 42, 116, 0.2);
         }
 
-        /* === NEW: center-kan copy Popular di mobile === */
         .popular-copy {
         }
         @media (max-width: 767px) {
@@ -1589,7 +1601,6 @@ export default function LandingContent({ locale = "id" }) {
           }
         }
 
-        /* ===== Testimonials v2 ===== */
         .testiV2-title {
           margin: 0 !important;
           text-align: center;
@@ -1655,7 +1666,6 @@ export default function LandingContent({ locale = "id" }) {
           font-size: clamp(16px, 2.4vw, 18px);
           font-weight: 800;
           letter-spacing: 0.02em;
-          text-transform: uppercase;
         }
         .testiV2-quote {
           margin: 0;
@@ -1688,7 +1698,6 @@ export default function LandingContent({ locale = "id" }) {
           }
         }
 
-        /* ===== FAQ ===== */
         .faqV2-title {
           margin: 0 !important;
           font-size: clamp(22px, 5.4vw, 40px) !important;
@@ -1756,7 +1765,6 @@ export default function LandingContent({ locale = "id" }) {
         }
 
         :root {
-          /* mudah diatur: radius & tinggi minimum */
           --consult3-r: clamp(22px, 3vw, 36px);
           --consult3-minh: 420px;
           --consult3-bg-a: #0b56c9;
@@ -1775,7 +1783,6 @@ export default function LandingContent({ locale = "id" }) {
           min-height: var(--consult3-minh);
           border-radius: var(--consult3-r);
           overflow: hidden;
-          /* gradient biru seperti desain */
           background: radial-gradient(
             140% 120% at 20% -10%,
             var(--consult3-bg-a) 0%,
@@ -1784,7 +1791,6 @@ export default function LandingContent({ locale = "id" }) {
           );
           box-shadow: 0 18px 34px rgba(0, 0, 0, 0.18);
           isolation: isolate;
-          /* grid buat bottom area selalu nempel bawah */
           display: grid;
           grid-template-rows: 1fr auto;
           align-items: end;
@@ -1792,7 +1798,6 @@ export default function LandingContent({ locale = "id" }) {
             filter 0.18s ease;
         }
 
-        /* aksen shine tipis di sisi kiri */
         .consult3-shine {
           position: absolute;
           inset: 0 auto 0 0;
@@ -1807,7 +1812,6 @@ export default function LandingContent({ locale = "id" }) {
           pointer-events: none;
         }
 
-        /* foto di tengah atas, pakai rasio 9:16 */
         .consult3-photo {
           position: absolute;
           inset: clamp(18px, 3vw, 28px) 0 auto 0;
@@ -1827,13 +1831,11 @@ export default function LandingContent({ locale = "id" }) {
           transform: translateY(6px);
         }
 
-        /* bottom info band (nama + role) */
         .consult3-bottom {
           position: relative;
           z-index: 1;
           padding: clamp(14px, 2.6vw, 20px) clamp(16px, 2.8vw, 22px)
             clamp(18px, 3vw, 24px);
-          /* gradien transparan supaya teks kebaca di atas foto */
           background: linear-gradient(
             180deg,
             rgba(0, 0, 0, 0) 0%,
@@ -1847,7 +1849,6 @@ export default function LandingContent({ locale = "id" }) {
           font-weight: 900;
           letter-spacing: 0.02em;
           font-size: clamp(18px, 2.8vw, 24px);
-          text-transform: none; /* kalau mau ALL CAPS: uppercase */
         }
         .consult3-role {
           color: #dce9ff;
@@ -1856,7 +1857,6 @@ export default function LandingContent({ locale = "id" }) {
           line-height: 1.5;
         }
 
-        /* hover micro-interaction */
         @media (hover: hover) {
           .consult3-card:hover {
             transform: translateY(-2px);
@@ -1865,7 +1865,6 @@ export default function LandingContent({ locale = "id" }) {
           }
         }
 
-        /* responsif kecil: tinggi minimum & skala foto */
         @media (max-width: 575px) {
           :root {
             --consult3-minh: 380px;
@@ -1875,7 +1874,6 @@ export default function LandingContent({ locale = "id" }) {
           }
         }
 
-        /* ===== COUNTRY PARTNERS ===== */
         .country-section {
           width: 100vw;
           margin-left: calc(50% - 50vw);
@@ -1917,7 +1915,7 @@ export default function LandingContent({ locale = "id" }) {
         .country-photo {
           position: relative;
           width: 100%;
-          aspect-ratio: 16/9;
+          aspect-ratio: 16 / 9;
           overflow: hidden;
         }
         .country-photo img {
@@ -1979,7 +1977,6 @@ export default function LandingContent({ locale = "id" }) {
           }
         }
 
-        /* Hindari overflow horizontal */
         html,
         body {
           overflow-x: clip;
