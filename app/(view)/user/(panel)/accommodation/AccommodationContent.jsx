@@ -2,13 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Skeleton } from "antd";
+import { Swiper, SwiperSlide } from "swiper/react";
+import { Autoplay } from "swiper/modules";
+import "swiper/css";
+
 import useAccommodationViewModel from "./useAccommodationViewModel";
 import { sanitizeHtml } from "@/app/utils/dompurify";
 
 const FONT_FAMILY =
   '"Public Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif';
-
-const isSvgSrc = (v) => typeof v === "string" && /\.svg(\?.*)?$/i.test(v);
 
 /* ===== reveal ringan ===== */
 function useRevealOnScroll(deps = []) {
@@ -17,19 +19,23 @@ function useRevealOnScroll(deps = []) {
     const prefersReduce = window.matchMedia(
       "(prefers-reduced-motion: reduce)"
     ).matches;
+
     const applyDelayVar = (el) => {
       const d = el.getAttribute("data-rvd");
       if (d) el.style.setProperty("--rvd", d);
     };
+
     const showAll = (nodes) =>
       nodes.forEach((el) => {
         applyDelayVar(el);
         el.classList.add("is-visible");
       });
+
     if (prefersReduce) {
       showAll(Array.from(document.querySelectorAll(".reveal")));
       return;
     }
+
     const io = new IntersectionObserver(
       (entries) => {
         entries.forEach((e) => {
@@ -42,13 +48,17 @@ function useRevealOnScroll(deps = []) {
       },
       { threshold: 0.16, rootMargin: "0px 0px -10% 0px" }
     );
+
     const observe = () =>
       document
         .querySelectorAll(".reveal:not(.is-visible)")
         .forEach((el) => io.observe(el));
+
     observe();
+
     const mo = new MutationObserver(observe);
     mo.observe(document.body, { childList: true, subtree: true });
+
     return () => {
       io.disconnect();
       mo.disconnect();
@@ -66,245 +76,198 @@ const styles = {
 
   /* ========== HERO ========== */
   hero: {
-    section: { padding: "0 0 24px" },
+    section: { padding: "8px 0 28px" },
     wrapper: {
-      width: "100%",
-      maxWidth: "100%",
-      boxSizing: "border-box",
-      background: "#0b56c9",
-      borderRadius: 28,
+      position: "relative",
+      background: "#0B56C9",
+      borderTopLeftRadius: 24,
       borderTopRightRadius: 120,
       borderBottomLeftRadius: 120,
-      minHeight: 380,
-      padding: "38px 48px",
-      marginTop: "-8px",
+      borderBottomRightRadius: 24,
+      padding: "56px 64px",
+      minHeight: 360,
       display: "grid",
-      gridTemplateColumns: "1.1fr .9fr",
-      gap: 28,
+      gridTemplateColumns: "1.15fr .85fr",
       alignItems: "center",
       color: "#fff",
-      boxShadow: "0 24px 54px rgba(3,30,88,.28)",
+      boxShadow: "0 24px 54px rgba(11,86,201,.22)",
       overflow: "hidden",
       fontFamily: FONT_FAMILY,
     },
     left: { minWidth: 0, textAlign: "left" },
-    right: { display: "flex", justifyContent: "center", alignItems: "center" },
+    right: {
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+    },
     title: {
       margin: 0,
-      fontSize: 54,
-      lineHeight: 1.06,
+      fontSize: 56,
+      lineHeight: 1.08,
       fontWeight: 900,
-      letterSpacing: ".015em",
-      color: "#fff",
-      textTransform: "uppercase",
+      letterSpacing: ".01em",
+      textTransform: "none",
     },
     subtitle: {
-      margin: "16px 0 18px",
-      fontSize: 17,
-      lineHeight: 1.7,
-      color: "rgba(255,255,255,.92)",
-      letterSpacing: ".02em",
+      margin: "16px 0 0",
+      fontSize: 16,
+      lineHeight: 1.9,
+      letterSpacing: ".01em",
+      color: "rgba(255,255,255,.94)",
       maxWidth: 640,
       textAlign: "left",
     },
-    illFrame: {
-      width: "min(500px, 92%)",
-      height: 320,
-      display: "grid",
-      placeItems: "center",
-      overflow: "hidden",
-      borderRadius: 12,
-    },
-    illImg: {
-      width: "100%",
-      height: "100%",
+    illo: {
+      justifySelf: "end",
+      alignSelf: "end",
+      width: 420,
+      height: 420,
       objectFit: "contain",
-      display: "block",
-      maxWidth: "100%",
-      maxHeight: "100%",
-    },
-
-    /* mobile overrides */
-    wrapperNarrow: {
-      gridTemplateColumns: "1fr",
-      padding: "28px 24px",
-      minHeight: 340,
-      borderTopRightRadius: 80,
-      borderBottomLeftRadius: 96,
-      marginTop: "-6px",
-    },
-    titleNarrow: { fontSize: 38, lineHeight: 1.12 },
-    illFrameNarrow: {
-      width: "100%",
-      height: 220,
-      marginTop: 10,
-      display: "grid",
-      placeItems: "center",
-    },
-    illImgNarrow: {
-      width: "100%",
-      height: "100%",
-      objectPosition: "center",
-      margin: "0 auto",
+      filter: "drop-shadow(0 10px 20px rgba(0,0,0,.18))",
+      zIndex: 1,
       display: "block",
     },
   },
 
   /* ========== DESCRIPTION ========== */
   desc: {
-    section: { marginTop: 75 },
+    section: { padding: "46px 0 56px" },
     title: {
-      margin: "0 0 12px",
-      fontWeight: 800,
-      fontSize: 44,
-      lineHeight: 1.1,
-      color: "#0f172a",
-      letterSpacing: "0.01em",
+      margin: 0,
+      fontWeight: 900,
+      fontSize: 40,
+      letterSpacing: ".005em",
+      color: "#0b0d12",
       fontFamily: FONT_FAMILY,
     },
     text: {
-      fontFamily: FONT_FAMILY,
-      fontSize: 18,
-      lineHeight: 1.9,
-      letterSpacing: "0.04em",
-      color: "#0f172a",
       margin: 0,
+      color: "#0b0d12",
+      fontSize: 18,
+      lineHeight: 2.0,
+      letterSpacing: ".01em",
+      wordSpacing: "0.04em",
       textAlign: "justify",
+      textJustify: "inter-word",
+      hyphens: "auto",
+      fontFamily: FONT_FAMILY,
     },
   },
 
-  /* ========== SERVICES ========== */
+  /* ========== SERVICES (slider card biru) ========== */
   services: {
-    section: { marginTop: 75 },
-    barBleed: {
-      width: "100vw",
-      height: 64,
-      marginLeft: "calc(50% - 50vw)",
-      marginRight: "calc(50% - 50vw)",
-      background: "#0b56c9",
-      color: "#fff",
-      display: "grid",
-      placeItems: "center",
-      fontWeight: 900,
+    section: { padding: "40px 0 80px", marginTop: 40 },
+    header: {
+      textAlign: "center",
+      marginBottom: 14,
+    },
+    heading: {
+      margin: 0,
+      fontWeight: 800,
+      fontSize: "clamp(22px, 3vw, 26px)",
       letterSpacing: ".02em",
-      textTransform: "uppercase",
-      /* font: dipaksa satu baris di semua ukuran */
-      whiteSpace: "nowrap",
-      paddingInline: 12,
-      lineHeight: 1,
-      fontSize: "clamp(13px, 3.6vw, 28px)",
-      boxShadow: "0 10px 22px rgba(11,86,201,.28)",
+      color: "#0B56C9",
     },
-    grid: {
-      display: "grid",
-      gridTemplateColumns: "minmax(320px, 520px) 1fr",
-      gap: 36,
-      alignItems: "center",
-      paddingTop: 28,
+    underline: {
+      margin: "10px auto 0",
+      width: 220,
+      height: 3,
+      borderRadius: 999,
+      background: "#0B56C9",
     },
-    collage: { position: "relative", width: "100%", height: 420 },
-    backImg: {
-      position: "absolute",
-      left: 0,
-      bottom: 0,
-      width: 280,
-      height: 340,
-      borderRadius: 26,
-      overflow: "hidden",
-      boxShadow: "0 18px 36px rgba(15,23,42,.18)",
+    subheading: {
+      margin: "14px auto 0",
+      maxWidth: 640,
+      fontSize: 15.5,
+      lineHeight: 1.8,
+      color: "#4B5563",
     },
-    frontFrame: {
-      position: "absolute",
-      left: 140,
-      top: 0,
-      width: 300,
-      height: 400,
-      borderRadius: 28,
-      overflow: "hidden",
-      background: "#fff",
-      boxShadow: "0 22px 44px rgba(15,23,42,.22)",
-      border: "10px solid #111827",
-    },
-    imgCover: { width: "100%", height: "100%", objectFit: "cover" },
-    list: { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 32 },
-    item: {
-      display: "grid",
-      gridTemplateColumns: "44px 1fr",
-      columnGap: 12,
-      alignItems: "start",
-    },
-    icon: { fontSize: 28, lineHeight: 1, width: 44, textAlign: "center" },
-    itemTitle: { margin: 0, fontWeight: 800, fontSize: 20, color: "#0f172a" },
-    itemDesc: {
-      margin: "6px 0 0",
-      color: "#475569",
-      lineHeight: 1.55,
-      fontSize: 14,
+    track: {
+      marginTop: 26,
+      width: "min(1280px, 94%)",
+      marginLeft: "auto",
+      marginRight: "auto",
+      padding: "6px 0 8px",
+      overflow: "visible",
     },
   },
 
-  /* ========== WHY ========== */
+  /* ========== WHY (desain baru, benar-benar center) ========== */
   why: {
-    section: { marginTop: 75 },
-    barBleed: {
-      width: "100vw",
-      height: 64,
-      marginLeft: "calc(50% - 50vw)",
-      marginRight: "calc(50% - 50vw)",
-      background: "#0b56c9",
-      color: "#fff",
-      display: "grid",
-      placeItems: "center",
-      fontWeight: 900,
-      letterSpacing: ".02em",
-      textTransform: "uppercase",
-      whiteSpace: "nowrap",
-      paddingInline: 12,
-      lineHeight: 1,
-      fontSize: "clamp(13px, 3.6vw, 28px)",
-      boxShadow: "0 10px 22px rgba(11,86,201,.28)",
-    },
+    section: { margin: "72px 0 96px" },
     grid: {
-      marginLeft: 150,
-      marginTop: 75,
+      maxWidth: 1120,
+      margin: "0 auto",
       display: "grid",
-      gridTemplateColumns: "repeat(2,1fr)",
-      gap: 40,
-      padding: "36px 0",
+      gridTemplateColumns: "minmax(280px, 360px) minmax(0, 1fr)",
+      alignItems: "center",
+      columnGap: 56,
+      rowGap: 0,
     },
-    item: {
-      display: "grid",
-      gridTemplateColumns: "60px 1fr",
-      columnGap: 16,
-      alignItems: "start",
+    left: {
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
     },
-    iconWrap: {
-      width: 60,
-      height: 60,
-      borderRadius: 16,
-      display: "grid",
-      placeItems: "center",
-      background: "#fff",
-      border: "2px solid #e5e7eb",
-      boxShadow: "0 8px 18px rgba(15,23,42,.08)",
-      fontSize: 30,
-      color: "#0f172a",
+    leftImg: {
+      width: "100%",
+      maxWidth: 360,
+      height: "auto",
+      objectFit: "contain",
+      display: "block",
+    },
+    rightPanel: {
+      background: "#F5F8FF",
+      borderRadius: 32,
+      boxShadow: "0 18px 36px rgba(15,23,42,.04)",
+    },
+    header: {
+      textAlign: "left",
     },
     title: {
-      margin: "2px 0 6px",
+      margin: 0,
       fontWeight: 800,
-      fontSize: 20,
-      color: "#0f172a",
+      fontSize: "clamp(22px, 3vw, 28px)",
+      color: "#0B56C9",
     },
-    sub: { margin: 0, color: "#334155", lineHeight: 1.55 },
-    gridNarrow: {
-      gridTemplateColumns: "1fr",
-      gap: 24,
-      marginLeft: 0,
-      marginTop: 36,
+    underline: {
+      marginTop: 10,
+      width: 260,
+      height: 3,
+      borderRadius: 999,
+      background: "#0B56C9",
     },
-    itemNarrow: { gridTemplateColumns: "56px 1fr" },
-    iconNarrow: { width: 56, height: 56, fontSize: 28 },
+    list: {
+      marginTop: 26,
+      display: "flex",
+      flexDirection: "column",
+      gap: 18,
+    },
+    item: {
+      display: "grid",
+      gridTemplateColumns: "auto 1fr",
+      columnGap: 16,
+      alignItems: "flex-start",
+    },
+    iconImg: {
+      width: 28,
+      height: 28,
+      objectFit: "contain",
+      display: "block",
+      marginTop: 2,
+    },
+    itemTitle: {
+      margin: 0,
+      fontWeight: 700,
+      fontSize: 18,
+      color: "#0B56C9",
+    },
+    itemText: {
+      margin: "4px 0 0",
+      fontSize: 14.5,
+      color: "#111827",
+      lineHeight: 1.7,
+    },
   },
 
   /* ========== CTA ========== */
@@ -375,7 +338,8 @@ function Img({ src, alt, style }) {
         src ||
         "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=1200&auto=format&fit=crop"
       }
-      alt={alt || ""} title={alt || ""}
+      alt={alt || ""}
+      title={alt || ""}
       style={style}
       loading="lazy"
       onError={(e) => {
@@ -433,11 +397,15 @@ export default function AccommodationContent({ locale = "id" }) {
     [isNarrow]
   );
 
+  // hero card
   const heroWrap = useMemo(
     () => ({
       ...styles.hero.wrapper,
-      ...(isNarrow ? styles.hero.wrapperNarrow : {}),
-      gridTemplateColumns: isNarrow ? "1fr" : "1.1fr .9fr",
+      gridTemplateColumns: isNarrow ? "1fr" : "1.15fr .85fr",
+      padding: isNarrow ? "28px 22px" : "56px 64px",
+      minHeight: isNarrow ? 260 : 380,
+      borderTopRightRadius: isNarrow ? 72 : 120,
+      borderBottomLeftRadius: isNarrow ? 72 : 120,
     }),
     [isNarrow]
   );
@@ -445,69 +413,70 @@ export default function AccommodationContent({ locale = "id" }) {
   const heroTitle = useMemo(
     () => ({
       ...styles.hero.title,
-      ...(isNarrow ? styles.hero.titleNarrow : {}),
+      fontSize: isNarrow ? 32 : 56,
+      lineHeight: isNarrow ? 1.15 : 1.08,
     }),
     [isNarrow]
   );
 
-  const illFrameStyle = useMemo(
+  const illoStyle = useMemo(
     () => ({
-      ...styles.hero.illFrame,
-      ...(isNarrow ? styles.hero.illFrameNarrow : {}),
+      ...styles.hero.illo,
+      width: isNarrow ? 260 : 420,
+      height: isNarrow ? 260 : 420,
+      justifySelf: isNarrow ? "center" : "end",
     }),
     [isNarrow]
   );
 
-  const illImgStyle = useMemo(
+  // ====== data services (slider) ======
+  const services = content.services || {};
+  const serviceCards = services.cards || [];
+  const hasCards = serviceCards.length > 0;
+
+  const sliderLoop = serviceCards.length > 6;
+  const sliderAutoplay = sliderLoop
+    ? {
+        delay: 0,
+        disableOnInteraction: false,
+        pauseOnMouseEnter: true,
+        waitForTransition: false,
+      }
+    : false;
+  const sliderSpeed = 9000;
+
+  // ====== WHY responsive styles (center + order mobile) ======
+  const whyGrid = useMemo(
     () => ({
-      ...styles.hero.illImg,
-      ...(isNarrow ? styles.hero.illImgNarrow : {}),
+      ...styles.why.grid,
+      gridTemplateColumns: isNarrow
+        ? "1fr"
+        : "minmax(280px, 360px) minmax(0, 1fr)",
+      columnGap: isNarrow ? 24 : 56,
+      rowGap: isNarrow ? 24 : 0,
     }),
     [isNarrow]
   );
 
-  const servicesGrid = useMemo(
+  const whyLeft = useMemo(
     () => ({
-      ...styles.services.grid,
-      gridTemplateColumns: isNarrow ? "1fr" : "minmax(320px, 520px) 1fr",
-      gap: isNarrow ? 22 : 36,
+      ...styles.why.left,
+      order: isNarrow ? 2 : 1, // mobile: foto di bawah
     }),
     [isNarrow]
   );
 
-  /* ==== mobile collage overrides supaya tidak luber & tidak menabrak list ==== */
-  const backImgStyle = useMemo(
+  const whyRight = useMemo(
     () => ({
-      ...styles.services.backImg,
-      ...(isNarrow
-        ? {
-            left: "6%",
-            bottom: "6%",
-            width: "46%",
-            height: "58%",
-            borderRadius: 20,
-          }
-        : {}),
+      ...styles.why.rightPanel,
+      order: isNarrow ? 1 : 2, // mobile: teks di atas
+      padding: isNarrow ? "24px 18px 26px" : "32px 40px 34px",
     }),
     [isNarrow]
   );
 
-  const frontFrameStyle = useMemo(
-    () => ({
-      ...styles.services.frontFrame,
-      ...(isNarrow
-        ? {
-            left: "50%",
-            top: "6%",
-            width: "80%",
-            height: "80%", // selalu lebih kecil dari tinggi container (360px -> 288px)
-            transform: "translateX(-50%)",
-            borderWidth: 8,
-          }
-        : {}),
-    }),
-    [isNarrow]
-  );
+  const why = content.why || {};
+  const reasons = why.reasons || [];
 
   return (
     <div style={{ paddingBottom: 24, fontFamily: FONT_FAMILY }}>
@@ -540,26 +509,11 @@ export default function AccommodationContent({ locale = "id" }) {
                   style={{ width: 260, height: 200, borderRadius: 12 }}
                 />
               ) : content.hero?.illustration ? (
-                isSvgSrc(content.hero.illustration) ? (
-                  <div
-                    aria-label="Accommodation Illustration"
-                    style={{
-                      ...illFrameStyle,
-                      backgroundImage: `url(${content.hero.illustration})`,
-                      backgroundRepeat: "no-repeat",
-                      backgroundSize: "contain",
-                      backgroundPosition: isNarrow ? "center" : "right center",
-                    }}
-                  />
-                ) : (
-                  <div style={illFrameStyle}>
-                    <Img
-                      src={content.hero.illustration}
-                      alt="Accommodation Illustration"
-                      style={illImgStyle}
-                    />
-                  </div>
-                )
+                <Img
+                  src={content.hero.illustration}
+                  alt="Accommodation Illustration"
+                  style={illoStyle}
+                />
               ) : null}
             </div>
           </div>
@@ -572,7 +526,10 @@ export default function AccommodationContent({ locale = "id" }) {
           <h2
             className="reveal"
             data-anim="down"
-            style={{ ...styles.desc.title, fontSize: isNarrow ? 30 : 44 }}
+            style={{
+              ...styles.desc.title,
+              fontSize: isNarrow ? 30 : 40,
+            }}
           >
             {locale === "id" ? "Deskripsi Program" : "Program Description"}
           </h2>
@@ -584,8 +541,8 @@ export default function AccommodationContent({ locale = "id" }) {
               data-anim="up"
               style={{
                 ...styles.desc.text,
-                fontSize: isNarrow ? 16 : 18,
-                lineHeight: isNarrow ? 1.8 : 1.9,
+                fontSize: isNarrow ? 16.5 : 18,
+                lineHeight: isNarrow ? 1.9 : 2.0,
               }}
               dangerouslySetInnerHTML={{ __html: safeDesc }}
             />
@@ -593,121 +550,125 @@ export default function AccommodationContent({ locale = "id" }) {
         </div>
       </section>
 
-      {/* ===== SERVICES ===== */}
+      {/* ===== SERVICES – slider card biru ===== */}
       <section style={styles.services.section}>
-        <div
-          className="reveal"
-          data-anim="zoom"
-          style={styles.services.barBleed}
-        >
-          {content?.services?.heading ||
-            (locale === "id"
-              ? "LAYANAN PEMESANAN AKOMODASI"
-              : "ACCOMMODATION SERVICES")}
-        </div>
-
-        <div style={sectionInner}>
-          <div style={servicesGrid}>
-            {/* kolase kiri */}
-            <div
-              style={{ position: "relative", minHeight: isNarrow ? 360 : 420 }}
-            >
-              <div
-                style={{
-                  ...styles.services.collage,
-                  height: isNarrow ? 360 : 420,
-                }}
-              >
-                <div
-                  className="reveal"
-                  data-anim="zoom"
-                  data-rvd="60ms"
-                  style={backImgStyle}
-                >
-                  <Img
-                    src={content.services?.imageBack}
-                    alt="accommodation back"
-                    style={styles.services.imgCover}
-                  />
-                </div>
-                <div
-                  className="reveal"
-                  data-anim="zoom"
-                  data-rvd="140ms"
-                  style={frontFrameStyle}
-                >
-                  <Img
-                    src={content.services?.imageFront}
-                    alt="accommodation front"
-                    style={styles.services.imgCover}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* list kanan / di bawah saat mobile */}
-            <div
-              className="reveal"
-              data-anim="right"
-              style={{
-                ...styles.services.list,
-                gridTemplateColumns: isNarrow ? "1fr" : "repeat(2,1fr)",
-              }}
-            >
-              {(content.services?.items || []).map((it) => (
-                <div key={it.id} style={styles.services.item}>
-                  <div style={styles.services.icon}>{it.icon || "•"}</div>
-                  <div>
-                    <h4 style={styles.services.itemTitle}>{it.title}</h4>
-                    <p style={styles.services.itemDesc}>{it.text}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ===== WHY ===== */}
-      <section style={styles.why.section}>
-        <div className="reveal" data-anim="zoom" style={styles.why.barBleed}>
-          {content?.why?.heading ||
-            (locale === "id"
-              ? "MENGAPA PILIH AKOMODASI DI OSS BALI?"
-              : "WHY CHOOSE ACCOMMODATION WITH OSS BALI?")}
-        </div>
-
         <div style={sectionInner}>
           <div
             className="reveal"
-            data-anim="up"
-            style={{
-              ...styles.why.grid,
-              ...(isNarrow ? styles.why.gridNarrow : {}),
-            }}
+            data-anim="down"
+            style={styles.services.header}
           >
-            {(content.why?.reasons || []).map((w, idx) => (
-              <div
-                key={w.id || idx}
-                style={{
-                  ...styles.why.item,
-                  ...(isNarrow ? styles.why.itemNarrow : {}),
-                }}
+            <h3 style={styles.services.heading}>
+              {services.heading ||
+                (locale === "id"
+                  ? "Akomodasi Apa Saja Yang Ada Di OSS Bali?"
+                  : "What Accommodation Services Are Available at OSS Bali?")}
+            </h3>
+            <div style={styles.services.underline} />
+            <p style={styles.services.subheading}>
+              {services.subheading ||
+                (locale === "id"
+                  ? "Mulai dari tiket, hunian, hingga kebutuhan penunjang lain — semua bisa kami bantu siapkan sejak sebelum keberangkatan."
+                  : "From tickets and housing to other essential needs — we help you prepare everything even before departure.")}
+            </p>
+          </div>
+
+          {isLoading ? (
+            <Skeleton
+              active
+              className="reveal"
+              data-anim="up"
+              paragraph={{ rows: 3 }}
+            />
+          ) : hasCards ? (
+            <div
+              className="reveal"
+              data-anim="zoom"
+              data-rvd="60ms"
+              style={styles.services.track}
+            >
+              <Swiper
+                className="acco-type-swiper"
+                modules={[Autoplay]}
+                slidesPerView="auto"
+                spaceBetween={18}
+                loop={sliderLoop}
+                loopAdditionalSlides={
+                  sliderLoop ? Math.max(10, serviceCards.length) : 0
+                }
+                speed={sliderSpeed}
+                allowTouchMove
+                autoplay={sliderAutoplay}
+                observer
+                observeParents
+                watchSlidesProgress
               >
-                <div
-                  style={{
-                    ...styles.why.iconWrap,
-                    ...(isNarrow ? styles.why.iconNarrow : {}),
-                  }}
-                >
-                  {w.icon || "•"}
-                </div>
-                <div>
-                  <h4 style={styles.why.title}>{w.title}</h4>
-                  <p style={styles.why.sub}>{w.sub}</p>
-                </div>
+                {serviceCards.map((card) => (
+                  <SwiperSlide key={card.id || card.label}>
+                    <article className="acco-type-card">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        className="acco-type-icon"
+                        src={card.icon || "/icons/acco-placeholder.svg"}
+                        alt={card.label}
+                        title={card.label}
+                        loading="lazy"
+                      />
+                      <p className="acco-type-label">{card.label}</p>
+                    </article>
+                  </SwiperSlide>
+                ))}
+              </Swiper>
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      {/* ===== WHY – benar-benar center ===== */}
+      <section style={styles.why.section}>
+        <div style={sectionInner}>
+          <div className="reveal" data-anim="zoom" style={whyGrid}>
+            {/* kiri: foto student (tanpa frame tambahan) */}
+            <div style={whyLeft}>
+              <Img
+                src={why.image}
+                alt="Mahasiswa OSS Bali"
+                style={styles.why.leftImg}
+              />
+            </div>
+
+            {/* kanan: panel biru muda + list alasan */}
+            <div style={whyRight}>
+              <div style={styles.why.header}>
+                <h3 style={styles.why.title}>
+                  {why.heading ||
+                    (locale === "id"
+                      ? "Mengapa Pilih Akomodasi Di OSS Bali?"
+                      : "Why Choose Accommodation With OSS Bali?")}
+                </h3>
+                <div style={styles.why.underline} />
               </div>
-            ))}
+
+              <div style={styles.why.list}>
+                {reasons.map((w) => (
+                  <div key={w.id} style={styles.why.item}>
+                    {/* hanya icon, tanpa background box */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={w.icon || "/icons/why-placeholder.svg"}
+                      alt={w.title}
+                      title={w.title}
+                      style={styles.why.iconImg}
+                      loading="lazy"
+                    />
+                    <div>
+                      <p style={styles.why.itemTitle}>{w.title}</p>
+                      <p style={styles.why.itemText}>{w.text || w.sub || ""}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -754,7 +715,7 @@ export default function AccommodationContent({ locale = "id" }) {
         </div>
       </section>
 
-      {/* ===== global anim styles ===== */}
+      {/* ===== global anim styles + slider styles ===== */}
       <style jsx global>{`
         ::selection {
           background: #0b56c9;
@@ -811,6 +772,86 @@ export default function AccommodationContent({ locale = "id" }) {
           text-underline-offset: 2px;
           text-decoration-thickness: 1.5px;
         }
+
+        /* ===== Slider Layanan Akomodasi (Swiper) ===== */
+        :root {
+          --acco-card-w: clamp(190px, 18vw, 220px);
+        }
+
+        .acco-type-swiper {
+          overflow: visible;
+          padding-block: 6px;
+        }
+
+        .acco-type-swiper .swiper-wrapper {
+          transition-timing-function: linear !important;
+          align-items: stretch;
+        }
+
+        .acco-type-swiper .swiper-slide {
+          width: var(--acco-card-w);
+          height: auto;
+          display: flex;
+        }
+
+        .acco-type-card {
+          width: 100%;
+          height: 100%;
+          min-height: 190px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: space-between;
+          text-align: center;
+          padding: 20px 16px 18px;
+          border-radius: 18px;
+          background: #0b56c9;
+          box-shadow: 0 14px 28px rgba(11, 86, 201, 0.35);
+          color: #ffffff;
+        }
+
+        .acco-type-icon {
+          width: 74px;
+          height: 74px;
+          object-fit: contain;
+          display: block;
+          margin-bottom: 14px;
+          flex-shrink: 0;
+        }
+
+        .acco-type-label {
+          margin: 0;
+          font-weight: 700;
+          font-size: 14px;
+          letter-spacing: 0.01em;
+        }
+
+        @media (hover: hover) {
+          .acco-type-card {
+            transition: transform 0.18s ease, box-shadow 0.18s ease,
+              filter 0.18s ease;
+          }
+          .acco-type-card:hover {
+            transform: translateY(-4px);
+            filter: saturate(1.05);
+            box-shadow: 0 18px 34px rgba(11, 86, 201, 0.45);
+          }
+        }
+
+        @media (max-width: 640px) {
+          :root {
+            --acco-card-w: 210px;
+          }
+          .acco-type-card {
+            min-height: 175px;
+            padding: 18px 12px 16px;
+          }
+          .acco-type-icon {
+            width: 64px;
+            height: 64px;
+          }
+        }
+
         @media (prefers-reduced-motion: reduce) {
           .reveal {
             transition: none !important;

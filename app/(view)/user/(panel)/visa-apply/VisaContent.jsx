@@ -2,6 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Skeleton } from "antd";
+import { Swiper, SwiperSlide } from "swiper/react";
+import { Autoplay } from "swiper/modules";
+import "swiper/css";
+
 import useVisaViewModel from "./useVisaViewModel";
 import { sanitizeHtml } from "@/app/utils/dompurify";
 
@@ -79,11 +83,12 @@ function useHeroParallax(ref) {
       const r = root.getBoundingClientRect();
       const cx = (e.clientX - r.left) / r.width - 0.5;
       const cy = (e.clientY - r.top) / r.height - 0.5;
-      copy &&
-        (copy.style.transform = `translate3d(${cx * 6}px, ${cy * 6}px, 0)`);
+      if (copy) {
+        copy.style.transform = `translate3d(${cx * 6}px, ${cy * 6}px, 0)`;
+      }
     };
     const onLeave = () => {
-      copy && (copy.style.transform = "");
+      if (copy) copy.style.transform = "";
     };
     root.addEventListener("mousemove", onMove);
     root.addEventListener("mouseleave", onLeave);
@@ -108,166 +113,210 @@ const styles = {
 
   /* ---------- HERO ---------- */
   hero: {
-    wrapper: {
+    section: { padding: "8px 0 28px" },
+    card: {
+      position: "relative",
       background: "#0B56C9",
-      borderRadius: 28,
+      borderTopLeftRadius: 24,
       borderTopRightRadius: 120,
       borderBottomLeftRadius: 120,
+      borderBottomRightRadius: 24,
+      padding: "56px 64px",
       minHeight: 360,
-      padding: "42px 56px",
-      margin: "-6px auto 0 auto",
       display: "grid",
       gridTemplateColumns: "1.15fr .85fr",
-      gap: 28,
       alignItems: "center",
       color: "#fff",
-      boxShadow: "0 24px 54px rgba(3,30,88,.26)",
-      width: "calc(100% - 80px)",
-      position: "relative",
+      boxShadow: "0 24px 54px rgba(11,86,201,.22)",
       overflow: "hidden",
     },
-    left: {
-      minWidth: 0,
-      textAlign: "left",
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "flex-start",
-      gap: 10,
-    },
-    right: { display: "flex", justifyContent: "center" },
-    heading: {
+    title: {
       margin: 0,
       fontSize: 56,
       lineHeight: 1.08,
       fontWeight: 900,
       letterSpacing: ".01em",
-      color: "#fff",
       textTransform: "none",
     },
-    tagline: {
+    subtitle: {
       margin: "16px 0 0",
       fontSize: 16,
       lineHeight: 1.9,
-      color: "rgba(255,255,255,.94)",
-      textAlign: "justify",
-      maxWidth: 640,
       letterSpacing: ".01em",
+      color: "rgba(255,255,255,.94)",
+      maxWidth: 640,
     },
-    illu: { width: "min(480px, 92%)", height: 320 },
+    illo: {
+      justifySelf: "end",
+      alignSelf: "end",
+      width: 420,
+      height: 420,
+      objectFit: "contain",
+      filter: "drop-shadow(0 10px 20px rgba(0,0,0,.18))",
+      zIndex: 1,
+      display: "block",
+    },
   },
 
   /* ---------- DESCRIPTION ---------- */
   desc: {
-    wrap: { marginTop: 56 },
-    title: {
-      margin: "0 0 12px",
+    section: { padding: "46px 0 56px" },
+    heading: {
+      margin: 0,
       fontWeight: 900,
       fontSize: 40,
       letterSpacing: ".005em",
       color: "#0b0d12",
     },
-    text: {
+    body: {
+      margin: 0,
+      color: "#0b0d12",
       fontSize: 18,
       lineHeight: 2.0,
       letterSpacing: ".01em",
-      color: "#0b0d12",
-      margin: 0,
+      wordSpacing: "0.04em",
       textAlign: "justify",
       textJustify: "inter-word",
       hyphens: "auto",
     },
   },
 
-  /* ---------- TITLE BAR ---------- */
-  bar: {
-    bleed: {
-      width: "100vw",
-      minHeight: 56,
-      paddingInline: "clamp(12px, 4vw, 28px)",
-      marginLeft: "calc(50% - 50vw)",
-      marginRight: "calc(50% - 50vw)",
-      display: "grid",
-      placeItems: "center",
-      background: "#0B56C9",
-      color: "#fff",
-      fontWeight: 900,
-      letterSpacing: ".01em",
+  /* ---------- BENEFIT SLIDER (10 CARD) ---------- */
+  benefitSlider: {
+    section: { padding: "32px 0 80px", marginTop: 12 },
+    header: {
+      textAlign: "center",
+      marginBottom: 18,
+    },
+    heading: {
+      margin: 0,
+      fontWeight: 800,
+      fontSize: "clamp(22px, 3vw, 28px)",
+      letterSpacing: ".02em",
+      color: "#0B56C9",
       textTransform: "uppercase",
-      whiteSpace: "nowrap",
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-      fontSize: "clamp(12px, 3.6vw, 28px)",
-      boxShadow: "0 8px 22px rgba(11,86,201,.28)",
+    },
+    underline: {
+      margin: "10px auto 0",
+      width: 260,
+      height: 3,
+      borderRadius: 999,
+      background: "#0B56C9",
+    },
+    track: {
+      marginTop: 24,
+      width: "100vw",
+      marginLeft: "calc(50% - 50vw)",
+      background: "transparent",
+      borderRadius: 0,
+      padding: 0,
+      boxShadow: "none",
+      overflow: "visible",
     },
   },
 
-  /* ---------- BENEFITS ---------- */
-  benefits: {
-    heading: {
-      margin: 0,
-      textAlign: "center",
-      fontFamily: FONT_FAMILY,
-      fontWeight: 900,
-      textTransform: "uppercase",
-      letterSpacing: ".02em",
-      color: "#0B56C9",
-      fontSize: "clamp(22px, 3.4vw, 34px)",
-    },
-    sub: {
-      margin: "8px auto 28px",
-      textAlign: "center",
-      maxWidth: 760,
-      color: "#475569",
-      fontWeight: 500,
-      fontSize: "clamp(12px, 1.6vw, 16px)",
-    },
-    railWrap: { position: "relative", paddingTop: 24 },
-    railLine: {
-      position: "absolute",
-      left: "6%",
-      right: "6%",
-      top: 92,
-      height: 6,
-      borderRadius: 999,
-      background: "#0B56C9",
-      boxShadow: "0 4px 14px rgba(11,86,201,.25)",
-      zIndex: 0,
-    },
-    grid: {
+  /* ---------- PREMIUM ADVANTAGES SECTION ---------- */
+  premium: {
+    section: { padding: "16px 0 80px" },
+
+    // Grid layout tanpa card/background
+    card: {
       position: "relative",
       display: "grid",
-      gridTemplateColumns: "repeat(3,1fr)",
-      gap: 28,
-      alignItems: "start",
-      zIndex: 1,
+      // Foto di kiri sekarang lebih lebar
+      gridTemplateColumns: "minmax(0, 1.3fr) minmax(0, 1.1fr)",
+      alignItems: "center",
+      columnGap: 48,
     },
-    gridMobile: { gridTemplateColumns: "1fr" },
-    item: { textAlign: "center", paddingTop: 24 },
-    icon: {
-      width: 116,
-      height: 116,
-      margin: "0 auto",
-      transform: "translateY(-30px)",
-      display: "block",
+    cardNarrow: {
+      gridTemplateColumns: "1fr",
+      rowGap: 28,
+    },
+
+    photoCol: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    photoFrame: {
+      width: "100%",
+      maxWidth: 520, // ⬅️ dari 420 → 520 biar fotonya bisa lebih besar
+      // padding: 8, // kalau mau kasih nafas sedikit
+    },
+    photo: {
+      width: "100%",
+      height: "auto",
+      maxHeight: 520, // ⬅️ dari 380 → 520
       objectFit: "contain",
-      filter: "drop-shadow(0 10px 20px rgba(15,23,42,.16))",
-      transition: "transform .18s ease, filter .18s ease",
+      objectPosition: "center bottom",
+      borderRadius: 24,
+      display: "block",
     },
-    iconMobile: { width: 90, height: 90, transform: "translateY(0)" },
-    title: {
-      margin: "0 0 6px",
-      fontWeight: 800,
-      fontSize: "clamp(16px, 2.2vw, 20px)",
-      color: "#0F172A",
-      letterSpacing: ".01em",
+
+    copyCol: {
+      padding: "0 0 0 32px", // sedikit lebih kecil biar komposisi seimbang
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "center",
     },
-    desc: {
+    header: {
+      textAlign: "left",
+      marginBottom: 10,
+    },
+    heading: {
       margin: 0,
-      color: "#334155",
-      fontSize: "clamp(12px,1.6vw,14px)",
-      lineHeight: 1.65,
+      fontWeight: 800,
+      fontSize: "clamp(22px, 3vw, 28px)",
+      letterSpacing: ".02em",
+      color: "#0B56C9",
     },
-    hideRail: { display: "none" },
+    underline: {
+      marginTop: 10,
+      width: 260,
+      maxWidth: "60%",
+      height: 3,
+      borderRadius: 999,
+      background: "#0B56C9",
+    },
+    list: {
+      marginTop: 26,
+      display: "grid",
+      rowGap: 22,
+    },
+    item: {
+      display: "grid",
+      gridTemplateColumns: "60px 1fr",
+      columnGap: 18,
+      alignItems: "flex-start",
+    },
+    iconWrap: {
+      width: 60,
+      height: 60,
+      borderRadius: "999px",
+      background: "#FFFFFF",
+      display: "grid",
+      placeItems: "center",
+      boxShadow: "0 10px 24px rgba(15,23,42,.12)",
+      flexShrink: 0,
+    },
+    icon: {
+      width: 32,
+      height: 32,
+      objectFit: "contain",
+      display: "block",
+    },
+    itemTitle: {
+      margin: "2px 0 4px",
+      fontWeight: 700,
+      fontSize: 16,
+      color: "#0B56C9",
+    },
+    itemDesc: {
+      margin: 0,
+      fontSize: 14.5,
+      color: "#374151",
+      lineHeight: 1.7,
+    },
   },
 
   /* ---------- CTA ---------- */
@@ -345,7 +394,8 @@ function Img({ src, alt, style, className }) {
         src ||
         "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=1200&auto=format&fit=crop"
       }
-      alt={alt || ""} title={alt || ""}
+      alt={alt || ""}
+      title={alt || ""}
       className={className}
       style={style}
       loading="lazy"
@@ -362,19 +412,37 @@ export default function VisaContent({ locale = "id" }) {
   const heroRef = useRef(null);
   const { content, isLoading, locale: lk } = useVisaViewModel({ locale });
 
-  /* responsive flag */
+  /* -------- responsive flags -------- */
   const [isNarrow, setIsNarrow] = useState(false);
+  const [isTablet, setIsTablet] = useState(false);
+
   useEffect(() => {
-    const mq = window.matchMedia("(max-width: 960px)");
-    const update = () => setIsNarrow(mq.matches);
+    const mqNarrow = window.matchMedia("(max-width: 640px)");
+    const mqTablet = window.matchMedia("(max-width: 1024px)");
+
+    const update = () => {
+      setIsNarrow(mqNarrow.matches);
+      setIsTablet(mqTablet.matches && !mqNarrow.matches);
+    };
     update();
-    mq.addEventListener
-      ? mq.addEventListener("change", update)
-      : mq.addListener(update);
+
+    const onN = (e) => setIsNarrow(e.matches);
+    const onT = (e) => setIsTablet(e.matches && !mqNarrow.matches);
+
+    mqNarrow.addEventListener
+      ? mqNarrow.addEventListener("change", onN)
+      : mqNarrow.addListener(onN);
+    mqTablet.addEventListener
+      ? mqTablet.addEventListener("change", onT)
+      : mqTablet.addListener(onT);
+
     return () => {
-      mq.removeEventListener
-        ? mq.removeEventListener("change", update)
-        : mq.removeListener(update);
+      mqNarrow.removeEventListener
+        ? mqNarrow.removeEventListener("change", onN)
+        : mqNarrow.removeListener(onN);
+      mqTablet.removeEventListener
+        ? mqTablet.removeEventListener("change", onT)
+        : mqTablet.removeListener(onT);
     };
   }, []);
 
@@ -390,18 +458,96 @@ export default function VisaContent({ locale = "id" }) {
     [isNarrow]
   );
 
-  const heroWrapperStyle = useMemo(
+  const heroCardStyle = useMemo(
     () => ({
-      ...styles.hero.wrapper,
-      gridTemplateColumns: isNarrow ? "1fr" : "1.15fr .85fr",
-      padding: isNarrow ? "28px 24px" : "42px 56px",
-      minHeight: isNarrow ? 300 : 360,
-      width: isNarrow ? "100%" : "calc(100% - 80px)",
+      ...styles.hero.card,
+      gridTemplateColumns: isNarrow
+        ? "1fr"
+        : isTablet
+        ? "1.05fr .95fr"
+        : "1.15fr .85fr",
+      padding: isNarrow ? "28px 22px" : isTablet ? "44px 48px" : "56px 64px",
+      minHeight: isNarrow ? 260 : isTablet ? 340 : 380,
       borderTopRightRadius: isNarrow ? 72 : 120,
       borderBottomLeftRadius: isNarrow ? 72 : 120,
     }),
+    [isNarrow, isTablet]
+  );
+
+  const heroTitleStyle = useMemo(
+    () => ({
+      ...styles.hero.title,
+      fontSize: isNarrow ? 32 : isTablet ? 46 : 56,
+      lineHeight: isNarrow ? 1.15 : 1.08,
+    }),
+    [isNarrow, isTablet]
+  );
+
+  const illoStyle = useMemo(
+    () => ({
+      ...styles.hero.illo,
+      width: isNarrow ? 260 : isTablet ? 340 : 420,
+      height: isNarrow ? 260 : isTablet ? 340 : 420,
+      justifySelf: isNarrow ? "center" : "end",
+    }),
+    [isNarrow, isTablet]
+  );
+
+  const descHeadingStyle = useMemo(
+    () => ({ ...styles.desc.heading, fontSize: isNarrow ? 30 : 40 }),
     [isNarrow]
   );
+
+  const descBodyStyle = useMemo(
+    () => ({
+      ...styles.desc.body,
+      fontSize: isNarrow ? 16.5 : 18,
+      lineHeight: isNarrow ? 1.9 : 2.0,
+    }),
+    [isNarrow]
+  );
+
+  const premiumCardStyle = useMemo(
+    () => ({
+      ...styles.premium.card,
+      ...(isNarrow ? styles.premium.cardNarrow : {}),
+    }),
+    [isNarrow]
+  );
+
+  const premiumCopyColStyle = useMemo(
+    () => ({
+      ...styles.premium.copyCol,
+      // di mobile padding atas sedikit & tanpa indent kiri
+      padding: isNarrow ? "0 0 0 0" : styles.premium.copyCol.padding,
+      order: isNarrow ? 1 : 0, // teks di atas saat mobile
+    }),
+    [isNarrow]
+  );
+
+  const premiumPhotoColStyle = useMemo(
+    () => ({
+      ...styles.premium.photoCol,
+      marginTop: isNarrow ? 20 : 0, // jarak kecil dari teks
+      order: isNarrow ? 2 : 0, // foto di bawah saat mobile
+    }),
+    [isNarrow]
+  );
+
+  const isEn = lk === "en";
+
+  /* config slider Benefit */
+  const benefitCards = content.benefits || [];
+  const benefitLoop = benefitCards.length > 5;
+  const benefitAutoplay = benefitLoop
+    ? {
+        delay: 0,
+        disableOnInteraction: false,
+        pauseOnMouseEnter: true,
+        waitForTransition: false,
+      }
+    : false;
+  const benefitSpeed = 9000;
 
   const safeDescription = sanitizeHtml(content.description || "", {
     allowedTags: [
@@ -419,36 +565,39 @@ export default function VisaContent({ locale = "id" }) {
     ],
   });
 
+  /* data section premium dari ViewModel */
+  const premium = content.premium || {};
+  const premiumHeading =
+    premium.heading ||
+    (isEn
+      ? "Premium Advantages of OSS Bali Visa Services"
+      : "Keunggulan Premium Layanan Visa Di OSS Bali");
+  const premiumItems = premium.items || [];
+  const premiumImage = premium.image || "/visa-premium/premium-photo.jpg";
+
   return (
     <div
       className="page-wrap"
       style={{ paddingBottom: 52, fontFamily: FONT_FAMILY }}
     >
       {/* ===== HERO ===== */}
-      <section style={{ padding: "6px 0 24px" }}>
+      <section style={styles.hero.section}>
         <div style={sectionInnerStyle}>
           <div
             ref={heroRef}
-            style={heroWrapperStyle}
+            style={heroCardStyle}
             className="reveal"
             data-anim="zoom"
           >
-            <div
-              style={styles.hero.left}
-              className="reveal js-hero-copy"
-              data-anim="left"
-            >
+            <div className="js-hero-copy">
               {isLoading ? (
-                <Skeleton active paragraph={{ rows: 2 }} />
+                <Skeleton active paragraph={{ rows: 3 }} />
               ) : (
                 <>
                   <h1
                     className="reveal"
                     data-anim="down"
-                    style={{
-                      ...styles.hero.heading,
-                      fontSize: isNarrow ? 34 : 56,
-                    }}
+                    style={heroTitleStyle}
                   >
                     {content.hero?.title}
                   </h1>
@@ -457,7 +606,7 @@ export default function VisaContent({ locale = "id" }) {
                       className="reveal"
                       data-anim="up"
                       data-rvd="80ms"
-                      style={styles.hero.tagline}
+                      style={styles.hero.subtitle}
                     >
                       {content.hero.subtitle}
                     </p>
@@ -466,52 +615,28 @@ export default function VisaContent({ locale = "id" }) {
               )}
             </div>
 
-            <div
-              style={styles.hero.right}
-              className="reveal"
-              data-anim="right"
-              aria-hidden
-            >
-              {isLoading ? (
-                <Skeleton.Image
-                  active
-                  style={{ width: "100%", height: 240, borderRadius: 18 }}
-                />
-              ) : (
-                <div
-                  style={{
-                    ...styles.hero.illu,
-                    width: isNarrow ? "100%" : "min(480px,92%)",
-                    height: isNarrow ? 220 : 320,
-                  }}
-                >
-                  <Img
-                    src={content.hero?.illustration}
-                    alt="Visa illustration"
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "contain",
-                    }}
-                  />
-                </div>
-              )}
-            </div>
+            {!isLoading && content.hero?.illustration ? (
+              <Img
+                src={content.hero.illustration}
+                alt="Visa illustration"
+                style={illoStyle}
+                className="anim-illo"
+                aria-hidden
+              />
+            ) : null}
           </div>
         </div>
       </section>
 
       {/* ===== DESCRIPTION ===== */}
-      <section style={{ padding: "0 0 16px", marginTop: 56 }}>
+      <section style={styles.desc.section}>
         <div style={sectionInnerStyle}>
-          <div style={styles.desc.wrap}>
-            <h2
-              className="reveal"
-              data-anim="down"
-              style={{ ...styles.desc.title, fontSize: isNarrow ? 30 : 40 }}
-            >
-              {lk === "en" ? "Program Description" : "Deskripsi Program"}
-            </h2>
+          <h2 className="reveal" data-anim="down" style={descHeadingStyle}>
+            {isEn ? "Program Description" : "Deskripsi Program"}
+          </h2>
+        </div>
+        <div style={sectionInnerStyle}>
+          <div>
             {isLoading ? (
               <Skeleton active paragraph={{ rows: 5 }} />
             ) : (
@@ -519,11 +644,7 @@ export default function VisaContent({ locale = "id" }) {
                 className="reveal desc-content"
                 data-anim="up"
                 data-rvd="60ms"
-                style={{
-                  ...styles.desc.text,
-                  fontSize: isNarrow ? 16.5 : 18,
-                  lineHeight: isNarrow ? 1.9 : 2.0,
-                }}
+                style={descBodyStyle}
                 dangerouslySetInnerHTML={{ __html: safeDescription }}
               />
             )}
@@ -531,103 +652,111 @@ export default function VisaContent({ locale = "id" }) {
         </div>
       </section>
 
-      {/* ===== TITLE BAR ===== */}
-      <section style={{ marginTop: 64 }}>
+      {/* ===== BENEFIT SLIDER (10 CARD) ===== */}
+      <section style={styles.benefitSlider.section}>
+        <div style={sectionInnerStyle}>
+          <div
+            className="reveal"
+            data-anim="down"
+            style={styles.benefitSlider.header}
+          >
+            <h3 style={styles.benefitSlider.heading}>
+              {isEn
+                ? "Benefits of OSS Bali Visa Apply Service"
+                : "Benefit Menggunakan Layanan Visa Apply OSS Bali"}
+            </h3>
+            <div style={styles.benefitSlider.underline} />
+          </div>
+        </div>
+
         <div
           className="reveal"
           data-anim="zoom"
-          style={{ ...styles.bar.bleed }}
+          data-rvd="60ms"
+          style={styles.benefitSlider.track}
         >
-          {content.hero?.title}
-        </div>
-      </section>
-
-      {/* ===== POSTER ===== */}
-      <section style={{ marginTop: 64 }}>
-        <div style={sectionInnerStyle}>
-          {isLoading ? (
-            <Skeleton.Image
-              active
-              style={{ width: "100%", height: 420, borderRadius: 18 }}
-            />
-          ) : (
-            <Img
-              src={content.poster?.src}
-              alt={content.poster?.alt}
-              style={{
-                width: "100%",
-                height: "auto",
-                display: "block",
-                borderRadius: 18,
-                boxShadow: "0 10px 24px rgba(15,23,42,.06)",
-              }}
-            />
-          )}
-        </div>
-      </section>
-
-      {/* ===== BENEFITS ===== */}
-      <section style={{ marginTop: 64 }}>
-        <div style={sectionInnerStyle}>
-          <h3
-            className="reveal"
-            data-anim="down"
-            style={styles.benefits.heading}
+          <Swiper
+            className="doc-type-swiper"
+            modules={[Autoplay]}
+            slidesPerView="auto"
+            spaceBetween={18}
+            loop={benefitLoop}
+            loopAdditionalSlides={
+              benefitLoop ? Math.max(10, benefitCards.length) : 0
+            }
+            speed={benefitSpeed}
+            allowTouchMove
+            autoplay={benefitAutoplay}
+            observer
+            observeParents
+            watchSlidesProgress
           >
-            {lk === "en" ? "EXCLUSIVE BENEFITS" : "MANFAAT EKSKLUSIF"}
-          </h3>
-          <p className="reveal" data-anim="up" style={styles.benefits.sub}>
-            {lk === "en"
-              ? "Exclusive opportunity to make your study and career dreams come true!"
-              : "Kesempatan eksklusif untuk wujudkan studi dan karir impianmu!"}
-          </p>
-
-          <div
-            className="reveal"
-            data-anim="zoom"
-            style={styles.benefits.railWrap}
-          >
-            <div
-              style={{
-                ...styles.benefits.railLine,
-                ...(isNarrow ? styles.benefits.hideRail : {}),
-              }}
-              aria-hidden
-            />
-            <div
-              style={{
-                ...styles.benefits.grid,
-                ...(isNarrow ? styles.benefits.gridMobile : {}),
-              }}
-            >
-              {(content.benefits || []).slice(0, 3).map((b, i) => (
-                <div
-                  key={b.id}
-                  data-rvd={`${80 + i * 80}ms`}
-                  className="reveal"
-                  data-anim="up"
-                  style={styles.benefits.item}
-                >
-                  <Img
-                    src={b.icon}
-                    alt={b.title}
-                    style={{
-                      ...styles.benefits.icon,
-                      ...(isNarrow ? styles.benefits.iconMobile : {}),
-                    }}
-                    className="benefit-icon"
+            {benefitCards.map((card) => (
+              <SwiperSlide key={card.key}>
+                <article className="doc-type-card">
+                  <img
+                    className="doc-type-icon"
+                    src={card.icon}
+                    alt={isEn ? card.labelEn : card.labelId}
+                    title={isEn ? card.labelEn : card.labelId}
+                    loading="lazy"
                   />
-                  <div style={styles.benefits.title}>{b.title}</div>
-                  <p style={styles.benefits.desc}>{b.desc}</p>
-                </div>
-              ))}
+                  <p className="doc-type-label">
+                    {isEn ? card.labelEn : card.labelId}
+                  </p>
+                </article>
+              </SwiperSlide>
+            ))}
+          </Swiper>
+        </div>
+      </section>
+
+      {/* ===== PREMIUM ADVANTAGES SECTION ===== */}
+      <section style={styles.premium.section}>
+        <div style={sectionInnerStyle}>
+          <div className="reveal" data-anim="zoom" style={premiumCardStyle}>
+            {/* TEXT & ICON LIST (di mobile: di atas) */}
+            <div style={premiumCopyColStyle}>
+              <div style={styles.premium.header}>
+                <h3 style={styles.premium.heading}>{premiumHeading}</h3>
+                <div style={styles.premium.underline} />
+              </div>
+
+              <div style={styles.premium.list}>
+                {premiumItems.map((item) => (
+                  <div key={item.key} style={styles.premium.item}>
+                    <div style={styles.premium.iconWrap}>
+                      <img
+                        src={item.icon}
+                        alt={item.title}
+                        style={styles.premium.icon}
+                      />
+                    </div>
+                    <div>
+                      <p style={styles.premium.itemTitle}>{item.title}</p>
+                      <p style={styles.premium.itemDesc}>{item.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* PHOTO (di mobile: di bawah) */}
+            <div style={premiumPhotoColStyle}>
+              <div style={styles.premium.photoFrame}>
+                <Img
+                  src={premiumImage}
+                  alt={premiumHeading}
+                  style={styles.premium.photo}
+                />
+              </div>
             </div>
           </div>
         </div>
       </section>
 
       {/* ===== CTA ===== */}
-      <section style={{ marginTop: 72, ...styles.cta.section }}>
+      <section style={{ marginTop: 0, ...styles.cta.section }}>
         <div style={sectionInnerStyle}>
           <div className="reveal" data-anim="zoom" style={styles.cta.shell}>
             <div style={styles.cta.backPlate} aria-hidden />
@@ -683,7 +812,7 @@ export default function VisaContent({ locale = "id" }) {
         </div>
       </section>
 
-      {/* ===== SINGLE GLOBAL STYLE (avoid styled-jsx panic) ===== */}
+      {/* ===== GLOBAL STYLE ===== */}
       <style jsx>{`
         :global(::selection) {
           background: #0b56c9;
@@ -751,18 +880,104 @@ export default function VisaContent({ locale = "id" }) {
           margin: 10px 0;
         }
 
-        /* Micro-interactions */
+        /* Animasi hero illustration */
+        @keyframes floatY {
+          0% {
+            transform: translateY(0);
+          }
+          50% {
+            transform: translateY(-6px);
+          }
+          100% {
+            transform: translateY(0);
+          }
+        }
+        :global(.anim-illo) {
+          animation: floatY 7s ease-in-out infinite;
+        }
+
+        /* ===== Slider Benefit (Swiper) ===== */
+        :global(:root) {
+          --doc-card-w: clamp(180px, 20vw, 220px);
+        }
+
+        :global(.doc-type-swiper) {
+          overflow: visible;
+          padding-block: 4px;
+        }
+
+        :global(.doc-type-swiper .swiper-wrapper) {
+          transition-timing-function: linear !important;
+          align-items: stretch;
+        }
+
+        :global(.doc-type-swiper .swiper-slide) {
+          width: var(--doc-card-w);
+          height: auto;
+          display: flex;
+        }
+
+        :global(.doc-type-card) {
+          width: 100%;
+          height: 100%;
+          min-height: 180px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: space-between;
+          text-align: center;
+          padding: 18px 16px 20px;
+          border-radius: 22px;
+          background: radial-gradient(
+              140% 140% at -10% -10%,
+              rgba(255, 255, 255, 0.32) 0%,
+              transparent 45%
+            ),
+            linear-gradient(180deg, #0b56c9 0%, #084a94 60%, #063e7c 100%);
+          box-shadow: 0 18px 34px rgba(8, 42, 116, 0.45);
+          color: #ffffff;
+        }
+
+        :global(.doc-type-icon) {
+          width: 72px;
+          height: 72px;
+          object-fit: contain;
+          display: block;
+          margin-bottom: 10px;
+          flex-shrink: 0;
+        }
+
+        :global(.doc-type-label) {
+          margin: 0;
+          font-weight: 600;
+          font-size: 14px;
+          letter-spacing: 0.01em;
+        }
+
+        /* Hover */
         @media (hover: hover) {
-          :global(.chip) {
-            transition: transform 0.18s ease, filter 0.18s ease;
+          :global(.doc-type-card) {
+            transition: transform 0.18s ease, box-shadow 0.18s ease,
+              filter 0.18s ease;
           }
-          :global(.chip:hover) {
-            transform: translateY(-2px);
-            filter: saturate(1.06);
+          :global(.doc-type-card:hover) {
+            transform: translateY(-3px);
+            filter: saturate(1.08);
+            box-shadow: 0 24px 44px rgba(8, 42, 116, 0.55);
           }
-          :global(.benefit-icon:hover) {
-            transform: translateY(-34px) scale(1.03) !important;
-            filter: drop-shadow(0 14px 26px rgba(11, 86, 201, 0.25)) !important;
+        }
+
+        @media (max-width: 640px) {
+          :global(:root) {
+            --doc-card-w: 200px;
+          }
+          :global(.doc-type-card) {
+            min-height: 160px;
+            padding: 16px 12px 18px;
+          }
+          :global(.doc-type-icon) {
+            width: 64px;
+            height: 64px;
           }
         }
 
@@ -773,8 +988,8 @@ export default function VisaContent({ locale = "id" }) {
             opacity: 1 !important;
             transform: none !important;
           }
-          :global(.chip) {
-            transform: none !important;
+          :global(.anim-illo) {
+            animation: none !important;
           }
         }
       `}</style>

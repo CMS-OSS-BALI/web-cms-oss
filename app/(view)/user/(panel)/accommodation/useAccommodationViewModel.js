@@ -16,7 +16,7 @@ const pickLocale = (v) =>
     ? "en"
     : "id";
 
-/* ================= i18n texts — ALIGNED TO DESIGN ================= */
+/* ================= i18n texts ================= */
 const TEXT = {
   id: {
     hero: {
@@ -30,84 +30,101 @@ const TEXT = {
       "<p>Booking Akomodasi adalah layanan pemesanan tempat tinggal yang membantu Anda menemukan hunian nyaman dan sesuai kebutuhan selama studi dan karier di luar negeri. Mulai dari apartemen, asrama mahasiswa, homestay, hingga penginapan jangka pendek—semuanya bisa dipilih dengan mudah dan praktis. Dengan dukungan tim kami, Anda tak perlu khawatir soal kenyamanan, lokasi strategis, maupun keamanan, karena kami memastikan akomodasi terbaik untuk menunjang perjalanan dan aktivitas Anda.</p>",
 
     services: {
-      heading: "LAYANAN PEMESANAN AKOMODASI",
-      imageBack: "/accommodation-collage-back.svg",
-      imageFront: "/accommodation-collage-front.svg",
-      items: [
+      heading: "Akomodasi Apa Saja Yang Ada Di OSS Bali?",
+      subheading:
+        "Mulai dari tiket, hunian, hingga kebutuhan penunjang lain — semua bisa kami bantu siapkan sejak sebelum keberangkatan.",
+      cards: [
         {
-          id: "hotel",
-          icon: "🏨",
-          title: "Hotel berkualitas",
-          text: "Kenyamanan terbaik di hotel pilihan dengan lokasi strategis.",
+          id: "ticket",
+          icon: "/icons/acco-ticket.svg",
+          label: "Pemesanan Tiket Pesawat",
         },
-        {
-          id: "dorm",
-          icon: "🛌",
-          title: "Asrama",
-          text: "Akomodasi aman dan praktis untuk kebutuhan mahasiswa.",
-        },
+        { id: "dorm", icon: "/icons/acco-dorm.svg", label: "Asrama Mahasiswa" },
         {
           id: "homestay",
-          icon: "🏠",
-          title: "Homestay",
-          text: "Kenyamanan dengan sentuhan lingkungan lokal.",
+          icon: "/icons/acco-homestay.svg",
+          label: "Homestay Wisatawan",
         },
         {
-          id: "transport",
-          icon: "🚌",
-          title: "Transportasi",
-          text: "Layanan perjalanan efisien dan terpercaya di Bali.",
+          id: "hotel",
+          icon: "/icons/acco-hotel.svg",
+          label: "Hotel & Tempat Wisata Liburan",
         },
         {
-          id: "apartment",
-          icon: "🏢",
-          title: "Apartment",
-          text: "Akomodasi modern, privat, serta akses fasilitas premium.",
+          id: "studio",
+          icon: "/icons/acco-studio.svg",
+          label: "Studio Apartement",
         },
         {
           id: "house",
-          icon: "🏡",
-          title: "Rumah",
-          text: "Ruang privat maksimal—ideal untuk kenyamanan keluarga.",
+          icon: "/icons/acco-house.svg",
+          label: "Rumah Kontrakan",
+        },
+        {
+          id: "airport",
+          icon: "/icons/acco-airport.svg",
+          label: "Penjemputan Bandara",
+        },
+        {
+          id: "tour",
+          icon: "/icons/acco-tour.svg",
+          label: "Tur Fasilitas Kampus & Kota",
+        },
+        {
+          id: "health",
+          icon: "/icons/acco-health.svg",
+          label: "Pengecekan Kesehatan",
+        },
+        {
+          id: "bank",
+          icon: "/icons/acco-bank.svg",
+          label: "Pembuatan Akun Bank",
         },
       ],
     },
 
     why: {
-      heading: "MENGAPA PILIH AKOMODASI DI OSS BALI?",
+      heading: "Mengapa Pilih Akomodasi Di OSS Bali?",
+      image: "/images/why-accommodation-student.svg", // sesuaikan path bila perlu
       reasons: [
         {
           id: "price",
-          icon: "💲",
+          icon: "/icons/why-price.svg",
           title: "Harga Terjangkau",
-          sub: "Harga yang terjangkau dan ramah.",
+          text: "Harga yang terjangkau dan ramah.",
         },
         {
-          id: "trusted",
-          icon: "🤝",
-          title: "Akomodasi Terpercaya",
-          sub: "Sudah terpercaya dan resmi.",
+          id: "comfort",
+          icon: "/icons/why-comfort.svg",
+          title: "Kenyamanan dan keamanan terjamin",
+          text: "Memastikan kenyamanan dan keamanan client selalu terjaga.",
         },
         {
-          id: "security",
-          icon: "🔒",
-          title: "Keamanan Data",
-          sub: "Memastikan keamanan data student.",
+          id: "bank",
+          icon: "/icons/why-bank.svg",
+          title: "Kartu Izin Tinggal / Bank Akun",
+          text: "Proses rekening bank menjadi lebih sederhana dan efisien.",
         },
         {
-          id: "pickup",
-          icon: "🚖",
-          title: "Transportasi",
-          sub: "Gratis penjemputan.",
+          id: "network",
+          icon: "/icons/why-network.svg",
+          title: "Jaringan koneksi terlengkap",
+          text: "Jaringan koneksi terlengkap untuk pengalaman tanpa batas.",
+        },
+        {
+          id: "location",
+          icon: "/icons/why-location.svg",
+          title: "Pilihan Lokasi Strategis",
+          text: "Nikmati akses mudah dengan pilihan lokasi yang strategis.",
         },
       ],
     },
 
+    // === CTA disesuaikan dengan desain ===
     cta: {
-      title: "SOLUSI AKOMODASI PROFESIONAL UNTUK KEHIDUPAN GLOBAL ANDA",
-      subtitle:
-        "Layanan Kami Menghadirkan Kemudahan, Keamanan, Dan Kenyamanan Bagi Setiap Individu Yang Siap Menapaki Perjalanan Internasional.",
-      button: { label: "COBA SEKARANG", href: "/user/leads" },
+      title: "Rencanakan Dan Pesan Akomodasimu Sekarang Juga Hanya Di OSS Bali",
+      subtitle: "", // desain tidak pakai subcopy, jadi dikosongkan
+      button: { label: "Temukan Sekarang", href: "/user/leads" },
     },
   },
 
@@ -123,84 +140,97 @@ const TEXT = {
       "<p>Accommodation Booking helps you find comfortable housing tailored to your needs during study or career abroad. From apartments, student dorms, homestays, to short-term stays—everything can be arranged easily and practically. With our team’s support, you won’t worry about comfort, strategic location, or security as we secure the best accommodation to support your journey and activities.</p>",
 
     services: {
-      heading: "ACCOMMODATION BOOKING SERVICES",
-      imageBack: "/accommodation-collage-back.jpg",
-      imageFront: "/accommodation-collage-front.jpg",
-      items: [
+      heading: "What Accommodation Services Are Available at OSS Bali?",
+      subheading:
+        "From tickets and housing to other essential needs — we help you prepare everything even before departure.",
+      cards: [
         {
-          id: "hotel",
-          icon: "🏨",
-          title: "Quality Hotels",
-          text: "The best comfort at selected hotels in strategic locations.",
+          id: "ticket",
+          icon: "/icons/acco-ticket.svg",
+          label: "Flight Ticket Booking",
         },
         {
           id: "dorm",
-          icon: "🛌",
-          title: "Dormitory",
-          text: "Safe and practical housing for students' needs.",
+          icon: "/icons/acco-dorm.svg",
+          label: "Student Dormitory",
         },
         {
           id: "homestay",
-          icon: "🏠",
-          title: "Homestay",
-          text: "Comfort with a local touch.",
+          icon: "/icons/acco-homestay.svg",
+          label: "Tourist Homestay",
         },
         {
-          id: "transport",
-          icon: "🚌",
-          title: "Transportation",
-          text: "Efficient and reliable travel service in Bali.",
+          id: "hotel",
+          icon: "/icons/acco-hotel.svg",
+          label: "Hotels & Holiday Stays",
         },
         {
-          id: "apartment",
-          icon: "🏢",
-          title: "Apartment",
-          text: "Modern, private stays with access to premium facilities.",
+          id: "studio",
+          icon: "/icons/acco-studio.svg",
+          label: "Studio Apartment",
+        },
+        { id: "house", icon: "/icons/acco-house.svg", label: "Rental House" },
+        {
+          id: "airport",
+          icon: "/icons/acco-airport.svg",
+          label: "Airport Pick-Up",
         },
         {
-          id: "house",
-          icon: "🏡",
-          title: "House",
-          text: "Maximum private space—ideal for families.",
+          id: "tour",
+          icon: "/icons/acco-tour.svg",
+          label: "Campus & City Tour",
+        },
+        { id: "health", icon: "/icons/acco-health.svg", label: "Health Check" },
+        {
+          id: "bank",
+          icon: "/icons/acco-bank.svg",
+          label: "Bank Account Opening",
         },
       ],
     },
 
     why: {
-      heading: "WHY CHOOSE ACCOMMODATION WITH OSS BALI?",
+      heading: "Why Choose Accommodation With OSS Bali?",
+      image: "/images/why-accommodation-student.svg",
       reasons: [
         {
           id: "price",
-          icon: "💲",
+          icon: "/icons/why-price.svg",
           title: "Affordable Price",
-          sub: "Wallet-friendly and transparent.",
+          text: "Budget-friendly and transparent pricing.",
         },
         {
-          id: "trusted",
-          icon: "🤝",
-          title: "Trusted Accommodation",
-          sub: "Official and reliable partners.",
+          id: "comfort",
+          icon: "/icons/why-comfort.svg",
+          title: "Comfort & Safety Ensured",
+          text: "We make sure your comfort and safety are always well maintained.",
         },
         {
-          id: "security",
-          icon: "🔒",
-          title: "Data Security",
-          sub: "We keep student data safe.",
+          id: "bank",
+          icon: "/icons/why-bank.svg",
+          title: "Residence Card / Bank Account",
+          text: "Bank account and permit processes are made simpler and more efficient.",
         },
         {
-          id: "pickup",
-          icon: "🚖",
-          title: "Transportation",
-          sub: "Free pick-up.",
+          id: "network",
+          icon: "/icons/why-network.svg",
+          title: "Extensive Connection Network",
+          text: "Leverage our broad network for limitless experiences abroad.",
+        },
+        {
+          id: "location",
+          icon: "/icons/why-location.svg",
+          title: "Strategic Location Choices",
+          text: "Enjoy easy access with well-selected, strategic locations.",
         },
       ],
     },
 
+    // Versi Inggris menyesuaikan sense copy CTA
     cta: {
-      title: "PROFESSIONAL ACCOMMODATION SOLUTIONS FOR YOUR GLOBAL LIFE",
-      subtitle:
-        "We deliver ease, safety, and comfort for every individual ready to embark on an international journey.",
-      button: { label: "TRY NOW", href: "/user/leads" },
+      title: "Plan And Book Your Accommodation Right Now Only With OSS Bali",
+      subtitle: "",
+      button: { label: "Discover Now", href: "/user/leads" },
     },
   },
 };

@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Skeleton } from "antd";
+import { Swiper, SwiperSlide } from "swiper/react";
+import { Autoplay } from "swiper/modules";
+import "swiper/css";
 import { sanitizeHtml } from "@/app/utils/dompurify";
 
 /* ============================= */
@@ -140,7 +143,7 @@ const styles = {
       color: "rgba(255,255,255,.94)",
       maxWidth: 640,
     },
-    // tidak ada pembungkus / sun lagi, ilustrasi langsung jadi grid item
+    // ilustrasi langsung jadi grid item (tanpa sun wrapper)
     illo: {
       justifySelf: "end",
       alignSelf: "end",
@@ -163,7 +166,6 @@ const styles = {
       letterSpacing: ".005em",
       color: "#0b0d12",
     },
-    bodyBox: { marginTop: 18, width: "100%" },
     body: {
       margin: 0,
       color: "#0b0d12",
@@ -177,176 +179,223 @@ const styles = {
     },
   },
 
-  /* ---------- SERVICES ---------- */
+  /* ---------- SERVICES (JENIS PENERJEMAH) ---------- */
   services: {
-    section: { padding: "12px 0 56px" },
-    band: {
-      background: "#0b56c9",
-      paddingInline: "clamp(12px, 4vw, 28px)",
-      minHeight: 56,
-      display: "grid",
-      placeItems: "center",
-      boxShadow: "0 8px 22px rgba(11,86,201,.28)",
-      width: "100vw",
-      marginLeft: "calc(50% - 50vw)",
-      marginRight: "calc(50% - 50vw)",
-      marginBottom: 26,
-    },
-    bandTitle: {
-      margin: 0,
-      color: "#fff",
-      fontFamily: FONT_FAMILY,
-      fontWeight: 900,
-      letterSpacing: ".01em",
-      fontSize: "clamp(12px, 3.6vw, 28px)",
-      whiteSpace: "nowrap",
-      lineHeight: 1.1,
-      textTransform: "uppercase",
-    },
-    grid: {
-      marginTop: 10,
-      display: "grid",
-      gridTemplateColumns: "repeat(4, 1fr)",
-      gap: 28,
-      position: "relative",
-    },
-    gridTablet: { gridTemplateColumns: "repeat(2, 1fr)" },
-    gridNarrow: { gridTemplateColumns: "1fr" },
-    card: {
-      background:
-        "linear-gradient(180deg, rgba(14,76,170,1) 0%, rgba(11,86,201,1) 100%)",
-      borderRadius: 20,
-      padding: "34px 22px 28px",
-      boxShadow:
-        "0 18px 42px rgba(8,40,98,.22), 0 2px 0 0 rgba(255,255,255,.08) inset",
-      display: "grid",
-      justifyItems: "center",
-      textDecoration: "none",
-      transition: "transform .18s ease, box-shadow .22s ease, filter .22s ease",
-      filter: "drop-shadow(0 18px 34px rgba(10,50,120,.20))",
-      marginTop: "75px",
-    },
-    diamond: {
-      width: 140,
-      height: 140,
-      borderRadius: 24,
-      transform: "rotate(45deg)",
-      background:
-        "linear-gradient(180deg, rgba(255,255,255,.14), rgba(255,255,255,.06))",
-      border: "2px solid rgba(255,255,255,.35)",
-      display: "grid",
-      placeItems: "center",
-      boxShadow: "0 10px 24px rgba(15,23,42,.18)",
-      marginBottom: 18,
-    },
-    icon: {
-      width: 72,
-      height: 72,
-      objectFit: "contain",
-      transform: "rotate(-45deg)",
-      display: "block",
-    },
-    label: {
-      color: "#fff",
-      fontWeight: 800,
-      letterSpacing: ".02em",
-      textAlign: "center",
-      fontSize: 18,
-      textTransform: "uppercase",
-    },
-  },
+    section: { padding: "36px 0 70px" },
 
-  /* ---------- WHY ---------- */
-  why: {
-    section: { padding: "0 0 80px", marginTop: 75 },
-    band: {
-      background: "#0b56c9",
-      paddingInline: "clamp(12px, 4vw, 28px)",
-      minHeight: 56,
+    card: {
       display: "grid",
-      placeItems: "center",
-      boxShadow: "0 8px 22px rgba(11,86,201,.28)",
-      width: "100vw",
-      marginLeft: "calc(50% - 50vw)",
-      marginRight: "calc(50% - 50vw)",
-      marginBottom: 55,
-    },
-    bandTitle: {
-      margin: 0,
-      color: "#fff",
-      fontFamily: FONT_FAMILY,
-      fontWeight: 900,
-      letterSpacing: ".01em",
-      fontSize: "clamp(16px,4vw, 38px)",
-      whiteSpace: "nowrap",
-      lineHeight: 1.1,
-      textTransform: "uppercase",
-    },
-    grid: {
-      display: "grid",
-      gridTemplateColumns: "1.2fr .8fr",
-      gap: 28,
+      gridTemplateColumns: "1.1fr .9fr",
+      gap: 36,
       alignItems: "center",
     },
-    gridNarrow: { gridTemplateColumns: "1fr" },
-    panel: {
-      background: "#fff",
-      border: "1px solid #e6eefc",
-      borderRadius: 20,
-      boxShadow: "0 16px 36px rgba(11,86,201,.10)",
-      padding: "26px 24px",
+    cardNarrow: {
+      gridTemplateColumns: "1fr",
+    },
+
+    left: {},
+    title: {
+      margin: 0,
+      fontSize: 28,
+      lineHeight: 1.3,
+      fontWeight: 800,
+      color: "#0B56C9",
+    },
+    underline: {
+      marginTop: 12,
+      width: 170,
+      height: 4,
+      borderRadius: 999,
+      background: "#0B56C9",
+    },
+    items: {
+      marginTop: 28,
+      display: "grid",
+      rowGap: 22,
     },
     item: {
       display: "grid",
-      gridTemplateColumns: "48px 1fr",
-      gap: 16,
-      alignItems: "start",
-      padding: "18px 6px",
+      gridTemplateColumns: "56px 1fr",
+      columnGap: 16,
+      alignItems: "flex-start",
     },
     iconWrap: {
-      width: 48,
-      height: 48,
+      width: 56,
+      height: 56,
+      borderRadius: "50%",
+      background: "#FFFFFF",
       display: "grid",
       placeItems: "center",
+      boxShadow: "0 10px 24px rgba(15,23,42,.14)",
     },
-    icon: { width: 44, height: 44, objectFit: "contain" },
+    icon: {
+      width: 32,
+      height: 32,
+      objectFit: "contain",
+      display: "block",
+    },
     itemTitle: {
-      margin: "4px 0 6px",
-      fontWeight: 900,
-      color: "#0b56c9",
-      fontSize: 22,
-      letterSpacing: ".01em",
+      margin: "2px 0 4px",
+      fontWeight: 700,
+      fontSize: 18,
+      color: "#111827",
     },
-    itemDesc: { margin: 0, color: "#123", lineHeight: 1.65, fontSize: 15.5 },
+    itemDesc: {
+      margin: 0,
+      fontSize: 14.5,
+      color: "#4B5563",
+      lineHeight: 1.7,
+    },
 
-    collageArea: { position: "relative", width: "100%", height: 420 },
-    backBox: {
-      position: "absolute",
-      left: 0,
-      bottom: 0,
-      width: 340,
-      height: 340,
-      borderRadius: 28,
-      overflow: "hidden",
-      background: "#f3f4f6",
-      boxShadow: "0 24px 44px rgba(15,23,42,.16)",
+    // styling langsung ke <img>, tidak ada wrapper card / kotak biru
+    heroImg: {
+      display: "block",
+      maxWidth: "100%",
+      height: "auto",
+      objectFit: "contain",
+      justifySelf: "center",
+      alignSelf: "center",
     },
-    frontBox: {
-      position: "absolute",
-      left: 120,
-      top: 40,
-      width: 340,
-      height: 340,
-      borderRadius: 32,
-      overflow: "hidden",
-      background: "#fff",
-      border: "10px solid #0f172a",
-      boxShadow: "0 28px 52px rgba(15,23,42,.22)",
+  },
+
+  /* ---------- DOKUMEN APA SAJA (REPLACE WHY) ---------- */
+  why: {
+    section: { padding: "32px 0 80px", marginTop: 40 },
+    header: {
+      textAlign: "center",
+      marginBottom: 18,
     },
-    imgCover: { width: "100%", height: "100%", objectFit: "cover" },
-    collageNarrow: { height: 320 },
-    backNarrow: { width: 280, height: 280 },
-    frontNarrow: { left: 90, top: 20, width: 280, height: 280, borderWidth: 8 },
+    heading: {
+      margin: 0,
+      fontWeight: 800,
+      fontSize: "clamp(22px, 3vw, 28px)",
+      letterSpacing: ".02em",
+      color: "#0B56C9",
+    },
+    underline: {
+      margin: "10px auto 0",
+      width: 230,
+      height: 3,
+      borderRadius: 999,
+      background: "#0B56C9",
+    },
+    // full-bleed wrapper untuk Swiper, tanpa frame / background
+    fullBleedWrap: {
+      marginTop: 24,
+      width: "100vw",
+      marginLeft: "calc(50% - 50vw)",
+    },
+    track: {
+      marginTop: 24,
+      width: "100vw", // full-bleed ke kiri–kanan
+      marginLeft: "calc(50% - 50vw)", // keluar dari container tengah
+      background: "transparent", // tidak ada panel gelap
+      borderRadius: 0,
+      padding: 0,
+      boxShadow: "none",
+      overflow: "visible",
+    },
+  },
+
+  /* ---------- KENAPA HARUS TRANSLET DI OSS BALI ---------- */
+  reasons: {
+    section: { padding: "0 0 90px" },
+    header: {
+      textAlign: "center",
+      marginBottom: 24,
+    },
+    heading: {
+      margin: 0,
+      fontWeight: 800,
+      fontSize: "clamp(22px, 3vw, 28px)",
+      letterSpacing: ".02em",
+      color: "#0B56C9",
+    },
+    underline: {
+      margin: "10px auto 0",
+      width: 280,
+      height: 3,
+      borderRadius: 999,
+      background: "#0B56C9",
+    },
+
+    // wrapper utama: cuma layout grid, TANPA card putih / shadow
+    card: {
+      marginTop: 32,
+      display: "grid",
+      gridTemplateColumns: "1.4fr .9fr",
+      alignItems: "center",
+      gap: 32,
+      background: "transparent",
+      borderRadius: 0,
+      boxShadow: "none",
+      padding: 0,
+    },
+    cardNarrow: {
+      gridTemplateColumns: "1fr",
+      rowGap: 28,
+    },
+
+    /* kiri */
+    left: {},
+    items: {
+      display: "grid",
+      rowGap: 22,
+    },
+    item: {
+      display: "grid",
+      gridTemplateColumns: "64px 1fr",
+      alignItems: "flex-start",
+      columnGap: 18,
+    },
+    iconWrap: {
+      width: 64,
+      height: 64,
+      borderRadius: "999px",
+      background: "#F3F7FF",
+      display: "grid",
+      placeItems: "center",
+      boxShadow: "0 10px 24px rgba(15,23,42,0.08)",
+    },
+    icon: {
+      width: 36,
+      height: 36,
+      objectFit: "contain",
+      display: "block",
+    },
+    itemTitle: {
+      margin: "2px 0 4px",
+      fontWeight: 700,
+      fontSize: 18,
+      color: "#0B56C9",
+    },
+    itemDesc: {
+      margin: 0,
+      fontSize: 14.5,
+      color: "#4B5563",
+      lineHeight: 1.7,
+    },
+
+    /* kanan: foto langsung, tanpa kotak biru */
+    right: {
+      justifySelf: "end",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    heroImgWrap: {
+      width: 360,
+      maxWidth: "100%",
+      background: "transparent", // HAPUS kotak biru
+      borderRadius: 0,
+      overflow: "visible",
+    },
+    heroImg: {
+      display: "block",
+      width: "100%",
+      height: "auto",
+      objectFit: "contain",
+    },
   },
 
   /* ---------- CTA ---------- */
@@ -436,6 +485,7 @@ export default function DocumentTranslateContent({
   isLoading,
 }) {
   const heroRef = useRef(null);
+  const isEn = String(locale).slice(0, 2).toLowerCase() === "en";
 
   const safeDescription = sanitizeHtml(content?.description || "", {
     allowedTags: [
@@ -542,43 +592,24 @@ export default function DocumentTranslateContent({
     [isNarrow]
   );
 
-  const servicesGridStyle = useMemo(() => {
-    if (isNarrow)
-      return { ...styles.services.grid, ...styles.services.gridNarrow };
-    if (isTablet)
-      return { ...styles.services.grid, ...styles.services.gridTablet };
-    return styles.services.grid;
-  }, [isNarrow, isTablet]);
+  const services = content?.services || {};
+  const serviceItems = services.items || [];
 
-  const whyGridStyle = useMemo(
-    () =>
-      isNarrow
-        ? { ...styles.why.grid, ...styles.why.gridNarrow }
-        : styles.why.grid,
-    [isNarrow]
-  );
+  const reasons = content?.reasons || {};
+  const reasonsItems = reasons.items || [];
 
-  const collageArea = useMemo(
-    () => ({
-      ...styles.why.collageArea,
-      ...(isNarrow ? styles.why.collageNarrow : {}),
-    }),
-    [isNarrow]
-  );
-  const backBox = useMemo(
-    () => ({
-      ...styles.why.backBox,
-      ...(isNarrow ? styles.why.backNarrow : {}),
-    }),
-    [isNarrow]
-  );
-  const frontBox = useMemo(
-    () => ({
-      ...styles.why.frontBox,
-      ...(isNarrow ? styles.why.frontNarrow : {}),
-    }),
-    [isNarrow]
-  );
+  // === config Swiper dokumen, ambil dari view model ===
+  const docCards = content?.documentTypes || [];
+  const docsLoop = docCards.length > 5;
+  const docsAutoplay = docsLoop
+    ? {
+        delay: 0,
+        disableOnInteraction: false,
+        pauseOnMouseEnter: true,
+        waitForTransition: false,
+      }
+    : false;
+  const docsSpeed = 9000;
 
   return (
     <div style={{ paddingBottom: 32, fontFamily: FONT_FAMILY }}>
@@ -653,105 +684,178 @@ export default function DocumentTranslateContent({
         </div>
       </section>
 
-      {/* ---------- SERVICES ---------- */}
+      {/* ---------- SERVICES: JENIS PENERJEMAH ---------- */}
       <section style={styles.services.section}>
-        <div className="reveal" data-anim="zoom" style={styles.services.band}>
-          <h3 style={styles.services.bandTitle}>
-            {content?.services?.title ||
-              (locale === "en"
-                ? "DOCUMENT TRANSLATION PRODUCTS"
-                : "PRODUK TERJEMAHAN DOKUMEN")}
-          </h3>
-        </div>
         <div style={sectionInnerStyle}>
-          <div style={servicesGridStyle}>
-            {(content?.services?.items || []).map((it, i) => (
-              <a
-                key={it.id}
-                href={it.href || "#"}
-                style={styles.services.card}
-                className="service-card reveal"
-                data-anim="up"
-                data-rvd={`${i * 80}ms`}
-              >
-                <div style={styles.services.diamond} className="anim-diamond">
-                  <Img
-                    src={it.icon}
-                    alt={it.title}
-                    style={styles.services.icon}
-                  />
-                </div>
-                <div style={styles.services.label}>{it.title}</div>
-              </a>
-            ))}
+          <div
+            className="reveal"
+            data-anim="zoom"
+            style={{
+              ...styles.services.card,
+              ...(isNarrow ? styles.services.cardNarrow : {}),
+            }}
+          >
+            {/* Kolom kiri: judul + list */}
+            <div style={styles.services.left}>
+              <h3 style={styles.services.title}>
+                {services.title ||
+                  (locale === "en"
+                    ? "Types of Translators at OSS Bali"
+                    : "Jenis Penerjemah di OSS Bali")}
+              </h3>
+              <div style={styles.services.underline} />
+
+              <div style={styles.services.items}>
+                {serviceItems.map((item) => (
+                  <div key={item.id || item.title} style={styles.services.item}>
+                    <div style={styles.services.iconWrap}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={item.icon || "/icons/translator-regular.svg"}
+                        alt={item.title}
+                        style={styles.services.icon}
+                      />
+                    </div>
+                    <div>
+                      <p style={styles.services.itemTitle}>{item.title}</p>
+                      {item.desc && (
+                        <p style={styles.services.itemDesc}>{item.desc}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Kolom kanan: HANYA satu <img>, tanpa wrapper / card biru */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={
+                services.heroImage || "/images/translator-right-placeholder.png"
+              }
+              alt=""
+              className="reveal"
+              data-anim={isNarrow ? "up" : "left"}
+              style={styles.services.heroImg}
+            />
           </div>
         </div>
       </section>
 
-      {/* ---------- WHY ---------- */}
+      {/* ---------- DOKUMEN APA SJA YANG BISA KAMI TRANSLATE ---------- */}
       <section style={styles.why.section}>
-        <div className="reveal" data-anim="zoom" style={styles.why.band}>
-          <h3 style={styles.why.bandTitle}>
-            {content?.why?.title ||
-              (locale === "en"
-                ? "WHY CHOOSE OUR SERVICE"
-                : "MENGAPA MEMILIH LAYANAN KAMI")}
-          </h3>
-        </div>
-
         <div style={sectionInnerStyle}>
-          <div style={whyGridStyle}>
-            {/* left list panel */}
-            <div className="reveal" data-anim="left" style={styles.why.panel}>
-              {(content?.why?.items || []).map((w, idx) => (
-                <div
-                  key={w.id}
-                  style={styles.why.item}
-                  className="reveal"
-                  data-anim="up"
-                  data-rvd={`${40 + idx * 80}ms`}
-                >
-                  <div style={styles.why.iconWrap}>
-                    <Img src={w.icon} alt="" style={styles.why.icon} />
-                  </div>
-                  <div>
-                    <h4 style={styles.why.itemTitle}>{w.title}</h4>
-                    <p style={styles.why.itemDesc}>{w.desc}</p>
-                  </div>
-                </div>
+          <div className="reveal" data-anim="down" style={styles.why.header}>
+            <h3 style={styles.why.heading}>
+              {isEn
+                ? "What Documents Can We Translate?"
+                : "Dokumen Apa Saja Yang Bisa Kami Translate?"}
+            </h3>
+            <div style={styles.why.underline} />
+          </div>
+
+          <div
+            className="reveal"
+            data-anim="zoom"
+            data-rvd="60ms"
+            style={styles.why.track}
+          >
+            <Swiper
+              className="doc-type-swiper"
+              modules={[Autoplay]}
+              slidesPerView="auto"
+              spaceBetween={18}
+              loop={docsLoop}
+              loopAdditionalSlides={
+                docsLoop ? Math.max(10, docCards.length) : 0
+              }
+              speed={docsSpeed}
+              allowTouchMove
+              autoplay={docsAutoplay}
+              observer
+              observeParents
+              watchSlidesProgress
+            >
+              {docCards.map((card) => (
+                <SwiperSlide key={card.key}>
+                  <article className="doc-type-card">
+                    <img
+                      className="doc-type-icon"
+                      src={card.icon}
+                      alt={isEn ? card.labelEn : card.labelId}
+                      title={isEn ? card.labelEn : card.labelId}
+                      loading="lazy"
+                    />
+                    <p className="doc-type-label">
+                      {isEn ? card.labelEn : card.labelId}
+                    </p>
+                  </article>
+                </SwiperSlide>
               ))}
+            </Swiper>
+          </div>
+        </div>
+      </section>
+
+      {/* ---------- KENAPA HARUS TRANSLET DI OSS BALI ---------- */}
+      <section style={styles.reasons.section}>
+        <div style={sectionInnerStyle}>
+          <div
+            className="reveal"
+            data-anim="down"
+            style={styles.reasons.header}
+          >
+            <h3 style={styles.reasons.heading}>
+              {reasons.title ||
+                (isEn
+                  ? "Why Should You Translate with OSS Bali?"
+                  : "Kenapa Harus Translet Di OSS Bali?")}
+            </h3>
+            <div style={styles.reasons.underline} />
+          </div>
+
+          <div
+            className="reveal"
+            data-anim="zoom"
+            style={{
+              ...styles.reasons.card,
+              ...(isNarrow ? styles.reasons.cardNarrow : {}),
+            }}
+          >
+            {/* kiri: teks */}
+            <div style={styles.reasons.left}>
+              <div style={styles.reasons.items}>
+                {reasonsItems.map((item) => (
+                  <div key={item.id || item.title} style={styles.reasons.item}>
+                    <div style={styles.reasons.iconWrap}>
+                      <img
+                        src={item.icon || "/icons/reason-placeholder.svg"}
+                        alt={item.title}
+                        style={styles.reasons.icon}
+                      />
+                    </div>
+                    <div>
+                      <p style={styles.reasons.itemTitle}>{item.title}</p>
+                      {item.desc && (
+                        <p style={styles.reasons.itemDesc}>{item.desc}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            {/* right collage */}
-            <div
-              style={{ position: "relative", minHeight: isNarrow ? 320 : 420 }}
-            >
-              <div style={collageArea}>
-                <div
-                  style={backBox}
-                  className="reveal"
-                  data-anim="zoom"
-                  data-rvd="100ms"
-                >
+            {/* kanan: foto langsung, tanpa frame/card */}
+            <div style={styles.reasons.right}>
+              {reasons.heroImage && (
+                <div style={styles.reasons.heroImgWrap}>
                   <Img
-                    src={content?.why?.images?.subImage}
-                    alt=""
-                    style={styles.why.imgCover}
+                    src={reasons.heroImage}
+                    alt={reasons.title}
+                    style={styles.reasons.heroImg}
                   />
                 </div>
-                <div
-                  style={frontBox}
-                  className="reveal"
-                  data-anim="zoom"
-                  data-rvd="200ms"
-                >
-                  <Img
-                    src={content?.why?.images?.mainImage}
-                    alt=""
-                    style={styles.why.imgCover}
-                  />
-                </div>
-              </div>
+              )}
             </div>
           </div>
         </div>
@@ -849,25 +953,6 @@ export default function DocumentTranslateContent({
           transform: none;
         }
 
-        .service-card:focus-visible {
-          outline: 3px solid #b9d6ff;
-          outline-offset: 2px;
-        }
-        @media (hover: hover) {
-          .service-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 24px 56px rgba(8, 40, 98, 0.28),
-              0 2px 0 0 rgba(255, 255, 255, 0.12) inset;
-            filter: saturate(1.06);
-          }
-          .anim-diamond {
-            transition: transform 220ms ease;
-          }
-          .service-card:hover .anim-diamond {
-            transform: rotate(45deg) translateY(-2px) scale(1.03);
-          }
-        }
-
         @keyframes floatY {
           0% {
             transform: translateY(0);
@@ -910,6 +995,90 @@ export default function DocumentTranslateContent({
           margin: 10px 0;
         }
 
+        /* ===== Slider Dokumen (Swiper) ===== */
+        :root {
+          --doc-card-w: clamp(180px, 20vw, 220px);
+        }
+
+        .doc-type-swiper {
+          overflow: visible;
+          padding-block: 4px;
+        }
+
+        .doc-type-swiper .swiper-wrapper {
+          transition-timing-function: linear !important;
+          align-items: stretch;
+        }
+
+        .doc-type-swiper .swiper-slide {
+          width: var(--doc-card-w);
+          height: auto;
+          display: flex;
+        }
+
+        .doc-type-card {
+          width: 100%;
+          height: 100%;
+          min-height: 180px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: space-between;
+          text-align: center;
+          padding: 18px 16px 20px;
+          border-radius: 22px;
+          background: radial-gradient(
+              140% 140% at -10% -10%,
+              rgba(255, 255, 255, 0.32) 0%,
+              transparent 45%
+            ),
+            linear-gradient(180deg, #0b56c9 0%, #084a94 60%, #063e7c 100%);
+          box-shadow: 0 18px 34px rgba(8, 42, 116, 0.45);
+          color: #ffffff;
+        }
+
+        .doc-type-icon {
+          width: 72px;
+          height: 72px;
+          object-fit: contain;
+          display: block;
+          margin-bottom: 10px;
+          flex-shrink: 0;
+        }
+
+        .doc-type-label {
+          margin: 0;
+          font-weight: 600;
+          font-size: 14px;
+          letter-spacing: 0.01em;
+        }
+
+        @media (hover: hover) {
+          .doc-type-card {
+            transition: transform 0.18s ease, box-shadow 0.18s ease,
+              filter 0.18s ease;
+          }
+          .doc-type-card:hover {
+            transform: translateY(-3px);
+            filter: saturate(1.08);
+            box-shadow: 0 24px 44px rgba(8, 42, 116, 0.55);
+          }
+        }
+
+        @media (max-width: 640px) {
+          :root {
+            --doc-card-w: 200px;
+          }
+          .doc-type-card {
+            min-height: 160px;
+            padding: 16px 12px 18px;
+          }
+          .doc-type-icon {
+            width: 64px;
+            height: 64px;
+          }
+        }
+
         @media (prefers-reduced-motion: reduce) {
           .reveal {
             transition: none !important;
@@ -918,12 +1087,6 @@ export default function DocumentTranslateContent({
           }
           .anim-illo {
             animation: none !important;
-          }
-        }
-
-        @media (max-width: 640px) {
-          .service-card {
-            padding: 26px 18px 22px;
           }
         }
       `}</style>
