@@ -67,7 +67,10 @@ export default function useMitraDalamNegeriViewModel({ locale = "id" } = {}) {
   const abortRef = useRef(null);
   const t = (id, en) => (locale === "en" ? en : id);
 
-  const hero = { bg: "/mitra-bg.svg" };
+  const hero = {
+    bg: "/mitra-bg.svg",
+    title: t("PRESERVE THE QUALITY", "PRESERVE THE QUALITY"),
+  };
   const sections = {
     merchant: { title: t("MITRA LUAR NEGERI", "INTERNATIONAL PARTNERS") },
     organization: { title: t("MITRA DALAM NEGERI", "DOMESTIC PARTNERS") },

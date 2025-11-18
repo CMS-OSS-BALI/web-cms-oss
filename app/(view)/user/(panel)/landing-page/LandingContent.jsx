@@ -346,6 +346,8 @@ const hero = {
       padding: "24px 14px",
     };
   },
+
+  // 🔽 ini yang dibikin lebih terang
   video: {
     position: "absolute",
     top: 0,
@@ -354,20 +356,22 @@ const hero = {
     height: "100%",
     objectFit: "cover",
     zIndex: -2,
-    // 👉 videonya sedikit digelapin
-    filter: "brightness(0.55) contrast(1.05)",
+    // semula brightness(0.55), sekarang lebih soft
+    filter: "brightness(0.72) contrast(1.05)",
     pointerEvents: "none",
   },
+
+  // 🔽 overlay juga dikurangi opacity-nya
   overlay: {
     position: "absolute",
     inset: 0,
-    // 👉 overlay hitam yang lebih kuat supaya teks kebaca
     background:
-      "radial-gradient(circle at center, rgba(0,0,0,.15) 0%, rgba(0,0,0,.55) 55%, rgba(0,0,0,.75) 100%)",
+      "radial-gradient(circle at center, rgba(0,0,0,.06) 0%, rgba(0,0,0,.28) 55%, rgba(0,0,0,.4) 100%)",
     mixBlendMode: "multiply",
     zIndex: 0,
     pointerEvents: "none",
   },
+
   copy: {
     position: "relative",
     zIndex: 1,
@@ -383,22 +387,19 @@ const hero = {
     color: "#0B56C9",
     textTransform: "uppercase",
     fontWeight: 900,
-    // ⬇️ font di-kecilkan untuk mobile
     fontSize: "clamp(22px, 5.2vw, 72px)",
-    // ⬇️ letter-spacing sedikit dikurangi biar nggak kepanjangan
     letterSpacing: "0.045em",
-    textShadow: "0 0 26px rgba(0,0,0,.9), 0 3px 18px rgba(0,0,0,.85)",
+    textShadow: "0 0 20px rgba(0,0,0,.7), 0 3px 14px rgba(0,0,0,.7)",
     WebkitTextStroke: "1px rgba(255,255,255,.6)",
     lineHeight: 1.06,
   },
   desc: {
     margin: 0,
-    // 👉 copy jadi putih biar aman di semua frame video
     color: "#FFFFFF",
     fontSize: "clamp(14px, 3.6vw, 20px)",
     fontWeight: 700,
     lineHeight: 1.6,
-    textShadow: "0 0 18px rgba(0,0,0,.95)",
+    textShadow: "0 0 14px rgba(0,0,0,.8)",
   },
   ctaDock: {
     position: "absolute",

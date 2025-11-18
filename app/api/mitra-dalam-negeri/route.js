@@ -342,9 +342,18 @@ async function resolveCategoryId({ category_id, category_slug }) {
 /* ---------- GET (admin) ---------- */
 export async function GET(req) {
   try {
-    await assertAdmin(req);
-
     const { searchParams } = new URL(req.url);
+
+    let isAdmin = false;
+    try {
+      await assertAdmin(req);
+      isAdmin = true;
+    } catch (err) {
+      // Hanya lewati jika memang tidak login/role bukan admin; error lain tetap dilempar
+      const code = err?.status;
+      if (code && code !== 401 && code !== 403) throw err;
+    }
+
     const q = (searchParams.get("q") || "").trim();
     const page = Math.max(1, asInt(searchParams.get("page"), 1));
     const perPage = Math.min(
@@ -353,11 +362,11 @@ export async function GET(req) {
     );
     const orderBy = getOrderBy(searchParams.get("sort"));
 
-    const includeDeleted = searchParams.get("includeDeleted") === "1";
-    const withDeleted = searchParams.get("with_deleted") === "1";
-    const onlyDeleted = searchParams.get("only_deleted") === "1";
+    let includeDeleted = searchParams.get("includeDeleted") === "1";
+    let withDeleted = searchParams.get("with_deleted") === "1";
+    let onlyDeleted = searchParams.get("only_deleted") === "1";
 
-    const statusFilter = parseStatusFilter(searchParams.get("status"));
+    let statusFilter = parseStatusFilter(searchParams.get("status"));
     const locale = normalizeLocale(searchParams.get("locale"));
     const fallback = normalizeLocale(
       searchParams.get("fallback") || FALLBACK_LOCALE
@@ -373,6 +382,23 @@ export async function GET(req) {
     const dateTo = dateToRaw
       ? new Date(dateToRaw.getTime() + 24 * 60 * 60 * 1000)
       : null;
+
+    const requestedPrivateData =
+      includeDeleted || withDeleted || onlyDeleted || (statusFilter && !statusFilter.every((s) => s === "APPROVED"));
+
+    if (!isAdmin) {
+      // Non-admin hanya boleh melihat entri APPROVED & tidak boleh akses yang terhapus
+      if (requestedPrivateData) {
+        return json(
+          { error: { code: "UNAUTHORIZED", message: "Unauthorized" } },
+          { status: 401 }
+        );
+      }
+      includeDeleted = false;
+      withDeleted = false;
+      onlyDeleted = false;
+      statusFilter = ["APPROVED"];
+    }
 
     const where = {
       ...(onlyDeleted

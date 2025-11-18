@@ -47,7 +47,6 @@ function useRevealOnScroll(deps = []) {
 
     observeAll();
 
-    // Jika konten async muncul (SWR/SSR hydration), observe lagi
     const mo = new MutationObserver(observeAll);
     mo.observe(document.body, { childList: true, subtree: true });
 
@@ -75,7 +74,6 @@ function useHeroParallax(ref) {
       const r = el.getBoundingClientRect();
       const cx = (e.clientX - r.left) / r.width - 0.5;
       const cy = (e.clientY - r.top) / r.height - 0.5;
-      // geser background sedikit biar ada depth
       el.style.backgroundPosition = `calc(50% + ${cx * 10}px) calc(20% + ${
         cy * 10
       }px)`;
@@ -105,7 +103,10 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
 
   const heroRef = useRef(null);
 
-  // Nyalakan animasi saat data dinamis sudah siap
+  const heroTitle =
+    vm.hero?.title ||
+    (locale === "en" ? "PRESERVE THE QUALITY" : "PRESERVE THE QUALITY");
+
   useRevealOnScroll([vm.merchants.length, vm.organizations.length]);
   useHeroParallax(heroRef);
 
@@ -132,24 +133,42 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
           backgroundPosition: "center 20%",
           backgroundRepeat: "no-repeat",
           willChange: "background-position",
+          display: "flex",
+          alignItems: "flex-end",
+          justifyContent: "center",
+          padding: "0 clamp(16px, 4vw, 40px) clamp(32px, 5vw, 56px)",
+          boxSizing: "border-box",
         },
         overlayTop: {
           position: "absolute",
           inset: 0,
           background:
-            "linear-gradient(180deg, rgba(10,56,72,.18) 0%, rgba(10,56,72,0) 45%, rgba(255,255,255,0) 65%, rgba(255,255,255,1) 100%)",
+            "linear-gradient(180deg, rgba(0,0,0,0.22) 0%, rgba(0,0,0,0) 55%)",
           pointerEvents: "none",
+          zIndex: 0,
         },
-        fadeBottom: {
-          position: "absolute",
-          left: 0,
-          right: 0,
-          bottom: -1,
-          height: "18%",
-          background:
-            "linear-gradient(180deg, rgba(255,255,255,0) 0%, #ffffff 80%)",
+        content: {
+          position: "relative",
+          zIndex: 1,
+          width: "min(1180px, 100%)",
+          display: "flex",
+          justifyContent: "center",
+        },
+        title: {
+          margin: 0,
+          fontFamily: vm.font,
+          textTransform: "uppercase",
+          fontWeight: 900,
+          letterSpacing: "0.08em",
+          fontSize: "clamp(28px, 4.4vw, 48px)",
+          color: "#ffffff",
+          textAlign: "center",
+          lineHeight: 1.05,
+          paddingInline: "clamp(16px, 4vw, 32px)",
+          textShadow: "0 2px 4px rgba(0,0,0,0.6), 0 8px 24px rgba(0,0,0,0.8)", // biar kebaca di atas bg
         },
       },
+
       copy: {
         section: { padding: "48px 0 12px", background: "#fff" },
         title: {
@@ -173,7 +192,6 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
           padding: "10px 0 26px",
           background: "#fff",
         },
-        /* slide mengikuti lebar kartu, supaya benar2 square */
         slide: { width: "var(--merchant-card-size, 300px)" },
         card: {
           width: "var(--merchant-card-size, 300px)",
@@ -191,7 +209,6 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
           marginTop: "50px",
           willChange: "transform",
         },
-        /* logo fit ke dalam 1:1 tanpa kepotong */
         logo: {
           width: "86%",
           height: "86%",
@@ -321,7 +338,9 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
             style={{ ...styles.hero.frame, ["--rvd"]: "20ms" }}
           >
             <div style={styles.hero.overlayTop} />
-            <div style={styles.hero.fadeBottom} />
+            <div style={styles.hero.content}>
+              <h1 style={styles.hero.title}>{heroTitle}</h1>
+            </div>
           </div>
         </div>
       </section>
@@ -343,7 +362,6 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
           data-anim="up"
           style={{
             ...styles.merchant.wrap,
-            // atur besar kartu 1:1 di sini
             "--merchant-card-size": "380px",
             ["--rvd"]: "100ms",
           }}
@@ -377,7 +395,8 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
                   >
                     <img
                       src={m.logo}
-                      alt={m.name} title={m.name}
+                      alt={m.name}
+                      title={m.name}
                       style={styles.merchant.logo}
                       onError={(e) => (e.currentTarget.src = "/noimage.svg")}
                     />
@@ -445,7 +464,8 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
                   >
                     <img
                       src={o.logo}
-                      alt={o.name} title={o.name}
+                      alt={o.name}
+                      title={o.name}
                       style={styles.organization.logo}
                       onError={(e) => (e.currentTarget.src = "/noimage.svg")}
                     />
