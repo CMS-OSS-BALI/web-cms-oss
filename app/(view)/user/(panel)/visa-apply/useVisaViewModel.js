@@ -150,7 +150,7 @@ const TEXT = {
     benefits: BENEFIT_CARDS,
     premium: {
       heading: "Premium Advantages of OSS Bali Visa Services",
-      image: "/visa-premium/premium-photo.jpg",
+      image: "/visa-premium/premium-photo.svg",
       items: PREMIUM_EN_ITEMS,
     },
     cta: {

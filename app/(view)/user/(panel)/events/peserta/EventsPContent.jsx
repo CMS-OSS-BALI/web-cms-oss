@@ -1,8 +1,17 @@
 "use client";
+
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import useEventsPViewModel from "./useEventsPViewModel";
+
+/* ===== Locale helper (sinkron dengan EventsUContent) ===== */
+const pickLocaleClient = (lang, ls, fallback = "id") => {
+  const v = String(lang || ls || fallback)
+    .slice(0, 2)
+    .toLowerCase();
+  return v === "en" ? "en" : "id";
+};
 
 /* ===== Hooks dari Referensi (Untuk Reveal On Scroll) ===== */
 function useRevealOnScroll(deps = []) {
@@ -42,14 +51,17 @@ function useRevealOnScroll(deps = []) {
     };
   }, deps);
 }
+
 /* ===== Tokens ===== */
 const CONTAINER = { width: "92%", maxWidth: 1220, margin: "0 auto" };
 const BLUE = "#0b56c9";
+
 /* Meta sizing (desktop baseline) */
 const META_ROW_H = 38;
 const META_GAP = 12;
 const META_ROWS = 3;
 const META_BOX_H = META_ROWS * META_ROW_H + (META_ROWS - 1) * META_GAP;
+
 const safeText = (v) => {
   if (v == null) return "";
   if (typeof v === "string" || typeof v === "number") return String(v);
@@ -60,6 +72,7 @@ const safeText = (v) => {
     return "";
   }
 };
+
 /* ===== Styles: Hero ===== */
 const hero = {
   wrap: { ...CONTAINER, paddingTop: 18, paddingBottom: 8 },
@@ -156,6 +169,7 @@ const hero = {
   metaStrong: { margin: 0, color: "#0a3a86", fontWeight: 900 },
   metaSmall: { margin: 0, color: "#315a99", fontWeight: 800 },
 };
+
 /* ===== Styles: Benefit ===== */
 const benefitsCss = {
   wrap: { ...CONTAINER, marginTop: 200, marginBottom: 28 },
@@ -205,6 +219,7 @@ const benefitsCss = {
   },
   p: { marginTop: 10, fontSize: 16, lineHeight: 1.9, color: "#364b74" },
 };
+
 /* ===== Styles: CTA ===== */
 const cta = {
   wrap: { ...CONTAINER, marginTop: 90, marginBottom: 120 },
@@ -252,6 +267,7 @@ const cta = {
     objectFit: "contain",
   },
 };
+
 const emptyCss = {
   wrap: {
     ...CONTAINER,
@@ -272,20 +288,16 @@ const emptyCss = {
 function GlobalStyles() {
   return (
     <style jsx global>{`
-      /* Tweak global body/html untuk memastikan background penuh dan mencegah overflow horizontal */
       html,
       body {
-        /* Penting: Pastikan tidak ada warna background default yang menutupi */
         background-color: transparent !important;
         overflow-x: clip;
       }
       body {
-        min-height: 100vh; /* Memastikan body setinggi viewport */
+        min-height: 100vh;
       }
 
-      /* ===== Latar global gradasi diterapkan pada class wrapper ===== */
       .events-page-wrap {
-        /* Menerapkan background ke main/div container */
         background: radial-gradient(
             1000px 500px at 10% 50%,
             rgba(11, 86, 201, 0.08),
@@ -297,12 +309,10 @@ function GlobalStyles() {
             transparent 65%
           ),
           linear-gradient(180deg, #f7f9ff 0%, #ffffff 100%);
-        /* min-height 100% untuk mengisi body */
         min-height: 100%;
         overflow-x: clip;
       }
 
-      /* Hover Card CTA */
       @media (hover: hover) {
         .cta-card {
           transition: transform 0.2s ease, box-shadow 0.2s ease;
@@ -321,7 +331,6 @@ function GlobalStyles() {
         }
       }
 
-      /* Hero CTA micro-motions */
       @keyframes pulse-soft {
         0%,
         100% {
@@ -335,7 +344,6 @@ function GlobalStyles() {
         animation: pulse-soft 2.8s ease-in-out infinite;
       }
 
-      /* ===== Reveal utilities (referensi) ===== */
       .reveal {
         opacity: 0;
         transform: var(--reveal-from, translate3d(0, 16px, 0));
@@ -377,29 +385,57 @@ function GlobalStyles() {
   );
 }
 
-export default function EventsPContent({ locale = "id" }) {
-  const sp = useSearchParams();
-  const eventId = sp.get("id") || "";
+/* ===== PAGE (Client) ===== */
+export default function EventsPContent(props) {
+  const { initialLocale, locale: localeProp } = props || {};
+  const search = useSearchParams();
+
+  // baseLocale dari server / parent
+  const baseLocale = initialLocale || localeProp || "id";
+
+  // Single source-of-truth locale di client:
+  // ?lang → localStorage → baseLocale
+  const locale = useMemo(() => {
+    const fromQuery = search?.get("lang") || "";
+    const fromLs =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem("oss.lang") || ""
+        : "";
+    return pickLocaleClient(fromQuery || baseLocale, fromLs);
+  }, [search, baseLocale]);
+
+  // Simpan locale aktif ke localStorage agar halaman lain bisa ikut
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem("oss.lang", locale);
+    } catch {
+      // ignore
+    }
+  }, [locale]);
+
+  const eventId = search?.get("id") || "";
+
   const vm = useEventsPViewModel({ locale, eventId });
 
-  // Panggil hook useRevealOnScroll
-  useRevealOnScroll([vm.benefits?.length]);
+  // Panggil hook useRevealOnScroll, ikut re-run saat locale / data berubah
+  useRevealOnScroll([vm.benefits?.length || 0, vm.item ? 1 : 0, locale]);
 
   if (!vm.item) {
     return (
       <main className="events-page-wrap">
-        {" "}
-        {/* Tambahkan class untuk background */}
         <section style={emptyCss.wrap} className="reveal" data-anim="zoom">
           <h2 style={emptyCss.big}>{safeText(vm.emptyTitle)}</h2>
           <p style={emptyCss.sub}>{safeText(vm.emptySub)}</p>
         </section>
-        <GlobalStyles /> {/* Panggil GlobalStyles */}
+        <GlobalStyles />
       </main>
     );
   }
+
   const it = vm.item;
   const showTrimIndicators = (it.description || "").length > 260;
+
   // Copy CTA (ID/EN)
   const ctaTitle = locale === "en" ? "GET YOUR TICKET" : "DAPATKAN TIKET MU";
   const ctaSub =
@@ -408,17 +444,18 @@ export default function EventsPContent({ locale = "id" }) {
       : "Persiapkan tiketmu dan temukan peluang karier international kamu dari sekarang";
   const ctaBtn =
     locale === "en" ? "GET YOUR TICKET, HERE" : "AMBIL TIKETMU, DISINI";
+
   // Href form-ticket
   const formTicketHref = eventId
     ? `/user/form-ticket?id=${encodeURIComponent(
         eventId
       )}&lang=${encodeURIComponent(locale)}`
     : `/user/form-ticket?lang=${encodeURIComponent(locale)}`;
+
   const mascotSrc = "/maskot-terbang.svg";
+
   return (
     <main className="events-page-wrap">
-      {" "}
-      {/* Tambahkan class untuk background */}
       {/* ===== HERO ===== */}
       <section style={hero.wrap}>
         <h1 className="reveal" data-anim="down" style={hero.title}>
@@ -443,6 +480,7 @@ export default function EventsPContent({ locale = "id" }) {
               }}
             />
           </div>
+
           {/* Right column */}
           <div className="hero-right" style={hero.right}>
             {it.description && (
@@ -460,6 +498,7 @@ export default function EventsPContent({ locale = "id" }) {
                 )}
               </div>
             )}
+
             <div className="meta-box" style={hero.metaBox}>
               <div
                 className="reveal"
@@ -473,6 +512,7 @@ export default function EventsPContent({ locale = "id" }) {
                   <p style={hero.metaStrong}>{safeText(it.date)}</p>
                 </div>
               </div>
+
               <div
                 className="reveal"
                 data-anim="right"
@@ -485,6 +525,7 @@ export default function EventsPContent({ locale = "id" }) {
                   <p style={hero.metaSmall}>{safeText(it.time)}</p>
                 </div>
               </div>
+
               <div
                 className="reveal"
                 data-anim="right"
@@ -500,6 +541,7 @@ export default function EventsPContent({ locale = "id" }) {
             </div>
           </div>
         </div>
+
         {/* responsive + shimmer */}
         <style jsx>{`
           @media (max-width: 1200px) {
@@ -513,32 +555,27 @@ export default function EventsPContent({ locale = "id" }) {
               grid-template-columns: 1fr !important;
               --poster-h: 260px;
             }
-            /* kolom kanan tidak fixed height, biarkan mengalir */
             .hero-right {
               height: auto !important;
               overflow: visible !important;
               position: static !important;
               margin-top: 12px;
             }
-            /* deskripsi tidak dipotong pada mobile/tablet */
             .desc-wrap {
               max-height: none !important;
               overflow: visible !important;
               padding-right: 0 !important;
             }
-            /* meta kini ikut flow normal */
             .meta-box {
               position: static !important;
               height: auto !important;
               gap: 10px !important;
               margin-top: 14px;
             }
-            /* efek fade & shimmer disembunyikan */
             .desc-fade,
             .skeleton {
               display: none !important;
             }
-            /* ikon sedikit mengecil */
             .icon-box {
               width: 34px !important;
               height: 34px !important;
@@ -566,6 +603,7 @@ export default function EventsPContent({ locale = "id" }) {
           }
         `}</style>
       </section>
+
       {/* ===== BENEFITS ===== */}
       {vm.benefits?.length ? (
         <section style={benefitsCss.wrap}>
@@ -625,6 +663,7 @@ export default function EventsPContent({ locale = "id" }) {
           `}</style>
         </section>
       ) : null}
+
       {/* ===== CTA ===== */}
       <section style={cta.wrap}>
         <div className="cta-grid" style={cta.grid}>
@@ -641,6 +680,7 @@ export default function EventsPContent({ locale = "id" }) {
               {ctaBtn}
             </Link>
           </div>
+
           {/* Right: Mascot */}
           <div className="reveal" data-anim="zoom" style={cta.right}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -666,7 +706,8 @@ export default function EventsPContent({ locale = "id" }) {
           }
         `}</style>
       </section>
-      <GlobalStyles /> {/* Panggil GlobalStyles */}
+
+      <GlobalStyles />
     </main>
   );
 }

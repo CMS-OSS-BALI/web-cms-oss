@@ -1,39 +1,35 @@
-"use client";
-
-import { Suspense, lazy, useMemo, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
+// app/(view)/user/(panel)/aboutus/page.jsx
+import { Suspense } from "react";
+import AboutUsContent from "./AboutUsContent";
 import Loading from "@/app/components/loading/LoadingImage";
-import useAboutUsViewModel from "./useAboutUsViewModel";
+import { buildUserMetadata, pickLocale } from "@/app/seo/userMetadata";
 
-const AboutUsContentLazy = lazy(() => import("./AboutUsContent"));
+// Dynamic metadata untuk About Us
+export async function generateMetadata({ searchParams }) {
+  const locale = pickLocale(searchParams?.lang);
 
-function pickLocale(q, ls) {
-  const v = (q || ls || "id").slice(0, 2).toLowerCase();
-  return v === "en" ? "en" : "id";
+  const title =
+    locale === "en"
+      ? "About OSS Bali"
+      : "Tentang OSS Bali – Partner Studi Luar Negeri";
+
+  const description =
+    locale === "en"
+      ? "Learn more about OSS Bali, our story, mission, and how we support international study and career journeys."
+      : "Kenali lebih dekat OSS Bali, cerita, visi misi, dan peran kami dalam mendampingi perjalanan studi dan karier internasional.";
+
+  return buildUserMetadata({
+    title,
+    description,
+    path: "/user/aboutus", // sesuaikan kalau rutenya beda
+    locale,
+    type: "website",
+  });
 }
 
-export default function AboutUsPage() {
-  const search = useSearchParams();
-
-  // Prefer ?lang= from URL, fallback to localStorage
-  const locale = useMemo(() => {
-    const q = search?.get("lang") || "";
-    const ls =
-      typeof window !== "undefined"
-        ? localStorage.getItem("oss.lang") || ""
-        : "";
-    return pickLocale(q, ls);
-  }, [search]);
-
-  // Persist selected locale for cross-page consistency
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("oss.lang", locale);
-    }
-  }, [locale]);
-
-  // Keep existing VM usage; pass props into lazy component
-  const vm = useAboutUsViewModel({ locale });
+// Server component, membungkus AboutUsContent (client)
+export default function AboutUsPage({ searchParams }) {
+  const locale = pickLocale(searchParams?.lang);
 
   return (
     <Suspense
@@ -43,8 +39,8 @@ export default function AboutUsPage() {
         </div>
       }
     >
-      {/* key forces remount when ?lang= changes */}
-      <AboutUsContentLazy key={locale} {...vm} />
+      {/* initialLocale dipakai AboutUsContent untuk hit API + toggle bahasa */}
+      <AboutUsContent initialLocale={locale} />
     </Suspense>
   );
 }

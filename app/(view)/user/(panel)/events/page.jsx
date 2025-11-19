@@ -1,45 +1,68 @@
-"use client";
-
-import dynamic from "next/dynamic";
-import { Suspense, useMemo } from "react";
-import { useSearchParams } from "next/navigation";
+// app/(view)/user/(panel)/events/page.jsx
+import { Suspense } from "react";
+import EventsUContent from "./EventsUContent";
 import Loading from "@/app/components/loading/LoadingImage";
+import { buildUserMetadata, pickLocale } from "@/app/seo/userMetadata";
 
-/** Dynamic imports (lebih aman ketimbang react.lazy untuk Next) */
-const EventsAll = dynamic(() => import("./EventsUContent"), {
-  ssr: false,
-  loading: () => <Loading />,
-});
-const EventsPeserta = dynamic(() => import("./peserta/EventsPContent"), {
-  ssr: false,
-  loading: () => <Loading />,
-});
-const EventsRep = dynamic(() => import("./rep/EventsRContent"), {
-  ssr: false,
-  loading: () => <Loading />,
-});
+// Dynamic metadata untuk halaman Event
+export async function generateMetadata({ searchParams }) {
+  const locale = pickLocale(searchParams?.lang);
 
-/** locale helper */
-const pickLocale = (q, ls) => {
-  const v = (q || ls || "id").slice(0, 2).toLowerCase();
-  return v === "en" ? "en" : "id";
-};
+  const rawTab = (searchParams?.tab || "").toString().toLowerCase();
+  const tab =
+    rawTab === "peserta" || rawTab === "rep" || rawTab === "all"
+      ? rawTab
+      : "all";
 
-export default function EventsPage() {
-  const search = useSearchParams();
+  let titleId =
+    "Event & Kegiatan OSS Bali – Info Acara, Seminar, dan Pendaftaran";
+  let descId =
+    "Temukan dan daftar berbagai event, seminar, dan kegiatan OSS Bali untuk pelajar dan mahasiswa. Lihat jadwal event terbaru dan cara pendaftarannya.";
+  let titleEn =
+    "OSS Bali Events – Programs, Seminars, and Registration Information";
+  let descEn =
+    "Discover and register for OSS Bali events, seminars, and programs for students and young professionals. See the latest schedules and how to join.";
 
-  // support ?tab=all|peserta|rep tanpa menampilkan UI tab
-  const tab = (search?.get("tab") || "all").toLowerCase();
+  if (tab === "peserta") {
+    titleId = "Event OSS Bali untuk Peserta – Daftar Tiket dan Program Terbaru";
+    descId =
+      "Jelajahi event OSS Bali yang bisa diikuti sebagai peserta. Lihat detail acara, harga tiket, dan cara pendaftaran secara online.";
+    titleEn = "OSS Bali Events for Participants – Tickets and Latest Programs";
+    descEn =
+      "Explore OSS Bali events you can join as a participant. View event details, ticket prices, and online registration steps.";
+  } else if (tab === "rep") {
+    titleId =
+      "Event OSS Bali untuk Representative – Booth, School Visit, dan Kemitraan";
+    descId =
+      "Informasi event OSS Bali untuk representative, sekolah, dan universitas. Booking booth, kunjungan sekolah, dan peluang kolaborasi.";
+    titleEn =
+      "OSS Bali Events for Representatives – Booths, School Visits, and Partnerships";
+    descEn =
+      "Event information for OSS Bali representatives, schools, and universities. Book booths, arrange school visits, and explore collaboration opportunities.";
+  }
 
-  // locale: ?lang= > localStorage > default
-  const locale = useMemo(() => {
-    const q = search?.get("lang") || "";
-    const ls =
-      typeof window !== "undefined"
-        ? localStorage.getItem("oss.lang") || ""
-        : "";
-    return pickLocale(q, ls);
-  }, [search]);
+  const title = locale === "en" ? titleEn : titleId;
+  const description = locale === "en" ? descEn : descId;
+
+  return buildUserMetadata({
+    title,
+    description,
+    // SESUAIKAN kalau rute beda
+    path: "/user/events",
+    locale,
+    type: "website",
+  });
+}
+
+// Server component, membungkus EventsUContent (client)
+export default function EventsPage({ searchParams }) {
+  const locale = pickLocale(searchParams?.lang);
+
+  const rawTab = (searchParams?.tab || "").toString().toLowerCase();
+  const initialTab =
+    rawTab === "peserta" || rawTab === "rep" || rawTab === "all"
+      ? rawTab
+      : "all";
 
   return (
     <Suspense
@@ -49,13 +72,9 @@ export default function EventsPage() {
         </div>
       }
     >
-      {tab === "peserta" ? (
-        <EventsPeserta key={`peserta-${locale}`} locale={locale} />
-      ) : tab === "rep" ? (
-        <EventsRep key={`rep-${locale}`} locale={locale} />
-      ) : (
-        <EventsAll key={`all-${locale}`} locale={locale} />
-      )}
+      {/* initialLocale & initialTab dipakai di client
+          buat sinkronisasi bahasa dan tab (all/peserta/rep) */}
+      <EventsUContent initialLocale={locale} initialTab={initialTab} />
     </Suspense>
   );
 }

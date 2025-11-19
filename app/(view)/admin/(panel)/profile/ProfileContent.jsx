@@ -73,7 +73,7 @@ export default function ProfileContent({ vm }) {
           notifyError("Gagal memuat profil", data?.error?.message);
           return;
         }
-        const photo = data?.image_public_url || data?.profile_photo || ""; // endpoint baru selalu URL publik
+        const photo = data?.image_public_url || data?.profile_photo || "";
         const init = {
           name: data?.name || "",
           email: data?.email || "",
@@ -150,7 +150,7 @@ export default function ProfileContent({ vm }) {
       fd.append("no_whatsapp", values.no_whatsapp || "");
       fd.append("email", (values.email || "").trim());
       fd.append("size", String(AVATAR_SIZE));
-      if (file) fd.append("avatar", file); // field disesuaikan dg endpoint baru
+      if (file) fd.append("avatar", file);
 
       const res = await fetch(api.update, {
         method: "PATCH",
@@ -284,7 +284,8 @@ export default function ProfileContent({ vm }) {
                   {preview ? (
                     <img
                       src={preview}
-                      alt={`Avatar ${form.getFieldValue("name") || ""} title={`Avatar ${form.getFieldValue("name") || ""}`}
+                      alt={`Avatar ${form.getFieldValue("name") || ""}`}
+                      title={`Avatar ${form.getFieldValue("name") || ""}`}
                       style={{
                         width: "100%",
                         height: "100%",

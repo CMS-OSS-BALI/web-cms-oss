@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useMemo, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { Col, Image, Row, Typography, Collapse } from "antd";
 import { Swiper, SwiperSlide } from "swiper/react";
 import { Navigation, Autoplay } from "swiper/modules";
@@ -216,6 +217,13 @@ const resolveImage16x9 = (input, fallback = "/images/fallback.jpg") => {
 };
 
 const CONTAINER = { width: "min(1220px, 96%)", margin: "0 auto" };
+
+const pickLocaleClient = (lang, ls, fallback = "id") => {
+  const v = String(lang || ls || fallback)
+    .slice(0, 2)
+    .toLowerCase();
+  return v === "en" ? "en" : "id";
+};
 
 const toYouTubeEmbed = (input) => {
   try {
@@ -510,8 +518,26 @@ const consultants = {
   },
 };
 
-export default function LandingContent({ locale = "id" }) {
+export default function LandingContent({ locale: initialLocale = "id" }) {
   const heroRef = useRef(null);
+  const search = useSearchParams();
+
+  // locale final: query > prop dari server > localStorage
+  const locale = useMemo(() => {
+    const fromQuery = search?.get("lang") || "";
+    const fromLs =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem("oss.lang") || ""
+        : "";
+    return pickLocaleClient(fromQuery || initialLocale, fromLs);
+  }, [search, initialLocale]);
+
+  // simpan pilihan user ke localStorage
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("oss.lang", locale);
+    }
+  }, [locale]);
 
   const {
     hero: H,

@@ -1,34 +1,37 @@
-"use client";
-
-import { Suspense, lazy, useMemo, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
+// app/(view)/user/form-rep/page.jsx  (SESUAIKAN PATH DENGAN STRUKTURMU)
+import { Suspense } from "react";
+import FormRepContent from "./FormRepContent";
 import Loading from "@/app/components/loading/LoadingImage";
+import { buildUserMetadata, pickLocale } from "@/app/seo/userMetadata";
 
-const FormRepContentLazy = lazy(() => import("./FormRepContent"));
+// Dynamic metadata untuk halaman Form Booking Booth Representative
+export async function generateMetadata({ searchParams }) {
+  const locale = pickLocale(searchParams?.lang);
 
-function pickLocale(q, ls) {
-  const v = (q || ls || "id").slice(0, 2).toLowerCase();
-  return v === "en" ? "en" : "id";
+  let titleId = "Form Booking Booth Representative – Event OSS Bali";
+  let descId =
+    "Isi formulir booking booth representative untuk mengikuti event OSS Bali sebagai perwakilan kampus, sekolah, atau institusi pendidikan. Lengkapi data dan selesaikan pembayaran secara online.";
+
+  let titleEn = "Booth Booking Form for Representatives – OSS Bali Events";
+  let descEn =
+    "Complete the booth booking form to join OSS Bali events as a representative of your campus, school, or education institution. Fill in your details and finish payment online.";
+
+  const title = locale === "en" ? titleEn : titleId;
+  const description = locale === "en" ? descEn : descId;
+
+  return buildUserMetadata({
+    title,
+    description,
+    // SESUAIKAN jika route-nya beda
+    path: "/user/form-rep",
+    locale,
+    type: "website",
+  });
 }
 
-export default function FormRepPage() {
-  const search = useSearchParams();
-  const q = search?.get("lang") || "";
-
-  const locale = useMemo(() => {
-    const ls =
-      typeof window !== "undefined"
-        ? localStorage.getItem("oss.lang") || ""
-        : "";
-    return pickLocale(q, ls);
-  }, [q]);
-
-  // Persist pilihan lang bila datang dari query
-  useEffect(() => {
-    if (typeof window !== "undefined" && q) {
-      localStorage.setItem("oss.lang", pickLocale(q, ""));
-    }
-  }, [q]);
+// Server component → bungkus FormRepContent (client)
+export default function FormRepPage({ searchParams }) {
+  const initialLocale = pickLocale(searchParams?.lang);
 
   return (
     <Suspense
@@ -38,8 +41,8 @@ export default function FormRepPage() {
         </div>
       }
     >
-      {/* key agar remount saat ?lang berubah */}
-      <FormRepContentLazy key={locale} locale={locale} />
+      {/* initialLocale dikirim ke client; client akan merge dengan ?lang + localStorage */}
+      <FormRepContent initialLocale={initialLocale} />
     </Suspense>
   );
 }

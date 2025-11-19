@@ -1,3 +1,4 @@
+// app/(view)/user/(panel)/leads/LeadsUContent.jsx
 "use client";
 
 import { useEffect } from "react";
@@ -16,6 +17,8 @@ const { Title, Text } = Typography;
 const UI = {
   id: {
     title: "FORM LEADS",
+    heroSubtitle:
+      "Isi form ini untuk mendaftarkan minat studi, konsultasi, dan program OSS Bali. Data Anda akan membantu tim OSS Bali memberikan rekomendasi kampus dan negara tujuan yang paling sesuai.",
     labels: {
       full_name: "Nama Lengkap",
       domicile: "Domisili",
@@ -43,6 +46,8 @@ const UI = {
   },
   en: {
     title: "LEADS FORM",
+    heroSubtitle:
+      "Fill in this form to register your study interest, consultation request, and OSS Bali programs. Your data helps us recommend the most suitable universities and destination countries.",
     labels: {
       full_name: "Full Name",
       domicile: "Domicile",
@@ -89,6 +94,16 @@ const styles = {
     fontSize: "clamp(28px, 4vw, 46px)",
     margin: 0,
   },
+  heroSub: {
+    marginTop: 14,
+    marginBottom: 0,
+    textAlign: "center",
+    fontSize: "clamp(13px, 1.4vw, 15px)",
+    maxWidth: 640,
+    marginInline: "auto",
+    color: "#475569",
+    fontWeight: 500,
+  },
   underline: {
     width: 160,
     height: 4,
@@ -97,7 +112,10 @@ const styles = {
     borderRadius: 999,
     margin: "12px auto 0",
   },
-  container: { width: "min(720px, 92%)", margin: "-240px auto 80px" }, // sedikit lebih ramping agar nyaman di desktop 1 kolom
+  container: {
+    width: "min(720px, 92%)",
+    margin: "-240px auto 80px",
+  },
   card: {
     borderRadius: 18,
     border: "1px solid #cfe0ff",
@@ -141,12 +159,19 @@ const styles = {
 
 export default function LeadsUContent({
   locale = "id",
-  values,
-  errors,
-  onChange,
-  submit,
-  canSubmit,
-  loading,
+  values = {
+    full_name: "",
+    domicile: "",
+    whatsapp: "",
+    email: "",
+    education_last: "",
+    referral_code: "",
+  },
+  errors = {},
+  onChange = () => {},
+  submit = () => {},
+  canSubmit = false,
+  loading = false,
   msg,
 }) {
   const lang = locale === "en" ? "en" : "id";
@@ -177,16 +202,21 @@ export default function LeadsUContent({
   };
 
   return (
-    <div style={styles.wrap} className="leads-form">
+    <main
+      style={styles.wrap}
+      className="leads-form"
+      aria-labelledby="leads-form-title"
+    >
       {contextHolder}
 
-      {/* Header */}
+      {/* Header / Hero */}
       <div style={styles.hero} className="leads-hero">
         <div style={styles.heroInner}>
-          <Title level={2} style={styles.heroTitle}>
+          <Title id="leads-form-title" level={1} style={styles.heroTitle}>
             {U.title}
           </Title>
           <div style={styles.underline} />
+          <p style={styles.heroSub}>{U.heroSubtitle}</p>
         </div>
       </div>
 
@@ -215,6 +245,7 @@ export default function LeadsUContent({
                 prefix={<UserOutlined />}
                 onPressEnter={enterToSubmit}
                 autoComplete="name"
+                name="full_name"
               />
               {errors?.full_name ? (
                 <div id="err-full_name" className="err">
@@ -244,6 +275,7 @@ export default function LeadsUContent({
                 prefix={<EnvironmentOutlined />}
                 onPressEnter={enterToSubmit}
                 autoComplete="address-level2"
+                name="domicile"
               />
               {errors?.domicile ? (
                 <div id="err-domicile" className="err">
@@ -274,6 +306,7 @@ export default function LeadsUContent({
                 prefix={<PhoneOutlined />}
                 onPressEnter={enterToSubmit}
                 autoComplete="tel"
+                name="whatsapp"
               />
               {errors?.whatsapp ? (
                 <div id="err-whatsapp" className="err">
@@ -304,6 +337,7 @@ export default function LeadsUContent({
                 prefix={<MailOutlined />}
                 onPressEnter={enterToSubmit}
                 autoComplete="email"
+                name="email"
               />
               {errors?.email ? (
                 <div id="err-email" className="err">
@@ -335,6 +369,7 @@ export default function LeadsUContent({
                 prefix={<ReadOutlined />}
                 onPressEnter={enterToSubmit}
                 autoComplete="organization-title"
+                name="education_last"
               />
               {errors?.education_last ? (
                 <div id="err-education_last" className="err">
@@ -357,6 +392,7 @@ export default function LeadsUContent({
                 onPressEnter={enterToSubmit}
                 aria-describedby="help-ref"
                 autoComplete="off"
+                name="referral_code"
               />
               <div style={styles.help} id="help-ref">
                 {U.help.referral}
@@ -466,6 +502,6 @@ export default function LeadsUContent({
           border-top-right-radius: 18px;
         }
       `}</style>
-    </div>
+    </main>
   );
 }

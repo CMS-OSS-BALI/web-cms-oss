@@ -1,30 +1,36 @@
-"use client";
-
-import { Suspense, lazy, useMemo } from "react";
-import { useSearchParams } from "next/navigation";
+// app/(view)/user/(panel)/accommodation/page.jsx (atau path-mu sekarang)
+import { Suspense } from "react";
+import AccommodationContent from "./AccommodationContent";
 import Loading from "@/app/components/loading/LoadingImage";
-import useAccommodationViewModel from "./useAccommodationViewModel";
+import { buildUserMetadata, pickLocale } from "@/app/seo/userMetadata";
 
-const AccommodationContentLazy = lazy(() => import("./AccommodationContent"));
+// Dynamic metadata untuk halaman Akomodasi
+export async function generateMetadata({ searchParams }) {
+  const locale = pickLocale(searchParams?.lang);
 
-const pickLocale = (q, ls) => {
-  const v = (q || ls || "id").slice(0, 2).toLowerCase();
-  return v === "en" ? "en" : "id";
-};
+  const title =
+    locale === "en"
+      ? "Accommodation Booking – OSS Bali"
+      : "Pemesanan Akomodasi – OSS Bali";
 
-export default function AccommodationPage() {
-  const search = useSearchParams();
+  const description =
+    locale === "en"
+      ? "Find the best housing options to support your international study and career journey, from apartments and student dorms to homestays."
+      : "Temukan tempat tinggal terbaik untuk mendukung perjalanan studi dan karier internasional Anda, mulai dari apartemen, asrama mahasiswa, hingga homestay.";
 
-  const locale = useMemo(() => {
-    const q = search?.get("lang") || "";
-    const ls =
-      typeof window !== "undefined"
-        ? localStorage.getItem("oss.lang") || ""
-        : "";
-    return pickLocale(q, ls);
-  }, [search]);
+  return buildUserMetadata({
+    title,
+    description,
+    // SESUAIKAN bila rutenya beda
+    path: "/user/services/accommodation",
+    locale,
+    type: "website",
+  });
+}
 
-  const vm = useAccommodationViewModel({ locale });
+// Server component, membungkus AccommodationContent (client)
+export default function AccommodationPage({ searchParams }) {
+  const locale = pickLocale(searchParams?.lang);
 
   return (
     <Suspense
@@ -34,7 +40,8 @@ export default function AccommodationPage() {
         </div>
       }
     >
-      <AccommodationContentLazy key={locale} {...vm} />
+      {/* initialLocale dipakai AccommodationContent untuk hit API + toggle bahasa */}
+      <AccommodationContent initialLocale={locale} />
     </Suspense>
   );
 }

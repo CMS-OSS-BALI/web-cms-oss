@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Skeleton } from "antd";
 import { Swiper, SwiperSlide } from "swiper/react";
 import { Autoplay } from "swiper/modules";
@@ -25,6 +26,14 @@ const PALETTE = {
   shadowMain: "0 22px 44px rgba(11,86,201,.22)",
   shadowCard: "0 12px 28px rgba(15,23,42,.08)",
   shadowChip: "0 10px 24px rgba(11,86,201,.18)",
+};
+
+/* ===== Locale helper (client-side, konsisten dengan halaman lain) ===== */
+const pickLocaleClient = (lang, ls, fallback = "id") => {
+  const v = String(lang || ls || fallback)
+    .slice(0, 2)
+    .toLowerCase();
+  return v === "en" ? "en" : "id";
 };
 
 function useRevealOnScroll(deps = []) {
@@ -604,13 +613,43 @@ function Img({ src, alt, style, className, ...rest }) {
   );
 }
 
-export default function OverseasContent({ locale = "id" }) {
+export default function OverseasContent({
+  initialLocale = "id",
+  locale: localeProp,
+} = {}) {
+  const search = useSearchParams();
+
+  // baseLocale = seed dari server (initialLocale) atau prop override
+  const baseLocale = localeProp || initialLocale || "id";
+
+  // Locale final: ?lang= → localStorage → baseLocale
+  const locale = useMemo(() => {
+    const fromQuery = search?.get("lang") || "";
+    const fromLs =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem("oss.lang") || ""
+        : "";
+    return pickLocaleClient(fromQuery || baseLocale, fromLs);
+  }, [search, baseLocale]);
+
+  // Persist locale ke localStorage supaya dipakai halaman lain
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem("oss.lang", locale);
+      } catch {
+        // ignore
+      }
+    }
+  }, [locale]);
+
   const heroRef = useRef(null);
   const { content, isLoading } = useOverseasViewModel({ locale });
+
   const hero = content.hero || {};
   const levelCampus = content.levelCampus || null;
   const polyLevel = content.polytechnicLevel || null;
-  const collegeLevel = content.collegeLevel || null; // ⬅️ NEW LEVEL III
+  const collegeLevel = content.collegeLevel || null; // LEVEL III
   const opportunity = content.opportunitySection || null;
   const opportunityRows = opportunity?.rows || [];
   const cta = content.ctaSection || null;
@@ -814,7 +853,7 @@ export default function OverseasContent({ locale = "id" }) {
     [polyCards.length]
   );
 
-  /* Level III – College slider config (NEW) */
+  /* Level III – College slider config */
   const collegeCards = collegeLevel?.cards || [];
   const collegeLoop = collegeCards.length > 4;
   const collegeAutoplay = useMemo(
@@ -896,8 +935,8 @@ export default function OverseasContent({ locale = "id" }) {
   );
 
   return (
-    <div
-      className="page-wrap"
+    <main
+      className="page-wrap overseas-page"
       style={{ paddingBottom: 48, fontFamily: FONT_FAMILY }}
     >
       {/* ===== HERO ===== */}
@@ -953,7 +992,11 @@ export default function OverseasContent({ locale = "id" }) {
                 <div style={heroArtStyle}>
                   <Img
                     src={hero.illustration}
-                    alt=""
+                    alt={
+                      isEn
+                        ? "Overseas study illustration"
+                        : "Ilustrasi studi luar negeri"
+                    }
                     style={styles.hero.globe}
                   />
                 </div>
@@ -995,7 +1038,7 @@ export default function OverseasContent({ locale = "id" }) {
               data-anim="left"
               data-rvd="40ms"
               src={content.studySection?.image}
-              alt="Pendidikan di luar negeri"
+              alt={isEn ? "Studying abroad" : "Pendidikan di luar negeri"}
               style={studyImageStyle}
             />
 
@@ -1274,7 +1317,7 @@ export default function OverseasContent({ locale = "id" }) {
         </section>
       )}
 
-      {/* ===== LEVEL III – COLLEGE (NEW) ===== */}
+      {/* ===== LEVEL III – COLLEGE ===== */}
       {collegeLevel && (
         <section
           style={{
@@ -1526,11 +1569,8 @@ export default function OverseasContent({ locale = "id" }) {
           background: ${PALETTE.primary};
           color: ${PALETTE.white};
         }
-        html,
-        body {
-          overflow-x: clip;
-        }
 
+        /* Reveal utilities */
         .reveal {
           opacity: 0;
           transform: var(--reveal-from, translate3d(0, 16px, 0));
@@ -1711,7 +1751,17 @@ export default function OverseasContent({ locale = "id" }) {
             height: 68px;
           }
         }
+
+        /* Anti horizontal scroll hanya di halaman ini */
+        .overseas-page {
+          overflow-x: hidden;
+        }
+        @supports (overflow: clip) {
+          .overseas-page {
+            overflow-x: clip;
+          }
+        }
       `}</style>
-    </div>
+    </main>
   );
 }

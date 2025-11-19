@@ -1,37 +1,36 @@
-"use client";
-
-import { Suspense, lazy, useMemo } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+// app/(view)/user/blog/[id]/page.jsx
+import { Suspense } from "react";
+import BlogDetailContent from "./BlogDetailContent";
 import Loading from "@/app/components/loading/LoadingImage";
-import useBlogDetailViewModel from "./useBlogDetailViewModel";
+import { buildUserMetadata, pickLocale } from "@/app/seo/userMetadata";
 
-const BlogDetailContentLazy = lazy(() => import("./BlogDetailContent"));
+// Dynamic metadata untuk blog detail
+export async function generateMetadata({ params, searchParams }) {
+  const locale = pickLocale(searchParams?.lang);
+  const id = params?.id;
 
-const pickLocale = (q, ls) => {
-  const v = (q || ls || "id").slice(0, 2).toLowerCase();
-  return v === "en" ? "en" : "id";
-};
+  // Default (kalau belum ambil judul dari API)
+  const title =
+    locale === "en" ? "OSS Bali Blog – Article" : "Blog OSS Bali – Artikel";
 
-export default function BlogDetailPage() {
-  const params = useParams();
-  const search = useSearchParams();
+  const description =
+    locale === "en"
+      ? "Read an article from OSS Bali blog about studying abroad, scholarships, and international careers."
+      : "Baca artikel dari Blog OSS Bali seputar studi luar negeri, beasiswa, dan karier internasional.";
 
-  const locale = useMemo(() => {
-    const q = search?.get("lang") || "";
-    const ls =
-      typeof window !== "undefined"
-        ? localStorage.getItem("oss.lang") || ""
-        : "";
-    return pickLocale(q, ls);
-  }, [search]);
+  return buildUserMetadata({
+    title,
+    description,
+    path: `/user/blog/${id}`, // penting untuk canonical/hreflang
+    locale,
+    type: "article",
+  });
+}
 
-  // fallback bahasa konten jika terjemahan tidak tersedia
-  const fallback = "id";
-
-  const vm = useBlogDetailViewModel({ locale, fallback });
-
-  // Remount ketika id atau locale berubah
-  const remountKey = `${params?.id || "x"}-${locale}`;
+// Server component, membungkus BlogDetailContent (client)
+export default function BlogDetailPage({ params, searchParams }) {
+  const locale = pickLocale(searchParams?.lang);
+  const fallbackLocale = "id";
 
   return (
     <Suspense
@@ -41,7 +40,11 @@ export default function BlogDetailPage() {
         </div>
       }
     >
-      <BlogDetailContentLazy key={remountKey} {...vm} />
+      {/* initialLocale & fallbackLocale akan dipakai di client untuk i18n */}
+      <BlogDetailContent
+        initialLocale={locale}
+        fallbackLocale={fallbackLocale}
+      />
     </Suspense>
   );
 }

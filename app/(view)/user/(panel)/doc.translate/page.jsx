@@ -1,34 +1,36 @@
-"use client";
-
-import { Suspense, lazy, useMemo } from "react";
-import { useSearchParams } from "next/navigation";
+// app/(view)/user/(panel)/document-translate/page.jsx
+import { Suspense } from "react";
+import DocumentTranslateContent from "./DocumentTranslateContent";
 import Loading from "@/app/components/loading/LoadingImage";
-import useDocumentTranslateViewModel from "./useDocumentTranslateViewModel";
+import { buildUserMetadata, pickLocale } from "@/app/seo/userMetadata";
 
-const DocumentTranslateContentLazy = lazy(() =>
-  import("./DocumentTranslateContent")
-);
+// Dynamic metadata untuk halaman Penerjemahan Dokumen
+export async function generateMetadata({ searchParams }) {
+  const locale = pickLocale(searchParams?.lang);
 
-function pickLocale(q, ls) {
-  const v = (q || ls || "id").slice(0, 2).toLowerCase();
-  return v === "en" ? "en" : "id";
+  const title =
+    locale === "en"
+      ? "Official Document Translation – OSS Bali"
+      : "Penerjemahan Dokumen Resmi – OSS Bali";
+
+  const description =
+    locale === "en"
+      ? "Translate academic and official documents such as transcripts, diplomas, certificates, and more with professional translators at OSS Bali."
+      : "Layanan penerjemahan dokumen akademik dan resmi seperti transkrip, ijazah, sertifikat, dan lainnya bersama penerjemah profesional di OSS Bali.";
+
+  return buildUserMetadata({
+    title,
+    description,
+    // SESUAIKAN bila rutenya berbeda
+    path: "/user/services/document-translate",
+    locale,
+    type: "website",
+  });
 }
 
-export default function DocumentTranslatePage() {
-  const search = useSearchParams();
-
-  // Ambil dari ?lang= dulu, fallback ke localStorage, default "id"
-  const locale = useMemo(() => {
-    const q = search?.get("lang") || "";
-    const ls =
-      typeof window !== "undefined"
-        ? localStorage.getItem("oss.lang") || ""
-        : "";
-    return pickLocale(q, ls);
-  }, [search]);
-
-  // Build view model sesuai locale
-  const vm = useDocumentTranslateViewModel({ locale });
+// Server component, membungkus DocumentTranslateContent (client)
+export default function DocumentTranslatePage({ searchParams }) {
+  const locale = pickLocale(searchParams?.lang);
 
   return (
     <Suspense
@@ -38,8 +40,9 @@ export default function DocumentTranslatePage() {
         </div>
       }
     >
-      {/* key memastikan remount saat ?lang= berubah */}
-      <DocumentTranslateContentLazy key={locale} {...vm} locale={locale} />
+      {/* initialLocale dipakai DocumentTranslateContent
+          untuk hit API + sinkron toggle bahasa */}
+      <DocumentTranslateContent initialLocale={locale} />
     </Suspense>
   );
 }

@@ -1,30 +1,49 @@
-"use client";
-
-import { Suspense, lazy, useMemo } from "react";
-import { useSearchParams } from "next/navigation";
+// app/(view)/user/blog/page.jsx
+import { Suspense } from "react";
+import BlogUContent from "./BlogUContent";
 import Loading from "@/app/components/loading/LoadingImage";
-import { useBlogUViewModel } from "./useBlogUViewModel";
+import { buildUserMetadata, pickLocale } from "@/app/seo/userMetadata";
 
-const BlogUContentLazy = lazy(() => import("./BlogUContent"));
+// Dynamic metadata untuk blog list
+export async function generateMetadata({ searchParams }) {
+  const locale = pickLocale(searchParams?.lang);
+  const q = searchParams?.q || "";
+  const category = searchParams?.category || "";
 
-const pickLocale = (q, ls) => {
-  const v = (q || ls || "id").slice(0, 2).toLowerCase();
-  return v === "en" ? "en" : "id";
-};
+  let title =
+    locale === "en" ? "OSS Bali Blog" : "Blog OSS Bali – Artikel & Insight";
 
-export default function BlogPage() {
-  const search = useSearchParams();
+  let description =
+    locale === "en"
+      ? "Articles about studying abroad, scholarships, and international career planning."
+      : "Artikel seputar studi luar negeri, beasiswa, dan perencanaan karier internasional.";
 
-  const locale = useMemo(() => {
-    const q = search?.get("lang") || "";
-    const ls =
-      typeof window !== "undefined"
-        ? localStorage.getItem("oss.lang") || ""
-        : "";
-    return pickLocale(q, ls);
-  }, [search]);
+  if (category) {
+    title =
+      locale === "en"
+        ? `Articles in ${category} – OSS Bali Blog`
+        : `Artikel kategori ${category} – Blog OSS Bali`;
+  }
 
-  const vm = useBlogUViewModel({ locale });
+  if (q) {
+    description =
+      locale === "en"
+        ? `Search results for “${q}” on OSS Bali blog.`
+        : `Hasil pencarian untuk “${q}” di blog OSS Bali.`;
+  }
+
+  return buildUserMetadata({
+    title,
+    description,
+    path: "/user/blog", // sesuaikan kalau route-mu beda
+    locale,
+    type: "website",
+  });
+}
+
+// Server component, membungkus BlogUContent (client)
+export default function BlogPage({ searchParams }) {
+  const locale = pickLocale(searchParams?.lang);
 
   return (
     <Suspense
@@ -34,8 +53,8 @@ export default function BlogPage() {
         </div>
       }
     >
-      {/* remount when locale changes */}
-      <BlogUContentLazy key={locale} {...vm} />
+      {/* initialLocale dipakai BlogUContent untuk hit API + toggle bahasa */}
+      <BlogUContent initialLocale={locale} />
     </Suspense>
   );
 }

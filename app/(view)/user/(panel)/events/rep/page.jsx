@@ -1,37 +1,51 @@
-"use client";
-
-import { Suspense, lazy, useMemo, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
+// app/(view)/user/(panel)/events/rep/page.jsx
+import { Suspense } from "react";
+import EventsRContent from "./EventsRContent";
 import Loading from "@/app/components/loading/LoadingImage";
+import { buildUserMetadata, pickLocale } from "@/app/seo/userMetadata";
 
-// Lazy-load content component in the same folder: /rep/RepContent.jsx
-const RepContentLazy = lazy(() => import("./EventsRContent"));
+// Dynamic metadata untuk halaman detail Representative Event
+export async function generateMetadata({ searchParams }) {
+  const locale = pickLocale(searchParams?.lang);
+  const hasId = !!(searchParams?.id || "");
 
-function pickLocale(q, ls) {
-  const v = (q || ls || "id").slice(0, 2).toLowerCase();
-  return v === "en" ? "en" : "id";
+  let titleId =
+    "Event OSS Bali untuk Representative – Detail Booth & Kemitraan";
+  let descId =
+    "Lihat detail event OSS Bali untuk representative, termasuk informasi booth, lokasi, dan benefit kerja sama dengan sekolah dan universitas.";
+  let titleEn =
+    "OSS Bali Events for Representatives – Booth & Partnership Details";
+  let descEn =
+    "View detailed information about OSS Bali representative events, including booth info, venue, and partnership benefits with schools and universities.";
+
+  // Jika tidak ada id → fallback ke copy generic untuk halaman rep
+  if (!hasId) {
+    titleId =
+      "Event OSS Bali untuk Representative – Booth, School Visit, dan Kemitraan";
+    descId =
+      "Informasi event OSS Bali untuk representative, sekolah, dan universitas. Booking booth, kunjungan sekolah, dan peluang kolaborasi.";
+    titleEn =
+      "OSS Bali Events for Representatives – Booths, School Visits, and Partnerships";
+    descEn =
+      "Event information for OSS Bali representatives, schools, and universities. Book booths, arrange school visits, and explore collaboration opportunities.";
+  }
+
+  const title = locale === "en" ? titleEn : titleId;
+  const description = locale === "en" ? descEn : descId;
+
+  return buildUserMetadata({
+    title,
+    description,
+    path: "/user/events/rep",
+    locale,
+    type: "website",
+  });
 }
 
-export default function RepPage() {
-  const search = useSearchParams();
-
-  // read query once for side-effect (store to localStorage when present)
-  const q = search?.get("lang") || "";
-
-  // compute the active locale
-  const locale = useMemo(() => {
-    const ls =
-      typeof window !== "undefined"
-        ? localStorage.getItem("oss.lang") || ""
-        : "";
-    return pickLocale(q, ls);
-  }, [q]);
-
-  // persist chosen locale if query overrides it
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (q) localStorage.setItem("oss.lang", pickLocale(q, ""));
-  }, [q]);
+// Server component yang membungkus EventsRContent (client)
+export default function RepPage({ searchParams }) {
+  // Single source of truth untuk initial locale di level server
+  const initialLocale = pickLocale(searchParams?.lang);
 
   return (
     <Suspense
@@ -41,7 +55,8 @@ export default function RepPage() {
         </div>
       }
     >
-      <RepContentLazy key={locale} locale={locale} />
+      {/* initialLocale → nanti di-refine di client berdasarkan ?lang + localStorage */}
+      <EventsRContent initialLocale={initialLocale} />
     </Suspense>
   );
 }

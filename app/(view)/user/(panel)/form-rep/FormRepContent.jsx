@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ConfigProvider, Steps } from "antd";
 import "antd/dist/reset.css";
@@ -11,10 +12,42 @@ const BLUE = "#0b56c9";
 
 const safe = (v) => (v == null ? "" : String(v));
 
-export default function FormRepContent({ locale = "id" }) {
-  const sp = useSearchParams();
+/* Locale helper (konsisten dengan halaman lain) */
+const pickLocaleClient = (lang, ls, fallback = "id") => {
+  const v = String(lang || ls || fallback)
+    .slice(0, 2)
+    .toLowerCase();
+  return v === "en" ? "en" : "id";
+};
+
+export default function FormRepContent(props) {
+  const { initialLocale, locale: localeProp } = props || {};
+  const search = useSearchParams();
   const router = useRouter();
-  const eventId = sp.get("id") || "";
+
+  /* ===== Locale: ?lang / ?locale -> localStorage(oss.lang) -> baseLocale ===== */
+  const baseLocale = initialLocale || localeProp || "id";
+
+  const locale = useMemo(() => {
+    const fromQuery = search?.get("lang") ?? search?.get("locale") ?? "";
+    const fromLs =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem("oss.lang") || ""
+        : "";
+    return pickLocaleClient(fromQuery || baseLocale, fromLs);
+  }, [search, baseLocale]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem("oss.lang", locale);
+    } catch {
+      // ignore
+    }
+  }, [locale]);
+
+  const eventId = search?.get("id") || "";
+
   const vm = useFormRepViewModel({ locale, eventId });
 
   const currentStep = vm?.ui?.step ?? 0;
@@ -24,98 +57,126 @@ export default function FormRepContent({ locale = "id" }) {
     Boolean(vm?.payment?.starting);
   const errorMsg = vm?.state?.error || vm?.ui?.error || "";
 
-  const T =
+  const T = useMemo(
+    () =>
+      locale === "en"
+        ? {
+            heroTitle: "BOOTH BOOKING",
+            heroSub:
+              "Fill in your representative data, then choose a payment method via Midtrans Snap popup.",
+            step1: { t: "Booth Booking", s: "Representative data" },
+            step2: { t: "Booth Booking Detail", s: "Booth payment details" },
+            formTitle: "REPRESENTATIVE BOOTH BOOKING FORM",
+            tip: "Complete the information below to book your booth at OSS Bali events.",
+            fields: {
+              rep_name: "Representative Name",
+              country: "Country",
+              campus_name: "Campus/Institution",
+              voucher_code: "Voucher Code",
+              campus_address: "Campus Address",
+              email: "Email",
+              whatsapp: "Whatsapp Number",
+            },
+            placeholders: {
+              rep_name: "Full name (e.g., Putri Indah)",
+              country: "Origin country (e.g., Indonesia)",
+              campus_name: "Campus name (e.g., KAPLAN)",
+              voucher_code: "If any, enter voucher (e.g., OSS2025)",
+              campus_address:
+                "Full address (e.g., Wilkie Edge 8 Wilkie Road, Level 2, Singapore 228095)",
+              email: "Active email (e.g., you@gmail.com)",
+              whatsapp:
+                "International format (+, spaces, -, ., ()) — total 6–15 digits",
+            },
+            submit: "BOOK BOOTH",
+            doneTitle: "Booking Detail",
+            lbl: {
+              ref: "Ref Number",
+              status: "Payment Status",
+              time: "Payment Time",
+              total: "Total Payment",
+              channel: "Payment Channel",
+            },
+            receipt: "Get PDF Receipt",
+            done: "Done",
+            statusPaid: "Success",
+            statusPending: "Pending",
+            statusFailed: "Failed",
+            back: "Back to Event",
+            help: "Trouble with your payment?",
+            helpSub:
+              "Contact our help center now and we’ll help you complete your booking.",
+          }
+        : {
+            heroTitle: "BOOKING BOOTH",
+            heroSub:
+              "Isi data representative kampus Anda, lalu pilih metode pembayaran langsung di popup Midtrans Snap.",
+            step1: { t: "Booking Booth", s: "Data representative" },
+            step2: { t: "Detail Booking Booth", s: "Detail pembayaran booth" },
+            formTitle: "FORM BOOKING REPRESENTATIVE",
+            tip: "Lengkapi data berikut untuk booking booth di event OSS Bali.",
+            fields: {
+              rep_name: "Nama Representative",
+              country: "Nama Negara",
+              campus_name: "Nama Kampus / Institusi",
+              voucher_code: "Kode Voucher",
+              campus_address: "Alamat Kampus",
+              email: "Email",
+              whatsapp: "No WhatsApp",
+            },
+            placeholders: {
+              rep_name: "Nama Lengkap (contoh : Putri Indah)",
+              country: "Asal Negara (contoh : Indonesia)",
+              campus_name: "Nama Kampus (contoh : KAPLAN)",
+              voucher_code: "Jika ada, isi kode voucher (contoh : OSS2025)",
+              campus_address:
+                "Alamat lengkap (contoh: Wilkie Edge 8 Wilkie Road, Level 2, Singapore 228095)",
+              email: "Email aktif (contoh: you@gmail.com)",
+              whatsapp:
+                "Boleh +, spasi, -, ., () — total digit 6–15 (contoh: +62812xxxxxxx)",
+            },
+            submit: "BOOKING BOOTH",
+            doneTitle: "Detail Booking",
+            lbl: {
+              ref: "Nomor Referensi",
+              status: "Status Pembayaran",
+              time: "Waktu Pembayaran",
+              total: "Total Pembayaran",
+              channel: "Metode Pembayaran",
+            },
+            receipt: "Unduh PDF Receipt",
+            done: "Selesai",
+            statusPaid: "Berhasil",
+            statusPending: "Menunggu",
+            statusFailed: "Gagal",
+            back: "Kembali ke Event",
+            help: "Ada kendala saat pembayaran?",
+            helpSub:
+              "Hubungi help center kami agar proses booking booth kamu tetap lancar.",
+          },
+    [locale]
+  );
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (typeof vm.onSubmit === "function") {
+      vm.onSubmit(e);
+    }
+  };
+
+  const backToEvent = () => {
+    if (!eventId) return;
+    router.push(
+      `/user/events/rep?id=${encodeURIComponent(
+        eventId
+      )}&lang=${encodeURIComponent(locale)}`
+    );
+  };
+
+  const pageAriaLabel =
     locale === "en"
-      ? {
-          heroTitle: "BOOKING BOOTH",
-          heroSub: "Fill your data, then choose payment method in Snap popup",
-          step1: { t: "Booth Booking", s: "Representative data" },
-          step2: { t: "Booth Booking Detail", s: "Booth payment details" },
-          formTitle: "REPRESENTATIVE BOOKING FORM",
-          tip: "Complete the information below to book your booth.",
-          fields: {
-            rep_name: "Representative Name",
-            country: "Country",
-            campus_name: "Campus/Institution",
-            voucher_code: "Voucher Code",
-            campus_address: "Campus Address",
-            email: "Email",
-            whatsapp: "Whatsapp Number",
-          },
-          placeholders: {
-            rep_name: "Full name (e.g., Putri Indah)",
-            country: "Origin country (e.g., Indonesia)",
-            campus_name: "Campus name (e.g., KAPLAN)",
-            voucher_code: "If any, enter voucher (e.g., OSS2025)",
-            campus_address:
-              "Full address (e.g., Wilkie Edge 8 Wilkie Road, Level 2, Singapore 228095)",
-            email: "Active email (e.g., you@gmail.com)",
-            whatsapp:
-              "International format (+, spaces, -, ., ()) — total 6–15 digits",
-          },
-          submit: "BOOKING",
-          doneTitle: "Booking Detail",
-          lbl: {
-            ref: "Ref Number",
-            status: "Payment Status",
-            time: "Payment Time",
-            total: "Total Payment",
-            channel: "Payment Channel",
-          },
-          receipt: "Get PDF Receipt",
-          done: "Done",
-          statusPaid: "Success",
-          statusPending: "Pending",
-          statusFailed: "Failed",
-          back: "Back to Event",
-          help: "Trouble With Your Payment?",
-          helpSub: "Let us know on help center now!",
-        }
-      : {
-          heroTitle: "BOOKING BOOTH",
-          heroSub:
-            "Isi data Anda, lalu pilih metode pembayaran langsung di popup Snap",
-          step1: { t: "Booking Booth", s: "Data representative" },
-          step2: { t: "Detail Booking Booth", s: "Booth payment details" },
-          formTitle: "FORM BOOKING REPRESENTATIVE",
-          tip: "Lengkapi data berikut untuk booking booth.",
-          fields: {
-            rep_name: "Name Representatif",
-            country: "Nama Negara",
-            campus_name: "Nama Kampus",
-            voucher_code: "Kode Voucher",
-            campus_address: "Alamat Kampus",
-            email: "Email",
-            whatsapp: "No whatsapp",
-          },
-          placeholders: {
-            rep_name: "Nama Lengkap (contoh : Putri Indah)",
-            country: "Asal Negara (contoh : Indonesia)",
-            campus_name: "Nama Kampus (contoh : KAPLAN)",
-            voucher_code: "Jika ada, isi kode vocher (contoh : OSS2025)",
-            campus_address:
-              "Alamat lengkap (contoh: Wilkie Edge 8 Wilkie Road, Level 2, Singapore 228095)",
-            email: "Email aktif (contoh: you@gmail.com)",
-            whatsapp: "Boleh +, spasi, -, ., () — total digit 6–15",
-          },
-          submit: "BOOKING",
-          doneTitle: "Detail Booking",
-          lbl: {
-            ref: "Ref Number",
-            status: "Payment Status",
-            time: "Payment Time",
-            total: "Total Payment",
-            channel: "Metode Pembayaran",
-          },
-          receipt: "Get PDF Receipt",
-          done: "Selesai",
-          statusPaid: "Success",
-          statusPending: "Pending",
-          statusFailed: "Failed",
-          back: "Kembali ke Event",
-          help: "Ada kendala saat pembayaran?",
-          helpSub: "Hubungi help center kami ya!",
-        };
+      ? "Booth booking form for event representatives"
+      : "Form booking booth untuk representative event";
 
   return (
     <ConfigProvider
@@ -123,10 +184,16 @@ export default function FormRepContent({ locale = "id" }) {
         token: { colorPrimary: BLUE, colorInfo: BLUE, borderRadius: 12 },
       }}
     >
-      <main className="page">
+      <main
+        className="page form-rep-page"
+        aria-label={pageAriaLabel}
+        aria-labelledby="form-rep-heading"
+      >
         {/* ===== HERO ===== */}
         <section style={{ ...SHELL, paddingTop: 36, paddingBottom: 6 }}>
-          <h1 className="hero-title">{T.heroTitle}</h1>
+          <h1 id="form-rep-heading" className="hero-title">
+            {T.heroTitle}
+          </h1>
           <p className="hero-sub">{T.heroSub}</p>
 
           <div
@@ -153,7 +220,7 @@ export default function FormRepContent({ locale = "id" }) {
                 <h2 className="form-title">{T.formTitle}</h2>
                 <p className="form-tip">{T.tip}</p>
 
-                <form onSubmit={vm.onSubmit} className="form">
+                <form onSubmit={handleSubmit} className="form" noValidate>
                   <div className="grid">
                     <Field
                       label={T.fields.rep_name}
@@ -163,6 +230,7 @@ export default function FormRepContent({ locale = "id" }) {
                       placeholder={T.placeholders.rep_name}
                       error={vm?.errors?.rep_name}
                       required
+                      autoComplete="name"
                     />
                     <Field
                       label={T.fields.country}
@@ -172,6 +240,7 @@ export default function FormRepContent({ locale = "id" }) {
                       placeholder={T.placeholders.country}
                       error={vm?.errors?.country}
                       required
+                      autoComplete="country-name"
                     />
                     <Field
                       label={T.fields.campus_name}
@@ -181,6 +250,7 @@ export default function FormRepContent({ locale = "id" }) {
                       placeholder={T.placeholders.campus_name}
                       error={vm?.errors?.campus_name}
                       required
+                      autoComplete="organization"
                     />
                     <Field
                       label={T.fields.voucher_code}
@@ -189,6 +259,7 @@ export default function FormRepContent({ locale = "id" }) {
                       onChange={vm.onChange}
                       placeholder={T.placeholders.voucher_code}
                       error={vm?.errors?.voucher_code}
+                      autoComplete="off"
                     />
                     <Field
                       label={T.fields.campus_address}
@@ -198,6 +269,7 @@ export default function FormRepContent({ locale = "id" }) {
                       placeholder={T.placeholders.campus_address}
                       error={vm?.errors?.campus_address}
                       required
+                      autoComplete="street-address"
                     />
                     <Field
                       label={T.fields.email}
@@ -208,6 +280,7 @@ export default function FormRepContent({ locale = "id" }) {
                       error={vm?.errors?.email}
                       type="email"
                       required
+                      autoComplete="email"
                     />
                     <Field
                       label={T.fields.whatsapp}
@@ -220,10 +293,15 @@ export default function FormRepContent({ locale = "id" }) {
                       inputMode="tel"
                       pattern="^\+?\d([\s().-]?\d){5,19}$"
                       required
+                      autoComplete="tel"
                     />
                   </div>
 
-                  {Boolean(errorMsg) && <div className="alert">{errorMsg}</div>}
+                  {Boolean(errorMsg) && (
+                    <div className="alert" role="alert">
+                      {errorMsg}
+                    </div>
+                  )}
 
                   <div className="cta-row">
                     <button
@@ -239,7 +317,9 @@ export default function FormRepContent({ locale = "id" }) {
             ) : (
               /* ===== STEP 2 — DETAIL BOOKING ===== */
               <div className="step2">
-                <div className="big-check">✔</div>
+                <div className="big-check" aria-hidden="true">
+                  ✔
+                </div>
                 <h3 className="detail-title">{T.doneTitle}</h3>
 
                 <div className="pay-card">
@@ -298,7 +378,9 @@ export default function FormRepContent({ locale = "id" }) {
                 </div>
 
                 <div className="help">
-                  <div className="ic">ⓘ</div>
+                  <div className="ic" aria-hidden="true">
+                    ⓘ
+                  </div>
                   <div>
                     <div className="h">{T.help}</div>
                     <div className="p">{T.helpSub}</div>
@@ -317,11 +399,7 @@ export default function FormRepContent({ locale = "id" }) {
                   <button
                     type="button"
                     className="primary-btn slim"
-                    onClick={() =>
-                      router.push(
-                        `/user/events/rep?id=${encodeURIComponent(eventId)}`
-                      )
-                    }
+                    onClick={backToEvent}
                   >
                     {T.done}
                   </button>
@@ -596,6 +674,18 @@ export default function FormRepContent({ locale = "id" }) {
             }
           }
         `}</style>
+
+        {/* Anti horizontal scroll kecil */}
+        <style jsx global>{`
+          .form-rep-page {
+            overflow-x: hidden;
+          }
+          @supports (overflow: clip) {
+            .form-rep-page {
+              overflow-x: clip;
+            }
+          }
+        `}</style>
       </main>
     </ConfigProvider>
   );
@@ -613,12 +703,16 @@ function Field({
   type = "text",
   inputMode,
   pattern,
+  autoComplete,
 }) {
   const BLUE = "#0b56c9";
+  const errorId = error ? `${name}-error` : undefined;
+
   return (
     <div className="field">
       <label className="label" htmlFor={name}>
         {label}
+        {required ? <span style={{ color: "#dc2626" }}> *</span> : null}
       </label>
       <input
         id={name}
@@ -626,15 +720,21 @@ function Field({
         value={value}
         onChange={onChange}
         placeholder={placeholder}
-        autoComplete="off"
+        autoComplete={autoComplete}
         className={`input ${error ? "has-error" : ""}`}
         required={required}
         type={type}
         inputMode={inputMode}
         pattern={pattern}
         aria-required={required ? "true" : undefined}
+        aria-invalid={error ? "true" : undefined}
+        aria-describedby={errorId}
       />
-      {error ? <div className="err">{error}</div> : null}
+      {error ? (
+        <div id={errorId} className="err">
+          {error}
+        </div>
+      ) : null}
 
       <style jsx>{`
         .label {

@@ -1,5 +1,7 @@
+// app/(view)/user/(panel)/events/form-ticket/FormTicketContent.jsx
 "use client";
 
+import { useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import useFormTicketViewModel from "./useFormTicketViewModel";
 import { ConfigProvider, Steps } from "antd";
@@ -11,10 +13,31 @@ const BLUE = "#0b56c9";
 
 const safe = (v) => (v == null ? "" : String(v));
 
-export default function FormTicketContent({ locale = "id" }) {
+export default function FormTicketContent({
+  locale = "id",
+  eventId: eventIdProp = "",
+}) {
   const sp = useSearchParams();
   const router = useRouter();
-  const eventId = sp.get("id") || "";
+
+  // Event ID: utamakan dari props (server), fallback ke query
+  const eventId = useMemo(() => {
+    const fromProp = safe(eventIdProp).trim();
+    if (fromProp) return fromProp;
+    return sp.get("id") || "";
+  }, [eventIdProp, sp]);
+
+  // Simpan locale ke localStorage supaya sinkron dengan halaman lain
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem("oss.lang", locale);
+      } catch {
+        // ignore
+      }
+    }
+  }, [locale]);
+
   const vm = useFormTicketViewModel({ locale, eventId });
 
   const T =
@@ -88,7 +111,7 @@ export default function FormTicketContent({ locale = "id" }) {
 
   function appendBuster(url) {
     try {
-      const u = new URL(url, location.origin);
+      const u = new URL(url, window.location.origin);
       u.searchParams.set("_", Date.now().toString());
       return u.toString();
     } catch {
@@ -185,10 +208,19 @@ export default function FormTicketContent({ locale = "id" }) {
         token: { colorPrimary: BLUE, colorInfo: BLUE, borderRadius: 12 },
       }}
     >
-      <main className="page">
+      <main className="page" aria-labelledby="ticket-form-heading">
         {/* ===== HERO ===== */}
-        <section style={{ ...SHELL, paddingTop: 36, paddingBottom: 6 }}>
-          <h1 className="hero-title">{T.heroTitle}</h1>
+        <section
+          style={{ ...SHELL, paddingTop: 36, paddingBottom: 6 }}
+          aria-label={
+            locale === "en"
+              ? "OSS Bali event ticket registration"
+              : "Form pendaftaran tiket event OSS Bali"
+          }
+        >
+          <h1 id="ticket-form-heading" className="hero-title">
+            {T.heroTitle}
+          </h1>
           <p className="hero-sub">{T.heroSub}</p>
 
           <div
@@ -202,20 +234,28 @@ export default function FormTicketContent({ locale = "id" }) {
                   { title: T.step1.t, description: T.step1.s },
                   { title: T.step2.t, description: T.step2.s },
                 ]}
+                aria-label={
+                  locale === "en"
+                    ? "Ticket registration steps"
+                    : "Langkah pendaftaran tiket"
+                }
               />
             </div>
           </div>
         </section>
 
         {/* ===== FORM / SUCCESS ===== */}
-        <section style={{ ...SHELL, marginTop: 24, marginBottom: 120 }}>
+        <section
+          style={{ ...SHELL, marginTop: 24, marginBottom: 120 }}
+          aria-live="polite"
+        >
           <div className="card">
             {!vm.state.success ? (
               <>
                 <h2 className="form-title">{T.formTitle}</h2>
                 <p className="form-tip">{T.tip}</p>
 
-                <form onSubmit={vm.onSubmit} className="form">
+                <form onSubmit={vm.onSubmit} className="form" noValidate>
                   <div className="grid">
                     <Field
                       label={T.name}
@@ -224,6 +264,7 @@ export default function FormTicketContent({ locale = "id" }) {
                       onChange={vm.onChange}
                       placeholder={T.placeholders.name}
                       error={vm.errors.full_name}
+                      autoComplete="name"
                     />
                     <Field
                       label={T.whatsapp}
@@ -232,6 +273,7 @@ export default function FormTicketContent({ locale = "id" }) {
                       onChange={vm.onChange}
                       placeholder={T.placeholders.whatsapp}
                       error={vm.errors.whatsapp}
+                      autoComplete="tel"
                     />
                     <Field
                       label={T.school}
@@ -240,6 +282,7 @@ export default function FormTicketContent({ locale = "id" }) {
                       onChange={vm.onChange}
                       placeholder={T.placeholders.school}
                       error={vm.errors.school_or_campus}
+                      autoComplete="organization"
                     />
                     <Field
                       label={T.class}
@@ -248,14 +291,17 @@ export default function FormTicketContent({ locale = "id" }) {
                       onChange={vm.onChange}
                       placeholder={T.placeholders.class}
                       error={vm.errors.class_or_semester}
+                      autoComplete="off"
                     />
                     <Field
                       label={T.email}
                       name="email"
+                      type="email"
                       value={vm.model.email}
                       onChange={vm.onChange}
                       placeholder={T.placeholders.email}
                       error={vm.errors.email}
+                      autoComplete="email"
                     />
                     <Field
                       label={T.domicile}
@@ -264,11 +310,14 @@ export default function FormTicketContent({ locale = "id" }) {
                       onChange={vm.onChange}
                       placeholder={T.placeholders.domicile}
                       error={vm.errors.domicile}
+                      autoComplete="address-level2"
                     />
                   </div>
 
                   {vm.state.error && (
-                    <div className="alert">{vm.state.error}</div>
+                    <div className="alert" role="alert">
+                      {vm.state.error}
+                    </div>
                   )}
 
                   <div className="cta-row">
@@ -295,7 +344,16 @@ export default function FormTicketContent({ locale = "id" }) {
                       key={ticketCode}
                       className="qr"
                       src={qrSrc}
-                      alt="Ticket QR" title="Ticket QR"
+                      alt={
+                        locale === "en"
+                          ? "QR code for your OSS event ticket"
+                          : "Kode QR untuk tiket event OSS kamu"
+                      }
+                      title={
+                        locale === "en"
+                          ? "OSS event ticket QR code"
+                          : "QR Code tiket event OSS"
+                      }
                       loading="eager"
                       onError={(e) => {
                         e.currentTarget.onerror = null;
@@ -309,7 +367,8 @@ export default function FormTicketContent({ locale = "id" }) {
                     <img
                       className="qr-logo"
                       src="/images/loading.png"
-                      alt="OSS logo" title="OSS logo"
+                      alt="OSS logo"
+                      title="OSS logo"
                       aria-hidden="true"
                     />
                   </div>
@@ -334,7 +393,9 @@ export default function FormTicketContent({ locale = "id" }) {
                     className="primary-btn slim"
                     onClick={() =>
                       router.push(
-                        `/user/events/peserta?id=${encodeURIComponent(eventId)}`
+                        `/user/events/peserta?id=${encodeURIComponent(
+                          eventId
+                        )}&lang=${locale}`
                       )
                     }
                   >
@@ -346,6 +407,7 @@ export default function FormTicketContent({ locale = "id" }) {
           </div>
         </section>
 
+        {/* === styles tetap sama seperti punyamu (dipertahankan) === */}
         <style jsx>{`
           .page {
             background: radial-gradient(
@@ -577,7 +639,16 @@ export default function FormTicketContent({ locale = "id" }) {
 }
 
 /* ------- Field component ------- */
-function Field({ label, name, value, onChange, placeholder, error }) {
+function Field({
+  label,
+  name,
+  value,
+  onChange,
+  placeholder,
+  error,
+  autoComplete = "off",
+  type = "text",
+}) {
   const BLUE = "#0b56c9";
   return (
     <div className="field">
@@ -587,10 +658,11 @@ function Field({ label, name, value, onChange, placeholder, error }) {
       <input
         id={name}
         name={name}
+        type={type}
         value={value}
         onChange={onChange}
         placeholder={placeholder}
-        autoComplete="off"
+        autoComplete={autoComplete}
         className={`input ${error ? "has-error" : ""}`}
       />
       {error ? <div className="err">{error}</div> : null}

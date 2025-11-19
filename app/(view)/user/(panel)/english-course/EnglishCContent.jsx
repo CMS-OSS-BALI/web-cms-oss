@@ -2,12 +2,23 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Row, Col, Card, Typography, Button, Skeleton, Alert } from "antd";
 import { Check, MessageCircle, Calendar } from "lucide-react";
+
+import useEnglishCViewModel from "./useEnglishCViewModel";
 
 const { Title } = Typography;
 
 const FONT_FAMILY = '"Public Sans", sans-serif';
+
+/* ========== Locale helper (client, sama pola dengan page lain) ========== */
+const pickLocaleClient = (lang, ls, fallback = "id") => {
+  const v = String(lang || ls || fallback)
+    .slice(0, 2)
+    .toLowerCase();
+  return v === "en" ? "en" : "id";
+};
 
 /* ----------------- Base Styles ----------------- */
 const styles = {
@@ -269,7 +280,10 @@ function Img({ src, alt, style }) {
   // eslint-disable-next-line @next/next/no-img-element
   return (
     <img
-      src={src}
+      src={
+        src ||
+        "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=1200&auto=format&fit=crop"
+      }
       alt={alt || ""}
       title={alt || ""}
       style={style}
@@ -346,16 +360,56 @@ function useRevealOnScroll(deps = []) {
 }
 
 /* ----------------- Component ----------------- */
-export default function EnglishCContent({
-  locale = "id",
-  hero,
-  description,
-  packages,
-  loading,
-  error,
-}) {
+export default function EnglishCContent(props) {
   const {
-    // fallback copy disamakan dengan desain
+    initialLocale,
+    initialServiceType,
+    locale: localeProp,
+    serviceType: serviceTypeProp,
+  } = props || {};
+
+  const search = useSearchParams();
+
+  // ===== Locale client-side (sinkron dengan halaman lain) =====
+  const baseLocale = initialLocale || localeProp || "id";
+
+  const locale = useMemo(() => {
+    const fromQuery = search?.get("lang") || search?.get("locale") || "";
+    const fromLs =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem("oss.lang") || ""
+        : "";
+    return pickLocaleClient(fromQuery || baseLocale, fromLs);
+  }, [search, baseLocale]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem("oss.lang", locale);
+      } catch {
+        // ignore
+      }
+    }
+  }, [locale]);
+
+  // ===== Service type (B2B/B2C) dari query / initial =====
+  const baseServiceType = serviceTypeProp || initialServiceType;
+
+  const serviceType = useMemo(() => {
+    const fromQuery = search?.get("type") || search?.get("service_type") || "";
+    const up = String(fromQuery || baseServiceType || "")
+      .trim()
+      .toUpperCase();
+    return up === "B2B" || up === "B2C" ? up : undefined;
+  }, [search, baseServiceType]);
+
+  // ===== View model di client (seperti DocumentTranslate / Accommodation) =====
+  const { hero, description, packages, loading, error } = useEnglishCViewModel({
+    locale,
+    serviceType,
+  });
+
+  const {
     title = tt(locale, "Kursus Bahasa Inggris", "English Course"),
     subtitle = tt(
       locale,
@@ -365,6 +419,7 @@ export default function EnglishCContent({
     bullets = [],
     illustration,
   } = hero || {};
+
   const heroBullets = Array.isArray(bullets) ? bullets : [];
 
   const priceFmt = useMemo(
@@ -392,7 +447,7 @@ export default function EnglishCContent({
     };
   }, []);
 
-  useRevealOnScroll([packages?.length, loading]);
+  useRevealOnScroll([packages?.length || 0, loading]);
 
   const sectionInnerStyle = useMemo(
     () => ({
@@ -634,7 +689,7 @@ export default function EnglishCContent({
                           ))}
                         </ul>
 
-                        {/* PRICE PILL – inside card, seperti desain */}
+                        {/* PRICE PILL – inside card */}
                         <div style={styles.pack.pricePill}>
                           {priceFmt.format(p?.price || 0)}
                         </div>

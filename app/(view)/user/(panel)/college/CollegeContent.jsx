@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import useCollegeViewModel from "./useCollegeViewModel";
 import { Swiper, SwiperSlide } from "swiper/react";
@@ -28,6 +29,14 @@ function normalizeImgSrc(input) {
     "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>"
   );
 }
+
+/* ---------- Locale helper (mirror BlogUContent) ---------- */
+const pickLocaleClient = (lang, ls, fallback = "id") => {
+  const v = String(lang || ls || fallback)
+    .slice(0, 2)
+    .toLowerCase();
+  return v === "en" ? "en" : "id";
+};
 
 /* ---------- Icons ---------- */
 const BulletIcon = ({ type }) => {
@@ -359,8 +368,6 @@ const styles = {
       borderRadius: 999,
       margin: "8px auto 0",
     },
-
-    // ⬇️ SQUARE CARD 1:1
     card: {
       background: "#fff",
       borderRadius: 18,
@@ -370,7 +377,7 @@ const styles = {
       alignItems: "center",
       justifyContent: "center",
       width: "100%",
-      aspectRatio: "1 / 1", // <- memastikan kotak 1:1
+      aspectRatio: "1 / 1",
       transition: "transform .18s ease, box-shadow .18s ease",
     },
     logoBox: {
@@ -386,33 +393,50 @@ const styles = {
 };
 
 /* ================== Component ================== */
-export default function CollegeContent({ locale = "id" }) {
-  /* init reveal on scroll */
-  useRevealOnScroll([]);
+export default function CollegeContent({
+  locale: initialLocale = "id",
+  initialQuery = "",
+  initialCountry = "",
+}) {
+  const search = useSearchParams();
 
-  /* search state */
-  const [query, setQuery] = useState("");
-  const [country, setCountry] = useState("");
-  const [qApplied, setQApplied] = useState("");
-  const [countryApplied, setCountryApplied] = useState("");
+  // === locale dinamis (query ?lang + localStorage) ===
+  const baseLocale = initialLocale || "id";
+  const locale = useMemo(() => {
+    const fromQuery = search?.get("lang") || "";
+    const fromLs =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem("oss.lang") || ""
+        : "";
+    return pickLocaleClient(fromQuery || baseLocale, fromLs);
+  }, [search, baseLocale]);
+
+  // sinkronkan ke localStorage
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("oss.lang", locale);
+    }
+  }, [locale]);
+
+  /* init reveal on scroll */
+  useRevealOnScroll([locale]);
+
+  /* search state – seed dari props (searchParams) */
+  const [query, setQuery] = useState(() => initialQuery || "");
+  const [country, setCountry] = useState(() => initialCountry || "");
+  const [qApplied, setQApplied] = useState(() => initialQuery || "");
+  const [countryApplied, setCountryApplied] = useState(
+    () => initialCountry || ""
+  );
   const inputRef = useRef(null);
   const listRef = useRef(null);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    const q = params.get("q") || "";
-    const c = params.get("country") || "";
-    setQuery(q);
-    setCountry(c);
-    setQApplied(q);
-    setCountryApplied(c);
-  }, []);
 
   const doSearch = () => {
     setQApplied(query);
     setCountryApplied(country);
     listRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+    // update URL (tanpa reload) supaya bisa di-share, tetap menjaga ?lang=
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
       query ? url.searchParams.set("q", query) : url.searchParams.delete("q");
@@ -425,7 +449,7 @@ export default function CollegeContent({ locale = "id" }) {
 
   const {
     hero,
-    search,
+    search: searchMeta,
     recommendedUniversity = {},
     universities = [],
     jpMatchesByCollegeId = {},
@@ -551,7 +575,7 @@ export default function CollegeContent({ locale = "id" }) {
                       onChange={(e) => setQuery(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && doSearch()}
                       style={styles.search.input}
-                      aria-label={search.label}
+                      aria-label={searchMeta?.label || ""}
                     />
                   </div>
 
@@ -562,12 +586,13 @@ export default function CollegeContent({ locale = "id" }) {
                       }
                       value={country}
                       onChange={(e) => {
-                        setCountry(e.target.value);
-                        setCountryApplied(e.target.value);
+                        const val = e.target.value;
+                        setCountry(val);
+                        setCountryApplied(val);
                         if (typeof window !== "undefined") {
                           const url = new URL(window.location.href);
-                          e.target.value
-                            ? url.searchParams.set("country", e.target.value)
+                          val
+                            ? url.searchParams.set("country", val)
                             : url.searchParams.delete("country");
                           window.history.replaceState({}, "", url.toString());
                         }
@@ -596,59 +621,12 @@ export default function CollegeContent({ locale = "id" }) {
                 </div>
               </div>
             </div>
-
-            {/* responsive helpers */}
-            <style>{`
-              @supports (height: 100dvh) {
-                .hero-frame { height: calc(100dvh - var(--nav-h, 88px)); }
-              }
-              @supports (height: 100svh) {
-                .hero-frame { min-height: calc(100svh - var(--nav-h, 88px)); }
-              }
-            `}</style>
           </div>
         </div>
       </section>
 
       {/* ========== UNIVERSITY LIST ========== */}
       <section ref={listRef} style={styles.uni.section}>
-        <style>{`
-          .uni-card:focus-within,
-          .uni-card:focus {
-            outline: 3px solid #5aa8ff;
-            outline-offset: 2px;
-          }
-          @media (hover:hover){
-            .uni-card:hover{
-              transform: translateY(-3px);
-              box-shadow: 0 16px 36px rgba(15,23,42,.14);
-            }
-            .uni-card:hover a { transform: translateY(-1px); }
-          }
-
-          /* MOBILE: logo di atas, deskripsi di bawah */
-          @media (max-width: 900px) {
-            .uni-card { 
-              grid-template-columns: 1fr !important;
-              padding-bottom: 56px; 
-            }
-            .uni-logo{
-              width: 100%;
-              aspect-ratio: 3 / 1;
-              border-radius: 12px;
-              background: #f6f7fb;
-            }
-            .uni-footer{ 
-              position: static !important; 
-              margin-top: 12px; 
-              justify-content: flex-end; 
-            }
-          }
-          @media (max-width: 520px) {
-            .uni-card { gap: 12px; padding: 14px 14px 20px; }
-          }
-        `}</style>
-
         {(universities || []).length === 0 ? (
           <div
             className="reveal"
@@ -802,77 +780,64 @@ export default function CollegeContent({ locale = "id" }) {
           </div>
 
           {relevantCampus.length > 0 ? (
-            <>
-              <Swiper
-                className={`${RELEVANT_CAMPUS_SWIPER_CLASS} reveal`}
-                data-anim="zoom"
-                style={{ ["--rvd"]: "100ms" }}
-                modules={[Autoplay, FreeMode]}
-                loop={hasMultipleRelevantCampus}
-                speed={MARQUEE_SPEED}
-                autoplay={relevantCampusAutoplay}
-                slidesPerView="auto"
-                spaceBetween={24}
-                freeMode={relevantCampusAutoplay ? marqueeFreeMode : undefined}
-                allowTouchMove={false}
-              >
-                {relevantCampus.map((c, idx) => {
-                  if (!c?.logo_url) return null;
-                  const src = normalizeImgSrc(c.logo_url);
-                  return (
-                    <SwiperSlide
-                      key={c.id || idx}
-                      style={{ width: "min(240px, 72vw)" }}
+            <Swiper
+              className={`${RELEVANT_CAMPUS_SWIPER_CLASS} reveal`}
+              data-anim="zoom"
+              style={{ ["--rvd"]: "100ms" }}
+              modules={[Autoplay, FreeMode]}
+              loop={hasMultipleRelevantCampus}
+              speed={MARQUEE_SPEED}
+              autoplay={relevantCampusAutoplay}
+              slidesPerView="auto"
+              spaceBetween={24}
+              freeMode={relevantCampusAutoplay ? marqueeFreeMode : undefined}
+              allowTouchMove={false}
+            >
+              {relevantCampus.map((c, idx) => {
+                if (!c?.logo_url) return null;
+                const src = normalizeImgSrc(c.logo_url);
+                return (
+                  <SwiperSlide
+                    key={c.id || idx}
+                    style={{ width: "min(240px, 72vw)" }}
+                  >
+                    <div
+                      style={styles.relevant.card}
+                      onMouseEnter={(e) =>
+                        Object.assign(e.currentTarget.style, {
+                          transform: "translateY(-3px)",
+                          boxShadow: "0 14px 32px rgba(15,23,42,.14)",
+                        })
+                      }
+                      onMouseLeave={(e) =>
+                        Object.assign(e.currentTarget.style, {
+                          transform: "",
+                          boxShadow: "0 10px 26px rgba(15,23,42,.10)",
+                        })
+                      }
                     >
-                      <div
-                        style={styles.relevant.card}
-                        onMouseEnter={(e) =>
-                          Object.assign(e.currentTarget.style, {
-                            transform: "translateY(-3px)",
-                            boxShadow: "0 14px 32px rgba(15,23,42,.14)",
-                          })
-                        }
-                        onMouseLeave={(e) =>
-                          Object.assign(e.currentTarget.style, {
-                            transform: "",
-                            boxShadow: "0 10px 26px rgba(15,23,42,.10)",
-                          })
-                        }
-                      >
-                        <div style={styles.relevant.logoBox}>
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={src}
-                            alt={`${c.name || "campus"} logo`}
-                            title={c.name || "campus"}
-                            loading="lazy"
-                            style={{
-                              width: "100%",
-                              height: "100%",
-                              objectFit: "contain",
-                            }}
-                            onError={(e) =>
-                              e.currentTarget
-                                ?.closest(".swiper-slide")
-                                ?.remove()
-                            }
-                          />
-                        </div>
+                      <div style={styles.relevant.logoBox}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={src}
+                          alt={`${c.name || "campus"} logo`}
+                          title={c.name || "campus"}
+                          loading="lazy"
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "contain",
+                          }}
+                          onError={(e) =>
+                            e.currentTarget?.closest(".swiper-slide")?.remove()
+                          }
+                        />
                       </div>
-                    </SwiperSlide>
-                  );
-                })}
-              </Swiper>
-
-              <style>{`
-                .${RELEVANT_CAMPUS_SWIPER_CLASS} { overflow: visible; padding: 6px 2px; }
-                .${RELEVANT_CAMPUS_SWIPER_CLASS} .swiper-wrapper { align-items: stretch; transition-timing-function: linear !important; }
-                .${RELEVANT_CAMPUS_SWIPER_CLASS} .swiper-slide { height: auto; display: flex; align-items: stretch; }
-                .${RELEVANT_CAMPUS_SWIPER_CLASS} .swiper-pagination,
-                .${RELEVANT_CAMPUS_SWIPER_CLASS} .swiper-button-next,
-                .${RELEVANT_CAMPUS_SWIPER_CLASS} .swiper-button-prev { display: none !important; }
-              `}</style>
-            </>
+                    </div>
+                  </SwiperSlide>
+                );
+              })}
+            </Swiper>
           ) : (
             <div
               className="reveal"
@@ -887,8 +852,81 @@ export default function CollegeContent({ locale = "id" }) {
         </div>
       </section>
 
-      {/* ==== GLOBAL ANIMATION & RESPONSIVE TIDY ==== */}
-      <style>{`
+      {/* ==== GLOBAL ANIMATION & RESPONSIVE TIDY (single string) ==== */}
+      <style jsx global>{`
+        /* Hero height supports */
+        @supports (height: 100dvh) {
+          .hero-frame {
+            height: calc(100dvh - var(--nav-h, 88px));
+          }
+        }
+        @supports (height: 100svh) {
+          .hero-frame {
+            min-height: calc(100svh - var(--nav-h, 88px));
+          }
+        }
+
+        /* University card */
+        .uni-card:focus-within,
+        .uni-card:focus {
+          outline: 3px solid #5aa8ff;
+          outline-offset: 2px;
+        }
+        @media (hover: hover) {
+          .uni-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 16px 36px rgba(15, 23, 42, 0.14);
+          }
+          .uni-card:hover a {
+            transform: translateY(-1px);
+          }
+        }
+
+        /* MOBILE: logo di atas, deskripsi di bawah */
+        @media (max-width: 900px) {
+          .uni-card {
+            grid-template-columns: 1fr !important;
+            padding-bottom: 56px;
+          }
+          .uni-logo {
+            width: 100%;
+            aspect-ratio: 3 / 1;
+            border-radius: 12px;
+            background: #f6f7fb;
+          }
+          .uni-footer {
+            position: static !important;
+            margin-top: 12px;
+            justify-content: flex-end;
+          }
+        }
+        @media (max-width: 520px) {
+          .uni-card {
+            gap: 12px;
+            padding: 14px 14px 20px;
+          }
+        }
+
+        /* Relevant campus swiper */
+        .${RELEVANT_CAMPUS_SWIPER_CLASS} {
+          overflow: visible;
+          padding: 6px 2px;
+        }
+        .${RELEVANT_CAMPUS_SWIPER_CLASS} .swiper-wrapper {
+          align-items: stretch;
+          transition-timing-function: linear !important;
+        }
+        .${RELEVANT_CAMPUS_SWIPER_CLASS} .swiper-slide {
+          height: auto;
+          display: flex;
+          align-items: stretch;
+        }
+        .${RELEVANT_CAMPUS_SWIPER_CLASS} .swiper-pagination,
+        .${RELEVANT_CAMPUS_SWIPER_CLASS} .swiper-button-next,
+        .${RELEVANT_CAMPUS_SWIPER_CLASS} .swiper-button-prev {
+          display: none !important;
+        }
+
         /* Reveal animation */
         .reveal {
           opacity: 0;
@@ -898,34 +936,60 @@ export default function CollegeContent({ locale = "id" }) {
           transition-delay: var(--rvd, 0ms);
           will-change: opacity, transform;
         }
-        .reveal[data-anim="up"] { --reveal-from: translate3d(0, 18px, 0); }
-        .reveal[data-anim="down"] { --reveal-from: translate3d(0, -18px, 0); }
-        .reveal[data-anim="left"] { --reveal-from: translate3d(-18px, 0, 0); }
-        .reveal[data-anim="right"] { --reveal-from: translate3d(18px, 0, 0); }
-        .reveal[data-anim="zoom"] { --reveal-from: scale(0.96); }
-        .reveal.is-visible { opacity: 1; transform: none; }
+        .reveal[data-anim="up"] {
+          --reveal-from: translate3d(0, 18px, 0);
+        }
+        .reveal[data-anim="down"] {
+          --reveal-from: translate3d(0, -18px, 0);
+        }
+        .reveal[data-anim="left"] {
+          --reveal-from: translate3d(-18px, 0, 0);
+        }
+        .reveal[data-anim="right"] {
+          --reveal-from: translate3d(18px, 0, 0);
+        }
+        .reveal[data-anim="zoom"] {
+          --reveal-from: scale(0.96);
+        }
+        .reveal.is-visible {
+          opacity: 1;
+          transform: none;
+        }
         @media (prefers-reduced-motion: reduce) {
-          .reveal { transition: none !important; opacity: 1 !important; transform: none !important; }
+          .reveal {
+            transition: none !important;
+            opacity: 1 !important;
+            transform: none !important;
+          }
         }
 
-        html, body { overflow-x: clip; }
+        html,
+        body {
+          overflow-x: clip;
+        }
 
         /* <=768px: search & filter STACK */
-        @media (max-width: 768px){
-          :root { --nav-h: 72px; }
-          .hero-search-row{
+        @media (max-width: 768px) {
+          :root {
+            --nav-h: 72px;
+          }
+          .hero-search-row {
             flex-direction: column;
             gap: 12px;
             width: 100%;
           }
           .hero-search-row .hs-search,
-          .hero-search-row .hs-filter{
+          .hero-search-row .hs-filter {
             height: 56px !important;
             width: 100%;
             min-width: 0;
           }
-          .hero-search-row .hs-filter{ padding: 0 18px !important; }
-          .ant-pagination { font-size: 12px; }
+          .hero-search-row .hs-filter {
+            padding: 0 18px !important;
+          }
+          .ant-pagination {
+            font-size: 12px;
+          }
         }
       `}</style>
     </>

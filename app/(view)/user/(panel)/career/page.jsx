@@ -1,30 +1,36 @@
-"use client";
-
-import { Suspense, lazy, useMemo } from "react";
-import { useSearchParams } from "next/navigation";
+// app/(view)/user/(panel)/career/page.jsx  (sesuaikan dengan strukturmu)
+import { Suspense } from "react";
 import Loading from "@/app/components/loading/LoadingImage";
-import useCareerViewModel from "./useCareerViewModel";
+import CareerContent from "./CareerContent";
+import { buildUserMetadata, pickLocale } from "@/app/seo/userMetadata";
 
-const CareerContentLazy = lazy(() => import("./CareerContent"));
+// Dynamic metadata untuk Career page
+export async function generateMetadata({ searchParams }) {
+  const locale = pickLocale(searchParams?.lang);
 
-const pickLocale = (q, ls) => {
-  const v = (q || ls || "id").slice(0, 2).toLowerCase();
-  return v === "en" ? "en" : "id";
-};
+  const title =
+    locale === "en"
+      ? "Career & Referral Program – OSS Bali"
+      : "Karier & Program Sahabat Referral – OSS Bali";
 
-export default function CareerPage() {
-  const search = useSearchParams();
+  const description =
+    locale === "en"
+      ? "Explore career opportunities and the Sahabat Referral program with OSS Bali. Join our team or become a referral partner and earn rewards."
+      : "Jelajahi peluang karier dan Program Sahabat Referral bersama OSS Bali. Bergabung dengan tim kami atau jadi mitra referral dan dapatkan berbagai benefit.";
 
-  const locale = useMemo(() => {
-    const q = search?.get("lang") || "";
-    const ls =
-      typeof window !== "undefined"
-        ? localStorage.getItem("oss.lang") || ""
-        : "";
-    return pickLocale(q, ls);
-  }, [search]);
+  return buildUserMetadata({
+    title,
+    description,
+    // SESUAIKAN dengan route sebenarnya kalau beda
+    path: "/career",
+    locale,
+    type: "website",
+  });
+}
 
-  const vm = useCareerViewModel({ locale });
+// Server component, membungkus CareerContent (client)
+export default function CareerPage({ searchParams }) {
+  const locale = pickLocale(searchParams?.lang);
 
   return (
     <Suspense
@@ -34,8 +40,8 @@ export default function CareerPage() {
         </div>
       }
     >
-      {/* key ensures remount when ?lang changes */}
-      <CareerContentLazy key={locale} {...vm} />
+      {/* initialLocale dipakai CareerContent untuk sinkron ?lang + localStorage */}
+      <CareerContent initialLocale={locale} />
     </Suspense>
   );
 }

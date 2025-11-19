@@ -10,7 +10,7 @@ const COPY = {
   id: {
     heroTitle: "Jelajahi Dunia Mulai Dari Cerita Mereka",
     heroSubtitle:
-      "Temukan Semua Yang Anda Butuhkan Untuk Mewujudkan Studi Dan Karier Impian Anda. Mulai Dari Tips Tuntas, Kegiatan Menarik, Panduan Proses Dari A–Z, Kisah Perjalanan Nyata Langsung Dari Mahasiswa Yang Telah Mewujudkan Mimpi Kuliah Di Luar Negeri. OSS Bali Hadir Untuk Menjawab Semua Tantangan Calon Mahasiswa Yang Ingin Melanjutkan Langkah Awal Dengan Eksplorasi Artikel Inspiratif Kami! #Wemakeyourpriority",
+      "Temukan Semua Yang Anda Butuhkan Untuk Mewujudkan Studi Dan Karier Impian Anda. Mulai Dari Tips Tuntas, Kegiatan Menarik, Panduan Proses Dari A–Z, Kisah Perjalanan Nyata Langsung Dari Mahasiswa Yang Telah Mewujudkan Mimpi Kuliah Di Luar Negeri. OSS Bali Hadir Untuk Menjawab Semua Tantangan Calon Mahasiswa Yang Ingin Melanjutkan Langkah Awal Dengan Eksplorasi Artikel Inspiratif Kami! #WEMAKEYOUPRIORITY",
     searchPlaceholder: "Cari judul berita",
     filter: "Filter",
     allCategories: "Semua Kategori",
@@ -25,7 +25,7 @@ const COPY = {
   en: {
     heroTitle: "GLOBAL INSIGHTS, BOUNDLESS OPPORTUNITIES",
     heroSubtitle:
-      "Discover inspiration and the latest news from top universities worldwide.",
+      "Find everything you need to make your studies and career dreams come true. From comprehensive tips, exciting activities, step-by-step guides, to real-life stories directly from students who have realized their dreams of studying abroad. OSS Bali is here to address all the challenges faced by prospective students who want to take their first steps with our inspiring articles! #WEMAKEYOUPRIORITY",
     searchPlaceholder: "Search blog title",
     filter: "Filter",
     allCategories: "All Categories",

@@ -24,6 +24,8 @@ import {
   ConfigProvider,
 } from "antd";
 import { FileDown, MessageCircle } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import useCalculatorViewModel from "./useCalculatorViewModel";
 
 const { Title, Text } = Typography;
 
@@ -35,6 +37,16 @@ const TOKENS = {
   maxW: 1220,
   blue: "#0b56c9",
   text: "#0f172a",
+};
+
+/* =========================
+   Locale helper (client)
+========================= */
+const pickLocaleClient = (lang, ls, fallback = "id") => {
+  const v = String(lang || ls || fallback)
+    .slice(0, 2)
+    .toLowerCase();
+  return v === "en" ? "en" : "id";
 };
 
 /* =========================
@@ -177,7 +189,37 @@ function GlowCard({ children, style, bodyStyle }) {
 }
 
 export default function CalculatorContent(props) {
-  const { locale = "id", loading, error: fetchError, categories } = props;
+  const { initialLocale, locale: localeProp } = props || {};
+  const search = useSearchParams();
+
+  // ===== Locale client-side (sinkron dengan pattern page lain) =====
+  const baseLocale = initialLocale || localeProp || "id";
+
+  const locale = useMemo(() => {
+    const fromQuery = search?.get("lang") || "";
+    const fromLs =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem("oss.lang") || ""
+        : "";
+    return pickLocaleClient(fromQuery, fromLs, baseLocale);
+  }, [search, baseLocale]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("oss.lang", locale);
+    }
+  }, [locale]);
+
+  // ===== ViewModel dieksekusi di client component =====
+  const {
+    loading,
+    error: fetchError,
+    categories,
+  } = useCalculatorViewModel({
+    locale,
+    fallback: locale === "id" ? "en" : "id",
+  });
+
   const t = T(locale);
 
   /* ========== Options from VM ========== */
@@ -804,9 +846,7 @@ export default function CalculatorContent(props) {
 
             {/* RIGHT: summary */}
             <Col xs={24} lg={10}>
-              <div
-                style={{ position: isMobile ? "static" : "sticky", top: 12 }}
-              >
+              <div style={styles.sticky}>
                 <GlowCard>
                   <div ref={estimatedRef}>
                     <Space
@@ -923,4 +963,3 @@ export default function CalculatorContent(props) {
     </ConfigProvider>
   );
 }
-

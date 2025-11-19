@@ -14,12 +14,37 @@ function pickLocale(source) {
 /** Alternates & html lang via metadata */
 export function generateMetadata({ searchParams }) {
   const lang = pickLocale(searchParams?.lang);
+
+  // Ambil info request + pathname aktual
+  const h = headers();
+  const pathname = h.get("x-pathname") || "/"; // fallback kalau header belum ada
+  const host = h.get("x-forwarded-host") || h.get("host") || "example.com";
+  const protocol = h.get("x-forwarded-proto") || "https";
+  const origin = `${protocol}://${host}`;
+
+  // Helper untuk bikin URL absolut per bahasa
+  const makeUrl = (langValue) => {
+    const url = new URL(pathname, origin);
+    if (langValue) {
+      url.searchParams.set("lang", langValue);
+    } else {
+      url.searchParams.delete("lang");
+    }
+    return url.toString();
+  };
+
+  const canonicalUrl = makeUrl(lang); // versi bahasa aktif
+  const defaultUrl = makeUrl(null); // x-default tanpa ?lang=
+  const enUrl = makeUrl("en"); // versi Inggris
+  const idUrl = makeUrl("id"); // versi Indonesia
+
   return {
     alternates: {
-      canonical: `?lang=${lang}`,
+      canonical: canonicalUrl,
       languages: {
-        en: `?lang=en`,
-        id: `?lang=id`,
+        "x-default": defaultUrl,
+        en: enUrl,
+        id: idUrl,
       },
     },
   };

@@ -1,9 +1,16 @@
 "use client";
 
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  useEffect,
+} from "react";
 import { Typography, Button } from "antd";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import useCareerViewModel from "./useCareerViewModel";
 
 const { Title, Paragraph } = Typography;
 
@@ -20,6 +27,14 @@ function useIsNarrow(breakpoint = 900) {
   }, [breakpoint]);
   return n;
 }
+
+/* ===== locale helper (client) ===== */
+const pickLocaleClient = (lang, ls, fallback = "id") => {
+  const v = String(lang || ls || fallback)
+    .slice(0, 2)
+    .toLowerCase();
+  return v === "en" ? "en" : "id";
+};
 
 /* ===== helpers: youtube ===== */
 function toYouTubeId(input = "") {
@@ -405,25 +420,70 @@ const styles = {
   },
 };
 
-export default function CareerContent({
-  hero,
-  cta,
-  vacancy,
-  referral,
-  benefits = [],
-  onCTATeam,
-  onCTAReferral,
-  onSendCV,
-  ctaImage,
-  levels,
-  levelsCTA,
-  onLevelsCTA,
-  levelsHeroImg,
-}) {
+export default function CareerContent(props) {
+  const {
+    initialLocale,
+    locale: localeProp,
+    hero: heroOverride,
+    cta: ctaOverride,
+    vacancy: vacancyOverride,
+    referral: referralOverride,
+    benefits: benefitsOverride,
+    onCTATeam: onCTATeamOverride,
+    onCTAReferral: onCTAReferralOverride,
+    onSendCV: onSendCVOverride,
+    ctaImage: ctaImageOverride,
+    levels: levelsOverride,
+    levelsCTA: levelsCTAOverride,
+    onLevelsCTA: onLevelsCTAOverride,
+    levelsHeroImg: levelsHeroImgOverride,
+  } = props || {};
+
   const router = useRouter();
+  const search = useSearchParams();
   const isNarrow = useIsNarrow(900); // tablet breakpoint
   const isCompact = useIsNarrow(640); // phone breakpoint
   const [play, setPlay] = useState(false);
+
+  // ===== Locale (client) =====
+  const baseLocale = initialLocale ?? localeProp ?? "id";
+
+  const locale = useMemo(() => {
+    const fromQuery = search?.get("lang") || "";
+    const fromLs =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem("oss.lang") || ""
+        : "";
+    return pickLocaleClient(fromQuery, fromLs, baseLocale);
+  }, [search, baseLocale]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("oss.lang", locale);
+    }
+  }, [locale]);
+
+  // ===== ViewModel (client) =====
+  const vm = useCareerViewModel({ locale }) || {};
+
+  // Merge data: props override > VM
+  const hero = heroOverride ?? vm.hero ?? {};
+  const cta = ctaOverride ?? vm.cta ?? {};
+  const vacancy = vacancyOverride ?? vm.vacancy ?? {};
+  const referral = referralOverride ?? vm.referral ?? {};
+  const benefits = benefitsOverride ?? vm.benefits ?? [];
+  const ctaImage = ctaImageOverride ?? vm.ctaImage;
+  const levels = levelsOverride ?? vm.levels;
+  const levelsCTA = levelsCTAOverride ?? vm.levelsCTA;
+  const levelsHeroImg = levelsHeroImgOverride ?? vm.levelsHeroImg;
+  const onCTATeam = onCTATeamOverride ?? vm.onCTATeam;
+  const onCTAReferral = onCTAReferralOverride ?? vm.onCTAReferral;
+  const onSendCV = onSendCVOverride ?? vm.onSendCV;
+  const onLevelsCTA = onLevelsCTAOverride ?? vm.onLevelsCTA;
+
+  const heroImg = hero.image || "/images/loading.png";
+  const ctaImg = ctaImage || "/cta-girl.svg";
+  const vacImg = vacancy?.image || "/images/loading.png";
 
   /* Refs */
   const vacRef = useRef(null);
@@ -454,9 +514,6 @@ export default function CareerContent({
     if (onCTAReferral) return onCTAReferral();
     router.push("/user/referral?menu=career");
   }, [onLevelsCTA, onCTAReferral, router]);
-
-  const ctaImg = ctaImage || "/cta-girl.svg";
-  const vacImg = vacancy?.image || "/images/loading.png";
 
   /* Responsive hero */
   const heroFrameStyle = {
@@ -519,7 +576,7 @@ export default function CareerContent({
         <div style={styles.heroBleed}>
           <div style={heroFrameStyle}>
             <Image
-              src={hero.image}
+              src={heroImg}
               alt="Career hero"
               fill
               priority
@@ -596,14 +653,7 @@ export default function CareerContent({
 
       {/* LOWONGAN */}
       <section id="lowongan" ref={vacRef} style={styles.vacOuter}>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: isNarrow ? "1fr" : "1.15fr 1fr",
-            gap: isNarrow ? 16 : 32,
-            alignItems: "center",
-          }}
-        >
+        <div style={vacGrid}>
           {/* Text block – di mobile tampil duluan */}
           <div style={{ order: isNarrow ? 1 : 0 }}>
             <h2 style={styles.vacTitle}>{vacancy?.title}</h2>
@@ -653,9 +703,11 @@ export default function CareerContent({
               />
             ) : (
               <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={thumbUrl}
-                  alt="Sahabat Referral" title="Sahabat Referral"
+                  alt="Sahabat Referral"
+                  title="Sahabat Referral"
                   style={styles.refThumb}
                   onError={(e) => (e.currentTarget.src = "/images/loading.png")}
                   loading="lazy"
@@ -697,9 +749,11 @@ export default function CareerContent({
               aria-label={b.title}
             >
               <div style={styles.benIco} aria-hidden>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={b.icon || "/icons/benefit-placeholder.svg"}
-                  alt="" title=""
+                  alt=""
+                  title=""
                   style={styles.benIcoImg}
                   onError={(e) => (e.currentTarget.src = "/images/loading.png")}
                 />
@@ -744,9 +798,11 @@ export default function CareerContent({
 
                 {/* Logo kiri */}
                 <div style={{ ...styles.levLogoBox, justifyItems: "center" }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={lv.logo || "/logo-oss-cube.svg"}
-                    alt="OSS cube" title="OSS cube"
+                    alt="OSS cube"
+                    title="OSS cube"
                     style={{
                       ...styles.levLogoMark,
                       width: "clamp(72px, 18vw, 120px)",

@@ -2,12 +2,14 @@
 "use client";
 
 import React, { useEffect, useMemo, useState, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { message } from "antd";
 import {
   FacebookFilled,
   InstagramOutlined,
   WhatsAppOutlined,
 } from "@ant-design/icons";
+import useBlogDetailViewModel from "./useBlogDetailViewModel";
 
 /* ===== util: simple media hook ===== */
 function useIsNarrow(breakpoint = 768) {
@@ -22,6 +24,13 @@ function useIsNarrow(breakpoint = 768) {
   }, [breakpoint]);
   return isNarrow;
 }
+
+/* ===== helper: pick locale client-side (query + ls + fallback) ===== */
+const pickLocaleClient = (lang, ls, fallback = "id") => {
+  const raw = (lang || ls || fallback || "id").toString();
+  const v = raw.slice(0, 2).toLowerCase();
+  return v === "en" ? "en" : "id";
+};
 
 const ROOT = "blog-detail-page";
 
@@ -187,22 +196,52 @@ const styles = {
 };
 
 export default function BlogDetailContent({
-  loading,
-  error,
-  titleMain,
-  titleSub,
-  image,
-  html,
-  source,
-  form,
-  submitting,
-  onChange,
-  submitLead,
-  formText, // dari view model (multilingual)
+  initialLocale,
+  fallbackLocale = "id",
 }) {
-  const [shareUrl, setShareUrl] = useState("");
+  const search = useSearchParams();
   const isNarrow = useIsNarrow(900);
+  const [shareUrl, setShareUrl] = useState("");
 
+  /* ===== Locale sinkron dengan query + localStorage ===== */
+  const baseLocale = initialLocale || "id";
+
+  const locale = useMemo(() => {
+    const fromQuery = search?.get("lang") || "";
+    const fromLs =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem("oss.lang") || ""
+        : "";
+    return pickLocaleClient(
+      fromQuery || baseLocale,
+      fromLs,
+      fallbackLocale || "id"
+    );
+  }, [search, baseLocale, fallbackLocale]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("oss.lang", locale);
+    }
+  }, [locale]);
+
+  /* ===== View model (data + form + teks) ===== */
+  const {
+    loading,
+    error,
+    titleMain,
+    titleSub,
+    image,
+    html,
+    source,
+    form,
+    submitting,
+    onChange,
+    submitLead,
+    formText,
+  } = useBlogDetailViewModel({ locale, fallback: fallbackLocale });
+
+  /* ===== Share URL & handlers ===== */
   useEffect(() => {
     if (typeof window !== "undefined") {
       const url = window.location.href.split("#")[0];
@@ -260,6 +299,7 @@ export default function BlogDetailContent({
     }
   }, [shareUrl, shareTitle]);
 
+  /* ===== Loading & error ===== */
   if (loading) {
     return (
       <div style={{ ...styles.page, padding: "40px 0" }}>
@@ -281,6 +321,7 @@ export default function BlogDetailContent({
     );
   }
 
+  /* ===== Render utama ===== */
   return (
     <div className={ROOT} style={styles.page}>
       <div
@@ -309,7 +350,8 @@ export default function BlogDetailContent({
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={image}
-              alt={titleMain || ""} title={titleMain || ""}
+              alt={titleMain || ""}
+              title={titleMain || ""}
               loading="lazy"
               style={{
                 ...styles.heroImg,

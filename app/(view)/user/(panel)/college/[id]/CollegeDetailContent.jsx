@@ -1,11 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import useCollegeDetailViewModel from "./useCollegeDetailViewModel";
 import { sanitizeHtml } from "@/app/utils/dompurify";
-import { isExternalAsset, toPublicStorageUrl } from "@/app/utils/publicCdnClient";
+import {
+  isExternalAsset,
+  toPublicStorageUrl,
+} from "@/app/utils/publicCdnClient";
 
 /* ================== Storage helpers (gateway/CDN) ================== */
 function toPublicUrlMaybe(input) {
@@ -18,6 +22,7 @@ function toPublicUrlMaybe(input) {
 const normalizeSrc = (s = "") =>
   toPublicUrlMaybe(s) ||
   "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>";
+
 const shouldUnoptimize = (s = "") => isExternalAsset(s);
 
 /* ============================ Hooks ============================ */
@@ -129,9 +134,19 @@ const heroStyles = {
   },
   media: `
     @media (max-width: 980px){
-      .cd-hero-logo { width: min(82vw, 520px) !important; height: min(32vw, 160px) !important; }
-      .cd-hero-title { letter-spacing: .08em !important; font-size: clamp(24px, 7.4vw, 44px) !important; }
-      .cd-hero-pill  { height: 44px !important; padding: 0 clamp(12px, 4vw, 20px) !important; font-size: clamp(13px, 4vw, 16px) !important; }
+      .cd-hero-logo {
+        width: min(82vw, 520px) !important;
+        height: min(32vw, 160px) !important;
+      }
+      .cd-hero-title {
+        letter-spacing: .08em !important;
+        font-size: clamp(24px, 7.4vw, 44px) !important;
+      }
+      .cd-hero-pill  {
+        height: 44px !important;
+        padding: 0 clamp(12px, 4vw, 20px) !important;
+        font-size: clamp(13px, 4vw, 16px) !important;
+      }
     }
   `,
 };
@@ -199,7 +214,7 @@ const clickable = {
   display: "inline-block",
 };
 
-/* ====== UPDATED: 3 cols desktop, 2 cols ≤980px (tidak turun ke 1) ====== */
+/* ====== FACULTY GRID ====== */
 const facultyStyles = {
   grid: {
     display: "grid",
@@ -340,7 +355,11 @@ const ctaStyles = {
   media: `
     @media (max-width: 980px){
       .cd-cta { grid-template-columns: 1fr; }
-      .cd-cta-illo { justify-self: center; width: min(72vw, 480px); height: min(54vw, 360px); }
+      .cd-cta-illo {
+        justify-self: center;
+        width: min(72vw, 480px);
+        height: min(54vw, 360px);
+      }
     }
   `,
 };
@@ -353,6 +372,7 @@ const globalCSS = `
   a.cd-cta-btn:active,
   a.cd-cta-btn:focus { text-decoration: none !important; }
 `;
+
 const modalCSS = `
   .cd-modal-backdrop {
     position: fixed;
@@ -410,15 +430,25 @@ const modalCSS = `
     min-height: 0;
   }
   .cd-modal__body::-webkit-scrollbar { width: 6px; }
-  .cd-modal__body::-webkit-scrollbar-thumb { background: rgba(11,77,166,.35); border-radius: 3px; }
+  .cd-modal__body::-webkit-scrollbar-thumb {
+    background: rgba(11,77,166,.35);
+    border-radius: 3px;
+  }
   .cd-modal__row {
     display: grid;
     grid-template-columns: 140px 1fr;
     gap: 10px;
     margin: 6px 0;
   }
-  .cd-modal__label { color: #5b6a92; font-weight: 700; font-size: 14px; }
-  .cd-modal__value { color: #0B2F74; font-weight: 700; }
+  .cd-modal__label {
+    color: #5b6a92;
+    font-weight: 700;
+    font-size: 14px;
+  }
+  .cd-modal__value {
+    color: #0B2F74;
+    font-weight: 700;
+  }
   @media (max-width: 640px){
     .cd-modal {
       width: min(96vw, 420px);
@@ -431,15 +461,46 @@ const modalCSS = `
     }
   }
 `;
-const hideAsideCSS = `@media (max-width: 980px){ .cd-aside { display: none !important; } }`;
+
+const hideAsideCSS = `
+  @media (max-width: 980px){
+    .cd-aside { display: none !important; }
+  }
+`;
 
 /* ============================ Component ============================ */
-export default function CollegeDetailContent({ id, locale = "id" }) {
+export default function CollegeDetailContent({
+  id,
+  locale: initialLocale = "id",
+}) {
+  const search = useSearchParams();
+
+  // Locale runtime: query ?lang / ?locale -> initialLocale (dari server) -> "id"
+  const locale = useMemo(() => {
+    const fromQuery = search?.get("lang") || search?.get("locale") || "";
+    // NOTE: initialLocale didapat dari server (pickLocale), jadi diprioritaskan
+    const raw = String(fromQuery || initialLocale || "id")
+      .slice(0, 2)
+      .toLowerCase();
+    return raw === "en" ? "en" : "id";
+  }, [search, initialLocale]);
+
   const { hero, sections, tuition, websiteHref } = useCollegeDetailViewModel({
     id,
     locale,
   });
   const isNarrow = useIsNarrow(980);
+
+  // sync locale runtime ke localStorage (biar konsisten dengan halaman lain)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem("oss.lang", locale);
+      } catch {
+        // ignore
+      }
+    }
+  }, [locale]);
 
   const sectionIds = useMemo(() => ["umum", "biaya", "fakultas", "syarat"], []);
   const [active, setActive] = useState(sectionIds[0]);
@@ -474,7 +535,7 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
   }, [modalOpen]);
 
   useEffect(() => {
-    const obs = sectionIds
+    const observers = sectionIds
       .map((sid) => document.getElementById(sid))
       .filter(Boolean)
       .map((el) => {
@@ -486,7 +547,7 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
         ob.observe(el);
         return ob;
       });
-    return () => obs.forEach((o) => o.disconnect());
+    return () => observers.forEach((o) => o.disconnect());
   }, [sectionIds]);
 
   const goTo = useCallback((sid) => {
@@ -525,7 +586,7 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
       ? "CURIOUS HOW MUCH YOU MIGHT SPEND?"
       : "PENASARAN BERAPA BANYAK YANG MUNGKIN PERLU ANDA HABISKAN?";
   const ctaHref = "/user/calculator";
-  const ctaImg = normalizeSrc("/images/loading.png");
+  const ctaImgSrc = normalizeSrc("/images/cta-detail.svg");
 
   const faculties = Array.isArray(sections?.faculties)
     ? sections.faculties
@@ -536,9 +597,6 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
 
   return (
     <main style={shell.page} data-shell="full">
-      <style dangerouslySetInnerHTML={{ __html: globalCSS }} />
-      <style dangerouslySetInnerHTML={{ __html: modalCSS }} />
-
       {/* ===== HERO ===== */}
       <div style={heroStyles.wrapBleed}>
         <div style={heroStyles.frame}>
@@ -552,7 +610,6 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
             unoptimized={shouldUnoptimize(coverSrc)}
           />
           <div style={heroStyles.overlay} />
-          <style>{heroStyles.media}</style>
 
           <div style={heroStyles.content}>
             {!!hero.logo && (
@@ -602,15 +659,11 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
 
       {/* ===== CONTENT ===== */}
       <section style={layout.section}>
-        <style>{layout.media}</style>
-        <style>{hideAsideCSS}</style>
-
         <div className="cd-grid" style={{ ...shell.inner }}>
           {/* Sidebar hanya di desktop */}
           {!isNarrow && (
             <aside className="cd-aside" style={layout.aside}>
               <div className="cd-sidenav-stick" style={layout.sidenavStick}>
-                <style dangerouslySetInnerHTML={{ __html: leftNavCSS }} />
                 <nav className="cd-leftnav" aria-label="College sections">
                   {navItems.map(([id, label]) => (
                     <button
@@ -671,11 +724,11 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
               id="fakultas"
               style={{ ...layout.content, marginTop: 22, marginLeft: -22 }}
             >
-              <style>{facultyStyles.media}</style>
               <h2 style={layout.h2}>
                 {locale === "en" ? "Departments & Programs" : "Jurusan & Prodi"}
               </h2>
               <hr style={layout.hr} />
+
               <div className="cd-fac-grid" style={facultyStyles.grid}>
                 {faculties.length ? (
                   faculties.map((grp, idx) => (
@@ -815,7 +868,6 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
 
       {/* ===== CTA ===== */}
       <section style={ctaStyles.wrapBleed}>
-        <style>{ctaStyles.media}</style>
         <div style={ctaStyles.topFeather} aria-hidden="true" />
         <div className="cd-cta" style={ctaStyles.inner}>
           <div>
@@ -833,20 +885,19 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
           </div>
           <div className="cd-cta-illo" style={ctaStyles.illobox}>
             <Image
-              src={normalizeSrc("/images/cta-detail.svg")}
+              src={ctaImgSrc}
               alt={locale === "en" ? "Mascot illustration" : "Ilustrasi maskot"}
               fill
               sizes="480px"
               style={{ objectFit: "contain" }}
               priority
-              unoptimized={shouldUnoptimize(ctaImg)}
+              unoptimized={shouldUnoptimize(ctaImgSrc)}
             />
           </div>
         </div>
       </section>
 
       {/* ===== MODAL ===== */}
-      <style dangerouslySetInnerHTML={{ __html: hideAsideCSS }} />
       {modalOpen && (
         <div
           className="cd-modal-backdrop"
@@ -913,6 +964,18 @@ export default function CollegeDetailContent({ id, locale = "id" }) {
           </div>
         </div>
       )}
+
+      {/* ==== GLOBAL CSS (single style jsx global) ==== */}
+      <style jsx global>{`
+        ${heroStyles.media}
+        ${layout.media}
+        ${leftNavCSS}
+        ${facultyStyles.media}
+        ${ctaStyles.media}
+        ${globalCSS}
+        ${modalCSS}
+        ${hideAsideCSS}
+      `}</style>
     </main>
   );
 }

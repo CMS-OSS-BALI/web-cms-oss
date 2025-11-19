@@ -5,6 +5,9 @@ import { Skeleton } from "antd";
 import { Swiper, SwiperSlide } from "swiper/react";
 import { Autoplay } from "swiper/modules";
 import "swiper/css";
+import { useSearchParams } from "next/navigation";
+
+import useDocumentTranslateViewModel from "./useDocumentTranslateViewModel";
 import { sanitizeHtml } from "@/app/utils/dompurify";
 
 /* ============================= */
@@ -100,6 +103,14 @@ function useHeroParallax(ref) {
 /* Brand tokens */
 const FONT_FAMILY =
   '"Public Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif';
+
+/* ===== Locale helper (client) ===== */
+const pickLocaleClient = (lang, ls, fallback = "id") => {
+  const v = String(lang || ls || fallback)
+    .slice(0, 2)
+    .toLowerCase();
+  return v === "en" ? "en" : "id";
+};
 
 const styles = {
   sectionInner: {
@@ -278,12 +289,6 @@ const styles = {
       height: 3,
       borderRadius: 999,
       background: "#0B56C9",
-    },
-    // full-bleed wrapper untuk Swiper, tanpa frame / background
-    fullBleedWrap: {
-      marginTop: 24,
-      width: "100vw",
-      marginLeft: "calc(50% - 50vw)",
     },
     track: {
       marginTop: 24,
@@ -464,7 +469,10 @@ function Img({ src, alt, style, className }) {
   // eslint-disable-next-line @next/next/no-img-element
   return (
     <img
-      src={src}
+      src={
+        src ||
+        "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=1200&auto=format&fit=crop"
+      }
       alt={alt || ""}
       title={alt || ""}
       className={className}
@@ -479,11 +487,30 @@ function Img({ src, alt, style, className }) {
   );
 }
 
-export default function DocumentTranslateContent({
-  locale = "id",
-  content,
-  isLoading,
-}) {
+export default function DocumentTranslateContent(props) {
+  const { initialLocale, locale: localeProp } = props || {};
+  const search = useSearchParams();
+
+  // ===== Locale client-side (sinkron dengan page lain) =====
+  const baseLocale = initialLocale || localeProp || "id";
+
+  const locale = useMemo(() => {
+    const fromQuery = search?.get("lang") || "";
+    const fromLs =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem("oss.lang") || ""
+        : "";
+    return pickLocaleClient(fromQuery || baseLocale, fromLs);
+  }, [search, baseLocale]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("oss.lang", locale);
+    }
+  }, [locale]);
+
+  const { content, isLoading } = useDocumentTranslateViewModel({ locale });
+
   const heroRef = useRef(null);
   const isEn = String(locale).slice(0, 2).toLowerCase() === "en";
 
@@ -506,6 +533,7 @@ export default function DocumentTranslateContent({
   /* -------- responsive flags -------- */
   const [isNarrow, setIsNarrow] = useState(false);
   const [isTablet, setIsTablet] = useState(false);
+
   useEffect(() => {
     const mqNarrow = window.matchMedia("(max-width: 640px)");
     const mqTablet = window.matchMedia("(max-width: 1024px)");
@@ -532,7 +560,11 @@ export default function DocumentTranslateContent({
     };
   }, []);
 
-  useRevealOnScroll([isLoading]);
+  useRevealOnScroll([
+    isLoading,
+    content?.documentTypes?.length || 0,
+    content?.reasons?.items?.length || 0,
+  ]);
   useHeroParallax(heroRef);
 
   /* -------- derived responsive -------- */

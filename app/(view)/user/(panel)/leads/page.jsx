@@ -1,38 +1,38 @@
-"use client";
-
-import { Suspense, lazy, useMemo, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
+// app/(view)/user/(panel)/leads/page.jsx
+import { Suspense } from "react";
 import Loading from "@/app/components/loading/LoadingImage";
-import { useLeadsUViewModel } from "./useLeadsUViewModel";
+import LeadsUPage from "./LeadsUPage";
+import { buildUserMetadata, pickLocale } from "@/app/seo/userMetadata";
 
-const LeadsUContentLazy = lazy(() => import("./LeadsUContent"));
+// Dynamic metadata untuk halaman Leads
+export async function generateMetadata({ searchParams }) {
+  const locale = pickLocale(searchParams?.lang);
 
-function pickLocale(q, ls) {
-  const v = (q || ls || "id").slice(0, 2).toLowerCase();
-  return v === "en" ? "en" : "id";
+  const titleId =
+    "Form Leads OSS Bali – Daftar Minat dan Konsultasi Studi Luar Negeri";
+  const descId =
+    "Isi Form Leads OSS Bali untuk mendaftarkan minat kuliah luar negeri, konsultasi pendidikan, dan mendapatkan informasi program OSS Bali. Tim kami akan menghubungi Anda melalui WhatsApp atau email.";
+
+  const titleEn =
+    "OSS Bali Leads Form – Study Abroad Interest and Consultation";
+  const descEn =
+    "Fill in the OSS Bali Leads Form to register your study abroad interest, book an education consultation, and get information about OSS Bali programs. Our team will contact you via WhatsApp or email.";
+
+  const title = locale === "en" ? titleEn : titleId;
+  const description = locale === "en" ? descEn : descId;
+
+  return buildUserMetadata({
+    title,
+    description,
+    path: "/user/leads",
+    locale,
+    type: "website",
+  });
 }
 
-export default function LeadsUPage() {
-  const search = useSearchParams();
-
-  // Resolve locale from query (?lang=) then localStorage, default to "id"
-  const locale = useMemo(() => {
-    const q = search?.get("lang") || "";
-    const ls =
-      typeof window !== "undefined"
-        ? localStorage.getItem("oss.lang") || ""
-        : "";
-    return pickLocale(q, ls);
-  }, [search]);
-
-  // Persist the chosen locale so it becomes the fallback next time
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("oss.lang", locale);
-    }
-  }, [locale]);
-
-  const vm = useLeadsUViewModel(locale);
+// Server component → bungkus client wrapper
+export default function LeadsPage({ searchParams }) {
+  const locale = pickLocale(searchParams?.lang);
 
   return (
     <Suspense
@@ -42,8 +42,8 @@ export default function LeadsUPage() {
         </div>
       }
     >
-      {/* key ensures remount when ?lang= changes */}
-      <LeadsUContentLazy key={locale} locale={locale} {...vm} />
+      {/* initialLocale dipakai di client untuk sinkron lang (SSR + client) */}
+      <LeadsUPage initialLocale={locale} />
     </Suspense>
   );
 }

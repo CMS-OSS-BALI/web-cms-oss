@@ -11,7 +11,7 @@ import React, {
 } from "react";
 import useSWR from "swr";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Row,
   Col,
@@ -36,6 +36,13 @@ const swrFetcher = (url) =>
     if (!r.ok) throw new Error(`Failed to load ${url} (${r.status})`);
     return r.json();
   });
+
+const pickLocaleClient = (lang, ls, fallback = "id") => {
+  const v = String(lang || ls || fallback)
+    .slice(0, 2)
+    .toLowerCase();
+  return v === "en" ? "en" : "id";
+};
 
 /* ================== ANIMATION HOOKS (reveal + hero bob) ================== */
 function useRevealOnScroll(deps = []) {
@@ -374,7 +381,11 @@ const SUI = {
     whiteSpace: "nowrap",
     flexShrink: 0,
   },
-  ddWrap: { position: "relative", flex: "0 0 auto" },
+  ddWrap: {
+    position: "relative",
+    flex: "0 0 auto",
+    zIndex: 40, // pastikan di atas ilustrasi hero
+  },
   dd: {
     position: "absolute",
     top: "calc(100% + 8px)",
@@ -384,7 +395,7 @@ const SUI = {
     border: "1px solid #e6edf8",
     borderRadius: 12,
     boxShadow: "0 16px 36px rgba(8,42,116,.14)",
-    zIndex: 30,
+    zIndex: 50, // lebih tinggi dari elemen hero lain
     padding: 8,
     maxHeight: 360,
     overflow: "auto",
@@ -573,14 +584,18 @@ function SearchAndFilter({ locale = "id", onApplied, t }) {
 
   return (
     <div
-      style={wrapStyle}
       ref={boxRef}
       className="reveal"
       data-anim="down"
       // stagger kecil saat masuk
       css-module-ignore=""
       // eslint-disable-next-line react/no-unknown-property
-      style={{ ...wrapStyle, ["--rvd"]: "40ms" }}
+      style={{
+        ...wrapStyle,
+        position: "relative",
+        zIndex: 45, // pastikan bar filter di atas ilustrasi hero
+        ["--rvd"]: "40ms",
+      }}
     >
       {/* Search pill */}
       <div className="search-pill" style={shellStyle}>
@@ -795,8 +810,11 @@ function useIsLg() {
 }
 
 /* --------------------------------- page --------------------------------- */
-export default function BlogUContent({ locale = "id" }) {
+export default function BlogUContent(props) {
+  const { locale: localeProp, initialLocale } = props || {};
+
   const router = useRouter();
+  const search = useSearchParams();
   const isLg = useIsLg();
   const isNarrow = useIsNarrow(768);
 
@@ -812,6 +830,23 @@ export default function BlogUContent({ locale = "id" }) {
     setCategoryId(sp.get("categoryId") || "");
     setCategorySlug(sp.get("categorySlug") || "");
   }, []);
+
+  const baseLocale = initialLocale ?? localeProp ?? "id";
+
+  const locale = useMemo(() => {
+    const fromQuery = search?.get("lang") || "";
+    const fromLs =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem("oss.lang") || ""
+        : "";
+    return pickLocaleClient(fromQuery || baseLocale, fromLs);
+  }, [search, baseLocale]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("oss.lang", locale);
+    }
+  }, [locale]);
 
   const {
     t,
@@ -915,6 +950,7 @@ export default function BlogUContent({ locale = "id" }) {
       justifyItems: "end",
       minHeight: isNarrow ? 160 : 300,
       paddingRight: isNarrow ? 0 : 8,
+      zIndex: 1, // supaya kalah dari SearchAndFilter (z=45)
     },
     mascot: {
       width: isNarrow ? "78%" : "92%",

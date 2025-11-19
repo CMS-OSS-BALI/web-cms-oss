@@ -94,7 +94,7 @@ const LEVEL_KAMPUS_CONTENT_EN = {
     title: "University",
     label: "Visa Approval Rate: Priority",
     rating: 5,
-    background: "/level-kampus/universitas-bg.jpg",
+    background: "/level-kampus/universitas-bg.svg",
   },
   description:
     "A university-level campus that provides academic education across a wide range of disciplines.",

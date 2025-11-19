@@ -2,6 +2,7 @@
 
 import { useMemo, useEffect, useRef } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import useMitraDalamNegeriViewModel from "./useMitraDalamNegeriViewModel";
 import { Swiper, SwiperSlide } from "swiper/react";
 import { Autoplay, FreeMode } from "swiper/modules";
@@ -9,6 +10,14 @@ import "swiper/css";
 
 const MERCH_SWIPER_CLASS = "mdn-merchant-swiper"; // LUAR NEGERI
 const ORG_SWIPER_CLASS = "mdn-org-swiper"; // DALAM NEGERI
+
+/* ===== Client locale helper (konsisten dengan EventsUContent) ===== */
+const pickLocaleClient = (lang, ls, fallback = "id") => {
+  const v = String(lang || ls || fallback)
+    .slice(0, 2)
+    .toLowerCase();
+  return v === "en" ? "en" : "id";
+};
 
 /* ===== Reveal on Scroll (reusable) ===== */
 function useRevealOnScroll(deps = []) {
@@ -90,7 +99,36 @@ function useHeroParallax(ref) {
   }, [ref]);
 }
 
-export default function MitraDalamNegeriContent({ locale = "id" }) {
+export default function MitraDalamNegeriContent({
+  initialLocale = "id",
+  locale: localeProp, // optional override kalau mau
+}) {
+  const search = useSearchParams();
+
+  // baseLocale = seed dari server (initialLocale) atau prop override
+  const baseLocale = localeProp || initialLocale || "id";
+
+  // Locale final: prioritas ?lang= → localStorage → baseLocale
+  const locale = useMemo(() => {
+    const fromQuery = search?.get("lang") || "";
+    const fromLs =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem("oss.lang") || ""
+        : "";
+    return pickLocaleClient(fromQuery || baseLocale, fromLs);
+  }, [search, baseLocale]);
+
+  // Persist locale ke localStorage supaya konsisten di halaman lain
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem("oss.lang", locale);
+      } catch {
+        // ignore
+      }
+    }
+  }, [locale]);
+
   const vm = useMitraDalamNegeriViewModel({ locale });
 
   const cta =
@@ -103,9 +141,12 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
 
   const heroRef = useRef(null);
 
+  // Fallback hero title dibuat lebih kaya keyword untuk SEO
   const heroTitle =
     vm.hero?.title ||
-    (locale === "en" ? "PRESERVE THE QUALITY" : "PRESERVE THE QUALITY");
+    (locale === "en"
+      ? "Domestic Partners Who Collaborate with OSS Bali"
+      : "Mitra Dalam Negeri yang Berkolaborasi dengan OSS Bali");
 
   useRevealOnScroll([vm.merchants.length, vm.organizations.length]);
   useHeroParallax(heroRef);
@@ -327,7 +368,11 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
   );
 
   return (
-    <main>
+    <main
+      className="mitra-page"
+      data-shell="full"
+      style={{ position: "relative", zIndex: 0, background: "#fff" }}
+    >
       {/* HERO */}
       <section style={styles.hero.section}>
         <div style={styles.hero.bleed}>
@@ -353,7 +398,10 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
             data-anim="down"
             style={{ ...styles.copy.title, ["--rvd"]: "40ms" }}
           >
-            {vm.sections.merchant.title}
+            {vm.sections.merchant.title ||
+              (locale === "en"
+                ? "International Partners"
+                : "Mitra Luar Negeri")}
           </h2>
         </div>
 
@@ -416,7 +464,8 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
             data-anim="down"
             style={{ ...styles.copy.title, ["--rvd"]: "40ms" }}
           >
-            {vm.sections.organization.title}
+            {vm.sections.organization.title ||
+              (locale === "en" ? "Domestic Partners" : "Mitra Dalam Negeri")}
           </h2>
         </div>
 
@@ -514,23 +563,23 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
       </section>
 
       <style jsx global>{`
+        /* Default (tablet & mobile): hero adaptif */
         :root {
           --nav-h: clamp(60px, 7vw, 84px);
           --hero-h: min(max(520px, calc(100svh - var(--nav-h))), 780px);
         }
-        @media (max-width: 1024px) {
+
+        /* Desktop: paksa minimal 1 layar penuh */
+        @media (min-width: 1024px) {
           :root {
-            --hero-h: min(max(460px, calc(100svh - var(--nav-h))), 680px);
+            --hero-h: 100svh;
           }
         }
+
         @media (max-width: 640px) {
           :root {
             --hero-h: min(max(380px, calc(100svh - var(--nav-h))), 560px);
           }
-        }
-        html,
-        body {
-          overflow-x: clip;
         }
 
         /* ===== Reveal utilities ===== */
@@ -652,6 +701,16 @@ export default function MitraDalamNegeriContent({ locale = "id" }) {
           .cta-btn:hover {
             transform: translateY(-1px);
             box-shadow: 0 14px 28px rgba(11, 86, 201, 0.36);
+          }
+        }
+
+        /* Anti horizontal scroll: hanya di halaman ini */
+        .mitra-page {
+          overflow-x: hidden;
+        }
+        @supports (overflow: clip) {
+          .mitra-page {
+            overflow-x: clip;
           }
         }
       `}</style>

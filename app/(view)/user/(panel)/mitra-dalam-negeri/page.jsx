@@ -1,29 +1,39 @@
-"use client";
-
-import { Suspense, lazy, useMemo } from "react";
-import { useSearchParams } from "next/navigation";
+// app/(view)/user/mitra-dalam-negeri/page.jsx
+import { Suspense } from "react";
+import MitraDalamNegeriContent from "./MitraDalamNegeriContent";
 import Loading from "@/app/components/loading/LoadingImage";
+import { buildUserMetadata, pickLocale } from "@/app/seo/userMetadata";
 
-const MitraDalamNegeriContentLazy = lazy(() =>
-  import("./MitraDalamNegeriContent")
-);
+// Dynamic metadata untuk halaman Mitra Dalam Negeri
+export async function generateMetadata({ searchParams }) {
+  const locale = pickLocale(searchParams?.lang);
 
-function pickLocale(q, ls) {
-  const v = (q || ls || "id").slice(0, 2).toLowerCase();
-  return v === "en" ? "en" : "id";
+  let titleId =
+    "Mitra Dalam Negeri OSS Bali – Sekolah, Komunitas, dan Organisasi Partner";
+  let descId =
+    "Lihat daftar mitra dalam negeri OSS Bali yang terdiri dari sekolah, komunitas, dan organisasi di Indonesia yang berkolaborasi mendukung perjalanan studi dan karier internasional.";
+
+  let titleEn =
+    "OSS Bali Domestic Partners – Schools, Communities, and Local Organizations";
+  let descEn =
+    "Explore OSS Bali domestic partners including schools, communities, and organizations in Indonesia that support international study and career journeys.";
+
+  const title = locale === "en" ? titleEn : titleId;
+  const description = locale === "en" ? descEn : descId;
+
+  return buildUserMetadata({
+    title,
+    description,
+    // SESUAIKAN path dengan route halaman ini
+    path: "/user/mitra-dalam-negeri",
+    locale,
+    type: "website",
+  });
 }
 
-export default function MitraDalamNegeriPage() {
-  const search = useSearchParams();
-
-  const locale = useMemo(() => {
-    const q = search?.get("lang") || "";
-    const ls =
-      typeof window !== "undefined"
-        ? localStorage.getItem("oss.lang") || ""
-        : "";
-    return pickLocale(q, ls);
-  }, [search]);
+// Server component, membungkus client content
+export default function MitraDalamNegeriPage({ searchParams }) {
+  const locale = pickLocale(searchParams?.lang);
 
   return (
     <Suspense
@@ -33,8 +43,9 @@ export default function MitraDalamNegeriPage() {
         </div>
       }
     >
-      {/* key to remount when ?lang changes */}
-      <MitraDalamNegeriContentLazy key={locale} locale={locale} />
+      {/* initialLocale dipakai di client untuk seed bahasa, 
+          lalu disinkronkan lagi dengan ?lang & localStorage */}
+      <MitraDalamNegeriContent initialLocale={locale} />
     </Suspense>
   );
 }

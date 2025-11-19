@@ -1,10 +1,31 @@
+// app/(view)/user/(panel)/events/EventsUContent.jsx
 "use client";
 
+import dynamic from "next/dynamic";
 import { useMemo, useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import useEventsUViewModel from "./useEventsUViewModel";
 import { Pagination, ConfigProvider, Modal, Radio } from "antd";
+import Loading from "@/app/components/loading/LoadingImage";
+
+/* ===== Dynamic tab views (peserta & rep) ===== */
+const EventsPeserta = dynamic(() => import("./peserta/EventsPContent"), {
+  ssr: false,
+  loading: () => <Loading />,
+});
+const EventsRep = dynamic(() => import("./rep/EventsRContent"), {
+  ssr: false,
+  loading: () => <Loading />,
+});
+
+/* ===== Locale helper (client-side, konsisten dengan halaman lain) ===== */
+const pickLocaleClient = (lang, ls, fallback = "id") => {
+  const v = String(lang || ls || fallback)
+    .slice(0, 2)
+    .toLowerCase();
+  return v === "en" ? "en" : "id";
+};
 
 /* ===== Tokens (full-bleed shell + readable center) ===== */
 const BLUE = "#0b56c9";
@@ -26,6 +47,15 @@ const CENTER = { maxWidth: CONTENT_MAX, margin: "0 auto" };
 
 /* ===== Utils ===== */
 const safeText = (v) => (v == null ? "" : String(v));
+
+/* Mounted helper: true hanya setelah client hydration selesai */
+function useMounted() {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  return mounted;
+}
 
 /* ===== Reveal on scroll ===== */
 function useRevealOnScroll(deps = []) {
@@ -225,6 +255,78 @@ function Chip({ value, label }) {
     <div className="cd-chip" aria-live="polite" style={{ textAlign: "center" }}>
       <div style={panel.pill}>{v}</div>
       <div style={panel.label}>{safeText(label)}</div>
+    </div>
+  );
+}
+
+/* Countdown panel yang aman dari hydration mismatch */
+function CountdownPanel({ vm, locale = "id" }) {
+  const mounted = useMounted();
+
+  const fallbackLabels =
+    locale === "en"
+      ? {
+          days: "Days",
+          hours: "Hours",
+          minutes: "Minutes",
+          seconds: "Seconds",
+        }
+      : {
+          days: "Hari",
+          hours: "Jam",
+          minutes: "Menit",
+          seconds: "Detik",
+        };
+
+  const labelFor = (key) =>
+    safeText(vm?.labels?.[key] || fallbackLabels[key] || "");
+
+  const title = safeText(
+    vm?.panelTitle || (locale === "en" ? "Next Event" : "Event Terdekat")
+  );
+
+  // SSR + first client render → placeholder stabil (tidak pakai Date-based countdown)
+  if (!mounted) {
+    return (
+      <div
+        className="reveal"
+        data-anim="zoom"
+        style={{ ...panel.shell, ["--rvd"]: "200ms" }}
+      >
+        <div style={panel.title}>{title}</div>
+        <div className="cd-row" style={panel.row}>
+          {["days", "hours", "minutes", "seconds"].map((key) => (
+            <div
+              key={key}
+              className="cd-chip"
+              style={{ textAlign: "center" }}
+              aria-hidden="true"
+            >
+              <div style={panel.pill}>--</div>
+              <div style={panel.label}>{labelFor(key)}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Setelah mounted → pakai nilai countdown dari view model
+  const cd = vm?.countdown || {};
+
+  return (
+    <div
+      className="reveal"
+      data-anim="zoom"
+      style={{ ...panel.shell, ["--rvd"]: "200ms" }}
+    >
+      <div style={panel.title}>{title}</div>
+      <div className="cd-row" style={panel.row}>
+        <Chip value={cd.days} label={labelFor("days")} />
+        <Chip value={cd.hours} label={labelFor("hours")} />
+        <Chip value={cd.minutes} label={labelFor("minutes")} />
+        <Chip value={cd.seconds} label={labelFor("seconds")} />
+      </div>
     </div>
   );
 }
@@ -1141,8 +1243,88 @@ function RepCTA({ title, images = [], options = [], locale = "id" }) {
   );
 }
 
-/* ===== PAGE ===== */
-export default function EventsUContent({ locale = "id" }) {
+/* ===== Empty state ===== */
+function NoEvents({ locale = "id" }) {
+  const t = (id, en) => (locale === "en" ? en : id);
+  return (
+    <section
+      className="reveal"
+      data-anim="zoom"
+      style={{
+        ...CONTAINER,
+        ...CENTER,
+        marginTop: 40,
+        marginBottom: 80,
+        padding: "32px clamp(20px, 4vw, 48px)",
+        borderRadius: 20,
+        border: "1px dashed #cfe1ff",
+        background: "#fff",
+        display: "grid",
+        placeItems: "center",
+        textAlign: "center",
+        ["--rvd"]: "40ms",
+      }}
+    >
+      <div style={{ fontSize: 64, lineHeight: 1, marginBottom: 12 }}>🗓️</div>
+      <h3
+        style={{
+          margin: "8px 0 6px",
+          fontWeight: 900,
+          color: "#0b3e91",
+          fontSize: 28,
+        }}
+      >
+        {t("Belum ada event yang tersedia", "No events available yet")}
+      </h3>
+      <p style={{ color: "#476aa4", maxWidth: 640, margin: "0 auto" }}>
+        {t(
+          "Pantau halaman ini secara berkala; event baru akan segera hadir.",
+          "Check back soon—new events are on the way."
+        )}
+      </p>
+    </section>
+  );
+}
+
+/* ===== PAGE (Client) ===== */
+export default function EventsUContent(props) {
+  const { initialLocale, initialTab, locale: localeProp } = props || {};
+  const search = useSearchParams();
+
+  // ===== Locale client-side (sinkron dengan halaman lain) =====
+  const baseLocale = initialLocale || localeProp || "id";
+
+  const locale = useMemo(() => {
+    const fromQuery = search?.get("lang") || "";
+    const fromLs =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem("oss.lang") || ""
+        : "";
+    return pickLocaleClient(fromQuery || baseLocale, fromLs);
+  }, [search, baseLocale]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem("oss.lang", locale);
+      } catch {
+        // ignore
+      }
+    }
+  }, [locale]);
+
+  // ===== Tab (all / peserta / rep) =====
+  const baseTab =
+    typeof initialTab === "string" ? initialTab.toLowerCase() : "all";
+
+  const tab = useMemo(() => {
+    const fromQuery = (search?.get("tab") || "").toLowerCase();
+    const raw = fromQuery || baseTab;
+    if (raw === "peserta" || raw === "rep") return raw;
+    return "all";
+  }, [search, baseTab]);
+
+  // ===== View model untuk halaman All Events =====
   const vm = useEventsUViewModel({ locale });
 
   const heroRef = useRef(null);
@@ -1178,6 +1360,15 @@ export default function EventsUContent({ locale = "id" }) {
     safeText(vm.heroSub) ||
     "Bergabunglah dalam acara kami dan rasakan pengalaman inspiratif menuju dunia global.";
 
+  /* ==== Routing tab: peserta / rep pakai dynamic component ==== */
+  if (tab === "peserta") {
+    return <EventsPeserta key={`peserta-${locale}`} locale={locale} />;
+  }
+  if (tab === "rep") {
+    return <EventsRep key={`rep-${locale}`} locale={locale} />;
+  }
+
+  /* ==== MAIN: ALL EVENTS VIEW ==== */
   return (
     <main
       className="events-page"
@@ -1210,51 +1401,8 @@ export default function EventsUContent({ locale = "id" }) {
               {heroSub}
             </p>
 
-            <div
-              className="reveal"
-              data-anim="zoom"
-              style={{ ...panel.shell, ["--rvd"]: "200ms" }}
-            >
-              <div style={panel.title}>
-                {safeText(vm.panelTitle || "Event Terdekat")}
-              </div>
-              <div className="cd-row" style={panel.row}>
-                <div
-                  className="reveal"
-                  data-anim="up"
-                  style={{ ["--rvd"]: "0ms" }}
-                >
-                  <Chip value={vm.countdown.days} label={vm.labels.days} />
-                </div>
-                <div
-                  className="reveal"
-                  data-anim="up"
-                  style={{ ["--rvd"]: "80ms" }}
-                >
-                  <Chip value={vm.countdown.hours} label={vm.labels.hours} />
-                </div>
-                <div
-                  className="reveal"
-                  data-anim="up"
-                  style={{ ["--rvd"]: "160ms" }}
-                >
-                  <Chip
-                    value={vm.countdown.minutes}
-                    label={vm.labels.minutes}
-                  />
-                </div>
-                <div
-                  className="reveal"
-                  data-anim="up"
-                  style={{ ["--rvd"]: "240ms" }}
-                >
-                  <Chip
-                    value={vm.countdown.seconds}
-                    label={vm.labels.seconds}
-                  />
-                </div>
-              </div>
-            </div>
+            {/* Countdown sekarang pakai panel client-only setelah mount */}
+            <CountdownPanel vm={vm} locale={locale} />
           </div>
         </div>
       </section>
@@ -1518,48 +1666,5 @@ export default function EventsUContent({ locale = "id" }) {
         }
       `}</style>
     </main>
-  );
-}
-
-/* ===== Empty state ===== */
-function NoEvents({ locale = "id" }) {
-  const t = (id, en) => (locale === "en" ? en : id);
-  return (
-    <section
-      className="reveal"
-      data-anim="zoom"
-      style={{
-        ...CONTAINER,
-        ...CENTER,
-        marginTop: 40,
-        marginBottom: 80,
-        padding: "32px clamp(20px, 4vw, 48px)",
-        borderRadius: 20,
-        border: "1px dashed #cfe1ff",
-        background: "#fff",
-        display: "grid",
-        placeItems: "center",
-        textAlign: "center",
-        ["--rvd"]: "40ms",
-      }}
-    >
-      <div style={{ fontSize: 64, lineHeight: 1, marginBottom: 12 }}>🗓️</div>
-      <h3
-        style={{
-          margin: "8px 0 6px",
-          fontWeight: 900,
-          color: "#0b3e91",
-          fontSize: 28,
-        }}
-      >
-        {t("Belum ada event yang tersedia", "No events available yet")}
-      </h3>
-      <p style={{ color: "#476aa4", maxWidth: 640, margin: "0 auto" }}>
-        {t(
-          "Pantau halaman ini secara berkala; event baru akan segera hadir.",
-          "Check back soon—new events are on the way."
-        )}
-      </p>
-    </section>
   );
 }

@@ -1,9 +1,19 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { Button, Card, Input, Typography, notification } from "antd";
+import useFormMitraViewModel from "./useFormMitraViewModel";
 
 const { Title, Text } = Typography;
+
+/* ===== Locale helper (sinkron dengan EventsUContent / EventsPContent) ===== */
+const pickLocaleClient = (lang, ls, fallback = "id") => {
+  const v = String(lang || ls || fallback)
+    .slice(0, 2)
+    .toLowerCase();
+  return v === "en" ? "en" : "id";
+};
 
 /* ===== styles only ===== */
 const styles = {
@@ -27,6 +37,16 @@ const styles = {
     color: "#0B3E91",
     fontSize: "clamp(28px, 4vw, 44px)",
     margin: 0,
+  },
+  heroSub: {
+    marginTop: 12,
+    textAlign: "center",
+    color: "#475569",
+    fontSize: 14,
+    lineHeight: 1.7,
+    maxWidth: 640,
+    marginLeft: "auto",
+    marginRight: "auto",
   },
   underline: {
     width: 160,
@@ -79,19 +99,36 @@ const styles = {
   },
 };
 
-export default function FormMitraContent({
-  // teks dari VM (sudah multilingual)
-  ui,
+export default function FormMitraContent(props) {
+  const { initialLocale, locale: localeProp } = props || {};
+  const search = useSearchParams();
 
-  // form props dari VM
-  values,
-  errors,
-  onChange,
-  submit,
-  canSubmit,
-  loading,
-  msg,
-}) {
+  /* ===== Locale: ?lang / ?locale -> localStorage(oss.lang) -> baseLocale ===== */
+  const baseLocale = initialLocale || localeProp || "id";
+
+  const locale = useMemo(() => {
+    const fromQuery = search?.get("lang") ?? search?.get("locale") ?? "";
+    const fromLs =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem("oss.lang") || ""
+        : "";
+    return pickLocaleClient(fromQuery || baseLocale, fromLs);
+  }, [search, baseLocale]);
+
+  // Persist locale supaya halaman lain (header, dsb.) konsisten
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem("oss.lang", locale);
+    } catch {
+      // ignore
+    }
+  }, [locale]);
+
+  /* ===== View model (multilingual) ===== */
+  const vm = useFormMitraViewModel({ locale });
+  const { ui, values, errors, onChange, submit, canSubmit, loading, msg } = vm;
+
   const status = (k) => (errors?.[k] ? "error" : undefined);
   const [api, contextHolder] = notification.useNotification();
 
@@ -112,165 +149,207 @@ export default function FormMitraContent({
     </Text>
   );
 
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    submit();
+  };
+
+  const formAriaLabel =
+    ui.formAriaLabel || ui.form_aria_label || ui.title || "Partnership form";
+
   return (
-    <div style={styles.wrap}>
+    <main
+      className="form-mitra-page"
+      style={styles.wrap}
+      aria-labelledby="form-mitra-heading"
+    >
       {contextHolder}
 
-      <div style={styles.hero}>
+      {/* ===== HERO SECTION (SEO: H1) ===== */}
+      <section style={styles.hero}>
         <div style={styles.heroInner}>
-          <Title level={2} style={styles.heroTitle}>
+          <Title
+            id="form-mitra-heading"
+            level={1} // H1 untuk SEO
+            style={styles.heroTitle}
+          >
             {ui.title}
           </Title>
           <div style={styles.underline} />
+          {/* Optional subcopy dari VM kalau ada */}
+          {ui.subtitle || ui.description ? (
+            <p style={styles.heroSub}>{ui.subtitle || ui.description}</p>
+          ) : null}
         </div>
-      </div>
+      </section>
 
-      <div style={styles.container}>
+      {/* ===== FORM SECTION ===== */}
+      <section style={styles.container} aria-label={formAriaLabel}>
         <Card style={styles.card} bodyStyle={styles.cardBody}>
-          {/* PIC Name */}
-          <div style={styles.item}>
-            <LabelReq>{ui.labels.contact_name}</LabelReq>
-            <Input
-              placeholder={ui.placeholders.contact_name}
-              style={styles.input}
-              value={values.contact_name}
-              onChange={(e) => onChange("contact_name", e.target.value)}
-              maxLength={191}
-              status={status("contact_name")}
-              required
-              aria-required="true"
-              aria-invalid={!!errors?.contact_name}
-              allowClear
-              autoComplete="name"
-            />
-            {errors?.contact_name ? (
-              <div style={styles.err}>{errors.contact_name}</div>
-            ) : null}
-          </div>
+          <form onSubmit={handleSubmit} noValidate>
+            {/* PIC Name */}
+            <div style={styles.item}>
+              <LabelReq>{ui.labels.contact_name}</LabelReq>
+              <Input
+                placeholder={ui.placeholders.contact_name}
+                style={styles.input}
+                value={values.contact_name}
+                onChange={(e) => onChange("contact_name", e.target.value)}
+                maxLength={191}
+                status={status("contact_name")}
+                required
+                aria-required="true"
+                aria-invalid={!!errors?.contact_name}
+                allowClear
+                autoComplete="name"
+                name="contact_name"
+              />
+              {errors?.contact_name ? (
+                <div style={styles.err}>{errors.contact_name}</div>
+              ) : null}
+            </div>
 
-          {/* Merchant/Organization */}
-          <div style={styles.item}>
-            <LabelReq>{ui.labels.merchant_name}</LabelReq>
-            <Input
-              placeholder={ui.placeholders.merchant_name}
-              style={styles.input}
-              value={values.merchant_name}
-              onChange={(e) => onChange("merchant_name", e.target.value)}
-              maxLength={191}
-              status={status("merchant_name")}
-              required
-              aria-required="true"
-              aria-invalid={!!errors?.merchant_name}
-              allowClear
-              autoComplete="organization"
-            />
-            {errors?.merchant_name ? (
-              <div style={styles.err}>{errors.merchant_name}</div>
-            ) : null}
-          </div>
+            {/* Merchant/Organization */}
+            <div style={styles.item}>
+              <LabelReq>{ui.labels.merchant_name}</LabelReq>
+              <Input
+                placeholder={ui.placeholders.merchant_name}
+                style={styles.input}
+                value={values.merchant_name}
+                onChange={(e) => onChange("merchant_name", e.target.value)}
+                maxLength={191}
+                status={status("merchant_name")}
+                required
+                aria-required="true"
+                aria-invalid={!!errors?.merchant_name}
+                allowClear
+                autoComplete="organization"
+                name="merchant_name"
+              />
+              {errors?.merchant_name ? (
+                <div style={styles.err}>{errors.merchant_name}</div>
+              ) : null}
+            </div>
 
-          {/* WhatsApp */}
-          <div style={styles.item}>
-            <LabelReq>{ui.labels.whatsapp}</LabelReq>
-            <Input
-              placeholder={ui.placeholders.whatsapp}
-              style={styles.input}
-              inputMode="tel"
-              value={values.whatsapp}
-              onChange={(e) => onChange("whatsapp", e.target.value)}
-              maxLength={32}
-              status={status("whatsapp")}
-              required
-              aria-required="true"
-              aria-invalid={!!errors?.whatsapp}
-              allowClear
-              autoComplete="tel"
-            />
-            {errors?.whatsapp ? (
-              <div style={styles.err}>{errors.whatsapp}</div>
-            ) : null}
-          </div>
+            {/* WhatsApp */}
+            <div style={styles.item}>
+              <LabelReq>{ui.labels.whatsapp}</LabelReq>
+              <Input
+                placeholder={ui.placeholders.whatsapp}
+                style={styles.input}
+                inputMode="tel"
+                value={values.whatsapp}
+                onChange={(e) => onChange("whatsapp", e.target.value)}
+                maxLength={32}
+                status={status("whatsapp")}
+                required
+                aria-required="true"
+                aria-invalid={!!errors?.whatsapp}
+                allowClear
+                autoComplete="tel"
+                name="whatsapp"
+              />
+              {errors?.whatsapp ? (
+                <div style={styles.err}>{errors.whatsapp}</div>
+              ) : null}
+            </div>
 
-          {/* Address */}
-          <div style={styles.item}>
-            <LabelReq>{ui.labels.address}</LabelReq>
-            <Input.TextArea
-              placeholder={ui.placeholders.address}
-              style={styles.textarea}
-              rows={3}
-              value={values.address}
-              onChange={(e) => onChange("address", e.target.value)}
-              maxLength={500}
-              status={status("address")}
-              required
-              aria-required="true"
-              aria-invalid={!!errors?.address}
-              allowClear
-              autoComplete="street-address"
-            />
-            {errors?.address ? (
-              <div style={styles.err}>{errors.address}</div>
-            ) : null}
-          </div>
+            {/* Address */}
+            <div style={styles.item}>
+              <LabelReq>{ui.labels.address}</LabelReq>
+              <Input.TextArea
+                placeholder={ui.placeholders.address}
+                style={styles.textarea}
+                rows={3}
+                value={values.address}
+                onChange={(e) => onChange("address", e.target.value)}
+                maxLength={500}
+                status={status("address")}
+                required
+                aria-required="true"
+                aria-invalid={!!errors?.address}
+                allowClear
+                autoComplete="street-address"
+                name="address"
+              />
+              {errors?.address ? (
+                <div style={styles.err}>{errors.address}</div>
+              ) : null}
+            </div>
 
-          {/* Email */}
-          <div style={styles.item}>
-            <LabelReq>{ui.labels.email}</LabelReq>
-            <Input
-              placeholder={ui.placeholders.email}
-              style={styles.input}
-              type="email"
-              value={values.email}
-              onChange={(e) => onChange("email", e.target.value)}
-              maxLength={191}
-              status={status("email")}
-              required
-              aria-required="true"
-              aria-invalid={!!errors?.email}
-              allowClear
-              autoComplete="email"
-            />
-            {errors?.email ? (
-              <div style={styles.err}>{errors.email}</div>
-            ) : null}
-          </div>
+            {/* Email */}
+            <div style={styles.item}>
+              <LabelReq>{ui.labels.email}</LabelReq>
+              <Input
+                placeholder={ui.placeholders.email}
+                style={styles.input}
+                type="email"
+                value={values.email}
+                onChange={(e) => onChange("email", e.target.value)}
+                maxLength={191}
+                status={status("email")}
+                required
+                aria-required="true"
+                aria-invalid={!!errors?.email}
+                allowClear
+                autoComplete="email"
+                name="email"
+              />
+              {errors?.email ? (
+                <div style={styles.err}>{errors.email}</div>
+              ) : null}
+            </div>
 
-          {/* KTP */}
-          <div style={styles.item}>
-            <LabelReq>{ui.labels.ktp_number}</LabelReq>
-            <Input
-              placeholder={ui.placeholders.ktp_number}
-              style={styles.input}
-              inputMode="numeric"
-              value={values.ktp_number}
-              onChange={(e) => onChange("ktp_number", e.target.value)}
-              maxLength={20}
-              status={status("ktp_number")}
-              required
-              aria-required="true"
-              aria-invalid={!!errors?.ktp_number}
-              allowClear
-              autoComplete="off"
-            />
-            {errors?.ktp_number ? (
-              <div style={styles.err}>{errors.ktp_number}</div>
-            ) : null}
-          </div>
+            {/* KTP */}
+            <div style={styles.item}>
+              <LabelReq>{ui.labels.ktp_number}</LabelReq>
+              <Input
+                placeholder={ui.placeholders.ktp_number}
+                style={styles.input}
+                inputMode="numeric"
+                value={values.ktp_number}
+                onChange={(e) => onChange("ktp_number", e.target.value)}
+                maxLength={20}
+                status={status("ktp_number")}
+                required
+                aria-required="true"
+                aria-invalid={!!errors?.ktp_number}
+                allowClear
+                autoComplete="off"
+                name="ktp_number"
+              />
+              {errors?.ktp_number ? (
+                <div style={styles.err}>{errors.ktp_number}</div>
+              ) : null}
+            </div>
 
-          {/* Submit */}
-          <div style={styles.btnWrap}>
-            <Button
-              style={styles.btn}
-              size="large"
-              loading={loading}
-              disabled={!canSubmit}
-              onClick={submit}
-            >
-              {ui.labels.submit}
-            </Button>
-          </div>
+            {/* Submit */}
+            <div style={styles.btnWrap}>
+              <Button
+                style={styles.btn}
+                size="large"
+                loading={loading}
+                disabled={!canSubmit}
+                htmlType="submit"
+              >
+                {ui.labels.submit}
+              </Button>
+            </div>
+          </form>
         </Card>
-      </div>
-    </div>
+      </section>
+
+      {/* Anti horizontal scroll kecil + aksesibilitas */}
+      <style jsx global>{`
+        .form-mitra-page {
+          overflow-x: hidden;
+        }
+        @supports (overflow: clip) {
+          .form-mitra-page {
+            overflow-x: clip;
+          }
+        }
+      `}</style>
+    </main>
   );
 }

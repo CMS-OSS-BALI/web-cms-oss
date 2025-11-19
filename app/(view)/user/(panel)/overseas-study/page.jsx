@@ -1,34 +1,41 @@
-"use client";
-
-import { Suspense, lazy, useMemo, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
+// app/(view)/user/(panel)/overseas/page.jsx
+import { Suspense } from "react";
+import OverseasContent from "./OverseasContent";
 import Loading from "@/app/components/loading/LoadingImage";
+import { buildUserMetadata, pickLocale } from "@/app/seo/userMetadata";
 
-const OverseasContentLazy = lazy(() => import("./OverseasContent"));
+// Dynamic metadata untuk halaman Program Luar Negeri
+export async function generateMetadata({ searchParams }) {
+  const locale = pickLocale(searchParams?.lang);
 
-function pickLocale(queryLang, storedLang) {
-  const v = (queryLang || storedLang || "id").slice(0, 2).toLowerCase();
-  return v === "en" ? "en" : "id";
+  // Versi Indonesia
+  let titleId =
+    "Program Luar Negeri OSS Bali – Kuliah dan Karier Internasional";
+  let descId =
+    "Pelajari layanan pendampingan studi luar negeri OSS Bali: konsultasi kampus, beasiswa, dan rute cerdas menuju kuliah dan karier internasional.";
+
+  // Versi English
+  let titleEn =
+    "OSS Bali Overseas Programs – Study Abroad and Global Career Path";
+  let descEn =
+    "Learn about OSS Bali overseas study services: university guidance, scholarships, and smart routes to international study and career opportunities.";
+
+  const title = locale === "en" ? titleEn : titleId;
+  const description = locale === "en" ? descEn : descId;
+
+  return buildUserMetadata({
+    title,
+    description,
+    // sesuaikan jika path berbeda
+    path: "/user/overseas",
+    locale,
+    type: "website",
+  });
 }
 
-export default function OverseasPage() {
-  const search = useSearchParams();
-
-  const locale = useMemo(() => {
-    const q = search?.get("lang") || "";
-    const ls =
-      typeof window !== "undefined"
-        ? localStorage.getItem("oss.lang") || ""
-        : "";
-    return pickLocale(q, ls);
-  }, [search]);
-
-  // Persist the chosen locale so subsequent pages can reuse it
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("oss.lang", locale);
-    }
-  }, [locale]);
+// Server component yang membungkus OverseasContent (client)
+export default function OverseasPage({ searchParams }) {
+  const locale = pickLocale(searchParams?.lang);
 
   return (
     <Suspense
@@ -38,8 +45,8 @@ export default function OverseasPage() {
         </div>
       }
     >
-      {/* key forces remount when ?lang changes */}
-      <OverseasContentLazy key={locale} locale={locale} />
+      {/* initialLocale dipakai di client untuk sinkronisasi bahasa */}
+      <OverseasContent initialLocale={locale} />
     </Suspense>
   );
 }

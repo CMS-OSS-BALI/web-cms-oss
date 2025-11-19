@@ -17,6 +17,18 @@ export async function middleware(req) {
   const isAdminApi = pathname.startsWith("/api/admin");
   const isPublicAdmin = PUBLIC_ADMIN.has(pathname);
 
+  // ===== Inject x-pathname ke REQUEST headers,
+  // supaya bisa dibaca di server component via headers().get("x-pathname")
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set("x-pathname", pathname);
+
+  const next = () =>
+    NextResponse.next({
+      request: {
+        headers: requestHeaders,
+      },
+    });
+
   // ===== API privat (/api/admin/**)
   if (isAdminApi) {
     const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
@@ -32,13 +44,13 @@ export async function middleware(req) {
         { status: 401 }
       );
     }
-    return NextResponse.next();
+    return next();
   }
 
   // ===== Halaman admin (/admin/**)
   if (isAdminPage) {
     // login/forgot/reset tidak perlu token
-    if (isPublicAdmin) return NextResponse.next();
+    if (isPublicAdmin) return next();
 
     const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
     if (!token) {
@@ -47,25 +59,23 @@ export async function middleware(req) {
       return NextResponse.redirect(url);
     }
 
-    // TANPA fetch ke /api/auth/pca:
-    // Jika token mengandung flag forceReauth (di-set oleh JWT callback), paksa login ulang
+    // Jika token mengandung flag forceReauth, paksa login ulang
     if (token.forceReauth) {
       const relogin = new URL("/admin/login-page", req.url);
       relogin.searchParams.set("reason", "relogin");
-      // optional: bawa kembali halaman semula
-      const next = searchParams.get("next") || pathname + search;
-      if (next) relogin.searchParams.set("next", next);
+      const nextParam = searchParams.get("next") || pathname + search;
+      if (nextParam) relogin.searchParams.set("next", nextParam);
       return NextResponse.redirect(relogin);
     }
 
-    return NextResponse.next();
+    return next();
   }
 
-  // Selain /admin/** dan /api/admin/** tidak dijaga (public pages jalan bebas)
-  return NextResponse.next();
+  // Selain /admin/** dan /api/admin/**: public pages, tapi tetap kita kirim x-pathname
+  return next();
 }
 
-// Batasi hanya ke rute admin
+// Sekarang middleware juga jalan untuk /user/** supaya x-pathname sampai ke PanelLayout
 export const config = {
-  matcher: ["/admin/:path*", "/api/admin/:path*"],
+  matcher: ["/admin/:path*", "/api/admin/:path*", "/user/:path*"],
 };

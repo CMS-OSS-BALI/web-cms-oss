@@ -1,34 +1,35 @@
-"use client";
-
-import { Suspense, lazy, useMemo } from "react";
-import { useSearchParams } from "next/navigation";
+// app/(view)/user/(panel)/calculator/page.jsx (sesuaikan path)
+import { Suspense } from "react";
+import CalculatorContent from "./CalculatorContent";
 import Loading from "@/app/components/loading/LoadingImage";
-import useCalculatorViewModel from "./useCalculatorViewModel";
+import { buildUserMetadata, pickLocale } from "@/app/seo/userMetadata";
 
-const CalculatorContentLazy = lazy(() => import("./CalculatorContent"));
+// Metadata dinamis untuk Price Calculator
+export async function generateMetadata({ searchParams }) {
+  const locale = pickLocale(searchParams?.lang);
 
-const pickLocale = (q, ls) => {
-  const v = (q || ls || "id").slice(0, 2).toLowerCase();
-  return v === "en" ? "en" : "id";
-};
+  const title =
+    locale === "en"
+      ? "Study Cost Price Calculator – OSS Bali"
+      : "Kalkulator Estimasi Biaya Studi – OSS Bali";
 
-export default function CalculatorPage() {
-  const search = useSearchParams();
+  const description =
+    locale === "en"
+      ? "Estimate your study and living costs with OSS Bali's price calculator for tuition, service fees, insurance, visa, and add-ons."
+      : "Hitung estimasi biaya studi dan kebutuhan lain (tuition, service fee, asuransi, visa, dan add-ons) dengan kalkulator biaya OSS Bali.";
 
-  const locale = useMemo(() => {
-    const q = search?.get("lang") || "";
-    const ls =
-      typeof window !== "undefined"
-        ? localStorage.getItem("oss.lang") || ""
-        : "";
-    return pickLocale(q, ls);
-  }, [search]);
-
-  // VM dieksekusi di page agar props bisa dipass ke content
-  const vm = useCalculatorViewModel({
+  return buildUserMetadata({
+    title,
+    description,
+    // SESUAIKAN dengan rute sebenarnya
+    path: "/user/tools/price-calculator",
     locale,
-    fallback: locale === "id" ? "en" : "id",
+    type: "website",
   });
+}
+
+export default function CalculatorPage({ searchParams }) {
+  const locale = pickLocale(searchParams?.lang);
 
   return (
     <Suspense
@@ -38,8 +39,8 @@ export default function CalculatorPage() {
         </div>
       }
     >
-      {/* key=locale supaya remount ketika bahasa berubah */}
-      <CalculatorContentLazy key={locale} locale={locale} {...vm} />
+      {/* initialLocale dipakai client component untuk nentuin locale awal */}
+      <CalculatorContent initialLocale={locale} />
     </Suspense>
   );
 }

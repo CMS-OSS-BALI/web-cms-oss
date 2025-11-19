@@ -1,61 +1,48 @@
-"use client";
-
-import { Suspense, lazy, useMemo } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { Suspense } from "react";
+import CollegeDetailContent from "./CollegeDetailContent";
 import Loading from "@/app/components/loading/LoadingImage";
+import { buildUserMetadata, pickLocale } from "@/app/seo/userMetadata";
 
-const CollegeDetailContentLazy = lazy(() => import("./CollegeDetailContent"));
+// Dynamic metadata untuk detail kampus
+export async function generateMetadata({ params, searchParams }) {
+  const locale = pickLocale(searchParams?.lang);
+  const rawId = Array.isArray(params?.id) ? params.id[0] : params?.id || "";
+  const decodedId = decodeURIComponent(rawId);
 
-const LANG_COOKIE = "oss.lang";
+  const baseTitle =
+    locale === "en"
+      ? "College Partner Detail – OSS Bali"
+      : "Detail Kampus Mitra – OSS Bali";
 
-const normalizeLang = (v, fb = "id") => {
-  const s = String(v || "")
-    .trim()
-    .toLowerCase()
-    .slice(0, 2);
-  if (s === "en") return "en";
-  if (s === "id") return "id";
-  return fb;
-};
+  const humanName = decodedId ? decodedId.replace(/-/g, " ") : "";
 
-const readCookieLang = () => {
-  if (typeof document === "undefined") return "";
-  const m = document.cookie.match(/(?:^|;\s*)oss\.lang=(en|id)/);
-  return m ? m[1] : "";
-};
+  const title = humanName ? `${humanName} – ${baseTitle}` : baseTitle;
 
-const readStorageLang = () => {
-  if (typeof window === "undefined") return "";
-  try {
-    return (
-      localStorage.getItem(LANG_COOKIE) ||
-      sessionStorage.getItem(LANG_COOKIE) ||
-      ""
-    );
-  } catch {
-    return "";
-  }
-};
+  const description =
+    locale === "en"
+      ? `Detailed information about ${
+          humanName || "a partner college"
+        } collaborating with OSS Bali.`
+      : `Informasi detail tentang ${
+          humanName || "kampus mitra"
+        } yang bekerja sama dengan OSS Bali.`;
 
-export default function CollegeDetailPage() {
-  const params = useParams();
-  const search = useSearchParams();
+  return buildUserMetadata({
+    title,
+    description,
+    path: `/user/college/${rawId}`,
+    locale,
+    type: "website",
+    image: "/og/college.png",
+  });
+}
 
-  // slug/id dari route segment
-  const identifier = useMemo(() => {
-    const raw = params?.id ?? "";
-    return Array.isArray(raw) ? String(raw[0] || "") : String(raw || "");
-  }, [params]);
-
-  // Resolusi locale: query → cookie → storage → navigator → id
-  const locale = useMemo(() => {
-    const fromQuery = search?.get("lang") ?? search?.get("locale") ?? "";
-    const fromCookie = readCookieLang();
-    const fromStorage = readStorageLang();
-    const fromNav =
-      typeof navigator !== "undefined" ? navigator.language : "id";
-    return normalizeLang(fromQuery || fromCookie || fromStorage || fromNav);
-  }, [search]);
+// Server component membungkus client CollegeDetailContent
+export default function CollegeDetailPage({ params, searchParams }) {
+  const locale = pickLocale(searchParams?.lang);
+  const identifier = Array.isArray(params?.id)
+    ? params.id[0]
+    : params?.id || "";
 
   return (
     <Suspense
@@ -65,7 +52,12 @@ export default function CollegeDetailPage() {
         </div>
       }
     >
-      <CollegeDetailContentLazy id={identifier} locale={locale} />
+      {/* key pakai locale supaya ketika ganti bahasa, component remount dan data ikut ganti */}
+      <CollegeDetailContent
+        key={`${identifier}-${locale}`}
+        id={identifier}
+        locale={locale}
+      />
     </Suspense>
   );
 }

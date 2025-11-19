@@ -1,22 +1,35 @@
 "use client";
+
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect } from "react"; // Tambahkan useEffect
+import { useEffect, useMemo } from "react";
 import useEventsRViewModel from "./useEventsRViewModel";
 
-/* ===== Hooks dari Referensi (Untuk Reveal On Scroll) ===== */
+/* ===== Locale helper (sinkron dengan EventsUContent) ===== */
+const pickLocaleClient = (lang, ls, fallback = "id") => {
+  const v = String(lang || ls || fallback)
+    .slice(0, 2)
+    .toLowerCase();
+  return v === "en" ? "en" : "id";
+};
+
+/* ===== Hooks dari referensi (Reveal On Scroll) ===== */
 function useRevealOnScroll(deps = []) {
   useEffect(() => {
     if (typeof window === "undefined") return;
+
     const prefersReduce = window.matchMedia(
       "(prefers-reduced-motion: reduce)"
     ).matches;
+
     const markVisible = (els) =>
       els.forEach((el) => el.classList.add("is-visible"));
+
     if (prefersReduce) {
       markVisible(Array.from(document.querySelectorAll(".reveal")));
       return;
     }
+
     const io = new IntersectionObserver(
       (entries) => {
         entries.forEach((e) => {
@@ -28,20 +41,25 @@ function useRevealOnScroll(deps = []) {
       },
       { threshold: 0.16, rootMargin: "0px 0px -10% 0px" }
     );
+
     const observeAll = () => {
       document
         .querySelectorAll(".reveal:not(.is-visible)")
         .forEach((el) => io.observe(el));
     };
+
     observeAll();
+
     const mo = new MutationObserver(observeAll);
     mo.observe(document.body, { childList: true, subtree: true });
+
     return () => {
       io.disconnect();
       mo.disconnect();
     };
   }, deps);
 }
+
 /* ===== Tokens ===== */
 const CONTAINER = { width: "92%", maxWidth: 1220, margin: "0 auto" };
 const BLUE = "#0b56c9";
@@ -92,7 +110,12 @@ const hero = {
     border: "1px solid rgba(14,56,140,.08)",
     boxShadow: "0 10px 28px rgba(11,86,201,.08)",
   },
-  img: { width: "100%", height: "100%", objectFit: "cover", display: "block" },
+  img: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    display: "block",
+  },
 
   right: {
     position: "relative",
@@ -287,24 +310,21 @@ const emptyCss = {
   sub: { marginTop: 8, color: "#476aa4" },
 };
 
-/* Komponen terpisah untuk global styles */
+/* ===== Global styles khusus halaman rep ===== */
 function GlobalStyles() {
   return (
     <style jsx global>{`
-      /* Tweak global body/html untuk memastikan background penuh dan mencegah overflow horizontal */
+      /* Body & wrapper background untuk halaman rep */
       html,
       body {
-        /* Penting: Pastikan tidak ada warna background default yang menutupi */
         background-color: transparent !important;
         overflow-x: clip;
       }
       body {
-        min-height: 100vh; /* Memastikan body setinggi viewport */
+        min-height: 100vh;
       }
 
-      /* ===== Latar global gradasi diterapkan pada class wrapper ===== */
       .events-page-wrap {
-        /* Menerapkan background ke main/div container */
         background: radial-gradient(
             1000px 500px at 10% 50%,
             rgba(11, 86, 201, 0.08),
@@ -316,7 +336,6 @@ function GlobalStyles() {
             transparent 65%
           ),
           linear-gradient(180deg, #f7f9ff 0%, #ffffff 100%);
-        /* min-height 100% untuk mengisi body */
         min-height: 100%;
         overflow-x: clip;
       }
@@ -354,7 +373,7 @@ function GlobalStyles() {
         animation: pulse-soft 2.8s ease-in-out infinite;
       }
 
-      /* ===== Reveal utilities (referensi) ===== */
+      /* Reveal utilities */
       .reveal {
         opacity: 0;
         transform: var(--reveal-from, translate3d(0, 16px, 0));
@@ -392,28 +411,66 @@ function GlobalStyles() {
           animation: none !important;
         }
       }
+
+      @keyframes shimmer {
+        0% {
+          background-position: 200% 0;
+        }
+        100% {
+          background-position: -200% 0;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .skeleton {
+          animation: none !important;
+        }
+      }
     `}</style>
   );
 }
 
-export default function EventsRContent({ locale = "id" }) {
-  const sp = useSearchParams();
-  const eventId = sp.get("id") || "";
+/* ===== PAGE (Client) ===== */
+export default function EventsRContent({ initialLocale = "id" }) {
+  const search = useSearchParams();
+
+  // Single source-of-truth di client: ?lang → localStorage → initialLocale
+  const baseLocale = initialLocale || "id";
+
+  const locale = useMemo(() => {
+    const fromQuery = search?.get("lang") || "";
+    const fromLs =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem("oss.lang") || ""
+        : "";
+    return pickLocaleClient(fromQuery || baseLocale, fromLs);
+  }, [search, baseLocale]);
+
+  // Simpan locale aktif ke localStorage agar header / halaman lain konsisten
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem("oss.lang", locale);
+    } catch {
+      // ignore
+    }
+  }, [locale]);
+
+  const eventId = search?.get("id") || "";
+
+  // ViewModel akan re-fetch kalau locale / eventId berubah
   const vm = useEventsRViewModel({ locale, eventId });
 
-  // Panggil hook useRevealOnScroll
-  useRevealOnScroll([vm.benefits?.length]);
+  // Reveal on scroll: re-observe ketika data / locale berubah
+  useRevealOnScroll([vm.benefits?.length || 0, vm.item ? 1 : 0, locale]);
 
   if (!vm.item) {
     return (
       <main className="events-page-wrap">
-        {" "}
-        {/* Tambahkan class untuk background */}
-        <section style={emptyCss.wrap} className="reveal" data-anim="zoom">
+        <section className="reveal" data-anim="zoom" style={emptyCss.wrap}>
           <h2 style={emptyCss.big}>{safeText(vm.emptyTitle)}</h2>
           <p style={emptyCss.sub}>{safeText(vm.emptySub)}</p>
         </section>
-        <GlobalStyles /> {/* Panggil GlobalStyles */}
+        <GlobalStyles />
       </main>
     );
   }
@@ -438,8 +495,6 @@ export default function EventsRContent({ locale = "id" }) {
 
   return (
     <main className="events-page-wrap">
-      {" "}
-      {/* Tambahkan class untuk background */}
       {/* ===== HERO ===== */}
       <section style={hero.wrap}>
         <h1 className="reveal" data-anim="down" style={hero.title}>
@@ -541,7 +596,6 @@ export default function EventsRContent({ locale = "id" }) {
           </div>
         </div>
 
-        {/* responsive + shimmer */}
         <style jsx>{`
           @media (max-width: 1200px) {
             .hero-grid {
@@ -588,21 +642,9 @@ export default function EventsRContent({ locale = "id" }) {
               gap: 18px !important;
             }
           }
-          @keyframes shimmer {
-            0% {
-              background-position: 200% 0;
-            }
-            100% {
-              background-position: -200% 0;
-            }
-          }
-          @media (prefers-reduced-motion: reduce) {
-            .skeleton {
-              animation: none !important;
-            }
-          }
         `}</style>
       </section>
+
       {/* ===== BENEFITS ===== */}
       {vm.benefits?.length ? (
         <section style={benefitsCss.wrap}>
@@ -673,6 +715,7 @@ export default function EventsRContent({ locale = "id" }) {
           `}</style>
         </section>
       ) : null}
+
       {/* ===== CTA ===== */}
       <section style={cta.wrap}>
         <div className="cta-grid" style={cta.grid}>
@@ -717,7 +760,8 @@ export default function EventsRContent({ locale = "id" }) {
           }
         `}</style>
       </section>
-      <GlobalStyles /> {/* Panggil GlobalStyles */}
+
+      <GlobalStyles />
     </main>
   );
 }

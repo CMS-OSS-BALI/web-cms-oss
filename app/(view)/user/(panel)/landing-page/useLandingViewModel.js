@@ -100,7 +100,7 @@ export function useLandingViewModel(arg) {
           "Mungkin mereka belum tahu caranya yang benar. Temukan langkahmu bersama kami.",
           "Maybe they just don't know the right way. Find your path with us."
         ),
-        youtube: "https://youtu.be/jVUIMA6VmKA?si=S1ii5lHlAy3pWjA2",
+        youtube: "https://youtu.be/3NJFLyWPYOw?si=tnCj-RWRZEWbC6wV",
       },
       {
         title: t(
@@ -111,7 +111,7 @@ export function useLandingViewModel(arg) {
           "Jangan khawatir—kami akan menuntunmu dari awal hingga berhasil kuliah dan karier di luar negeri.",
           "Don't worry—we'll guide you from the start until you succeed in studying and building a career abroad."
         ),
-        youtube: "https://youtu.be/jVUIMA6VmKA?si=S1ii5lHlAy3pWjA2",
+        youtube: "https://youtu.be/BdcyBPoG-kY?si=pR1xpVMjgjjSePvB",
       },
     ],
     centerTitle: t(
@@ -122,7 +122,7 @@ export function useLandingViewModel(arg) {
       "Rencanakan study & karirmu bersama kami.",
       "Plan your study & career with us."
     ),
-    centerYoutube: "https://youtu.be/jVUIMA6VmKA?si=S1ii5lHlAy3pWjA2",
+    centerYoutube: "https://youtu.be/Py1jA2EjCmk?si=qke7rB0X2BlWXHsv",
   };
 
   /* ===== Popular Program (layout teks kiri + slider kanan) ===== */

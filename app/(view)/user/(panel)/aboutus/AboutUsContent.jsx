@@ -2,11 +2,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button, Typography } from "antd";
 import { Swiper, SwiperSlide } from "swiper/react";
 import { Autoplay } from "swiper/modules";
 import "swiper/css";
+
+import useAboutUsViewModel from "./useAboutUsViewModel";
 
 const { Paragraph } = Typography;
 
@@ -14,10 +16,19 @@ const { Paragraph } = Typography;
 const COMPANY_PROFILE_URL =
   "https://drive.google.com/file/d/1G4NIWeKa5BRzaTzw8I7QPx91LbZM6g8d/view?usp=sharing";
 
+/* ===== Locale helper (client) ===== */
+const pickLocaleClient = (lang, ls, fallback = "id") => {
+  const v = String(lang || ls || fallback)
+    .slice(0, 2)
+    .toLowerCase();
+  return v === "en" ? "en" : "id";
+};
+
 /* ================= Hooks ================= */
 function useIsNarrow(breakpoint = 900) {
   const [isNarrow, setIsNarrow] = useState(false);
   useEffect(() => {
+    if (typeof window === "undefined") return;
     const mq = window.matchMedia?.(`(max-width:${breakpoint}px)`);
     const apply = () => setIsNarrow(!!mq?.matches);
     apply();
@@ -26,9 +37,11 @@ function useIsNarrow(breakpoint = 900) {
   }, [breakpoint]);
   return isNarrow;
 }
+
 function usePrefersReducedMotion() {
   const [reduced, setReduced] = useState(false);
   useEffect(() => {
+    if (typeof window === "undefined") return;
     const mq = window.matchMedia?.("(prefers-reduced-motion: reduce)");
     const apply = () => setReduced(!!mq?.matches);
     apply();
@@ -132,12 +145,14 @@ function toYouTubeId(input = "") {
     return "";
   }
 }
+
 const toEmbed = (url) => {
   const id = toYouTubeId(url);
   return id
     ? `https://www.youtube.com/embed/${id}?rel=0&modestbranding=1&autoplay=1`
     : "";
 };
+
 const toThumb = (url) => {
   const id = toYouTubeId(url);
   return id
@@ -454,19 +469,43 @@ const styles = {
 };
 
 /* ================= Component ================= */
-export default function AboutUsContent({
-  hero = {},
-  vision = {},
-  mission = {},
-  video = {},
-  support = {},
-  activities = {},
-  career = {},
-}) {
+export default function AboutUsContent({ initialLocale }) {
+  const router = useRouter();
+  const search = useSearchParams();
+
   const isTablet = useIsNarrow(1024);
   const isMobile = useIsNarrow(640);
   const reduced = usePrefersReducedMotion();
-  const router = useRouter();
+
+  // ===== Locale client-side (sinkron dengan BlogUContent) =====
+  const baseLocale = initialLocale || "id";
+
+  const locale = useMemo(() => {
+    const fromQuery = search?.get("lang") || "";
+    const fromLs =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem("oss.lang") || ""
+        : "";
+    return pickLocaleClient(fromQuery || baseLocale, fromLs);
+  }, [search, baseLocale]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("oss.lang", locale);
+    }
+  }, [locale]);
+
+  // ===== ViewModel (ambil konten hero/vision/mission dst) =====
+  const vm = useAboutUsViewModel({ locale }) || {};
+  const {
+    hero = {},
+    vision = {},
+    mission = {},
+    video = {},
+    support = {},
+    activities = {},
+    career = {},
+  } = vm;
 
   const heroRef = useRef(null);
   useHeroParallax(heroRef);
@@ -547,6 +586,7 @@ export default function AboutUsContent({
                   {hero.description}
                 </Paragraph>
               ) : null}
+
               {hero?.ctaLabel ? (
                 <Button
                   type="primary"
@@ -592,10 +632,12 @@ export default function AboutUsContent({
                   }}
                 />
               ) : null}
+
               {hero?.image ? (
                 <img
                   src={hero.image}
-                  alt={hero?.imgAlt || "About OSS Bali"} title={hero?.imgAlt || "About OSS Bali"}
+                  alt={hero?.imgAlt || "About OSS Bali"}
+                  title={hero?.imgAlt || "About OSS Bali"}
                   style={styles.heroImg}
                   loading="eager"
                   decoding="async"
@@ -661,7 +703,8 @@ export default function AboutUsContent({
                 {m.image ? (
                   <img
                     src={m.image}
-                    alt="" title=""
+                    alt=""
+                    title=""
                     style={styles.missionImg}
                     loading="lazy"
                     decoding="async"
@@ -708,7 +751,8 @@ export default function AboutUsContent({
               <>
                 <img
                   src={thumbUrl}
-                  alt={video?.title || "Video thumbnail"} title={video?.title || "Video thumbnail"}
+                  alt={video?.title || "Video thumbnail"}
+                  title={video?.title || "Video thumbnail"}
                   style={styles.videoThumb}
                   onError={(e) => (e.currentTarget.src = "/images/loading.png")}
                   loading="lazy"
@@ -765,7 +809,8 @@ export default function AboutUsContent({
                   {s.icon ? (
                     <img
                       src={s.icon}
-                      alt="" title=""
+                      alt=""
+                      title=""
                       aria-hidden="true"
                       style={styles.support.icon}
                       loading="lazy"
@@ -821,11 +866,15 @@ export default function AboutUsContent({
               }}
             >
               <div
-                style={{ ...styles.activity3.imgBox, ["--img-h"]: `${imgH}px` }}
+                style={{
+                  ...styles.activity3.imgBox,
+                  ["--img-h"]: `${imgH}px`,
+                }}
               >
                 <img
                   src={a.image}
-                  alt={a?.title || "Aktivitas"} title={a?.title || "Aktivitas"}
+                  alt={a?.title || "Aktivitas"}
+                  title={a?.title || "Aktivitas"}
                   style={styles.activity3.img}
                   loading="lazy"
                   decoding="async"
@@ -900,7 +949,7 @@ export default function AboutUsContent({
           background: linear-gradient(180deg, #f0f6ff 0%, #ffffff 100%);
         }
 
-        /* ===== Reveal utilities (referensi) ===== */
+        /* ===== Reveal utilities ===== */
         .reveal {
           opacity: 0;
           transform: var(--reveal-from, translate3d(0, 16px, 0));

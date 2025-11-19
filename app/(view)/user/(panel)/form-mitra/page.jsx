@@ -1,38 +1,48 @@
-"use client";
-
-import { useMemo, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
-import useFormMitraViewModel from "./useFormMitraViewModel";
+// app/(view)/user/form-mitra/page.jsx
+import { Suspense } from "react";
 import FormMitraContent from "./FormMitraContent";
+import Loading from "@/app/components/loading/LoadingImage";
+import { buildUserMetadata, pickLocale } from "@/app/seo/userMetadata";
 
-const pickLocale = (q, ls, nav) => {
-  const v = (q || ls || nav || "id").slice(0, 2).toLowerCase();
-  return v === "en" ? "en" : "id";
-};
+// Dynamic metadata untuk Form Mitra
+export async function generateMetadata({ searchParams }) {
+  const locale = pickLocale(searchParams?.lang);
 
-export default function Page() {
-  const search = useSearchParams();
+  // Copywriting SEO (ID & EN)
+  let titleId = "Form Kerja Sama Mitra OSS Bali – Daftar Menjadi Partner Resmi";
+  let descId =
+    "Isi formulir kerja sama mitra OSS Bali untuk menjalin kolaborasi dalam program edukasi, event, dan layanan bagi pelajar Indonesia yang ingin studi ke luar negeri.";
 
-  // Resolve locale: ?lang / ?locale -> localStorage(oss.lang) -> navigator -> "id"
-  const locale = useMemo(() => {
-    const q = search?.get("lang") ?? search?.get("locale") ?? "";
-    const ls =
-      typeof window !== "undefined"
-        ? localStorage.getItem("oss.lang") || ""
-        : "";
-    const nav = typeof navigator !== "undefined" ? navigator.language : "id";
-    return pickLocale(q, ls, nav);
-  }, [search]);
+  let titleEn = "OSS Bali Partnership Form – Become an Official Partner";
+  let descEn =
+    "Submit the OSS Bali partnership form to collaborate on education programs, events, and services for Indonesian students planning to study abroad.";
 
-  // Persist so header & halaman lain konsisten
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("oss.lang", locale);
-    }
-  }, [locale]);
+  const title = locale === "en" ? titleEn : titleId;
+  const description = locale === "en" ? descEn : descId;
 
-  const vm = useFormMitraViewModel({ locale });
+  return buildUserMetadata({
+    title,
+    description,
+    path: "/user/form-mitra", // sesuaikan kalau route-nya beda
+    locale,
+    type: "website",
+  });
+}
 
-  // key={locale} memastikan remount ringan ketika bahasa berubah via header/query
-  return <FormMitraContent key={locale} locale={locale} {...vm} />;
+// Server component → bungkus FormMitraContent (client)
+export default function FormMitraPage({ searchParams }) {
+  const initialLocale = pickLocale(searchParams?.lang);
+
+  return (
+    <Suspense
+      fallback={
+        <div className="page-wrap">
+          <Loading />
+        </div>
+      }
+    >
+      {/* initialLocale dikirim ke client; client akan merge dengan ?lang + localStorage */}
+      <FormMitraContent initialLocale={initialLocale} />
+    </Suspense>
+  );
 }

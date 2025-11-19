@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Skeleton } from "antd";
 import { Swiper, SwiperSlide } from "swiper/react";
 import { Autoplay } from "swiper/modules";
@@ -8,6 +9,15 @@ import "swiper/css";
 
 import useVisaViewModel from "./useVisaViewModel";
 import { sanitizeHtml } from "@/app/utils/dompurify";
+
+/* ============================= */
+/* Locale helper (client-side, konsisten dengan halaman lain) */
+const pickLocaleClient = (lang, ls, fallback = "id") => {
+  const v = String(lang || ls || fallback)
+    .slice(0, 2)
+    .toLowerCase();
+  return v === "en" ? "en" : "id";
+};
 
 /* ============================= */
 /* Utilities: Reveal on scroll + Parallax */
@@ -240,13 +250,12 @@ const styles = {
     },
     photoFrame: {
       width: "100%",
-      maxWidth: 520, // ⬅️ dari 420 → 520 biar fotonya bisa lebih besar
-      // padding: 8, // kalau mau kasih nafas sedikit
+      maxWidth: 520, // foto lebih besar
     },
     photo: {
       width: "100%",
       height: "auto",
-      maxHeight: 520, // ⬅️ dari 380 → 520
+      maxHeight: 520,
       objectFit: "contain",
       objectPosition: "center bottom",
       borderRadius: 24,
@@ -254,7 +263,7 @@ const styles = {
     },
 
     copyCol: {
-      padding: "0 0 0 32px", // sedikit lebih kecil biar komposisi seimbang
+      padding: "0 0 0 32px",
       display: "flex",
       flexDirection: "column",
       justifyContent: "center",
@@ -408,8 +417,35 @@ function Img({ src, alt, style, className }) {
   );
 }
 
-export default function VisaContent({ locale = "id" }) {
+export default function VisaContent({
+  initialLocale = "id",
+  locale: localeProp,
+}) {
+  const search = useSearchParams();
   const heroRef = useRef(null);
+
+  /* -------- Locale ala EventsUContent (anti hydration mismatch) -------- */
+  const baseLocale = initialLocale || localeProp || "id";
+
+  const locale = useMemo(() => {
+    const fromQuery = search?.get("lang") || "";
+    const fromLs =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem("oss.lang") || ""
+        : "";
+    return pickLocaleClient(fromQuery || baseLocale, fromLs);
+  }, [search, baseLocale]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem("oss.lang", locale);
+      } catch {
+        // ignore
+      }
+    }
+  }, [locale]);
+
   const { content, isLoading, locale: lk } = useVisaViewModel({ locale });
 
   /* -------- responsive flags -------- */
@@ -518,7 +554,6 @@ export default function VisaContent({ locale = "id" }) {
   const premiumCopyColStyle = useMemo(
     () => ({
       ...styles.premium.copyCol,
-      // di mobile padding atas sedikit & tanpa indent kiri
       padding: isNarrow ? "0 0 0 0" : styles.premium.copyCol.padding,
       order: isNarrow ? 1 : 0, // teks di atas saat mobile
     }),
@@ -528,7 +563,7 @@ export default function VisaContent({ locale = "id" }) {
   const premiumPhotoColStyle = useMemo(
     () => ({
       ...styles.premium.photoCol,
-      marginTop: isNarrow ? 20 : 0, // jarak kecil dari teks
+      marginTop: isNarrow ? 20 : 0,
       order: isNarrow ? 2 : 0, // foto di bawah saat mobile
     }),
     [isNarrow]
@@ -571,7 +606,7 @@ export default function VisaContent({ locale = "id" }) {
     premium.heading ||
     (isEn
       ? "Premium Advantages of OSS Bali Visa Services"
-      : "Keunggulan Premium Layanan Visa Di OSS Bali");
+      : "Keunggulan Premium Layanan Visa di OSS Bali");
   const premiumItems = premium.items || [];
   const premiumImage = premium.image || "/visa-premium/premium-photo.jpg";
 

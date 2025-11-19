@@ -1,16 +1,26 @@
-﻿"use client";
+﻿// app/(view)/user/(panel)/accommodation/AccommodationContent.jsx
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { Skeleton } from "antd";
 import { Swiper, SwiperSlide } from "swiper/react";
 import { Autoplay } from "swiper/modules";
 import "swiper/css";
+import { useSearchParams } from "next/navigation";
 
 import useAccommodationViewModel from "./useAccommodationViewModel";
 import { sanitizeHtml } from "@/app/utils/dompurify";
 
 const FONT_FAMILY =
   '"Public Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif';
+
+/* ===== Locale helper (client) ===== */
+const pickLocaleClient = (lang, ls, fallback = "id") => {
+  const v = String(lang || ls || fallback)
+    .slice(0, 2)
+    .toLowerCase();
+  return v === "en" ? "en" : "id";
+};
 
 /* ===== reveal ringan ===== */
 function useRevealOnScroll(deps = []) {
@@ -351,9 +361,35 @@ function Img({ src, alt, style }) {
   );
 }
 
-export default function AccommodationContent({ locale = "id" }) {
+export default function AccommodationContent(props) {
+  const { initialLocale, locale: localeProp } = props || {};
+  const search = useSearchParams();
+
+  // ===== Locale client-side (sinkron dengan About/Blog) =====
+  const baseLocale = initialLocale || localeProp || "id";
+
+  const locale = useMemo(() => {
+    const fromQuery = search?.get("lang") || "";
+    const fromLs =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem("oss.lang") || ""
+        : "";
+    return pickLocaleClient(fromQuery || baseLocale, fromLs);
+  }, [search, baseLocale]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("oss.lang", locale);
+    }
+  }, [locale]);
+
   const { content, isLoading } = useAccommodationViewModel({ locale });
-  useRevealOnScroll([isLoading]);
+
+  useRevealOnScroll([
+    isLoading,
+    content?.services?.cards?.length || 0,
+    content?.why?.reasons?.length || 0,
+  ]);
 
   const safeDesc = sanitizeHtml(content.description || "", {
     allowedTags: [
@@ -628,7 +664,7 @@ export default function AccommodationContent({ locale = "id" }) {
       <section style={styles.why.section}>
         <div style={sectionInner}>
           <div className="reveal" data-anim="zoom" style={whyGrid}>
-            {/* kiri: foto student (tanpa frame tambahan) */}
+            {/* kiri: foto student */}
             <div style={whyLeft}>
               <Img
                 src={why.image}
@@ -652,7 +688,6 @@ export default function AccommodationContent({ locale = "id" }) {
               <div style={styles.why.list}>
                 {reasons.map((w) => (
                   <div key={w.id} style={styles.why.item}>
-                    {/* hanya icon, tanpa background box */}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={w.icon || "/icons/why-placeholder.svg"}
