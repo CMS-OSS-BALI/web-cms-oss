@@ -284,10 +284,10 @@ export default function useEventsUViewModel({ locale = "id" } = {}) {
         "Are You a Representative from an Overseas University?"
       ),
       repCtaImages: [
-        { src: "/rep/1.jpg", alt: "Representative 1" },
-        { src: "/rep/2.jpg", alt: "Representative 2" },
-        { src: "/rep/3.jpg", alt: "Representative 3" },
-        { src: "/rep/4.jpg", alt: "Representative 4" },
+        { src: "/rep1.jpg", alt: "Representative 1" },
+        { src: "/rep2.jpg", alt: "Representative 2" },
+        { src: "/rep3.jpg", alt: "Representative 3" },
+        { src: "/rep4.jpg", alt: "Representative 4" },
       ],
       repEventOptions: repEvents.map((e) => {
         const baseId = String(e.id).replace(/-rep$/, "");

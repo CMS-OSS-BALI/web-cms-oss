@@ -5,6 +5,9 @@ import dynamic from "next/dynamic";
 import { useMemo, useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Swiper, SwiperSlide } from "swiper/react";
+import { Autoplay } from "swiper/modules";
+import "swiper/css";
 import useEventsUViewModel from "./useEventsUViewModel";
 import { Pagination, ConfigProvider, Modal, Radio } from "antd";
 import Loading from "@/app/components/loading/LoadingImage";
@@ -152,8 +155,9 @@ const hero = {
     position: "relative",
     isolation: "isolate",
     width: "100%",
-    minHeight: "clamp(380px, 56vw, 560px)",
-    padding: "clamp(72px, 8vw, 96px) 24px clamp(36px, 6vw, 64px)",
+    minHeight: "clamp(520px, 92dvh, 940px)",
+    padding:
+      "clamp(84px, 12dvh, 160px) clamp(18px, 5vw, 32px) clamp(78px, 12dvh, 150px)",
     display: "grid",
     placeItems: "center",
     boxSizing: "border-box",
@@ -873,14 +877,9 @@ const prevEv = {
   scrollerOuter: {
     marginTop: 26,
     paddingBottom: 14,
-    overflowX: "auto",
-    overflowY: "hidden",
   },
-  track: {
-    display: "flex",
-    gap: 18,
+  swiper: {
     padding: "4px 4px 6px",
-    scrollSnapType: "x mandatory",
   },
   card: {
     flex: "0 0 clamp(230px, 24vw, 320px)",
@@ -912,6 +911,20 @@ const prevEv = {
 function PreviousEventsSection({ title, subtitle, photos = [] }) {
   if (!photos || photos.length === 0) return null;
 
+  const shouldLoop = photos.length > 1;
+  const autoplay = shouldLoop
+    ? {
+        delay: 0,
+        disableOnInteraction: false,
+        pauseOnMouseEnter: true,
+        waitForTransition: false,
+      }
+    : false;
+  const slideSpeed = Math.max(
+    5000,
+    Math.min(14000, Math.max(1, photos.length) * 900)
+  );
+
   return (
     <section style={prevEv.wrap}>
       <h2
@@ -936,47 +949,64 @@ function PreviousEventsSection({ title, subtitle, photos = [] }) {
         data-anim="up"
         style={{ ...prevEv.scrollerOuter, ["--rvd"]: "180ms" }}
       >
-        <div className="prev-track" style={prevEv.track}>
+        <Swiper
+          className="prev-swiper"
+          style={prevEv.swiper}
+          modules={[Autoplay]}
+          slidesPerView="auto"
+          spaceBetween={18}
+          loop={shouldLoop}
+          loopAdditionalSlides={shouldLoop ? Math.max(10, photos.length) : 0}
+          speed={slideSpeed}
+          allowTouchMove={shouldLoop}
+          autoplay={autoplay}
+          observer
+          observeParents
+          watchSlidesProgress
+          preloadImages={false}
+        >
           {photos.map((p, idx) => (
-            <article
-              key={p.id || idx}
-              className="prev-card"
-              style={prevEv.card}
-            >
-              <div style={prevEv.frame}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={p.src}
-                  alt={safeText(p.alt)}
-                  title={safeText(p.alt)}
-                  style={prevEv.img}
-                  onError={(e) => {
-                    e.currentTarget.onerror = null;
-                    e.currentTarget.src =
-                      "https://images.unsplash.com/photo-1521737604893-d14cc237f11d?q=80&w=1200&auto=format&fit=crop";
-                  }}
-                />
-              </div>
-            </article>
+            <SwiperSlide key={p.id || idx}>
+              <article className="prev-card" style={prevEv.card}>
+                <div style={prevEv.frame}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={p.src}
+                    alt={safeText(p.alt)}
+                    title={safeText(p.alt)}
+                    style={prevEv.img}
+                    onError={(e) => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.src =
+                        "https://images.unsplash.com/photo-1521737604893-d14cc237f11d?q=80&w=1200&auto=format&fit=crop";
+                    }}
+                  />
+                </div>
+              </article>
+            </SwiperSlide>
           ))}
-        </div>
+        </Swiper>
       </div>
 
       <style jsx>{`
-        .prev-track::-webkit-scrollbar {
-          height: 6px;
+        .prev-swiper {
+          overflow: visible;
         }
-        .prev-track::-webkit-scrollbar-track {
-          background: transparent;
+        .prev-swiper .swiper-wrapper {
+          transition-timing-function: linear !important;
+          align-items: stretch;
         }
-        .prev-track::-webkit-scrollbar-thumb {
-          background: rgba(148, 163, 184, 0.6);
-          border-radius: 999px;
+        .prev-swiper .swiper-slide {
+          width: clamp(230px, 24vw, 320px);
+          height: auto;
+        }
+        .prev-swiper .swiper-slide > article {
+          width: 100%;
         }
 
         @media (max-width: 768px) {
-          .prev-card {
-            flex: 0 0 clamp(220px, 70vw, 320px) !important;
+          .prev-swiper .swiper-slide {
+            width: clamp(220px, 70vw, 320px) !important;
           }
         }
       `}</style>
@@ -1459,13 +1489,37 @@ export default function EventsUContent(props) {
       )}
 
       <style jsx>{`
-        /* Countdown grid clamp */
+        /* Countdown grid clamp (tablet) */
         @media (max-width: 900px) {
           .cd-row {
             grid-template-columns: repeat(2, minmax(120px, 1fr)) !important;
             gap: 14px !important;
           }
         }
+
+        /* Mobile: menit & detik DI BAWAH hari & jam (2x2) */
+        @media (max-width: 768px) {
+          .cd-row {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            grid-template-areas:
+              "days hours"
+              "minutes seconds";
+          }
+
+          .cd-row .cd-chip:nth-child(1) {
+            grid-area: days;
+          }
+          .cd-row .cd-chip:nth-child(2) {
+            grid-area: hours;
+          }
+          .cd-row .cd-chip:nth-child(3) {
+            grid-area: minutes;
+          }
+          .cd-row .cd-chip:nth-child(4) {
+            grid-area: seconds;
+          }
+        }
+
         @media (max-width: 520px) {
           .cd-row {
             grid-template-columns: repeat(2, minmax(100px, 1fr)) !important;
@@ -1659,6 +1713,17 @@ export default function EventsUContent(props) {
             background-size: 16px 16px;
           }
         }
+
+        /* === FIX: Hero full-bleed di desktop, normal di mobile === */
+        @media (max-width: 768px) {
+          .hero-section {
+            width: 100% !important;
+            max-width: 100% !important;
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+          }
+        }
+
         @media (prefers-reduced-motion: reduce) {
           .h-blob {
             animation: none !important;
