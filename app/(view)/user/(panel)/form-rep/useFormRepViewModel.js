@@ -71,6 +71,7 @@ export default function useFormRepViewModel({ locale = "id", eventId = "" }) {
     snapToken: "",
     redirectUrl: "",
     orderId: "",
+    paymentToken: "",
     amount: null, // number (normalized)
     lastResult: null,
     error: "",
@@ -96,6 +97,7 @@ export default function useFormRepViewModel({ locale = "id", eventId = "" }) {
       : "sandbox";
 
   const snapLoadedRef = useRef(false);
+  const snapFallbackRef = useRef(false);
 
   async function ensureSnapLoaded() {
     if (typeof window === "undefined") return;
@@ -128,6 +130,12 @@ export default function useFormRepViewModel({ locale = "id", eventId = "" }) {
     snapLoadedRef.current = true;
   }
 
+  function maybeFallbackRedirect(url) {
+    if (!url || snapFallbackRef.current) return;
+    snapFallbackRef.current = true;
+    window.open(url, "_blank");
+  }
+
   /* =========================
      HELPERS
   ========================= */
@@ -150,6 +158,12 @@ export default function useFormRepViewModel({ locale = "id", eventId = "" }) {
       toIDRNumber(payment.check?.midtrans?.gross_amount) ??
       null
     );
+  }
+
+  function paymentAuthHeaders() {
+    return payment.paymentToken
+      ? { "x-payment-token": payment.paymentToken }
+      : {};
   }
 
   function onChange(e) {
@@ -255,12 +269,14 @@ export default function useFormRepViewModel({ locale = "id", eventId = "" }) {
   ========================= */
   async function quickReconcile(orderId) {
     try {
+      const headers = {
+        "Content-Type": "application/json",
+        "x-public-reconcile": "1",
+        ...paymentAuthHeaders(),
+      };
       await fetch("/api/payments/reconcile", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-public-reconcile": "1",
-        },
+        headers,
         cache: "no-store",
         body: JSON.stringify({ order_id: orderId }),
       });
@@ -295,13 +311,17 @@ export default function useFormRepViewModel({ locale = "id", eventId = "" }) {
       const token = j?.data?.token || "";
       const redirect_url = j?.data?.redirect_url || "";
       const oid = j?.data?.order_id || order_id;
+      const paymentToken =
+        j?.data?.payment_token || j?.payment_token || "";
       const amountNum = toIDRNumber(j?.data?.amount);
 
+      snapFallbackRef.current = false;
       setPayment((p) => ({
         ...p,
         snapToken: token,
         redirectUrl: redirect_url,
         orderId: oid || p.orderId,
+        paymentToken: paymentToken || p.paymentToken,
         amount: amountNum ?? p.amount,
       }));
 
@@ -336,11 +356,13 @@ export default function useFormRepViewModel({ locale = "id", eventId = "" }) {
                 lastResult: { type: "error", result },
                 error: "Pembayaran gagal / ditolak.",
               }));
+              maybeFallbackRedirect(redirect_url || payment.redirectUrl);
               resolve(result);
             },
             onClose: async () => {
               setPayment((p) => ({ ...p, lastResult: { type: "closed" } }));
               await checkPaymentStatus();
+              maybeFallbackRedirect(redirect_url || payment.redirectUrl);
               resolve({ closed: true });
             },
           });
@@ -373,9 +395,10 @@ export default function useFormRepViewModel({ locale = "id", eventId = "" }) {
     }));
 
     try {
+      const headers = paymentAuthHeaders();
       const res = await fetch(
         `/api/payments/check?order_id=${encodeURIComponent(order_id)}`,
-        { cache: "no-store" }
+        { cache: "no-store", headers }
       );
       const j = await res.json().catch(() => ({}));
       const mid = j?.data?.midtrans;
@@ -406,9 +429,10 @@ export default function useFormRepViewModel({ locale = "id", eventId = "" }) {
     if (!order_id) return;
     try {
       setPayment((p) => ({ ...p, checking: true }));
+      const headers = paymentAuthHeaders();
       const res = await fetch(
         `/api/payments/check?order_id=${encodeURIComponent(order_id)}`,
-        { cache: "no-store" }
+        { cache: "no-store", headers }
       );
       const j = await res.json().catch(() => ({}));
       if (j?.data?.midtrans?.mapped === "paid") {
@@ -470,6 +494,7 @@ export default function useFormRepViewModel({ locale = "id", eventId = "" }) {
       setPayment((p) => ({
         ...p,
         orderId: booking?.order_id || "",
+        paymentToken: "",
         amount: amtNum,
       }));
 

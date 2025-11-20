@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { sendNewLeadNotificationEmail } from "@/lib/mailer";
 
 /* ===== JSON helpers (BigInt-safe) ===== */
 export function sanitize(v) {
@@ -118,4 +119,48 @@ export function withTs(row) {
     assigned_at_ts: toMs(row.assigned_at),
     deleted_at_ts: toMs(row.deleted_at),
   };
+}
+
+/* ===== notifikasi email: lead baru untuk semua admin ===== */
+export async function notifyAdminsNewLead(lead) {
+  if (!lead || !lead.id) return;
+
+  const leadEmail = (lead.email || "").trim();
+
+  // Ambil semua admin yang aktif dan punya email valid
+  const admins = await prisma.admin_users.findMany({
+    where: {
+      deleted_at: null,
+      email: {
+        notIn: ["", leadEmail].filter(Boolean),
+      },
+    },
+    select: {
+      email: true,
+      name: true,
+    },
+  });
+
+  if (!admins.length) return;
+
+  const to = admins.map((a) => (a.email || "").trim()).filter(Boolean);
+
+  if (!to.length) return;
+
+  // URL detail lead di panel admin (opsional)
+  const base =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.APP_URL ||
+    process.env.NEXTAUTH_URL ||
+    "";
+  const trimmed = base.replace(/\/+$/, "");
+  const detailUrl = trimmed
+    ? `${trimmed}/admin/leads?leadId=${encodeURIComponent(lead.id)}`
+    : null;
+
+  try {
+    await sendNewLeadNotificationEmail({ to, lead, detailUrl });
+  } catch (err) {
+    console.error("[Leads] notifyAdminsNewLead error:", err?.message || err);
+  }
 }

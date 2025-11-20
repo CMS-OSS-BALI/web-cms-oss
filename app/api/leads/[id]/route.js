@@ -17,9 +17,10 @@ import { sendWhatsAppMessage, formatPhoneNumber } from "@/app/utils/watzap";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const ENABLE_ASSIGNMENT_WA =
-  String(process.env.WATZAP_ENABLE_ASSIGNMENT_WA || "").toLowerCase() ===
-  "true";
+// WA assignment jalan otomatis selama API_KEY_WATZAP & NUMBER_KEY_WATZAP ada
+const ENABLE_ASSIGNMENT_WA = !!(
+  process.env.API_KEY_WATZAP && process.env.NUMBER_KEY_WATZAP
+);
 
 /* ===== whatsapp helpers ===== */
 function normalizePhone(value) {

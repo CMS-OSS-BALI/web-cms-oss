@@ -1,9 +1,29 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth/next";
 import prisma from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { consumeRateLimit } from "@/lib/security/rateLimit";
+import { getClientIp } from "@/lib/security/requestUtils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+async function ensureAuthorized(req) {
+  const headerKey = (req.headers.get("x-analytics-key") || "").trim();
+  const envKey = (process.env.ANALYTICS_READ_KEY || "").trim();
+  if (envKey && headerKey && headerKey === envKey) return true;
+
+  const session = await getServerSession(authOptions);
+  if (session?.user?.email) {
+    const admin = await prisma.admin_users.findUnique({
+      where: { email: session.user.email },
+      select: { id: true },
+    });
+    if (admin) return true;
+  }
+  return false;
+}
 
 /** Parse "period" like 7d, 26w, 6m, 5y, "ytd" */
 function parsePeriod(period) {
@@ -72,6 +92,26 @@ export async function GET(req) {
     : "day";
 
   try {
+    const ip = getClientIp(req);
+    const rate = consumeRateLimit(`analytics-metrics:${ip}`, {
+      limit: 60,
+      windowMs: 60_000,
+    });
+    if (!rate.success) {
+      return NextResponse.json(
+        { error: { message: "rate_limited" } },
+        { status: 429 }
+      );
+    }
+
+    const allowed = await ensureAuthorized(req);
+    if (!allowed) {
+      return NextResponse.json(
+        { error: { message: "unauthorized" } },
+        { status: 401 }
+      );
+    }
+
     // ===== Legacy: full year mode =====
     if (yearParam && !startParam && !periodParam && !daysParam) {
       const y = Number(yearParam);

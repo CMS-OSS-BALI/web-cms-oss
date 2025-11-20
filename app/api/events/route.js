@@ -31,6 +31,16 @@ export async function GET(req) {
     const url = new URL(req.url);
     const sp = url.searchParams;
 
+    // Public hanya boleh melihat event yang published & tidak terhapus.
+    // Parameter with_deleted/only_deleted serta override is_published hanya aktif untuk admin.
+    let isAdmin = false;
+    try {
+      await assertAdmin(req);
+      isAdmin = true;
+    } catch {
+      isAdmin = false;
+    }
+
     const qRaw = (sp.get("q") || "").trim();
     const q = qRaw.length ? qRaw : undefined;
 
@@ -41,11 +51,12 @@ export async function GET(req) {
     const page = Math.max(1, asInt(sp.get("page"), 1));
     const perPage = Math.min(100, Math.max(1, asInt(sp.get("perPage"), 12)));
     const orderBy = getOrderBy(sp.get("sort")); // "start_at:asc" etc
-    const withDeleted = sp.get("with_deleted") === "1";
-    const onlyDeleted = sp.get("only_deleted") === "1";
+    const withDeleted = isAdmin && sp.get("with_deleted") === "1";
+    const onlyDeleted = isAdmin && sp.get("only_deleted") === "1";
     const includeCategory = sp.get("include_category") === "1";
 
-    const is_published = toBool(sp.get("is_published"));
+    // Publik dipaksa ke published=true; admin boleh override via query.
+    const is_published = isAdmin ? toBool(sp.get("is_published")) : true;
     const from = sp.get("from");
     const to = sp.get("to");
     const status = (sp.get("status") || "").toLowerCase(); // done|upcoming|ongoing

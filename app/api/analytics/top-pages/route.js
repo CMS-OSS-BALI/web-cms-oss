@@ -1,9 +1,29 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth/next";
 import prisma from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { consumeRateLimit } from "@/lib/security/rateLimit";
+import { getClientIp } from "@/lib/security/requestUtils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+async function ensureAuthorized(req) {
+  const headerKey = (req.headers.get("x-analytics-key") || "").trim();
+  const envKey = (process.env.ANALYTICS_READ_KEY || "").trim();
+  if (envKey && headerKey && headerKey === envKey) return true;
+
+  const session = await getServerSession(authOptions);
+  if (session?.user?.email) {
+    const admin = await prisma.admin_users.findUnique({
+      where: { email: session.user.email },
+      select: { id: true },
+    });
+    if (admin) return true;
+  }
+  return false;
+}
 
 function parsePeriod(period) {
   const now = new Date();
@@ -43,16 +63,42 @@ export async function GET(req) {
   const prefix = searchParams.get("path_prefix"); // optional, e.g. "/blog"
 
   try {
+    const ip = getClientIp(req);
+    const rate = consumeRateLimit(`analytics-top-pages:${ip}`, {
+      limit: 60,
+      windowMs: 60_000,
+    });
+    if (!rate.success) {
+      return NextResponse.json(
+        { error: { message: "rate_limited" } },
+        { status: 429 }
+      );
+    }
+
+    const allowed = await ensureAuthorized(req);
+    if (!allowed) {
+      return NextResponse.json(
+        { error: { message: "unauthorized" } },
+        { status: 401 }
+      );
+    }
+
     const { start, end } = parsePeriod(period);
 
     // When prefix provided, add WHERE path LIKE 'prefix%'
-    const whereParts = [
+    const conditions = [
       Prisma.sql`created_at >= ${start}`,
       Prisma.sql`created_at < ${end}`,
     ];
     if (prefix) {
-      whereParts.push(Prisma.sql`path LIKE ${`${prefix}%`}`);
+      conditions.push(Prisma.sql`path LIKE ${`${prefix}%`}`);
     }
+
+    // Safely join conditions with AND to avoid malformed SQL
+    const whereClause = conditions.reduce(
+      (acc, cond) => (acc ? Prisma.sql`${acc} AND ${cond}` : cond),
+      null
+    );
 
     const rows = await prisma.$queryRaw(
       Prisma.sql`
@@ -61,7 +107,7 @@ export async function GET(req) {
                COUNT(DISTINCT session_id) AS sessions,
                COUNT(DISTINCT visitor_id) AS visitors
         FROM analytics_pageviews
-        WHERE ${Prisma.join(whereParts, Prisma.sql` AND `)}
+        WHERE ${whereClause}
         GROUP BY path
         ORDER BY pageviews DESC
         LIMIT ${limit}

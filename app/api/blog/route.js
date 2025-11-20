@@ -35,8 +35,17 @@ export async function GET(req) {
     const page = Math.max(1, clampInt(searchParams.get("page"), 1, 1e6, 1));
     const perPage = clampInt(searchParams.get("perPage"), 1, 100, 12);
     const orderBy = buildOrderBy(searchParams.get("sort"));
-    const withDeleted = searchParams.get("with_deleted") === "1";
-    const onlyDeleted = searchParams.get("only_deleted") === "1";
+
+    // Flag deleted hanya diizinkan untuk admin; publik selalu lihat yang aktif saja.
+    let isAdmin = false;
+    try {
+      await assertAdmin(req);
+      isAdmin = true;
+    } catch {
+      isAdmin = false;
+    }
+    const withDeleted = isAdmin && searchParams.get("with_deleted") === "1";
+    const onlyDeleted = isAdmin && searchParams.get("only_deleted") === "1";
     const includeCategory = searchParams.get("include_category") === "1";
     const category_id = parseId(searchParams.get("category_id"));
     const category_slug = parseId(searchParams.get("category_slug"));

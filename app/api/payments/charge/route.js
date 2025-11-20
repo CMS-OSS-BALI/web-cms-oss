@@ -7,6 +7,7 @@ import {
   ensureIntegerIDR,
   normalizeEnabledPayments,
 } from "@/lib/midtrans";
+import { createSignedPaymentToken } from "@/lib/security/paymentAccess";
 
 import {
   isPassthroughEnabled,
@@ -63,6 +64,15 @@ async function readBodyFlexible(req) {
 // ENV
 const ENABLED_PAYMENTS_RAW = process.env.MIDTRANS_ENABLED_PAYMENTS || "all";
 const EXPIRY_MINUTES = toInt(process.env.MIDTRANS_EXPIRY_MINUTES, 30);
+
+function buildPaymentToken(orderId) {
+  try {
+    return createSignedPaymentToken(orderId);
+  } catch (e) {
+    console.warn("[payments/charge] cannot create payment token", e?.message);
+    return null;
+  }
+}
 
 /** ===== Worst-case gross-up bila channel dipilih di Snap =====
  * normalizedEnabled:
@@ -199,6 +209,7 @@ export async function POST(req) {
       where: { order_id: booking.order_id },
       select: { id: true, status: true, raw: true, gross_amount: true },
     });
+    const paymentToken = buildPaymentToken(booking.order_id);
 
     // Build base item
     let items = [
@@ -265,6 +276,7 @@ export async function POST(req) {
             redirect_url: existingPay.raw.redirect_url,
             order_id: booking.order_id,
             amount: finalAmount,
+            payment_token: paymentToken || undefined,
           },
         });
       }
@@ -412,6 +424,7 @@ export async function POST(req) {
         redirect_url: snapRes.redirect_url,
         order_id: booking.order_id,
         amount: finalAmount,
+        payment_token: paymentToken || undefined,
         fee_mode: isPassthroughEnabled()
           ? `passthrough (${passthroughMode}${
               selectedChannel ? ` • ${channelLabel(selectedChannel)}` : ""

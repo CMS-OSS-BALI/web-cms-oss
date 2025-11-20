@@ -13,6 +13,7 @@ import {
   readBodyFlexible,
   assertAdmin,
   withTs,
+  notifyAdminsNewLead,
 } from "@/app/api/leads/_utils";
 
 export const dynamic = "force-dynamic";
@@ -322,6 +323,16 @@ export async function POST(req) {
 
       return lead;
     });
+
+    // Notifikasi email ke semua admin (best effort, tapi tetap await supaya benar-benar terkirim)
+    try {
+      await notifyAdminsNewLead(created);
+    } catch (err) {
+      console.error(
+        "[POST /api/leads] notifyAdminsNewLead error:",
+        err?.message || err
+      );
+    }
 
     return json(
       { message: "Lead berhasil dibuat.", data: withTs(created) },
