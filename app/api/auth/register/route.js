@@ -2,17 +2,14 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import bcrypt from "bcryptjs";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request) {
-  // --- auth guard: hanya admin yang boleh
-  const session = await getServerSession(authOptions);
-  if (!session || session.user?.role !== "admin") {
-    return NextResponse.json({ message: "unauthorized" }, { status: 401 });
-  }
+  // ⚠️ PERINGATAN:
+  // Endpoint ini SEKARANG TIDAK LAGI BUTUH LOGIN / AUTH.
+  // Artinya SIAPA PUN yang tahu URL-nya bisa bikin admin baru.
+  // Pastikan hanya dipakai di local/dev, dan aktifkan lagi guard kalau sudah ke production.
 
   try {
     const body = await request.json();
@@ -25,14 +22,17 @@ export async function POST(request) {
         { status: 400 }
       );
     }
+
     email = String(email).trim().toLowerCase();
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
     if (!emailRegex.test(email)) {
       return NextResponse.json(
         { message: "format email tidak valid" },
         { status: 400 }
       );
     }
+
     if (String(password).length < 8) {
       return NextResponse.json(
         { message: "password minimal 8 karakter" },
@@ -70,6 +70,7 @@ export async function POST(request) {
         { status: 409 }
       );
     }
+
     console.error("Create user error:", e);
     return NextResponse.json(
       { message: "internal server error" },

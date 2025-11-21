@@ -85,7 +85,7 @@ export function useLandingViewModel(arg) {
       "37,000+ successful alumni with OSS Bali"
     ),
     ctaText: t("Konsultasi Gratis Sekarang", "Get Free Consultation"),
-    ctaHref: "/user/landing-page?section=consultation",
+    ctaHref: "/user/leads",
   };
 
   /* ===== Video Education (copy bilingual) ===== */
@@ -136,7 +136,7 @@ export function useLandingViewModel(arg) {
       "Find the best service for you"
     ),
     ctaText: t("Bandingkan Sekarang", "Compare Now"),
-    ctaHref: "/user/services/compare",
+    ctaHref: "/user/leads",
 
     // legacy title/subtitle (kalau masih dipakai di tempat lain)
     title: t("PROGRAM POPULER KAMI", "OUR POPULAR PROGRAM"),
