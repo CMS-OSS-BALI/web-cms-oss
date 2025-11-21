@@ -134,6 +134,7 @@ export default function ConsultantsContent({ vm }) {
     }
   };
 
+  // ==== VERSI BARU: autoTranslate hanya kalau teks berubah ====
   const onEditSubmit = async () => {
     if (!activeRow) return;
     const v = await formEdit.validateFields().catch(() => null);
@@ -148,6 +149,11 @@ export default function ConsultantsContent({ vm }) {
       .map((pi) => pi.image_url || "")
       .filter(Boolean);
 
+    // cek apakah nama / deskripsi berubah dibanding row awal
+    const textChanged =
+      (v.name || "").trim() !== (activeRow?.name || "").trim() ||
+      (v.description || "").trim() !== (activeRow?.description || "").trim();
+
     const res = await vm.updateConsultant(activeRow.id, {
       name: v.name,
       email: v.email || null,
@@ -155,8 +161,8 @@ export default function ConsultantsContent({ vm }) {
       description: v.description || "",
       imagesMode: "replace",
       program_images: keptProgramImages,
-      // MATIKAN autoTranslate saat edit agar PATCH cepat
-      autoTranslate: false,
+      // Nyalakan autoTranslate hanya jika teks berubah
+      autoTranslate: textChanged,
       ...(avatar ? { profile_file: avatar } : {}),
       ...(programFiles.length ? { program_files: programFiles } : {}),
     });

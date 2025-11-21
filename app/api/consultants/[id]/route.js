@@ -527,6 +527,7 @@ export async function PATCH(req, { params }) {
       .filter((k) => k && !keepSet.has(k));
 
     const txOps = [
+      ...ops, // pastikan upsert translate tetap jalan saat replace gambar
       prisma.consultant_program_images.deleteMany({
         where: { id_consultant: id },
       }),

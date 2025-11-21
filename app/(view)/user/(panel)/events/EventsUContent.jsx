@@ -9,7 +9,7 @@ import { Swiper, SwiperSlide } from "swiper/react";
 import { Autoplay } from "swiper/modules";
 import "swiper/css";
 import useEventsUViewModel from "./useEventsUViewModel";
-import { Pagination, ConfigProvider, Modal, Radio } from "antd";
+import { Pagination, ConfigProvider, Modal, Radio, Row, Col } from "antd";
 import Loading from "@/app/components/loading/LoadingImage";
 
 /* ===== Dynamic tab views (peserta & rep) ===== */
@@ -158,8 +158,6 @@ const hero = {
     minHeight: "clamp(520px, 92dvh, 940px)",
     padding:
       "clamp(84px, 12dvh, 160px) clamp(18px, 5vw, 32px) clamp(78px, 12dvh, 150px)",
-    display: "grid",
-    placeItems: "center",
     boxSizing: "border-box",
     scrollMarginTop: "var(--header-h, 72px)",
     background:
@@ -170,13 +168,15 @@ const hero = {
   copy: {
     position: "relative",
     zIndex: Z.heroCopy,
-    width: "min(980px, 92%)",
+    width: "100%",
+    maxWidth: 980,
     textAlign: "center",
     display: "flex",
     flexDirection: "column",
     gap: 16,
     alignItems: "center",
     justifyContent: "center",
+    margin: "0 auto",
   },
   titleMain: {
     margin: 0,
@@ -222,10 +222,7 @@ const panel = {
     marginBottom: 14,
   },
   row: {
-    display: "grid",
-    gridTemplateColumns: "repeat(4, minmax(120px, 1fr))",
-    gap: 18,
-    justifyItems: "center",
+    marginTop: 8,
   },
   pill: {
     display: "grid",
@@ -256,10 +253,20 @@ function Chip({ value, label }) {
     [value]
   );
   return (
-    <div className="cd-chip" aria-live="polite" style={{ textAlign: "center" }}>
-      <div style={panel.pill}>{v}</div>
-      <div style={panel.label}>{safeText(label)}</div>
-    </div>
+    <Col
+      xs={12}
+      sm={12}
+      md={12}
+      lg={6}
+      xl={6}
+      className="cd-chip-col"
+      aria-live="polite"
+    >
+      <div className="cd-chip" style={{ textAlign: "center" }}>
+        <div style={panel.pill}>{v}</div>
+        <div style={panel.label}>{safeText(label)}</div>
+      </div>
+    </Col>
   );
 }
 
@@ -298,19 +305,25 @@ function CountdownPanel({ vm, locale = "id" }) {
         style={{ ...panel.shell, ["--rvd"]: "200ms" }}
       >
         <div style={panel.title}>{title}</div>
-        <div className="cd-row" style={panel.row}>
+        <Row
+          className="cd-row"
+          gutter={[18, 18]}
+          justify="center"
+          style={panel.row}
+        >
           {["days", "hours", "minutes", "seconds"].map((key) => (
-            <div
-              key={key}
-              className="cd-chip"
-              style={{ textAlign: "center" }}
-              aria-hidden="true"
-            >
-              <div style={panel.pill}>--</div>
-              <div style={panel.label}>{labelFor(key)}</div>
-            </div>
+            <Col key={key} xs={12} sm={12} md={12} lg={6} xl={6}>
+              <div
+                className="cd-chip"
+                style={{ textAlign: "center" }}
+                aria-hidden="true"
+              >
+                <div style={panel.pill}>--</div>
+                <div style={panel.label}>{labelFor(key)}</div>
+              </div>
+            </Col>
           ))}
-        </div>
+        </Row>
       </div>
     );
   }
@@ -325,12 +338,17 @@ function CountdownPanel({ vm, locale = "id" }) {
       style={{ ...panel.shell, ["--rvd"]: "200ms" }}
     >
       <div style={panel.title}>{title}</div>
-      <div className="cd-row" style={panel.row}>
+      <Row
+        className="cd-row"
+        gutter={[18, 18]}
+        justify="center"
+        style={panel.row}
+      >
         <Chip value={cd.days} label={labelFor("days")} />
         <Chip value={cd.hours} label={labelFor("hours")} />
         <Chip value={cd.minutes} label={labelFor("minutes")} />
         <Chip value={cd.seconds} label={labelFor("seconds")} />
-      </div>
+      </Row>
     </div>
   );
 }
@@ -1418,7 +1436,7 @@ export default function EventsUContent(props) {
       data-shell="full"
       style={{ position: "relative", zIndex: 0, background: "#fff" }}
     >
-      {/* HERO */}
+      {/* HERO - sekarang pakai Antd Row/Col */}
       <section className="hero-section" style={hero.section}>
         <div className="hero-inner" style={hero.inner} ref={heroRef}>
           {/* Decorative gradient layer */}
@@ -1428,25 +1446,39 @@ export default function EventsUContent(props) {
             <span className="h-dots" />
           </div>
 
-          <div className="hero-copy js-hero-copy">
-            <h1
-              className="reveal"
-              data-anim="down"
-              style={{ ...hero.titleMain, ["--rvd"]: "60ms" }}
-            >
-              {heroTitle}
-            </h1>
-            <p
-              className="reveal"
-              data-anim="up"
-              style={{ ...hero.sub, ["--rvd"]: "140ms" }}
-            >
-              {heroSub}
-            </p>
+          <Row
+            className="hero-row"
+            justify="center"
+            align="middle"
+            style={{
+              width: "100%",
+              height: "100%",
+              position: "relative",
+              zIndex: Z.heroCopy,
+            }}
+          >
+            <Col xs={24} md={22} lg={18} xl={14}>
+              <div className="hero-copy js-hero-copy" style={hero.copy}>
+                <h1
+                  className="reveal"
+                  data-anim="down"
+                  style={{ ...hero.titleMain, ["--rvd"]: "60ms" }}
+                >
+                  {heroTitle}
+                </h1>
+                <p
+                  className="reveal"
+                  data-anim="up"
+                  style={{ ...hero.sub, ["--rvd"]: "140ms" }}
+                >
+                  {heroSub}
+                </p>
 
-            {/* Countdown sekarang pakai panel client-only setelah mount */}
-            <CountdownPanel vm={vm} locale={locale} />
-          </div>
+                {/* Countdown sekarang layout-nya pakai Antd Grid */}
+                <CountdownPanel vm={vm} locale={locale} />
+              </div>
+            </Col>
+          </Row>
         </div>
       </section>
 
@@ -1502,43 +1534,7 @@ export default function EventsUContent(props) {
       )}
 
       <style jsx>{`
-        /* Countdown grid clamp (tablet) */
-        @media (max-width: 900px) {
-          .cd-row {
-            grid-template-columns: repeat(2, minmax(120px, 1fr)) !important;
-            gap: 14px !important;
-          }
-        }
-
-        /* Mobile: menit & detik DI BAWAH hari & jam (2x2) */
-        @media (max-width: 768px) {
-          .cd-row {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-            grid-template-areas:
-              "days hours"
-              "minutes seconds";
-          }
-
-          .cd-row .cd-chip:nth-child(1) {
-            grid-area: days;
-          }
-          .cd-row .cd-chip:nth-child(2) {
-            grid-area: hours;
-          }
-          .cd-row .cd-chip:nth-child(3) {
-            grid-area: minutes;
-          }
-          .cd-row .cd-chip:nth-child(4) {
-            grid-area: seconds;
-          }
-        }
-
         @media (max-width: 520px) {
-          .cd-row {
-            grid-template-columns: repeat(2, minmax(100px, 1fr)) !important;
-            gap: 10px !important;
-          }
           .cd-chip div:first-child {
             width: 120px !important;
             height: 62px !important;
