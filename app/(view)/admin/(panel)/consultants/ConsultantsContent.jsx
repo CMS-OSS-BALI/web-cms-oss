@@ -247,7 +247,10 @@ export default function ConsultantsContent({ vm }) {
   };
 
   const renderAvatar = (url, name) => {
-    if (url) return <img src={url} alt={name} title={name} style={styles.avatarSmImg} />;
+    if (url)
+      return (
+        <img src={url} alt={name} title={name} style={styles.avatarSmImg} />
+      );
     const first = (name || "?").trim().charAt(0).toUpperCase();
     return <div style={styles.avatarSmFallback}>{first}</div>;
   };
@@ -451,7 +454,8 @@ export default function ConsultantsContent({ vm }) {
                     {avatarPreviewCreate ? (
                       <img
                         src={avatarPreviewCreate}
-                        alt="avatar" title="avatar"
+                        alt="avatar"
+                        title="avatar"
                         style={{
                           width: "100%",
                           height: "100%",
@@ -572,7 +576,8 @@ export default function ConsultantsContent({ vm }) {
                       {avatarPreviewEdit ? (
                         <img
                           src={avatarPreviewEdit}
-                          alt="avatar" title="avatar"
+                          alt="avatar"
+                          title="avatar"
                           style={{
                             width: "100%",
                             height: "100%",
@@ -636,7 +641,12 @@ export default function ConsultantsContent({ vm }) {
                     const src = pi.image_url || "";
                     return (
                       <div key={pi.id} style={styles.thumb}>
-                        <img src={src} alt="program" title="program" style={styles.thumbImg} />
+                        <img
+                          src={src}
+                          alt="program"
+                          title="program"
+                          style={styles.thumbImg}
+                        />
                         <Popconfirm
                           title="Hapus foto ini?"
                           okText="Hapus"
@@ -709,7 +719,8 @@ export default function ConsultantsContent({ vm }) {
                 {viewAvatar ? (
                   <img
                     src={viewAvatar}
-                    alt="avatar" title="avatar"
+                    alt="avatar"
+                    title="avatar"
                     style={{
                       width: "100%",
                       height: "100%",
@@ -767,7 +778,12 @@ export default function ConsultantsContent({ vm }) {
                   const src = pi.image_url || "";
                   return (
                     <div key={pi.id} style={styles.thumb}>
-                      <img src={src} alt="program" title="program" style={styles.thumbImg} />
+                      <img
+                        src={src}
+                        alt="program"
+                        title="program"
+                        style={styles.thumbImg}
+                      />
                     </div>
                   );
                 })}
@@ -782,7 +798,7 @@ export default function ConsultantsContent({ vm }) {
   );
 }
 
-/* ===== Styles (updated avatar 9:16) ===== */
+/* ===== Styles (avatar 9:16, program 16:9) ===== */
 const styles = {
   cardOuter: {
     background: "#ffffff",
@@ -980,7 +996,7 @@ const styles = {
   },
   thumb: {
     width: "100%",
-    aspectRatio: "4 / 3",
+    aspectRatio: "16 / 9", // FOTO PROGRAM → 16:9
     background: "#fff",
     border: "1px solid #e8eeff",
     borderRadius: 12,

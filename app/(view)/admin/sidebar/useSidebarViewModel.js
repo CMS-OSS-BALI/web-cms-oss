@@ -55,7 +55,7 @@ export const MENU = [
   },
 
   { label: "Data Leads", href: "/admin/leads", icon: Users },
-  { label: "Data Referral", href: "/admin/referral", icon: QrCode },
+  // { label: "Data Referral", href: "/admin/referral", icon: QrCode },
   { label: "Layanan", href: "/admin/services", icon: Layers },
   { label: "Testimoni", href: "/admin/testimonials", icon: MessageSquareText },
 

@@ -478,12 +478,15 @@ export default function EventsRContent({ initialLocale = "id" }) {
   const it = vm.item;
   const showTrimIndicators = (it.description || "").length > 260;
 
-  const ctaTitle = locale === "en" ? "BOOK YOUR BOOTH" : "BOOKING BOOTH ANDA";
+  const ctaTitle =
+    locale === "en"
+      ? "Get Your Exclusive Booth"
+      : "Dapatkan Booth Eksklusif Anda";
   const ctaSub =
     locale === "en"
-      ? "Join as a representative, showcase your programs, and meet qualified students."
-      : "Bergabung sebagai representative, tampilkan program Anda, dan temui calon mahasiswa berkualitas.";
-  const ctaBtn = locale === "en" ? "BOOK A BOOTH" : "BOOKING BOOTH";
+      ? "Increase Your Brand Exposure with Exclusive Opportunities to Meet Prospective Students."
+      : "Tingkatkan Eksposur Brand Anda dengan Kesempatan Eksklusif Bertemu Calon Mahasiswa.";
+  const ctaBtn = locale === "en" ? "Secure Your Spot" : "Amankan Tempatmu";
 
   const boothHref = eventId
     ? `/user/form-rep?id=${encodeURIComponent(

@@ -1708,12 +1708,13 @@ export default function OverseasContent({
           color: #fff;
         }
 
+        /* 🔎 Ikon diperbesar */
         .level-kampus-icon {
-          width: 80px;
-          height: 80px;
+          width: 128px;
+          height: 128px;
           object-fit: contain;
           display: block;
-          margin-bottom: 12px;
+          margin-bottom: 14px;
         }
 
         .level-kampus-title {
@@ -1730,13 +1731,14 @@ export default function OverseasContent({
           color: rgba(241, 245, 255, 0.92);
         }
 
+        /* ✨ Hover: card sedikit membesar */
         @media (hover: hover) {
           .level-kampus-card {
             transition: transform 0.18s ease, box-shadow 0.18s ease,
               filter 0.18s ease;
           }
           .level-kampus-card:hover {
-            transform: translateY(-3px);
+            transform: translateY(-4px) scale(1.04);
             filter: saturate(1.08);
             box-shadow: 0 24px 44px rgba(8, 42, 116, 0.45);
           }
@@ -1746,9 +1748,11 @@ export default function OverseasContent({
           .level-kampus-card {
             padding: 14px 14px 16px;
           }
+
+          /* Ikon tetap lebih besar di mobile tapi tidak kebesaran */
           .level-kampus-icon {
-            width: 68px;
-            height: 68px;
+            width: 92px;
+            height: 92px;
           }
         }
 

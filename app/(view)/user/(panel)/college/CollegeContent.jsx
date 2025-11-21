@@ -223,6 +223,9 @@ const styles = {
       color: "#0B2F74",
       padding: "0 8px",
       background: "transparent",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
     },
     iconBtn: {
       display: "grid",
@@ -259,6 +262,9 @@ const styles = {
       paddingRight: 28,
       cursor: "pointer",
       appearance: "none",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
     },
     chevron: {
       position: "absolute",
@@ -287,6 +293,9 @@ const styles = {
       border: "1px solid rgba(13,38,78,.08)",
       boxShadow: "0 10px 28px rgba(15,23,42,.10)",
       transition: "transform .2s ease, box-shadow .2s ease",
+      maxWidth: "100%",
+      overflow: "hidden",
+      boxSizing: "border-box",
     },
     logoWrap: {
       position: "relative",
@@ -305,8 +314,22 @@ const styles = {
       letterSpacing: ".04em",
       textTransform: "uppercase",
       fontSize: "clamp(18px, 2.6vw, 24px)",
+      wordBreak: "break-word",
+      overflowWrap: "anywhere",
     },
-    excerpt: { margin: 0, color: "#3a4c74", lineHeight: 1.6, fontSize: 14 },
+    excerpt: {
+      margin: 0,
+      color: "#3a4c74",
+      lineHeight: 1.6,
+      fontSize: 14,
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      display: "-webkit-box",
+      WebkitLineClamp: 5,
+      WebkitBoxOrient: "vertical",
+      wordBreak: "break-word",
+      overflowWrap: "anywhere",
+    },
     bullets: {
       marginTop: 10,
       display: "grid",
@@ -315,7 +338,17 @@ const styles = {
       fontWeight: 600,
       fontSize: 14,
     },
-    bulletItem: { display: "flex", alignItems: "center", gap: 8 },
+    bulletItem: {
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      minWidth: 0,
+    },
+    bulletText: {
+      display: "block",
+      wordBreak: "break-word",
+      overflowWrap: "anywhere",
+    },
     footer: {
       position: "absolute",
       left: 18,
@@ -336,6 +369,7 @@ const styles = {
       textDecoration: "none",
       boxShadow: "0 6px 16px rgba(15,23,42,.10)",
       transition: "transform .16s ease, box-shadow .16s ease",
+      whiteSpace: "nowrap",
     },
     empty: {
       padding: "28px 18px",
@@ -569,7 +603,9 @@ export default function CollegeContent({
                       ref={inputRef}
                       type="text"
                       placeholder={
-                        locale === "en" ? "Search Campus" : "Cari Kampus"
+                        locale === "en"
+                          ? "Search campus, major, or program"
+                          : "Cari kampus, jurusan, atau prodi"
                       }
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
@@ -684,7 +720,7 @@ export default function CollegeContent({
                           }}
                         >
                           <BulletIcon type={b.icon} />
-                          <span>{b.text}</span>
+                          <span style={styles.uni.bulletText}>{b.text}</span>
                         </div>
                       ))}
                       {matchCount > 0 && (
@@ -702,7 +738,7 @@ export default function CollegeContent({
                           }
                         >
                           <BulletIcon />
-                          <span>
+                          <span style={styles.uni.bulletText}>
                             {locale === "en"
                               ? `${matchCount} matching program(s)`
                               : `${matchCount} program/jurusan cocok`}
@@ -867,6 +903,11 @@ export default function CollegeContent({
         }
 
         /* University card */
+        .uni-card {
+          max-width: 100%;
+          box-sizing: border-box;
+          overflow: hidden;
+        }
         .uni-card:focus-within,
         .uni-card:focus {
           outline: 3px solid #5aa8ff;

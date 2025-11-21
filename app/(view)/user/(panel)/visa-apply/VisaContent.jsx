@@ -229,11 +229,9 @@ const styles = {
   premium: {
     section: { padding: "16px 0 80px" },
 
-    // Grid layout tanpa card/background
     card: {
       position: "relative",
       display: "grid",
-      // Foto di kiri sekarang lebih lebar
       gridTemplateColumns: "minmax(0, 1.3fr) minmax(0, 1.1fr)",
       alignItems: "center",
       columnGap: 48,
@@ -250,7 +248,7 @@ const styles = {
     },
     photoFrame: {
       width: "100%",
-      maxWidth: 520, // foto lebih besar
+      maxWidth: 520,
     },
     photo: {
       width: "100%",
@@ -555,7 +553,7 @@ export default function VisaContent({
     () => ({
       ...styles.premium.copyCol,
       padding: isNarrow ? "0 0 0 0" : styles.premium.copyCol.padding,
-      order: isNarrow ? 1 : 0, // teks di atas saat mobile
+      order: isNarrow ? 1 : 0,
     }),
     [isNarrow]
   );
@@ -564,7 +562,7 @@ export default function VisaContent({
     () => ({
       ...styles.premium.photoCol,
       marginTop: isNarrow ? 20 : 0,
-      order: isNarrow ? 2 : 0, // foto di bawah saat mobile
+      order: isNarrow ? 2 : 0,
     }),
     [isNarrow]
   );
@@ -933,7 +931,7 @@ export default function VisaContent({
 
         /* ===== Slider Benefit (Swiper) ===== */
         :global(:root) {
-          --doc-card-w: clamp(180px, 20vw, 220px);
+          --doc-card-w: clamp(220px, 24vw, 260px);
         }
 
         :global(.doc-type-swiper) {
@@ -955,30 +953,31 @@ export default function VisaContent({
         :global(.doc-type-card) {
           width: 100%;
           height: 100%;
-          min-height: 180px;
+          min-height: 200px;
           display: flex;
           flex-direction: column;
           align-items: center;
-          justify-content: space-between;
+          justify-content: flex-start;
           text-align: center;
-          padding: 18px 16px 20px;
+          padding: 18px 18px 20px;
           border-radius: 22px;
           background: radial-gradient(
-              140% 140% at -10% -10%,
-              rgba(255, 255, 255, 0.32) 0%,
+              140% 120% at -10% -10%,
+              rgba(255, 255, 255, 0.28) 0%,
               transparent 45%
             ),
-            linear-gradient(180deg, #0b56c9 0%, #084a94 60%, #063e7c 100%);
-          box-shadow: 0 18px 34px rgba(8, 42, 116, 0.45);
+            linear-gradient(180deg, #0b56c9 0%, #084a94 55%, #063e7c 100%);
+          box-shadow: 0 18px 34px rgba(8, 42, 116, 0.38);
           color: #ffffff;
         }
 
+        /* 🔎 Ukuran ikon mengikuti referensi (level-kampus-icon) */
         :global(.doc-type-icon) {
-          width: 72px;
-          height: 72px;
+          width: 128px;
+          height: 128px;
           object-fit: contain;
           display: block;
-          margin-bottom: 10px;
+          margin-bottom: 14px;
           flex-shrink: 0;
         }
 
@@ -989,30 +988,29 @@ export default function VisaContent({
           letter-spacing: 0.01em;
         }
 
-        /* Hover */
+        /* ✨ Hover: card sedikit membesar (mengikuti level-kampus-card) */
         @media (hover: hover) {
           :global(.doc-type-card) {
             transition: transform 0.18s ease, box-shadow 0.18s ease,
               filter 0.18s ease;
           }
           :global(.doc-type-card:hover) {
-            transform: translateY(-3px);
+            transform: translateY(-4px) scale(1.04);
             filter: saturate(1.08);
-            box-shadow: 0 24px 44px rgba(8, 42, 116, 0.55);
+            box-shadow: 0 24px 44px rgba(8, 42, 116, 0.45);
           }
         }
 
-        @media (max-width: 640px) {
-          :global(:root) {
-            --doc-card-w: 200px;
-          }
+        @media (max-width: 767px) {
           :global(.doc-type-card) {
-            min-height: 160px;
-            padding: 16px 12px 18px;
+            padding: 14px 14px 16px;
           }
+
+          /* Ikon tetap lebih besar di mobile tapi tidak kebesaran,
+             mengikuti pola 92x92 dari level-kampus-icon */
           :global(.doc-type-icon) {
-            width: 64px;
-            height: 64px;
+            width: 92px;
+            height: 92px;
           }
         }
 

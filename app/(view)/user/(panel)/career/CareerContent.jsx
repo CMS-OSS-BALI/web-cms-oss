@@ -682,7 +682,8 @@ export default function CareerContent(props) {
       <section id="referral" ref={refRef} style={styles.refWrap}>
         <h3 style={styles.refTitle}>{referral?.title}</h3>
         <Paragraph style={styles.refDesc}>
-          <strong>{referral?.leadBold}</strong> {referral?.desc}
+          <strong style={{ fontWeight: 800 }}>{referral?.leadBold}</strong>
+          {referral?.desc}
         </Paragraph>
 
         <div style={styles.refVideoOuter}>

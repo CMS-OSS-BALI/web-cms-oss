@@ -583,8 +583,8 @@ export default function CollegeDetailContent({
 
   const ctaHeadline =
     locale === "en"
-      ? "CURIOUS HOW MUCH YOU MIGHT SPEND?"
-      : "PENASARAN BERAPA BANYAK YANG MUNGKIN PERLU ANDA HABISKAN?";
+      ? "Curious about how much you might need to prepare?"
+      : "Penasaran berapa banyak biaya yang mungkin perlu Kamu siapkan?";
   const ctaHref = "/user/calculator";
   const ctaImgSrc = normalizeSrc("/images/cta-detail.svg");
 
@@ -869,9 +869,11 @@ export default function CollegeDetailContent({
       {/* ===== CTA ===== */}
       <section style={ctaStyles.wrapBleed}>
         <div style={ctaStyles.topFeather} aria-hidden="true" />
+
         <div className="cd-cta" style={ctaStyles.inner}>
           <div>
             <h3 style={ctaStyles.headline}>{ctaHeadline}</h3>
+
             <Link
               href={ctaHref}
               className="cd-cta-btn"
@@ -880,9 +882,10 @@ export default function CollegeDetailContent({
                 locale === "en" ? "Open calculator" : "Buka kalkulator"
               }
             >
-              CLICK HERE
+              {locale === "en" ? "Calculate now" : "Hitung sekarang"}
             </Link>
           </div>
+
           <div className="cd-cta-illo" style={ctaStyles.illobox}>
             <Image
               src={ctaImgSrc}

@@ -774,7 +774,7 @@ export default function DocumentTranslateContent(props) {
         </div>
       </section>
 
-      {/* ---------- DOKUMEN APA SJA YANG BISA KAMI TRANSLATE ---------- */}
+      {/* ---------- DOKUMEN APA SAJA YANG BISA KAMI TRANSLATE ---------- */}
       <section style={styles.why.section}>
         <div style={sectionInnerStyle}>
           <div className="reveal" data-anim="down" style={styles.why.header}>
@@ -1029,7 +1029,7 @@ export default function DocumentTranslateContent(props) {
 
         /* ===== Slider Dokumen (Swiper) ===== */
         :root {
-          --doc-card-w: clamp(180px, 20vw, 220px);
+          --doc-card-w: clamp(220px, 24vw, 260px);
         }
 
         .doc-type-swiper {
@@ -1051,30 +1051,31 @@ export default function DocumentTranslateContent(props) {
         .doc-type-card {
           width: 100%;
           height: 100%;
-          min-height: 180px;
+          min-height: 200px;
           display: flex;
           flex-direction: column;
           align-items: center;
-          justify-content: space-between;
+          justify-content: flex-start;
           text-align: center;
-          padding: 18px 16px 20px;
+          padding: 18px 18px 20px;
           border-radius: 22px;
           background: radial-gradient(
-              140% 140% at -10% -10%,
-              rgba(255, 255, 255, 0.32) 0%,
+              140% 120% at -10% -10%,
+              rgba(255, 255, 255, 0.28) 0%,
               transparent 45%
             ),
-            linear-gradient(180deg, #0b56c9 0%, #084a94 60%, #063e7c 100%);
-          box-shadow: 0 18px 34px rgba(8, 42, 116, 0.45);
+            linear-gradient(180deg, #0b56c9 0%, #084a94 55%, #063e7c 100%);
+          box-shadow: 0 18px 34px rgba(8, 42, 116, 0.38);
           color: #ffffff;
         }
 
+        /* 🔎 Ikon pakai ukuran referensi (level-kampus-icon) */
         .doc-type-icon {
-          width: 72px;
-          height: 72px;
+          width: 128px;
+          height: 128px;
           object-fit: contain;
           display: block;
-          margin-bottom: 10px;
+          margin-bottom: 14px;
           flex-shrink: 0;
         }
 
@@ -1085,29 +1086,28 @@ export default function DocumentTranslateContent(props) {
           letter-spacing: 0.01em;
         }
 
+        /* ✨ Hover: card sedikit membesar (pakai kode referensi) */
         @media (hover: hover) {
           .doc-type-card {
             transition: transform 0.18s ease, box-shadow 0.18s ease,
               filter 0.18s ease;
           }
           .doc-type-card:hover {
-            transform: translateY(-3px);
+            transform: translateY(-4px) scale(1.04);
             filter: saturate(1.08);
-            box-shadow: 0 24px 44px rgba(8, 42, 116, 0.55);
+            box-shadow: 0 24px 44px rgba(8, 42, 116, 0.45);
           }
         }
 
-        @media (max-width: 640px) {
-          :root {
-            --doc-card-w: 200px;
-          }
+        @media (max-width: 767px) {
           .doc-type-card {
-            min-height: 160px;
-            padding: 16px 12px 18px;
+            padding: 14px 14px 16px;
           }
+
+          /* Ikon tetap besar tapi tidak kebesaran di mobile (pakai 92px) */
           .doc-type-icon {
-            width: 64px;
-            height: 64px;
+            width: 92px;
+            height: 92px;
           }
         }
 

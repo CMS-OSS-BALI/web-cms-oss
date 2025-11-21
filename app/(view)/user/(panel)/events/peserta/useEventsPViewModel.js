@@ -118,8 +118,8 @@ export default function useEventsPViewModel({ locale = "id", eventId } = {}) {
       {
         icon: icon.stuvis,
         iconType: "svg",
-        title: "Panduan Perencanaan Studi dan Visa",
-        desc: "Konsultasi gratis mempersiapkan dokumen studi dan visa pelajar.",
+        title: "Panduan Perencanaan Studi dan Karir",
+        desc: "Konsultasi gratis mempersiapkan dokumen studi dan peluang karir luar negeri.",
       },
       {
         icon: icon.freesd,
@@ -130,8 +130,8 @@ export default function useEventsPViewModel({ locale = "id", eventId } = {}) {
       {
         icon: icon.accglb,
         iconType: "svg",
-        title: "Akses Informasi Global Education",
-        desc: "Temukan informasi edukasi internasional yang valid.",
+        title: "Akses Informasi Global",
+        desc: "Temukan informasi lengkap tentang syarat, kurikulum, biaya, jurusan, kampus luar negeri.",
       },
       {
         icon: icon.freeielts,
@@ -157,8 +157,8 @@ export default function useEventsPViewModel({ locale = "id", eventId } = {}) {
       {
         icon: icon.stuvis,
         iconType: "svg",
-        title: "Study & Visa Planning Guidance",
-        desc: "Free consultation for documents and student visa.",
+        title: "Study and Career Planning Guide",
+        desc: "Free consultation to prepare study documents and overseas career opportunities.",
       },
       {
         icon: icon.freesd,
@@ -169,8 +169,8 @@ export default function useEventsPViewModel({ locale = "id", eventId } = {}) {
       {
         icon: icon.accglb,
         iconType: "svg",
-        title: "Access to Global Education Info",
-        desc: "Find reliable information on international education.",
+        title: "Global Information Access",
+        desc: "Find complete information about requirements, curriculum, fees, majors, and overseas campuses.",
       },
       {
         icon: icon.freeielts,

@@ -24,7 +24,7 @@ import {
   ConfigProvider,
 } from "antd";
 import { FileDown, MessageCircle } from "lucide-react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import useCalculatorViewModel from "./useCalculatorViewModel";
 
 const { Title, Text } = Typography;
@@ -191,6 +191,7 @@ function GlowCard({ children, style, bodyStyle }) {
 export default function CalculatorContent(props) {
   const { initialLocale, locale: localeProp } = props || {};
   const search = useSearchParams();
+  const router = useRouter();
 
   // ===== Locale client-side (sinkron dengan pattern page lain) =====
   const baseLocale = initialLocale || localeProp || "id";
@@ -391,6 +392,16 @@ export default function CalculatorContent(props) {
       .replace(/[^\w-]+/g, "_");
     pdf.save(`Estimated_Costs_${safeName}.pdf`);
   }, [form.namaStudent]);
+
+  /* ========== Konsultasi button: go to /user/leads ========== */
+  const handleConsultClick = useCallback(() => {
+    const params = new URLSearchParams();
+    if (locale) params.set("lang", locale);
+    const url = `/user/leads${
+      params.toString() ? `?${params.toString()}` : ""
+    }`;
+    router.push(url);
+  }, [router, locale]);
 
   /* ========== Responsive (for halo sizing) ========== */
   const [vw, setVw] = useState(1280);
@@ -930,7 +941,7 @@ export default function CalculatorContent(props) {
                       size="large"
                       type="primary"
                       icon={<MessageCircle size={18} />}
-                      onClick={() => window.open("/contact", "_blank")}
+                      onClick={handleConsultClick}
                       style={{
                         height: 46,
                         borderRadius: 12,

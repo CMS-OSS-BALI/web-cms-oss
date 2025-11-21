@@ -385,7 +385,9 @@ export async function GET(req) {
 /* ===================== POST (create) ===================== */
 export async function POST(req) {
   try {
-    await assertAdmin();
+    const admin = await assertAdmin();
+    const adminId = admin?.id;
+    if (!adminId) throw new Error("ADMIN_ID_MISSING");
 
     const contentType = (req.headers.get("content-type") || "").toLowerCase();
     const isMultipart = contentType.startsWith("multipart/form-data");
@@ -522,6 +524,7 @@ export async function POST(req) {
       await prisma.testimonials.create({
         data: {
           id,
+          admin_user: { connect: { id: adminId } },
           photo_url: storedPhotoUrl, // simpan URL publik langsung (atau string yang dikirim user)
           star,
           youtube_url,
@@ -576,6 +579,12 @@ export async function POST(req) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     if (e?.message === "FORBIDDEN")
       return NextResponse.json({ message: "Forbidden" }, { status: 403 });
+    if (e?.message === "ADMIN_ID_MISSING") {
+      return NextResponse.json(
+        { message: "Admin user not found for session" },
+        { status: 500 }
+      );
+    }
     console.error("POST /api/testimonials error:", e);
     return NextResponse.json({ message: "Server error" }, { status: 500 });
   }

@@ -392,7 +392,7 @@ const hero = {
   },
   title: {
     marginTop: -56,
-    color: "#0B56C9",
+    color: "#ffffff",
     textTransform: "uppercase",
     fontWeight: 900,
     fontSize: "clamp(22px, 5.2vw, 72px)",
@@ -453,7 +453,7 @@ const vid = {
     color: "#0B3E91",
     fontWeight: 900,
     letterSpacing: "0.02em",
-    fontSize: "clamp(18px, 3.6vw, 28px)",
+    fontSize: "clamp(28px, 4.6vw, 38px)",
     lineHeight: 1.25,
   },
   desc: {
@@ -1673,9 +1673,13 @@ export default function LandingContent({ locale: initialLocale = "id" }) {
           box-shadow: 0 16px 32px rgba(8, 42, 116, 0.12);
           justify-content: center;
         }
+
+        /* FOTO TESTIMONI 9:16 */
         .testiV2-photo {
           width: 100%;
-          aspect-ratio: 1 / 1;
+          max-width: clamp(180px, 24vw, 260px);
+          aspect-ratio: 9 / 16;
+          margin-inline: auto;
           border-radius: 16px;
           overflow: hidden;
           background: #cfdaf2;
@@ -1687,6 +1691,7 @@ export default function LandingContent({ locale: initialLocale = "id" }) {
           display: block;
           transform: translateZ(0);
         }
+
         .testiV2-name {
           margin: 0 0 8px 0;
           color: #0b3e91;

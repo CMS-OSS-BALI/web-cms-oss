@@ -882,13 +882,15 @@ const prevEv = {
     padding: "4px 4px 6px",
   },
   card: {
-    flex: "0 0 clamp(230px, 24vw, 320px)",
     background: "#ffffff",
     borderRadius: 20,
     padding: 8,
     boxShadow: "0 14px 30px rgba(15,23,42,.10)",
     border: "1px solid #e5ecff",
     scrollSnapAlign: "start",
+    width: "100%",
+    maxWidth: 320,
+    margin: "0 auto",
   },
   frame: {
     position: "relative",
@@ -909,10 +911,19 @@ const prevEv = {
 };
 
 function PreviousEventsSection({ title, subtitle, photos = [] }) {
-  if (!photos || photos.length === 0) return null;
+  const items = Array.isArray(photos) ? photos : [];
+  if (!items.length) return null;
 
-  const shouldLoop = photos.length > 1;
-  const autoplay = shouldLoop
+  const loop = items.length > 1;
+  const swiperKey =
+    items.map((p) => p.id ?? p.src ?? "").join("|") || "prev-empty";
+
+  const speed = Math.max(
+    5000,
+    Math.min(14000, Math.max(1, items.length) * 900)
+  );
+
+  const autoplay = loop
     ? {
         delay: 0,
         disableOnInteraction: false,
@@ -920,10 +931,6 @@ function PreviousEventsSection({ title, subtitle, photos = [] }) {
         waitForTransition: false,
       }
     : false;
-  const slideSpeed = Math.max(
-    5000,
-    Math.min(14000, Math.max(1, photos.length) * 900)
-  );
 
   return (
     <section style={prevEv.wrap}>
@@ -950,22 +957,23 @@ function PreviousEventsSection({ title, subtitle, photos = [] }) {
         style={{ ...prevEv.scrollerOuter, ["--rvd"]: "180ms" }}
       >
         <Swiper
+          key={swiperKey}
           className="prev-swiper"
           style={prevEv.swiper}
           modules={[Autoplay]}
           slidesPerView="auto"
-          spaceBetween={18}
-          loop={shouldLoop}
-          loopAdditionalSlides={shouldLoop ? Math.max(10, photos.length) : 0}
-          speed={slideSpeed}
-          allowTouchMove={shouldLoop}
+          spaceBetween={14}
+          loop={loop}
+          loopAdditionalSlides={loop ? Math.max(10, items.length) : 0}
+          speed={speed}
+          allowTouchMove={loop}
           autoplay={autoplay}
           observer
           observeParents
           watchSlidesProgress
           preloadImages={false}
         >
-          {photos.map((p, idx) => (
+          {items.map((p, idx) => (
             <SwiperSlide key={p.id || idx}>
               <article className="prev-card" style={prevEv.card}>
                 <div style={prevEv.frame}>
@@ -997,16 +1005,19 @@ function PreviousEventsSection({ title, subtitle, photos = [] }) {
           align-items: stretch;
         }
         .prev-swiper .swiper-slide {
-          width: clamp(230px, 24vw, 320px);
+          width: var(--country-card-w, clamp(230px, 24vw, 320px));
           height: auto;
+          display: flex;
+          justify-content: center;
         }
         .prev-swiper .swiper-slide > article {
           width: 100%;
+          max-width: 320px;
         }
 
         @media (max-width: 768px) {
           .prev-swiper .swiper-slide {
-            width: clamp(220px, 70vw, 320px) !important;
+            width: clamp(220px, 70vw, 300px) !important;
           }
         }
       `}</style>
@@ -1177,7 +1188,9 @@ function RepCTA({ title, images = [], options = [], locale = "id" }) {
             style={{ ...repCta.btn, ["--rvd"]: "160ms" }}
             onClick={() => setOpen(true)}
           >
-            {locale === "en" ? "Booking Booth" : "Booking Booth"}
+            {locale === "en"
+              ? "Submit Event Collaboration"
+              : "Ajukan Kolaborasi Event"}
           </button>
         </div>
       </section>
@@ -1500,6 +1513,7 @@ export default function EventsUContent(props) {
         /* Mobile: menit & detik DI BAWAH hari & jam (2x2) */
         @media (max-width: 768px) {
           .cd-row {
+            display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
             grid-template-areas:
               "days hours"

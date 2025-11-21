@@ -123,6 +123,7 @@ export default function useCollegeViewModel({
       id: r.id,
       name,
       country: countryVal,
+      slug: r?.slug || "",
       logo_url: r?.logo_url || "",
       excerpt: strip(r?.description || ""),
       bullets,
@@ -166,19 +167,53 @@ export default function useCollegeViewModel({
     }
   }
 
-  const hasQuery = Boolean(q && q.trim());
-  const universities = hasQuery
+  const qNorm = (q || "").trim().toLowerCase();
+  const hasQuery = Boolean(qNorm);
+
+  const campusMatches = hasQuery
+    ? baseUniversities.filter((u) => {
+        const haystack = [
+          u.name,
+          u.slug,
+          u.excerpt,
+          u.country,
+          ...(u.bullets || []).map((b) => b?.text || ""),
+        ]
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(qNorm);
+      })
+    : baseUniversities;
+
+  const jpMatched = hasQuery
     ? baseUniversities.filter((u) => jpMatchMap.has(String(u.id)))
+    : [];
+
+  const dedupById = (items = []) => {
+    const seen = new Set();
+    return items.filter((item) => {
+      const key = String(item?.id || "");
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
+
+  const universities = hasQuery
+    ? dedupById([...campusMatches, ...jpMatched])
     : baseUniversities;
 
   /* --------- copywriting baru untuk hero --------- */
   const hero = {
     // ID
     titleLine1: t(
-      "Langkah Awal Menuju Pendidikan Global",
-      "Your First Step Toward Global Education"
+      "Mulai Langkah Pertamamu Disini",
+      "Start Your First Step Here"
     ),
-    titleLine2: t("DI MULAI DARI SINI", "STARTS HERE"),
+    titleLine2: t(
+      "Menuju Pendidikan Internasional",
+      "Towards International Education"
+    ),
     image: "/canada-hero.svg",
     imageAlt: t("Mahasiswa wisuda", "Graduate"),
     objectPosition: "70% 50%",

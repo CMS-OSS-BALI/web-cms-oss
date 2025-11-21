@@ -6,7 +6,7 @@ import prisma from "@/lib/prisma";
 import { randomUUID } from "crypto";
 import { translate } from "@/app/utils/geminiTranslator";
 import storageClient from "@/app/utils/storageClient";
-import { cropFileTo9x16Webp } from "@/app/utils/cropper";
+import { cropFileTo9x16Webp, cropFileTo16x9Webp } from "@/app/utils/cropper";
 
 /* =========================
    Runtime & Defaults
@@ -145,14 +145,15 @@ async function assertImageFileOrThrow(file) {
 }
 
 /**
- * Semua gambar program dikrop 9:16 (WebP) sebelum upload
+ * Semua gambar program dikrop 16:9 (WebP) sebelum upload
+ * (foto program lebih lebar, tidak lagi rasio 9:16)
  */
 async function uploadConsultantProgramImage(file, consultantId) {
   await assertImageFileOrThrow(file);
 
-  // crop 9:16 → WebP (server: pakai sharp)
-  const { file: croppedFile } = await cropFileTo9x16Webp(file, {
-    height: 1920, // boleh diubah kalau perlu
+  // crop 16:9 → WebP (server: pakai sharp)
+  const { file: croppedFile } = await cropFileTo16x9Webp(file, {
+    width: 1280,
     quality: 90,
   });
 
@@ -164,7 +165,7 @@ async function uploadConsultantProgramImage(file, consultantId) {
 }
 
 /**
- * Foto profil konsultan juga dikrop 9:16
+ * Foto profil konsultan tetap dikrop 9:16
  */
 async function uploadConsultantProfileImage(file, consultantId) {
   await assertImageFileOrThrow(file);

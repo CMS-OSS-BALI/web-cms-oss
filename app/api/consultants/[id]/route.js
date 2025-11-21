@@ -6,7 +6,7 @@ import prisma from "@/lib/prisma";
 import { randomUUID } from "crypto";
 import { translate } from "@/app/utils/geminiTranslator";
 import storageClient from "@/app/utils/storageClient";
-import { cropFileTo9x16Webp } from "@/app/utils/cropper";
+import { cropFileTo9x16Webp, cropFileTo16x9Webp } from "@/app/utils/cropper";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -159,13 +159,13 @@ async function assertImageFileOrThrow(file) {
 }
 
 /**
- * Program image: crop 9:16 sebelum upload
+ * Program image: crop 16:9 sebelum upload
  */
 async function uploadConsultantProgramImage(file, id) {
   await assertImageFileOrThrow(file);
 
-  const { file: croppedFile } = await cropFileTo9x16Webp(file, {
-    height: 1920,
+  const { file: croppedFile } = await cropFileTo16x9Webp(file, {
+    width: 1280,
     quality: 90,
   });
 
@@ -449,7 +449,9 @@ export async function PATCH(req, { params }) {
     if (name_en !== undefined || description_en !== undefined) {
       ops.push(
         prisma.consultants_translate.upsert({
-          where: { id_consultant_locale: { id_consultant: id, locale: "en" } },
+          where: {
+            id_consultant_locale: { id_consultant: id, locale: "en" },
+          },
           update: {
             ...(name_en ? { name: name_en.slice(0, 150) } : {}),
             ...(description_en !== undefined

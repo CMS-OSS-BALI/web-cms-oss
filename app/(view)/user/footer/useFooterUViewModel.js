@@ -1,28 +1,65 @@
 ﻿"use client";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-function normLang(v) {
-  return String(v || "id")
-    .slice(0, 2)
-    .toLowerCase() === "en"
-    ? "en"
-    : "id";
-}
+const LANG_COOKIE = "oss.lang";
+
+const normalizeLang = (value, fallback = "id") => {
+  const base = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (base.startsWith("en")) return "en";
+  if (base.startsWith("id")) return "id";
+  return fallback === "en" ? "en" : "id";
+};
 
 export default function useFooterUViewModel(opts = {}) {
-  const lang = normLang(opts.initialLang);
+  const [lang, setLang] = useState(() => normalizeLang(opts.initialLang, "id"));
+
+  // Baca bahasa global dari <html lang>, ?lang, dan localStorage
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const computeFromGlobal = () => {
+      try {
+        const url = new URL(window.location.href);
+        const urlLang = url.searchParams.get("lang");
+        const htmlLang = document.documentElement.getAttribute("lang");
+        const lsLang = window.localStorage.getItem(LANG_COOKIE);
+        return normalizeLang(urlLang || htmlLang || lsLang || opts.initialLang);
+      } catch {
+        return normalizeLang(opts.initialLang);
+      }
+    };
+
+    // initial sync
+    setLang(computeFromGlobal());
+
+    // observe perubahan atribut lang di <html> (diubah oleh HeaderUser)
+    const observer = new MutationObserver(() => {
+      setLang(computeFromGlobal());
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["lang"],
+    });
+
+    return () => observer.disconnect();
+  }, [opts.initialLang]);
+
   const t = (id, en) => (lang === "en" ? en : id);
 
   const withLang = useMemo(() => {
     return (path) => {
       if (!path) return path;
       const [base, hash] = String(path).split("#");
+
       if (lang === "en") {
         const url = new URL(base, "http://dummy.local");
         url.searchParams.set("lang", "en");
         const q = url.search ? url.search : "";
         return `${url.pathname}${q}${hash ? `#${hash}` : ""}`;
       }
+
       return `${base}${hash ? `#${hash}` : ""}`;
     };
   }, [lang]);
@@ -39,7 +76,9 @@ export default function useFooterUViewModel(opts = {}) {
     () => [
       {
         icon: "location",
-        text: "Jalan Hayam Wuruk No 66B Lantai 2, Sumerta Kelod,\nDenpasar Timur, Kota Denpasar, Bali, Indonesia, 80239",
+        text:
+          "Jalan Hayam Wuruk No 66B Lantai 2, Sumerta Kelod,\n" +
+          "Denpasar Timur, Kota Denpasar, Bali, Indonesia, 80239",
       },
       { icon: "phone", text: "+62 877 0509 2020" },
       { icon: "email", text: "info@onestepsolutionbali.com" },
@@ -50,18 +89,24 @@ export default function useFooterUViewModel(opts = {}) {
   const navSections = useMemo(
     () => [
       {
-        title: t("Kampus", "Campus"),
+        title: t("Kampus & Mitra", "Campuses & Partners"),
         links: [
-          { label: t("Tentang OSS", "About OSS"), href: withLang("/user/aboutus") },
           {
-            label: t("Kampus Mitra", "Partner Colleges"),
+            label: t("Tentang OSS", "About OSS"),
+            href: withLang("/user/aboutus"),
+          },
+          {
+            label: t("Kampus", "Colleges"),
             href: withLang("/user/college"),
           },
           {
-            label: t("Mitra Dalam Negeri", "Domestic Partners"),
+            label: t("Mitra", "Partners"),
             href: withLang("/user/mitra-dalam-negeri"),
           },
-          { label: "Blog", href: withLang("/user/blog") },
+          {
+            label: t("Berita & Artikel", "News & Articles"),
+            href: withLang("/user/blog"),
+          },
         ],
       },
       {
@@ -71,13 +116,22 @@ export default function useFooterUViewModel(opts = {}) {
             label: t("Studi Luar Negeri", "Overseas Study"),
             href: withLang("/user/overseas-study"),
           },
-          { label: "Visa Apply", href: withLang("/user/visa-apply") },
-          { label: "English Course", href: withLang("/user/english-course") },
           {
-            label: t("Akomodasi", "Accommodation"),
+            label: t("Pengurusan Visa", "Visa Application"),
+            href: withLang("/user/visa-apply"),
+          },
+          {
+            label: t("Kursus Bahasa Inggris", "English Course"),
+            href: withLang("/user/english-course"),
+          },
+          {
+            label: t("Pemesanan Akomodasi", "Accommodation Booking"),
             href: withLang("/user/accommodation"),
           },
-          { label: "Doc Translate", href: withLang("/user/doc.translate") },
+          {
+            label: t("Penerjemahan Dokumen", "Document Translation"),
+            href: withLang("/user/doc.translate"),
+          },
         ],
       },
       {
@@ -87,7 +141,10 @@ export default function useFooterUViewModel(opts = {}) {
             label: t("Karier di OSS", "Career With OSS"),
             href: withLang("/user/career"),
           },
-          { label: "Events", href: withLang("/user/events") },
+          {
+            label: t("Event & Webinar", "Events & Webinars"),
+            href: withLang("/user/events"),
+          },
           {
             label: t("Form Mitra", "Partner Form"),
             href: withLang("/user/form-mitra"),
@@ -96,11 +153,14 @@ export default function useFooterUViewModel(opts = {}) {
             label: t("Form Representative", "Representative Form"),
             href: withLang("/user/form-rep"),
           },
-          { label: "Calculator", href: withLang("/user/calculator") },
+          {
+            label: t("Kalkulator Biaya Studi", "Study Cost Calculator"),
+            href: withLang("/user/calculator"),
+          },
         ],
       },
     ],
-    [t, withLang]
+    [withLang, lang]
   );
 
   const socials = useMemo(() => {
@@ -135,10 +195,12 @@ export default function useFooterUViewModel(opts = {}) {
     ];
   }, []);
 
-  const copyright = useMemo(
-    () => "© " + new Date().getFullYear() + " OSS Bali. All Rights Reserved.",
-    []
-  );
+  const copyright = useMemo(() => {
+    const year = new Date().getFullYear();
+    return lang === "en"
+      ? `© ${year} OSS Bali. All Rights Reserved.`
+      : `© ${year} OSS Bali. Hak Cipta Dilindungi.`;
+  }, [lang]);
 
   return { lang, logo, contacts, navSections, socials, copyright, withLang, t };
 }

@@ -52,14 +52,14 @@ export default function useCareerViewModel({ locale = "id" } = {}) {
     () => ({
       title: L("Sahabat Referral", "Referral Buddy"),
       leadBold: L(
-        "Ingin Mendapatkan Penghasilan Tanpa Terikat Kontrak?",
-        "Want to Earn Without Binding Contracts?"
+        "Ingin Mendapatkan Penghasilan Tanpa Terikat Kontrak? ",
+        "Want to Earn Without Binding Contracts? "
       ),
       desc: L(
         "Bergabunglah sebagai Sahabat Referral OSS Bali! Cukup rekomendasikan calon siswa yang berencana melanjutkan studi ke luar negeri, dan dapatkan insentif serta bonus menarik untuk setiap referensi yang berhasil. Bersama, kita bantu lebih banyak generasi muda mewujudkan impian global mereka!",
         "Join as an OSS Bali Referral Buddy! Recommend prospective students planning to study abroad and earn incentives and bonuses for every successful referral. Together, we help more young people realize their global dreams!"
       ),
-      youtube: "https://youtu.be/He1MkQ7tgRc?si=W10S57vT9YyUnFEC",
+      youtube: "https://youtu.be/Py1jA2EjCmk?si=qke7rB0X2BlWXHsv",
       benefitsTitle: L(
         "Manfaat Bergabung Dalam Program Sahabat Referral OSS Bali",
         "Benefits of Joining the OSS Bali Referral Program"

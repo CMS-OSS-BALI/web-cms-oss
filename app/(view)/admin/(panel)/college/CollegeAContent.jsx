@@ -65,7 +65,7 @@ const T = {
   save: "Simpan",
 
   // form fields
-  logo: "Logo (1:1)",
+  logo: "Logo",
   name: "Nama Kampus",
   desc: "Deskripsi",
   country: "Negara",
@@ -116,7 +116,9 @@ const fmtDateId = (dLike) => {
 };
 
 const isImg = (f) =>
-  ["image/jpeg", "image/png", "image/webp"].includes(f?.type || "");
+  ["image/jpeg", "image/png", "image/webp", "image/svg+xml"].includes(
+    f?.type || ""
+  );
 const tooBig = (f, mb = 10) => f.size / 1024 / 1024 > mb;
 
 // formatter & parser angka
@@ -936,7 +938,8 @@ export default function CollegeAContent(props) {
                               {r.logo_url ? (
                                 <img
                                   src={r.logo_url}
-                                  alt="" title=""
+                                  alt=""
+                                  title=""
                                   style={styles.logoImg}
                                 />
                               ) : (
@@ -1074,11 +1077,17 @@ export default function CollegeAContent(props) {
                     {logoPrevCreate ? (
                       <img
                         src={logoPrevCreate}
-                        alt="logo" title="logo"
+                        alt="logo"
+                        title="logo"
                         style={styles.coverImg}
                       />
                     ) : (
-                      <div style={styles.coverPlaceholder}>+ {T.logo}</div>
+                      <div style={styles.coverPlaceholder}>
+                        + {T.logo}
+                        <div style={{ fontSize: 11, marginTop: 4 }}>
+                          Ukuran bebas, sistem menyesuaikan otomatis
+                        </div>
+                      </div>
                     )}
                   </div>
                 </Upload>
@@ -1286,11 +1295,17 @@ export default function CollegeAContent(props) {
                       {logoPrevEdit ? (
                         <img
                           src={logoPrevEdit}
-                          alt="logo" title="logo"
+                          alt="logo"
+                          title="logo"
                           style={styles.coverImg}
                         />
                       ) : (
-                        <div style={styles.coverPlaceholder}>+ {T.logo}</div>
+                        <div style={styles.coverPlaceholder}>
+                          + {T.logo}
+                          <div style={{ fontSize: 11, marginTop: 4 }}>
+                            Ukuran bebas, sistem menyesuaikan otomatis
+                          </div>
+                        </div>
                       )}
                     </div>
                   </Upload>
@@ -1452,7 +1467,8 @@ export default function CollegeAContent(props) {
                 {detailData?.logo_url ? (
                   <img
                     src={detailData.logo_url}
-                    alt="logo" title="logo"
+                    alt="logo"
+                    title="logo"
                     style={styles.coverImgRead}
                     onLoad={(e) =>
                       setViewImgMeta({
@@ -1790,8 +1806,13 @@ const styles = {
     placeItems: "center",
     overflow: "hidden",
   },
-  coverImg: { width: "100%", height: "100%", objectFit: "cover" },
-  coverPlaceholder: { fontWeight: 700, color: "#0b56c9", userSelect: "none" },
+  coverImg: { width: "100%", height: "100%", objectFit: "contain" },
+  coverPlaceholder: {
+    fontWeight: 700,
+    color: "#0b56c9",
+    userSelect: "none",
+    textAlign: "center",
+  },
 
   coverBoxRead: {
     width: "100%",

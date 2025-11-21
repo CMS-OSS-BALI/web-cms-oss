@@ -7,8 +7,6 @@ import { translate } from "@/app/utils/geminiTranslator";
 
 // === Storage client (baru)
 import storageClient from "@/app/utils/storageClient";
-// === Cropper util (1:1 WebP)
-import { cropFileTo1x1Webp } from "@/app/utils/cropper";
 
 /* =========================
    Runtime & Defaults
@@ -140,7 +138,7 @@ async function readBodyAndFile(req) {
   return { body, file: null };
 }
 
-/* ---------- Upload (pakai storageClient + CROP 1:1 WebP) ---------- */
+/* ---------- Upload (pakai storageClient, tanpa crop 1:1) ---------- */
 const ALLOWED_IMAGE_TYPES = new Set([
   "image/jpeg",
   "image/png",
@@ -160,44 +158,14 @@ async function assertImageFileOrThrow(file) {
   if (size > MAX_UPLOAD_SIZE) throw new Error("PAYLOAD_TOO_LARGE");
 }
 
-function cropResultToFileLike(cropResult, collegeId) {
-  if (cropResult?.file && typeof cropResult.file.arrayBuffer === "function") {
-    return cropResult.file;
-  }
-  if (typeof Buffer === "undefined") {
-    throw new Error("Buffer is not available in this environment.");
-  }
-  const raw = cropResult?.buffer;
-  const nodeBuffer =
-    raw && Buffer.isBuffer(raw) ? raw : Buffer.from(raw || []);
-  const slice = nodeBuffer.buffer.slice(
-    nodeBuffer.byteOffset,
-    nodeBuffer.byteOffset + nodeBuffer.byteLength
-  );
-  const ext = cropResult?.ext || "webp";
-  return {
-    name: `logo-${collegeId || "new"}.${ext}`,
-    type: cropResult?.contentType || "image/webp",
-    size: nodeBuffer.byteLength,
-    arrayBuffer: async () => slice,
-  };
-}
-
 async function uploadCollegeLogo(file, collegeId) {
   if (!file) return null;
 
   // Validasi tipe + ukuran
   await assertImageFileOrThrow(file);
 
-  // Crop 1:1 ke WebP (server: pakai sharp, client: canvas)
-  const cropped = await cropFileTo1x1Webp(file, {
-    size: 720, // bisa diubah kalau mau lebih kecil/besar
-    quality: 90,
-  });
-
-  const fileLike = cropResultToFileLike(cropped, collegeId);
-
-  const res = await storageClient.uploadBufferWithPresign(fileLike, {
+  // Upload original image (aspect ratio asli, tanpa crop paksa)
+  const res = await storageClient.uploadBufferWithPresign(file, {
     folder: `${PUBLIC_PREFIX}/colleges/${collegeId}`,
     isPublic: true,
   });
@@ -368,7 +336,34 @@ export async function POST(req) {
     const currency = ALWAYS_CURRENCY;
     const ownerId = body.admin_user_id || adminId;
 
-    // Buat parent dulu → upload logo memakai id folder → update logo_url
+    const description =
+      body.description !== undefined && body.description !== null
+        ? String(body.description)
+        : null;
+
+    // Mulai translate sebelum transaksi DB agar durasi transaksi singkat
+    const autoTranslate =
+      String(body.autoTranslate ?? "true").toLowerCase() !== "false";
+    const translationPromise =
+      autoTranslate && locale !== EN_LOCALE && (name || description)
+        ? Promise.all([
+            name ? translate(name, locale, EN_LOCALE) : Promise.resolve(name),
+            typeof description === "string"
+              ? translate(description, locale, EN_LOCALE)
+              : Promise.resolve(description),
+          ])
+        : null;
+
+    // Validasi logo_url string lebih awal (file akan diunggah setelah create)
+    let inlineLogo = null;
+    if (!file && body.logo_url !== undefined) {
+      const trimmed = String(body.logo_url || "").trim();
+      if (trimmed.length > 1024)
+        throw Object.assign(new Error("BAD_LOGO_URL"), { status: 400 });
+      inlineLogo = trimmed || null;
+    }
+
+    // Transaksi hanya untuk operasi DB cepat (create + translate asal)
     const created = await prisma.$transaction(async (tx) => {
       const parent = await tx.college.create({
         data: {
@@ -378,7 +373,7 @@ export async function POST(req) {
           jenjang: jenjangRaw ?? null,
           website: body.website ?? null,
           mou_url: body.mou_url ?? null,
-          logo_url: null, // set nanti (file/string)
+          logo_url: file ? null : inlineLogo,
           address: body.address ?? null,
           city: body.city ?? null,
           state: body.state ?? null,
@@ -405,70 +400,63 @@ export async function POST(req) {
         select: { id: true },
       });
 
-      // translations (locale sumber)
-      const description =
-        body.description !== undefined && body.description !== null
-          ? String(body.description)
-          : null;
-
       await tx.college_translate.create({
         data: { id_college: parent.id, locale, name, description },
       });
 
-      // auto translate ke EN (opsional)
-      const autoTranslate =
-        String(body.autoTranslate ?? "true").toLowerCase() !== "false";
-      if (autoTranslate && locale !== EN_LOCALE && (name || description)) {
-        const [nameEn, descEn] = await Promise.all([
-          name ? translate(name, locale, EN_LOCALE) : Promise.resolve(name),
-          typeof description === "string"
-            ? translate(description, locale, EN_LOCALE)
-            : Promise.resolve(description),
-        ]);
+      return { id: parent.id };
+    });
 
-        await tx.college_translate.upsert({
+    // Jalankan operasi lambat di luar transaksi DB
+    const uploadResult = file
+      ? uploadCollegeLogo(file, created.id)
+      : Promise.resolve(null);
+    const translationResult = translationPromise || Promise.resolve(null);
+
+    const [uploadedLogo, translated] = await Promise.all([
+      uploadResult,
+      translationResult,
+    ]);
+
+    const postOps = [];
+    let finalLogo = inlineLogo;
+
+    if (uploadedLogo) {
+      finalLogo = uploadedLogo;
+      postOps.push(
+        prisma.college.update({
+          where: { id: created.id },
+          data: { logo_url: finalLogo, updated_at: new Date() },
+        })
+      );
+    }
+
+    if (translated) {
+      const [nameEn, descEn] = translated;
+      postOps.push(
+        prisma.college_translate.upsert({
           where: {
-            id_college_locale: { id_college: parent.id, locale: EN_LOCALE },
+            id_college_locale: { id_college: created.id, locale: EN_LOCALE },
           },
           update: {
             ...(nameEn ? { name: nameEn } : {}),
             ...(descEn !== undefined ? { description: descEn ?? null } : {}),
           },
           create: {
-            id_college: parent.id,
+            id_college: created.id,
             locale: EN_LOCALE,
             name: nameEn || name,
             description: descEn ?? description,
           },
-        });
-      }
+        })
+      );
+    }
 
-      // handle logo
-      let finalLogo = null;
-      if (file) {
-        // FILE → crop 1:1 dan upload
-        finalLogo = await uploadCollegeLogo(file, parent.id);
-      } else if (body.logo_url !== undefined) {
-        const trimmed = String(body.logo_url || "").trim();
-        if (trimmed.length > 1024)
-          throw Object.assign(new Error("BAD_LOGO_URL"), { status: 400 });
-        // string logo_url tidak di-crop (diasumsikan sudah siap pakai)
-        finalLogo = trimmed || null;
-      }
-
-      if (finalLogo) {
-        await tx.college.update({
-          where: { id: parent.id },
-          data: { logo_url: finalLogo, updated_at: new Date() },
-        });
-      }
-
-      return { id: parent.id, logo_url: finalLogo || null };
-    });
+    if (postOps.length) await prisma.$transaction(postOps);
 
     return NextResponse.json(
       {
-        data: { id: created.id, slug, logo_url: toPublicUrl(created.logo_url) },
+        data: { id: created.id, slug, logo_url: toPublicUrl(finalLogo) },
       },
       { status: 201 }
     );

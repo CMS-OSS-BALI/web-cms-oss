@@ -142,7 +142,7 @@ const DICT = {
     },
     video: {
       title: "Get to Know OSS Bali Better",
-      url: "https://youtu.be/He1MkQ7tgRc?si=W10S57vT9YyUnFEC",
+      url: "https://youtu.be/Py1jA2EjCmk?si=qke7rB0X2BlWXHsv",
     },
 
     support: {

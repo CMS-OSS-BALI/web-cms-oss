@@ -202,7 +202,7 @@ const styles = {
     },
   },
 
-  /* ========== WHY (desain baru, benar-benar center) ========== */
+  /* ========== WHY (desain baru, center) ========== */
   why: {
     section: { margin: "72px 0 96px" },
     grid: {
@@ -660,7 +660,7 @@ export default function AccommodationContent(props) {
         </div>
       </section>
 
-      {/* ===== WHY – benar-benar center ===== */}
+      {/* ===== WHY – center ===== */}
       <section style={styles.why.section}>
         <div style={sectionInner}>
           <div className="reveal" data-anim="zoom" style={whyGrid}>
@@ -810,7 +810,7 @@ export default function AccommodationContent(props) {
 
         /* ===== Slider Layanan Akomodasi (Swiper) ===== */
         :root {
-          --acco-card-w: clamp(190px, 18vw, 220px);
+          --acco-card-w: clamp(210px, 22vw, 240px);
         }
 
         .acco-type-swiper {
@@ -829,25 +829,32 @@ export default function AccommodationContent(props) {
           display: flex;
         }
 
+        /* 🎴 Card Akomodasi — mengikuti feel level-kampus-card */
         .acco-type-card {
           width: 100%;
           height: 100%;
-          min-height: 190px;
+          min-height: 200px;
           display: flex;
           flex-direction: column;
           align-items: center;
-          justify-content: space-between;
+          justify-content: flex-start;
           text-align: center;
-          padding: 20px 16px 18px;
-          border-radius: 18px;
-          background: #0b56c9;
-          box-shadow: 0 14px 28px rgba(11, 86, 201, 0.35);
+          padding: 18px 18px 20px;
+          border-radius: 22px;
+          background: radial-gradient(
+              140% 120% at -10% -10%,
+              rgba(255, 255, 255, 0.28) 0%,
+              transparent 45%
+            ),
+            linear-gradient(180deg, #0b56c9 0%, #084a94 55%, #063e7c 100%);
+          box-shadow: 0 18px 34px rgba(8, 42, 116, 0.38);
           color: #ffffff;
         }
 
+        /* 🔎 Ikon diperbesar seperti level-kampus-icon */
         .acco-type-icon {
-          width: 74px;
-          height: 74px;
+          width: 128px;
+          height: 128px;
           object-fit: contain;
           display: block;
           margin-bottom: 14px;
@@ -856,20 +863,21 @@ export default function AccommodationContent(props) {
 
         .acco-type-label {
           margin: 0;
-          font-weight: 700;
+          font-weight: 800;
           font-size: 14px;
-          letter-spacing: 0.01em;
+          letter-spacing: 0.02em;
         }
 
+        /* ✨ Hover: card sedikit membesar (scale) */
         @media (hover: hover) {
           .acco-type-card {
             transition: transform 0.18s ease, box-shadow 0.18s ease,
               filter 0.18s ease;
           }
           .acco-type-card:hover {
-            transform: translateY(-4px);
-            filter: saturate(1.05);
-            box-shadow: 0 18px 34px rgba(11, 86, 201, 0.45);
+            transform: translateY(-4px) scale(1.04);
+            filter: saturate(1.08);
+            box-shadow: 0 24px 44px rgba(8, 42, 116, 0.45);
           }
         }
 
@@ -878,12 +886,13 @@ export default function AccommodationContent(props) {
             --acco-card-w: 210px;
           }
           .acco-type-card {
-            min-height: 175px;
-            padding: 18px 12px 16px;
+            min-height: 185px;
+            padding: 16px 14px 18px;
           }
+          /* Ikon tetap besar tapi lebih proporsional di mobile */
           .acco-type-icon {
-            width: 64px;
-            height: 64px;
+            width: 92px;
+            height: 92px;
           }
         }
 

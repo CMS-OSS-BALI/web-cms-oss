@@ -98,12 +98,14 @@ const fmtDateId = (dLike) => {
     return "-";
   }
 };
+
+// ⬇️ Perbaikan separator pakai dash biasa, bukan karakter encoding aneh
 const fmtRange = (from, to) => {
   const a = fmtDateId(from);
   const b = fmtDateId(to);
   if (a === "-" && b === "-") return "-";
-  if (a !== "-" && b !== "-") return `${a} â€” ${b}`;
-  return a !== "-" ? `${a} â€”` : `â€” ${b}`;
+  if (a !== "-" && b !== "-") return `${a} - ${b}`;
+  return a !== "-" ? `${a} -` : `- ${b}`;
 };
 
 /* ===== NEW: IDR currency helper ===== */
@@ -111,6 +113,18 @@ const fmtIDR = (n) => {
   const v = Number(n);
   if (!Number.isFinite(v)) return "Rp. -";
   return `Rp. ${v.toLocaleString("id-ID")}`;
+};
+
+/* ===== Thousand separator helper (untuk InputNumber) ===== */
+const formatThousand = (value) => {
+  const v = value == null || value === "" ? "" : String(value);
+  if (!v) return "";
+  return v.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+};
+
+const parseThousand = (value) => {
+  const v = value == null ? "" : String(value);
+  return v.replace(/\./g, "");
 };
 
 /* ===== responsive hook (optional) ===== */
@@ -247,7 +261,8 @@ export default function VouchersContent({ vm }) {
     if (!payload.code) return err("Validasi", "Kode tidak boleh kosong");
     if (payload.type === "PERCENT") {
       if (payload.value < 1 || payload.value > 100)
-        return err("Validasi", "Nilai (percent) harus 1â€“100");
+        // ⬇️ perbaiki teks, pakai dash biasa
+        return err("Validasi", "Nilai (percent) harus 1-100");
       if (payload.max_discount != null && payload.max_discount < 0)
         return err("Validasi", "Maks diskon harus >= 0 atau kosong");
     } else {
@@ -384,7 +399,7 @@ export default function VouchersContent({ vm }) {
               <div style={styles.totalBadgeWrap}>
                 <div style={styles.totalBadgeLabel}>{T.totalLabel}</div>
                 <div style={styles.totalBadgeValue}>
-                  {vm.total ?? rows.length ?? "â€”"}
+                  {vm.total ?? rows.length ?? "-"}
                 </div>
               </div>
             </div>
@@ -498,9 +513,9 @@ export default function VouchersContent({ vm }) {
                             <div style={styles.nameWrap}>
                               <div
                                 style={styles.nameText}
-                                title={r.code || "â€”"}
+                                title={r.code || "-"}
                               >
-                                {r.code || "â€”"}
+                                {r.code || "-"}
                               </div>
                               <div style={styles.subDate}>
                                 Dibuat: {fmtDateId(r.created_at)}
@@ -510,12 +525,12 @@ export default function VouchersContent({ vm }) {
 
                           <div style={styles.colCenter}>{typeU}</div>
 
-                          {/* Nilai: tambah % kalau PERCENT */}
+                          {/* Nilai: % kalau PERCENT, Rp kalau FIXED */}
                           <div style={styles.colCenter}>
                             {r.value != null
                               ? typeU === "PERCENT"
                                 ? `${r.value}%`
-                                : r.value
+                                : fmtIDR(r.value)
                               : "-"}
                           </div>
 
@@ -524,14 +539,14 @@ export default function VouchersContent({ vm }) {
                             {typeU === "PERCENT"
                               ? r.max_discount != null
                                 ? fmtIDR(r.max_discount)
-                                : "â€”"
-                              : "â€”"}
+                                : "-"
+                              : "-"}
                           </div>
 
                           <div style={styles.colCenter}>{statusTag}</div>
 
                           <div style={styles.colCenter}>
-                            {r.used_count ?? 0}/{r.max_uses ?? "âˆž"}
+                            {r.used_count ?? 0}/{r.max_uses ?? "∞"}
                           </div>
 
                           <div style={styles.colCenter}>
@@ -657,6 +672,17 @@ export default function VouchersContent({ vm }) {
                     setFormValues((s) => ({ ...s, value: v ?? 0 }))
                   }
                   style={{ width: "100%" }}
+                  // ⬇️ hanya format ribuan kalau tipe FIXED
+                  formatter={
+                    formValues.type === "FIXED"
+                      ? (value) => formatThousand(value)
+                      : undefined
+                  }
+                  parser={
+                    formValues.type === "FIXED"
+                      ? (value) => parseThousand(value)
+                      : undefined
+                  }
                 />
               </div>
             </div>
@@ -675,6 +701,9 @@ export default function VouchersContent({ vm }) {
                   }
                   style={{ width: "100%" }}
                   placeholder="Boleh kosong"
+                  // ⬇️ selalu format ribuan karena ini rupiah
+                  formatter={(value) => formatThousand(value)}
+                  parser={(value) => parseThousand(value)}
                 />
               </div>
             ) : null}
@@ -877,4 +906,3 @@ const styles = {
 
   label: { fontSize: 11.5, color: "#64748b" },
 };
-
