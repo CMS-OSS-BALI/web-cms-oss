@@ -186,6 +186,7 @@ const hero = {
     lineHeight: 1.08,
     letterSpacing: ".01em",
     fontSize: "clamp(26px, 5.2vw, 48px)",
+    marginTop: 75,
   },
   sub: {
     margin: "2px auto 8px",

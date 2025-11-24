@@ -1,5 +1,6 @@
 // app/sitemap.js
 import { BASE_URL } from "./seo.config";
+import prisma from "@/lib/prisma";
 
 /**
  * Regenerasi sitemap tiap 24 jam (server-side)
@@ -44,59 +45,46 @@ export default async function sitemap() {
     };
   });
 
-  // ====== (Opsional) Dynamic entries: blog detail, event detail, dsb. ======
-  // Supaya aman di berbagai mode deploy, kita pakai try/catch & fallback kosong.
-  // Sesuaikan endpoint dan properti slug/updatedAt sesuai API kamu.
+  // ====== Dynamic entries: blog detail & event detail ======
   const dynamicEntries = [];
 
-  // Contoh: blog posts
   try {
-    // Ganti ke endpoint kamu yang stabil (hindari query yang berat)
-    // Jika tidak ingin fetch saat build, hapus blok ini.
-    // NOTE: gunakan endpoint tanpa autentikasi & output minimal untuk sitemap.
-    const res = await fetch(`${base}/api/blog/public-list`, {
-      // Pastikan tidak cache terlalu agresif oleh CDN:
-      // next: { revalidate } tidak dipakai di file JS murni, jadi rely ke export revalidate di atas
-      headers: { "x-sitemap": "1" },
+    const posts = await prisma.blog.findMany({
+      where: { deleted_at: null },
+      select: { id: true, updated_at: true },
+      orderBy: { updated_at: "desc" },
     });
-    if (res.ok) {
-      const posts = await res.json(); // ekspektasi: [{slug, updatedAt}] atau serupa
-      for (const p of Array.isArray(posts) ? posts : []) {
-        const slug = p.slug || p.path || p.id;
-        if (!slug) continue;
-        const url = `${base}/user/blog/${slug}`;
-        dynamicEntries.push({
-          url,
-          lastModified: p.updatedAt ? new Date(p.updatedAt) : now,
-          changeFrequency: "weekly",
-          priority: 0.7,
-          alternates: withAlternates(url),
-        });
-      }
+    for (const p of posts) {
+      const slug = p.id;
+      const url = `${base}/user/blog/${slug}`;
+      dynamicEntries.push({
+        url,
+        lastModified: p.updated_at ? new Date(p.updated_at) : now,
+        changeFrequency: "weekly",
+        priority: 0.7,
+        alternates: withAlternates(url),
+      });
     }
   } catch {
-    // diam saja; fallback ke staticEntries
+    // ignore but keep static entries
   }
 
-  // Contoh: event detail
   try {
-    const res = await fetch(`${base}/api/events/public-list`, {
-      headers: { "x-sitemap": "1" },
+    const events = await prisma.events.findMany({
+      where: { deleted_at: null, is_published: true },
+      select: { id: true, updated_at: true },
+      orderBy: { updated_at: "desc" },
     });
-    if (res.ok) {
-      const events = await res.json(); // ekspektasi: [{slug, updatedAt}] atau serupa
-      for (const e of Array.isArray(events) ? events : []) {
-        const slug = e.slug || e.path || e.id;
-        if (!slug) continue;
-        const url = `${base}/user/events/${slug}`;
-        dynamicEntries.push({
-          url,
-          lastModified: e.updatedAt ? new Date(e.updatedAt) : now,
-          changeFrequency: "daily",
-          priority: 0.7,
-          alternates: withAlternates(url),
-        });
-      }
+    for (const e of events) {
+      const slug = e.id;
+      const url = `${base}/user/events/${slug}`;
+      dynamicEntries.push({
+        url,
+        lastModified: e.updated_at ? new Date(e.updated_at) : now,
+        changeFrequency: "daily",
+        priority: 0.7,
+        alternates: withAlternates(url),
+      });
     }
   } catch {
     // ignore

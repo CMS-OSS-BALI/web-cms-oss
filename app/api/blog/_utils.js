@@ -38,18 +38,14 @@ export function sanitize(v) {
   return v;
 }
 
-export function json(data, init) {
-  // default no-store supaya tidak misleading saat data berubah
-  const base = { headers: { "Cache-Control": "no-store" } };
-  const merged =
-    init?.headers || init?.status
-      ? {
-          ...base,
-          ...init,
-          headers: { ...base.headers, ...(init.headers || {}) },
-        }
-      : base;
-  return NextResponse.json(sanitize(data), merged);
+export function json(data, init = {}) {
+  const headers = { ...(init.headers || {}) };
+  if (init.cacheControl && !headers["Cache-Control"]) {
+    headers["Cache-Control"] = init.cacheControl;
+  }
+  const responseInit =
+    Object.keys(headers).length > 0 ? { ...init, headers } : init;
+  return NextResponse.json(sanitize(data), responseInit);
 }
 
 /* =========================

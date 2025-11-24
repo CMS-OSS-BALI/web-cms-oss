@@ -20,8 +20,8 @@ import {
   removeStorageObjects,
 } from "@/app/api/events/_utils";
 
-export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+export const revalidate = 600;
 
 /* ========= GET /api/events/:id ========= */
 export async function GET(req, { params }) {
@@ -107,40 +107,48 @@ export async function GET(req, { params }) {
       category_locale_used = ct?.locale ?? null;
     }
 
-    return json({
-      message: "OK",
-      data: {
-        id: item.id,
-        banner_url: toPublicUrl(item.banner_url),
-        is_published: item.is_published,
-        start_at: item.start_at,
-        end_at: item.end_at,
-        start_ts,
-        end_ts,
-        location: item.location,
-        capacity: item.capacity,
-        pricing_type: item.pricing_type,
-        ticket_price: item.ticket_price,
-        category_id: item.category?.id ?? null,
-        category_slug: item.category?.slug ?? null,
-        created_at: item.created_at,
-        updated_at: item.updated_at,
-        created_ts,
-        updated_ts,
-        title: t?.title ?? null,
-        description: t?.description ?? null,
-        locale_used: t?.locale ?? null,
-        sold,
-        remaining,
-        ...(includeCategory
-          ? { category_name, category_description, category_locale_used }
-          : {}),
-        booth_price: item.booth_price,
-        booth_quota: item.booth_quota,
-        booth_sold_count: item.booth_sold_count,
-        booth_remaining,
+    return json(
+      {
+        message: "OK",
+        data: {
+          id: item.id,
+          banner_url: toPublicUrl(item.banner_url),
+          is_published: item.is_published,
+          start_at: item.start_at,
+          end_at: item.end_at,
+          start_ts,
+          end_ts,
+          location: item.location,
+          capacity: item.capacity,
+          pricing_type: item.pricing_type,
+          ticket_price: item.ticket_price,
+          category_id: item.category?.id ?? null,
+          category_slug: item.category?.slug ?? null,
+          created_at: item.created_at,
+          updated_at: item.updated_at,
+          created_ts,
+          updated_ts,
+          title: t?.title ?? null,
+          description: t?.description ?? null,
+          locale_used: t?.locale ?? null,
+          sold,
+          remaining,
+          ...(includeCategory
+            ? { category_name, category_description, category_locale_used }
+            : {}),
+          booth_price: item.booth_price,
+          booth_quota: item.booth_quota,
+          booth_sold_count: item.booth_sold_count,
+          booth_remaining,
+        },
       },
-    });
+      {
+        headers: {
+          "Cache-Control":
+            "public, max-age=0, s-maxage=900, stale-while-revalidate=1800",
+        },
+      }
+    );
   } catch (err) {
     console.error(`GET /api/events/${params?.id} error:`, err);
     return json(

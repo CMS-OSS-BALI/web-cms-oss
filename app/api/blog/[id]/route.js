@@ -18,8 +18,8 @@ import {
 } from "@/app/api/blog/_utils";
 import { translate } from "@/app/utils/geminiTranslator";
 
-export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+export const revalidate = 600;
 
 /* ========= GET /api/blog/:id ========= */
 export async function GET(req, { params }) {
@@ -36,10 +36,18 @@ export async function GET(req, { params }) {
     });
     if (!item) return notFound();
 
-    return json({
-      message: "OK",
-      data: projectBlogRow(item, { locale, fallback, includeCategory }),
-    });
+    return json(
+      {
+        message: "OK",
+        data: projectBlogRow(item, { locale, fallback, includeCategory }),
+      },
+      {
+        headers: {
+          "Cache-Control":
+            "public, max-age=0, s-maxage=900, stale-while-revalidate=1800",
+        },
+      }
+    );
   } catch (err) {
     console.error(`GET /api/blog/${params?.id} error:`, err);
     return json(

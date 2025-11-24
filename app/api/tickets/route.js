@@ -5,6 +5,10 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
 import { sendTicketEmail } from "@/lib/mailer";
 import { randomUUID } from "crypto";
+import {
+  consumeRateLimitDistributed,
+  rateLimitHeaders,
+} from "@/lib/security/rateLimit";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -41,6 +45,14 @@ function newTicketCode(len = 10) {
 function originFromReq(req) {
   const url = new URL(req.url);
   return `${url.protocol}//${url.host}`;
+}
+function clientIp(req) {
+  return (
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    req.headers.get("cf-connecting-ip") ||
+    req.headers.get("x-real-ip") ||
+    "unknown"
+  );
 }
 
 /** Baca body baik dari JSON maupun (multipart/form-data|x-www-form-urlencoded) */
@@ -200,6 +212,33 @@ export async function POST(req) {
     // publik boleh POST; batasi admin jika perlu → await assertAdmin();
 
     const b = await readBody(req);
+    const honeypot =
+      b?.hp || b?.honeypot || b?.website || b?.url || b?.company || "";
+    if (honeypot) {
+      return NextResponse.json({ message: "OK" });
+    }
+
+    const ip = clientIp(req);
+    const emailNormalized =
+      typeof b?.email === "string" ? b.email.toLowerCase().trim() : "none";
+    const limits = await Promise.all([
+      consumeRateLimitDistributed(`tickets:ip:${ip}`, {
+        limit: 30,
+        windowMs: 60_000,
+      }),
+      consumeRateLimitDistributed(`tickets:email:${emailNormalized}`, {
+        limit: 8,
+        windowMs: 60_000,
+      }),
+    ]);
+    const blocked = limits.find((m) => !m.success);
+    if (blocked) {
+      return NextResponse.json(
+        { message: "Terlalu banyak permintaan. Coba lagi nanti." },
+        { status: 429, headers: rateLimitHeaders(blocked) }
+      );
+    }
+
     const event_id = (b?.event_id ?? "").toString().trim();
     const full_name = (b?.full_name ?? "").toString().trim();
     const email = (b?.email ?? "").toString().trim().toLowerCase();

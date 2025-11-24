@@ -2,12 +2,21 @@
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 
+// cache waktu terkirim terakhir per path untuk throttle navigasi cepat
+const lastSendByPath = {};
+const MIN_INTERVAL_MS = 5000; // jangan spam endpoint saat navigasi beruntun
+
 export default function PageviewTracker({ ignoreAdmin = false }) {
   const pathname = usePathname();
 
   useEffect(() => {
     if (!pathname) return;
     if (ignoreAdmin && pathname.startsWith("/admin")) return;
+
+    const now = Date.now();
+    const last = lastSendByPath[pathname] || 0;
+    if (now - last < MIN_INTERVAL_MS) return;
+    lastSendByPath[pathname] = now;
 
     const payload = {
       path: pathname,

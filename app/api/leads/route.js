@@ -15,9 +15,22 @@ import {
   withTs,
   notifyAdminsNewLead,
 } from "@/app/api/leads/_utils";
+import {
+  consumeRateLimitDistributed,
+  rateLimitHeaders,
+} from "@/lib/security/rateLimit";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+function clientIp(req) {
+  return (
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    req.headers.get("cf-connecting-ip") ||
+    req.headers.get("x-real-ip") ||
+    "unknown"
+  );
+}
 
 /* =========================
    GET /api/leads  (ADMIN)
@@ -205,6 +218,43 @@ export async function POST(req) {
     referral_id: rawReferralId = null,
     referral_code: rawReferralCode = null,
   } = body || {};
+
+  // Honeypot sederhana: field tersembunyi yang seharusnya kosong
+  const honeypot =
+    body?.hp || body?.honeypot || body?.website || body?.url || "";
+  if (honeypot) {
+    return json({ message: "OK" }); // balas normal agar bot tidak tahu
+  }
+
+  const emailStr = typeof email === "string" ? email.trim().toLowerCase() : "";
+  const ip = clientIp(req);
+
+  // Rate limit gabungan: per IP + per email untuk mencegah flood bot
+  const limits = await Promise.all([
+    consumeRateLimitDistributed(`leads:ip:${ip}`, {
+      limit: 30,
+      windowMs: 60_000,
+    }),
+    consumeRateLimitDistributed(`leads:email:${emailStr || "none"}`, {
+      limit: 10,
+      windowMs: 60_000,
+    }),
+  ]);
+  const blocked = limits.find((m) => !m.success);
+  if (blocked) {
+    return json(
+      {
+        error: {
+          code: "RATE_LIMITED",
+          message: "Terlalu banyak permintaan. Coba lagi nanti.",
+        },
+      },
+      {
+        status: 429,
+        headers: rateLimitHeaders(blocked),
+      }
+    );
+  }
 
   // validations
   if (

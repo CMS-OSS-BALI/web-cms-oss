@@ -34,7 +34,7 @@ export default function SeoSection({
         <a
           href={v}
           target="_blank"
-          rel="noreferrer"
+          rel="noreferrer noopener nofollow"
           style={{ fontWeight: 600 }}
         >
           {v}

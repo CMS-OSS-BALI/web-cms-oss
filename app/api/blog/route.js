@@ -22,8 +22,8 @@ import prisma from "@/lib/prisma";
 import { randomUUID } from "crypto";
 import { translate } from "@/app/utils/geminiTranslator";
 
-export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+export const revalidate = 300;
 
 /* ========= GET /api/blog (LIST) ========= */
 export async function GET(req) {
@@ -75,18 +75,25 @@ export async function GET(req) {
       projectBlogRow(r, { locale, fallback, includeCategory })
     );
 
-    return json({
-      message: "OK",
-      data,
-      meta: {
-        page,
-        perPage,
-        total,
-        totalPages: Math.max(1, Math.ceil(total / perPage)),
-        locale,
-        fallback,
+    const cacheControl = isAdmin
+      ? "private, no-store, max-age=0"
+      : "public, max-age=0, s-maxage=300, stale-while-revalidate=900";
+
+    return json(
+      {
+        message: "OK",
+        data,
+        meta: {
+          page,
+          perPage,
+          total,
+          totalPages: Math.max(1, Math.ceil(total / perPage)),
+          locale,
+          fallback,
+        },
       },
-    });
+      { headers: { "Cache-Control": cacheControl } }
+    );
   } catch (err) {
     console.error("GET /api/blog error:", err);
     return json(
