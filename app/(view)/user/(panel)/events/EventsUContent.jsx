@@ -36,6 +36,7 @@ const TEXT = "#0f172a";
 const PAGE_SIZE = 3;
 const PAGE_TOP_PADDING = "clamp(48px, 8vw, 84px)";
 const Z = { heroBase: 0, heroCopy: 2, topSection: 10 };
+const ACT_SWIPER_CLASS = "about-activity-swiper";
 
 /** Shell full-bleed + gutter sisi */
 const CONTAINER = {
@@ -58,6 +59,20 @@ function useMounted() {
     setMounted(true);
   }, []);
   return mounted;
+}
+
+/* Responsive helper */
+function useIsNarrow(breakpoint = 900) {
+  const [isNarrow, setIsNarrow] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia?.(`(max-width:${breakpoint}px)`);
+    const apply = () => setIsNarrow(!!mq?.matches);
+    apply();
+    mq?.addEventListener?.("change", apply);
+    return () => mq?.removeEventListener?.("change", apply);
+  }, [breakpoint]);
+  return isNarrow;
 }
 
 /* ===== Reveal on scroll ===== */
@@ -898,7 +913,7 @@ const prevEv = {
     paddingBottom: 14,
   },
   swiper: {
-    padding: "4px 4px 6px",
+    padding: 0,
   },
   card: {
     background: "#ffffff",
@@ -907,14 +922,14 @@ const prevEv = {
     boxShadow: "0 14px 30px rgba(15,23,42,.10)",
     border: "1px solid #e5ecff",
     scrollSnapAlign: "start",
-    width: "100%",
-    maxWidth: 320,
+    width: "var(--slide-w)",
+    maxWidth: "none",
     margin: "0 auto",
   },
   frame: {
     position: "relative",
     width: "100%",
-    aspectRatio: "16 / 9",
+    height: "var(--img-h)",
     borderRadius: 16,
     overflow: "hidden",
     background: "#f1f5ff",
@@ -932,6 +947,11 @@ const prevEv = {
 function PreviousEventsSection({ title, subtitle, photos = [] }) {
   const items = Array.isArray(photos) ? photos : [];
   if (!items.length) return null;
+
+  const isTablet = useIsNarrow(1024);
+  const isMobile = useIsNarrow(640);
+  const slideW = isMobile ? 300 : isTablet ? 420 : 560;
+  const imgH = Math.round((slideW * 9) / 16);
 
   const loop = items.length > 1;
   const swiperKey =
@@ -976,12 +996,16 @@ function PreviousEventsSection({ title, subtitle, photos = [] }) {
         style={{ ...prevEv.scrollerOuter, ["--rvd"]: "180ms" }}
       >
         <Swiper
-          key={swiperKey}
-          className="prev-swiper"
-          style={prevEv.swiper}
+          key={`${swiperKey}-${slideW}`}
+          className={`${ACT_SWIPER_CLASS} prev-swiper`}
+          style={{
+            ...prevEv.swiper,
+            ["--slide-w"]: `${slideW}px`,
+            ["--img-h"]: `${imgH}px`,
+          }}
           modules={[Autoplay]}
           slidesPerView="auto"
-          spaceBetween={14}
+          spaceBetween={isMobile ? 12 : isTablet ? 16 : 18}
           loop={loop}
           loopAdditionalSlides={loop ? Math.max(10, items.length) : 0}
           speed={speed}
@@ -993,7 +1017,13 @@ function PreviousEventsSection({ title, subtitle, photos = [] }) {
           preloadImages={false}
         >
           {items.map((p, idx) => (
-            <SwiperSlide key={p.id || idx}>
+            <SwiperSlide
+              key={p.id || idx}
+              style={{
+                ["--slide-w"]: `${slideW}px`,
+                ["--img-h"]: `${imgH}px`,
+              }}
+            >
               <article className="prev-card" style={prevEv.card}>
                 <div style={prevEv.frame}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1016,28 +1046,26 @@ function PreviousEventsSection({ title, subtitle, photos = [] }) {
       </div>
 
       <style jsx>{`
-        .prev-swiper {
-          overflow: visible;
+        .${ACT_SWIPER_CLASS} {
+          overflow: hidden;
         }
-        .prev-swiper .swiper-wrapper {
-          transition-timing-function: linear !important;
+        .${ACT_SWIPER_CLASS} .swiper-wrapper {
           align-items: stretch;
+          transition-timing-function: linear !important;
+        }
+        .${ACT_SWIPER_CLASS} .swiper-slide {
+          height: auto;
+        }
+        .prev-swiper {
+          width: 100vw;
+          margin-left: calc(50% - 50vw);
+          margin-right: calc(50% - 50vw);
+          padding: 0 !important;
+          overflow: hidden;
         }
         .prev-swiper .swiper-slide {
-          width: var(--country-card-w, clamp(230px, 24vw, 320px));
           height: auto;
-          display: flex;
-          justify-content: center;
-        }
-        .prev-swiper .swiper-slide > article {
-          width: 100%;
-          max-width: 320px;
-        }
-
-        @media (max-width: 768px) {
-          .prev-swiper .swiper-slide {
-            width: clamp(220px, 70vw, 300px) !important;
-          }
+          width: var(--slide-w) !important;
         }
       `}</style>
     </section>

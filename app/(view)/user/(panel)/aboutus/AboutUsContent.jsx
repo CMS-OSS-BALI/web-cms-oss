@@ -522,15 +522,24 @@ export default function AboutUsContent({ initialLocale }) {
   const imgH = Math.round((slideW * 9) / 16);
 
   const activityItems = Array.isArray(activities.items) ? activities.items : [];
+  const MIN_ACTIVITY_SLIDES = 5;
+  // Gandakan item supaya loop/autoplay tetap berjalan saat data masih sedikit
+  const activitySlides =
+    activityItems.length && activityItems.length < MIN_ACTIVITY_SLIDES
+      ? Array.from(
+          { length: MIN_ACTIVITY_SLIDES },
+          (_, idx) => activityItems[idx % activityItems.length]
+        )
+      : activityItems;
 
   // === CONFIG SWIPER AKTIVITAS (mengikuti referensi country) ===
-  const activityLoop = activityItems.length > 1;
+  const activityLoop = activitySlides.length > 1;
   const activitySpeed = useMemo(() => {
     if (reduced) return 600;
-    const base = Math.max(1, activityItems.length);
+    const base = Math.max(1, activitySlides.length);
     const computed = base * 900;
     return Math.max(5000, Math.min(14000, computed));
-  }, [activityItems.length, reduced]);
+  }, [activitySlides.length, reduced]);
 
   const activityAutoplay = useMemo(
     () =>
@@ -546,8 +555,8 @@ export default function AboutUsContent({ initialLocale }) {
   );
 
   const activitySwiperKey = useMemo(
-    () => `${activityLoop ? "loop" : "single"}-${activityItems.length}`,
-    [activityLoop, activityItems.length]
+    () => `${activityLoop ? "loop" : "single"}-${activitySlides.length}`,
+    [activityLoop, activitySlides.length]
   );
 
   const [play, setPlay] = useState(false);
@@ -555,7 +564,7 @@ export default function AboutUsContent({ initialLocale }) {
   const thumbUrl = useMemo(() => toThumb(video?.url || ""), [video?.url]);
 
   useRevealOnScroll([
-    activityItems.length,
+    activitySlides.length,
     mission?.items?.length || 0,
     support?.items?.length || 0,
   ]);
@@ -844,7 +853,7 @@ export default function AboutUsContent({ initialLocale }) {
           spaceBetween={isMobile ? 12 : isTablet ? 16 : 18}
           loop={activityLoop}
           loopAdditionalSlides={
-            activityLoop ? Math.max(10, activityItems.length) : 0
+            activityLoop ? Math.max(10, activitySlides.length) : 0
           }
           speed={activitySpeed}
           allowTouchMove={activityLoop}
@@ -854,9 +863,9 @@ export default function AboutUsContent({ initialLocale }) {
           watchSlidesProgress
           preloadImages={false}
         >
-          {activityItems.map((a, idx) => (
+          {activitySlides.map((a, idx) => (
             <SwiperSlide
-              key={a.id || idx}
+              key={`${a.id || "activity"}-${idx}`}
               className="reveal"
               data-anim="up"
               style={{
