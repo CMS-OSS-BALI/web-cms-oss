@@ -98,9 +98,6 @@ function assertDbOrThrow() {
 
   const missing = [];
   if (!db.college?.findMany) missing.push("college.findMany");
-  if (!db.partners?.findMany) missing.push("partners.findMany");
-  if (!db.mitra_dalam_negeri?.findMany)
-    missing.push("mitra_dalam_negeri.findMany");
 
   if (missing.length) {
     const err = new Error(
@@ -296,9 +293,16 @@ function extractEmailsFromPartnerContact(contact) {
 async function fetchPartnerEmails(partnerIds = []) {
   if (!Array.isArray(partnerIds) || partnerIds.length === 0) return [];
   try {
-    const client = assertDbOrThrow();
+    const client = db;
+    const method = client?.partners?.findMany;
+    if (typeof method !== "function") {
+      console.warn(
+        "[Blast] partners.findMany not available; skipping partner email fetch"
+      );
+      return [];
+    }
     const ids = partnerIds.map(String);
-    const rows = await client.partners.findMany({
+    const rows = await method.call(client.partners, {
       where: { id: { in: ids } },
       select: { id: true, contact: true },
     });
@@ -319,12 +323,29 @@ async function fetchPartnerEmails(partnerIds = []) {
 async function fetchMerchantEmails(merchantIds = []) {
   if (!Array.isArray(merchantIds) || merchantIds.length === 0) return [];
   try {
-    const client = assertDbOrThrow();
+    const client = db;
+    // Skema baru memakai model "mitra"; nama lama "mitra_dalam_negeri" dijaga jika masih ada.
+    const method =
+      client?.mitra_dalam_negeri?.findMany || client?.mitra?.findMany;
+    const modelCtx = client?.mitra
+      ? "mitra.findMany"
+      : client?.mitra_dalam_negeri
+      ? "mitra_dalam_negeri.findMany"
+      : null;
+    if (typeof method !== "function") {
+      console.warn(
+        "[Blast] mitra/mitra_dalam_negeri findMany not available; skipping merchant email fetch"
+      );
+      return [];
+    }
     const ids = merchantIds.map(String);
-    const rows = await client.mitra_dalam_negeri.findMany({
-      where: { id: { in: ids } },
-      select: { id: true, email: true },
-    });
+    const rows = await method.call(
+      client.mitra ?? client.mitra_dalam_negeri,
+      {
+        where: { id: { in: ids } },
+        select: { id: true, email: true },
+      }
+    );
     const bag = [];
     for (const r of rows) if (r?.email) bag.push(...splitMaybeList(r.email));
     return bag;
