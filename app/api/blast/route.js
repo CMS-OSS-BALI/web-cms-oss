@@ -10,12 +10,19 @@ import path from "path";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const FILE_LABEL = "app/api/blast/route.js";
+
 /* =========================
    Auth
 ========================= */
 async function assertAdmin() {
   const session = await getServerSession(authOptions);
-  if (!session?.user?.id) throw new Error("UNAUTHORIZED");
+  if (!session?.user?.id) {
+    const err = new Error("UNAUTHORIZED");
+    // Stack di sini akan menunjuk ke baris assertAdmin dipanggil
+    Error.captureStackTrace?.(err, assertAdmin);
+    throw err;
+  }
   return session.user;
 }
 
@@ -33,21 +40,76 @@ const LIMITS = {
   MIN_CONCURRENCY: 1,
   MAX_CONCURRENCY: 20,
 };
+
 const FOOTER_IMAGE_PATH = "/footer-email.jpg";
 const FOOTER_CID = "blast-footer-img";
 let footerImageCache = null; // { ok: true, attachment } | { ok: false }
+
+// Prisma client (global utk file ini)
 const db = getPrismaClient();
 
+/**
+ * Logger terpusat supaya stack trace dan origin line selalu tercatat.
+ */
 function logError(context, err) {
-  const stack = err?.stack || err?.message || String(err);
-  console.error(`[Blast] ${context}:`, stack);
+  const name = err?.name || "Error";
+  const message = err?.message || String(err);
+  const stack = err?.stack || "";
+
+  // baris kedua stack biasanya "at func (file:line:col)"
+  const originLine = stack.split("\n")[1]?.trim();
+
+  console.error(`[Blast][${FILE_LABEL}] ${context} – ${name}: ${message}`);
+
+  if (originLine) {
+    console.error(`[Blast][${FILE_LABEL}] Origin: ${originLine}`);
+  }
+
+  if (stack) {
+    console.error(`[Blast][${FILE_LABEL}] Stack trace:\n${stack}`);
+  }
+
+  // Extra hint ketika error-nya terkait findMany (db undefined / model undefined)
+  if (/(findMany)/i.test(message)) {
+    try {
+      const models = db ? Object.keys(db) : [];
+      console.error(
+        `[Blast][${FILE_LABEL}] Prisma debug – has client: ${!!db}, models: ${models.join(
+          ", "
+        )}`
+      );
+    } catch {
+      // ignore
+    }
+  }
 }
 
+/**
+ * Pastikan Prisma client + model yang dipakai tersedia,
+ * supaya kalau undefined kita lempar error yang lebih jelas
+ * (bukan TypeError "Cannot read properties of undefined (reading 'findMany')").
+ */
 function assertDbOrThrow() {
-  if (!db) throw new Error("Prisma client is undefined");
-  if (!db.college?.findMany) {
-    throw new Error("Prisma client missing expected model methods (college.findMany)");
+  if (!db) {
+    const err = new Error("Prisma client is undefined (db)");
+    Error.captureStackTrace?.(err, assertDbOrThrow);
+    throw err;
   }
+
+  const missing = [];
+  if (!db.college?.findMany) missing.push("college.findMany");
+  if (!db.partners?.findMany) missing.push("partners.findMany");
+  if (!db.mitra_dalam_negeri?.findMany)
+    missing.push("mitra_dalam_negeri.findMany");
+
+  if (missing.length) {
+    const err = new Error(
+      "Prisma client missing expected model methods: " + missing.join(", ")
+    );
+    Error.captureStackTrace?.(err, assertDbOrThrow);
+    throw err;
+  }
+
   return db;
 }
 
@@ -111,8 +173,8 @@ function toAbs(u) {
   if (!u) return "";
   if (/^https?:\/\//i.test(u)) return u;
   const b = baseUrl();
-  const path = u.startsWith("/") ? u : `/${u}`;
-  return b ? `${b}${path}` : path;
+  const p = u.startsWith("/") ? u : `/${u}`;
+  return b ? `${b}${p}` : p;
 }
 
 function buildFooterHtml({ src, cid } = {}) {
@@ -130,6 +192,7 @@ function appendFooter(html, { cid } = {}) {
   if (!footer) return html;
   const body = (html || "").trim();
   if (!body) return footer;
+
   // Sisipkan sebelum </body> jika ada, jika tidak append di akhir
   const closingTag = /<\/body>/i;
   if (closingTag.test(body)) {
@@ -139,9 +202,14 @@ function appendFooter(html, { cid } = {}) {
 }
 
 async function loadFooterAttachment() {
-  if (footerImageCache) return footerImageCache.ok ? footerImageCache.attachment : null;
+  if (footerImageCache)
+    return footerImageCache.ok ? footerImageCache.attachment : null;
   try {
-    const absPath = path.join(process.cwd(), "public", FOOTER_IMAGE_PATH.replace(/^\//, ""));
+    const absPath = path.join(
+      process.cwd(),
+      "public",
+      FOOTER_IMAGE_PATH.replace(/^\//, "")
+    );
     const buf = await readFile(absPath);
     const attachment = {
       filename: path.basename(absPath),
@@ -153,7 +221,7 @@ async function loadFooterAttachment() {
     footerImageCache = { ok: true, attachment };
     return attachment;
   } catch (e) {
-    console.error("[Blast] Failed to load footer image:", e?.message || e);
+    logError("Failed to load footer image", e);
     footerImageCache = { ok: false };
     return null;
   }
@@ -161,14 +229,15 @@ async function loadFooterAttachment() {
 
 /* =========================
    DB fetchers
+   (di-wrap dengan logging + stack yang jelas)
 ========================= */
-const db = getPrismaClient(); // pastikan PrismaClient selalu tersedia (deployment-safe)
 
 async function fetchCollegeEmails(collegeIds = []) {
   if (!Array.isArray(collegeIds) || collegeIds.length === 0) return [];
   try {
+    const client = assertDbOrThrow();
     const ids = collegeIds.map(String);
-    const rows = await assertDbOrThrow().college.findMany({
+    const rows = await client.college.findMany({
       where: { id: { in: ids } },
       select: { id: true, email: true },
     });
@@ -176,8 +245,11 @@ async function fetchCollegeEmails(collegeIds = []) {
     for (const r of rows) if (r?.email) bag.push(...splitMaybeList(r.email));
     return bag;
   } catch (e) {
-    logError("fetchCollegeEmails failed", e);
-    throw e;
+    const err = new Error(`[fetchCollegeEmails] ${e?.message || String(e)}`);
+    err.name = e?.name || "Error";
+    err.stack = e?.stack || err.stack;
+    logError("fetchCollegeEmails failed", err);
+    throw err;
   }
 }
 
@@ -224,8 +296,9 @@ function extractEmailsFromPartnerContact(contact) {
 async function fetchPartnerEmails(partnerIds = []) {
   if (!Array.isArray(partnerIds) || partnerIds.length === 0) return [];
   try {
+    const client = assertDbOrThrow();
     const ids = partnerIds.map(String);
-    const rows = await assertDbOrThrow().partners.findMany({
+    const rows = await client.partners.findMany({
       where: { id: { in: ids } },
       select: { id: true, contact: true },
     });
@@ -234,7 +307,10 @@ async function fetchPartnerEmails(partnerIds = []) {
       bag.push(...extractEmailsFromPartnerContact(p?.contact));
     return bag;
   } catch (e) {
-    logError("fetchPartnerEmails failed", e);
+    const err = new Error(`[fetchPartnerEmails] ${e?.message || String(e)}`);
+    err.name = e?.name || "Error";
+    err.stack = e?.stack || err.stack;
+    logError("fetchPartnerEmails failed", err);
     // legacy fallback: abaikan error biar tidak memutus flow
     return [];
   }
@@ -243,8 +319,9 @@ async function fetchPartnerEmails(partnerIds = []) {
 async function fetchMerchantEmails(merchantIds = []) {
   if (!Array.isArray(merchantIds) || merchantIds.length === 0) return [];
   try {
+    const client = assertDbOrThrow();
     const ids = merchantIds.map(String);
-    const rows = await assertDbOrThrow().mitra_dalam_negeri.findMany({
+    const rows = await client.mitra_dalam_negeri.findMany({
       where: { id: { in: ids } },
       select: { id: true, email: true },
     });
@@ -252,8 +329,11 @@ async function fetchMerchantEmails(merchantIds = []) {
     for (const r of rows) if (r?.email) bag.push(...splitMaybeList(r.email));
     return bag;
   } catch (e) {
-    logError("fetchMerchantEmails failed", e);
-    throw e;
+    const err = new Error(`[fetchMerchantEmails] ${e?.message || String(e)}`);
+    err.name = e?.name || "Error";
+    err.stack = e?.stack || err.stack;
+    logError("fetchMerchantEmails failed", err);
+    throw err;
   }
 }
 
@@ -273,7 +353,10 @@ function createNdjsonStream() {
       try {
         line = JSON.stringify(obj);
       } catch {
-        line = JSON.stringify({ type: "error", message: "serialize-failed" });
+        line = JSON.stringify({
+          type: "error",
+          message: "serialize-failed",
+        });
       }
       await writer.write(enc.encode(line + "\n"));
     },
@@ -288,13 +371,14 @@ function createNdjsonStream() {
 ========================= */
 export async function POST(req) {
   try {
-    // Validate DB early to catch undefined client/methods with clear logs
+    // Validate DB di awal, supaya error undefined findMany ketemu lebih cepat
     try {
       assertDbOrThrow();
     } catch (e) {
       logError("DB validation at handler start failed", e);
       throw e;
     }
+
     await assertAdmin();
 
     const body = await req.json().catch(() => ({}));
@@ -304,7 +388,7 @@ export async function POST(req) {
       text = "",
       attachments = [],
       emails = [],
-      // 🔁 baru
+      // baru
       collegeIds = [],
       // legacy (aktif hanya jika collegeIds kosong)
       partnerIds = [],
@@ -417,9 +501,11 @@ export async function POST(req) {
       safeHtml,
       footerAttachment ? { cid: FOOTER_CID } : {}
     );
+
     const finalAttachments = [];
     if (normalizedAttachments) finalAttachments.push(...normalizedAttachments);
     if (footerAttachment) finalAttachments.push(footerAttachment);
+
     const ccHeader = ccList.length ? ccList.join(", ") : undefined;
     const bccHeader = bccList.length ? bccList.join(", ") : undefined;
 
@@ -427,7 +513,11 @@ export async function POST(req) {
 
     (async () => {
       try {
-        await send({ type: "start", total: toList.length, concurrency: conc });
+        await send({
+          type: "start",
+          total: toList.length,
+          concurrency: conc,
+        });
 
         let sent = 0;
         let failed = 0;
@@ -461,14 +551,28 @@ export async function POST(req) {
             } else {
               failed++;
               const errMsg = (r.reason?.message || "send-failed").slice(0, 512);
-              await send({ type: "progress", to, ok: false, error: errMsg });
+              await send({
+                type: "progress",
+                to,
+                ok: false,
+                error: errMsg,
+              });
+              // juga log ke server
+              logError(
+                "sendMail failed for recipient",
+                r.reason || new Error(errMsg)
+              );
             }
           }
         }
 
         await send({ type: "done", sent, failed, total: toList.length });
       } catch (err) {
-        await send({ type: "error", message: err?.message || String(err) });
+        logError("blast streaming loop failed", err);
+        await send({
+          type: "error",
+          message: err?.message || String(err),
+        });
       } finally {
         await close();
       }
