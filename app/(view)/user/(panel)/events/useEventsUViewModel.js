@@ -52,16 +52,35 @@ function makeFallbackStart() {
   return d.toISOString();
 }
 
-/** ambil start ISO terdekat yang masih di masa depan */
+/** Ambil target countdown:
+    - start_at terdekat di masa depan
+    - jika tidak ada, end_at terdekat dari event yang sedang berlangsung */
 function pickNearestFutureStart(rows = []) {
   const now = Date.now();
-  let nearest = null;
+  let nearestStart = null;
+  let nearestOngoingEnd = null;
   for (const e of rows) {
-    const tms = new Date(e?.start_at ?? "").getTime();
-    if (!Number.isFinite(tms) || tms <= now) continue;
-    if (nearest === null || tms < nearest) nearest = tms;
+    const startMs = new Date(e?.start_at ?? "").getTime();
+    const endMs = new Date(e?.end_at ?? "").getTime();
+    if (Number.isFinite(startMs) && startMs > now) {
+      if (nearestStart === null || startMs < nearestStart)
+        nearestStart = startMs;
+    } else if (
+      Number.isFinite(startMs) &&
+      Number.isFinite(endMs) &&
+      startMs <= now &&
+      endMs >= now
+    ) {
+      if (
+        nearestOngoingEnd === null ||
+        endMs < nearestOngoingEnd
+      )
+        nearestOngoingEnd = endMs;
+    }
   }
-  return nearest ? new Date(nearest).toISOString() : makeFallbackStart();
+  if (nearestStart) return new Date(nearestStart).toISOString();
+  if (nearestOngoingEnd) return new Date(nearestOngoingEnd).toISOString();
+  return makeFallbackStart();
 }
 
 function useCountdown(startAtISO) {
@@ -87,7 +106,7 @@ function useCountdown(startAtISO) {
 export default function useEventsUViewModel({ locale = "id" } = {}) {
   const sp = new URLSearchParams();
   sp.set("is_published", "1");
-  sp.set("status", "upcoming");
+  sp.set("status", "active"); // tampilkan event sampai end_at terlewati
   sp.set("sort", "start_at:asc");
   sp.set("perPage", "100");
   sp.set("locale", locale);

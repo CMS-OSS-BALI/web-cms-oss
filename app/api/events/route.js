@@ -59,13 +59,23 @@ export async function GET(req) {
     const is_published = isAdmin ? toBool(sp.get("is_published")) : true;
     const from = sp.get("from");
     const to = sp.get("to");
-    const status = (sp.get("status") || "").toLowerCase(); // done|upcoming|ongoing
+    const status = (sp.get("status") || "").toLowerCase(); // done|upcoming|ongoing|active
 
     const category_id = parseId(sp.get("category_id"));
     const category_slug = parseId(sp.get("category_slug"));
 
     const now = new Date();
     const textFilter = q ? { contains: q } : undefined;
+    const statusFilter =
+      status === "done"
+        ? { end_at: { lt: now } }
+        : status === "ongoing"
+        ? { AND: [{ start_at: { lte: now } }, { end_at: { gte: now } }] }
+        : status === "active"
+        ? { end_at: { gte: now } } // aktif = belum melewati end_at (termasuk ongoing + upcoming)
+        : status === "upcoming"
+        ? { start_at: { gt: now } }
+        : {};
 
     const where = {
       ...(onlyDeleted
@@ -76,13 +86,7 @@ export async function GET(req) {
       ...(typeof is_published === "boolean" ? { is_published } : {}),
       ...(from ? { start_at: { gte: toDate(from) || undefined } } : {}),
       ...(to ? { end_at: { lte: toDate(to) || undefined } } : {}),
-      ...(status === "done"
-        ? { end_at: { lt: now } }
-        : status === "upcoming"
-        ? { start_at: { gt: now } }
-        : status === "ongoing"
-        ? { AND: [{ start_at: { lte: now } }, { end_at: { gte: now } }] }
-        : {}),
+      ...statusFilter,
       ...(q && {
         OR: [
           { location: textFilter },
