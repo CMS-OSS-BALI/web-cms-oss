@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import prisma from "@/lib/prisma";
+import { getPrismaClient } from "@/lib/prisma";
 import { sendMail } from "@/lib/mailer";
 
 export const runtime = "nodejs";
@@ -79,10 +79,12 @@ function normalizeAttachments(attachments) {
 /* =========================
    DB fetchers
 ========================= */
+const db = getPrismaClient(); // pastikan PrismaClient selalu tersedia (deployment-safe)
+
 async function fetchCollegeEmails(collegeIds = []) {
   if (!Array.isArray(collegeIds) || collegeIds.length === 0) return [];
   const ids = collegeIds.map(String);
-  const rows = await prisma.college.findMany({
+  const rows = await db.college.findMany({
     where: { id: { in: ids } },
     select: { id: true, email: true },
   });
@@ -135,7 +137,7 @@ async function fetchPartnerEmails(partnerIds = []) {
   if (!Array.isArray(partnerIds) || partnerIds.length === 0) return [];
   try {
     const ids = partnerIds.map(String);
-    const rows = await prisma.partners.findMany({
+    const rows = await db.partners.findMany({
       where: { id: { in: ids } },
       select: { id: true, contact: true },
     });
@@ -152,7 +154,7 @@ async function fetchPartnerEmails(partnerIds = []) {
 async function fetchMerchantEmails(merchantIds = []) {
   if (!Array.isArray(merchantIds) || merchantIds.length === 0) return [];
   const ids = merchantIds.map(String);
-  const rows = await prisma.mitra_dalam_negeri.findMany({
+  const rows = await db.mitra_dalam_negeri.findMany({
     where: { id: { in: ids } },
     select: { id: true, email: true },
   });

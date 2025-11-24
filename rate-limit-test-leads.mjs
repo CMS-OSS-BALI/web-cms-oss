@@ -2,7 +2,7 @@
 import fetch from "node-fetch";
 
 const URL = "https://home.onestepsolutionbali.com/api/leads";
-const LIMIT = 10; // sesuai limit email leads
+const LIMIT = 60; // sesuai limit email leads
 
 async function main() {
   for (let i = 1; i <= LIMIT + 2; i++) {
