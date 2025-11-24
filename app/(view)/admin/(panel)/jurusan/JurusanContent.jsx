@@ -68,8 +68,8 @@ const T = {
   sOldest: "Terlama",
   sUpdatedNewest: "Diubah terbaru",
   sUpdatedOldest: "Diubah terlama",
-  sNameAsc: "Nama Aâ€“Z",
-  sNameDesc: "Nama Zâ€“A",
+  sNameAsc: "Nama A–Z",
+  sNameDesc: "Nama Z–A",
   sPriceAsc: "Harga termurah",
   sPriceDesc: "Harga termahal",
 };
@@ -99,7 +99,7 @@ const fmtDateId = (dLike) => {
     return "-";
   }
 };
-/* tanggal: created_ts â†’ created_at â†’ updated_ts â†’ updated_at */
+/* tanggal: created_ts -> created_at -> updated_ts -> updated_at */
 const pickCreated = (obj) =>
   obj?.created_ts ??
   obj?.created_at ??
@@ -111,9 +111,9 @@ const stripTags = (s) => (s ? String(s).replace(/<[^>]*>/g, "") : "");
 
 /* ==== currency helpers ==== */
 const fmtIdr = (v) => {
-  if (v === null || v === undefined || v === "") return "â€”";
+  if (v === null || v === undefined || v === "") return "—";
   const n = Number(v);
-  if (!Number.isFinite(n)) return "â€”";
+  if (!Number.isFinite(n)) return "—";
   const hasFrac = Math.abs(n - Math.round(n)) > 1e-6;
   return (
     "Rp " +
@@ -271,7 +271,7 @@ export default function JurusanContent({ vm }) {
       toast.err("Gagal membuat jurusan", out.error || "Gagal menyimpan data.");
       return;
     }
-    toast.ok("Berhasil", `Jurusan â€œ${v.name}â€ berhasil dibuat.`);
+    toast.ok("Berhasil", `Jurusan "${v.name}" berhasil dibuat.`);
     setCreateOpen(false);
     formCreate.resetFields();
   };
@@ -329,7 +329,7 @@ export default function JurusanContent({ vm }) {
     }
     toast.ok(
       "Perubahan disimpan",
-      `Jurusan â€œ${v.name || activeRow.name}â€ telah diperbarui.`
+      `Jurusan "${v.name || activeRow.name}" telah diperbarui.`
     );
     setEditOpen(false);
     formEdit.resetFields();
@@ -413,7 +413,7 @@ export default function JurusanContent({ vm }) {
               <div style={styles.totalBadgeWrap}>
                 <div style={styles.totalBadgeLabel}>{T.totalLabel}</div>
                 <div style={styles.totalBadgeValue}>
-                  {viewModel.total ?? rows.length ?? "â€”"}
+                  {viewModel.total ?? rows.length ?? "—"}
                 </div>
               </div>
             </div>
@@ -582,7 +582,7 @@ export default function JurusanContent({ vm }) {
                                 }}
                               />
                             ) : (
-                              "â€”"
+                              "—"
                             )}
                           </div>
 
@@ -593,7 +593,7 @@ export default function JurusanContent({ vm }) {
                                 <div style={styles.clampCell}>{intake}</div>
                               </Tooltip>
                             ) : (
-                              "â€”"
+                              "—"
                             )}
                           </div>
 
@@ -710,7 +710,7 @@ export default function JurusanContent({ vm }) {
             >
               <Select
                 showSearch
-                placeholder="Cari kampusâ€¦"
+                placeholder="Cari kampus…"
                 filterOption={false}
                 onSearch={fetchCollegeOpts}
                 notFoundContent={fetchingCollege ? "Loading..." : null}
@@ -843,7 +843,7 @@ export default function JurusanContent({ vm }) {
               <div>
                 <div style={styles.label}>{T.name}</div>
                 <div style={styles.value}>
-                  {detailData?.name || activeRow?.name || "â€”"}
+                  {detailData?.name || activeRow?.name || "—"}
                 </div>
               </div>
               <div>
@@ -851,13 +851,13 @@ export default function JurusanContent({ vm }) {
                 <div style={styles.value}>
                   {viewModel.collegeName?.(
                     detailData?.college_id || activeRow?.college_id
-                  ) || "â€”"}
+                  ) || "—"}
                 </div>
               </div>
               <div>
                 <div style={styles.label}>{T.intake}</div>
                 <div style={styles.value}>
-                  {detailData?.in_take ?? activeRow?.in_take ?? "â€”"}
+                  {detailData?.in_take ?? activeRow?.in_take ?? "—"}
                 </div>
               </div>
               <div>
@@ -869,7 +869,7 @@ export default function JurusanContent({ vm }) {
               <div>
                 <div style={styles.label}>{T.desc}</div>
                 <div style={{ ...styles.value, whiteSpace: "pre-wrap" }}>
-                  {stripTags(detailData?.description) || "â€”"}
+                  {stripTags(detailData?.description) || "—"}
                 </div>
               </div>
               <div>

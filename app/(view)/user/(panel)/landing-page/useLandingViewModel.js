@@ -100,7 +100,7 @@ export function useLandingViewModel(arg) {
           "Mungkin mereka belum tahu caranya yang benar. Temukan langkahmu bersama kami.",
           "Maybe they just don't know the right way. Find your path with us."
         ),
-        youtube: "https://youtu.be/3NJFLyWPYOw?si=tnCj-RWRZEWbC6wV",
+        youtube: "https://youtu.be/xKatx3USazQ?si=qd95Up2gceDJSVKK",
       },
       {
         title: t(

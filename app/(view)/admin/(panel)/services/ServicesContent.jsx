@@ -360,7 +360,7 @@ export default function ServicesContent({ locale = "id" }) {
               <div style={styles.totalBadgeWrap}>
                 <div style={styles.totalBadgeLabel}>{T.totalLabel}</div>
                 <div style={styles.totalBadgeValue}>
-                  {vm.total ?? rows.length ?? "â€”"}
+                  {vm.total ?? rows.length ?? "—"}
                 </div>
               </div>
             </div>
@@ -479,7 +479,7 @@ export default function ServicesContent({ locale = "id" }) {
                     filteredRows.map((r) => {
                       const name = r.name || "(untitled)";
                       const price =
-                        r.price != null ? vm.money(r.price, "IDR") : "â€”";
+                        r.price != null ? vm.money(r.price, "IDR") : "—";
                       const pub = r.is_published
                         ? T.publishedYes
                         : T.publishedNo;
@@ -495,7 +495,7 @@ export default function ServicesContent({ locale = "id" }) {
                                   style={styles.thumbImg}
                                 />
                               ) : (
-                                <div style={styles.thumbFallback}>ðŸŽ¯</div>
+                                <div style={styles.thumbFallback}>🎯</div>
                               )}
                             </div>
                             <div style={styles.nameWrap}>
@@ -512,7 +512,7 @@ export default function ServicesContent({ locale = "id" }) {
                             {r.service_type || "-"}
                           </div>
                           <div style={styles.colCenter}>
-                            {r.category?.name || "â€”"}
+                            {r.category?.name || "—"}
                           </div>
                           <div style={styles.colCenter}>{price}</div>
                           <div style={styles.colCenter}>{pub}</div>
@@ -922,7 +922,7 @@ export default function ServicesContent({ locale = "id" }) {
               <div>
                 <div style={styles.label}>{T.descId}</div>
                 <div style={{ ...styles.value, whiteSpace: "pre-wrap" }}>
-                  {stripTags(detailData?.description) || "â€”"}
+                  {stripTags(detailData?.description) || "—"}
                 </div>
               </div>
 
@@ -936,13 +936,13 @@ export default function ServicesContent({ locale = "id" }) {
                 <div>
                   <div style={styles.label}>{T.serviceType}</div>
                   <div style={styles.value}>
-                    {detailData?.service_type || "â€”"}
+                    {detailData?.service_type || "—"}
                   </div>
                 </div>
                 <div>
                   <div style={styles.label}>{T.category}</div>
                   <div style={styles.value}>
-                    {detailData?.category?.name || "â€”"}
+                    {detailData?.category?.name || "—"}
                   </div>
                 </div>
               </div>
@@ -959,12 +959,12 @@ export default function ServicesContent({ locale = "id" }) {
                   <div style={styles.value}>
                     {detailData?.price != null
                       ? vm.money(detailData?.price, "IDR")
-                      : "â€”"}
+                      : "—"}
                   </div>
                 </div>
                 <div>
                   <div style={styles.label}>{T.phone}</div>
-                  <div style={styles.value}>{detailData?.phone || "â€”"}</div>
+                  <div style={styles.value}>{detailData?.phone || "—"}</div>
                 </div>
               </div>
 

@@ -258,7 +258,7 @@ export default function RepresentativesContent({ vm }) {
               <div style={styles.totalBadgeWrap}>
                 <div style={styles.totalBadgeLabel}>{T.totalLabel}</div>
                 <div style={styles.totalBadgeValue}>
-                  {vm.total ?? rows.length ?? "â€”"}
+                  {vm.total ?? rows.length ?? "—"}
                 </div>
               </div>
             </div>
@@ -300,7 +300,7 @@ export default function RepresentativesContent({ vm }) {
                   placeholder={T.filterPh}
                 />
 
-                {/* âœ… Dropdown Nama Event */}
+                {/* OK: Dropdown Nama Event */}
                 <Select
                   allowClear
                   showSearch
@@ -377,7 +377,7 @@ export default function RepresentativesContent({ vm }) {
                       const voucherTag = voucher ? (
                         <Tag color="green">{voucher}</Tag>
                       ) : (
-                        <Tag color="default">â€”</Tag>
+                        <Tag color="default">—</Tag>
                       );
 
                       const opLoadingCheckKey =
@@ -389,9 +389,9 @@ export default function RepresentativesContent({ vm }) {
                             <div style={styles.nameWrap}>
                               <div
                                 style={styles.nameText}
-                                title={r.rep_name || "â€”"}
+                                title={r.rep_name || "—"}
                               >
-                                {r.rep_name || "â€”"}
+                                {r.rep_name || "—"}
                               </div>
                               <div style={styles.subDate}>
                                 {fmtDateId(r.created_at)}
@@ -399,7 +399,7 @@ export default function RepresentativesContent({ vm }) {
                             </div>
                           </div>
 
-                          {/* âœ… sekarang pakai judul event */}
+                          {/* OK: sekarang pakai judul event */}
                           <div style={styles.colCenter}>
                             {r.event_title || "-"}
                           </div>
@@ -547,13 +547,13 @@ export default function RepresentativesContent({ vm }) {
                   <div>
                     <div style={styles.label}>Nama Representative</div>
                     <div style={styles.value}>
-                      {detailData?.rep_name || "â€”"}
+                      {detailData?.rep_name || "—"}
                     </div>
                   </div>
                   <div>
                     <div style={styles.label}>Kampus</div>
                     <div style={styles.value}>
-                      {detailData?.campus_name || "â€”"}
+                      {detailData?.campus_name || "—"}
                     </div>
                   </div>
                 </div>
@@ -568,11 +568,11 @@ export default function RepresentativesContent({ vm }) {
                   <div>
                     <div style={styles.label}>Nama Event</div>
                     <div style={styles.value}>
-                      {/* âœ… title (fallback location) */}
+                      {/* OK: title (fallback location) */}
                       {detailData?.event?.title ||
                         detailData?.event_title ||
                         detailData?.event?.location ||
-                        "â€”"}
+                        "—"}
                     </div>
                   </div>
                   <div>
@@ -581,7 +581,7 @@ export default function RepresentativesContent({ vm }) {
                       {detailData?.event?.category_name ||
                         detailData?.event_category ||
                         detailData?.event?.category ||
-                        "â€”"}
+                        "—"}
                     </div>
                   </div>
                 </div>
@@ -596,12 +596,12 @@ export default function RepresentativesContent({ vm }) {
                   <div>
                     <div style={styles.label}>WhatsApp</div>
                     <div style={styles.value}>
-                      {detailData?.whatsapp || "â€”"}
+                      {detailData?.whatsapp || "—"}
                     </div>
                   </div>
                   <div>
                     <div style={styles.label}>Email</div>
-                    <div style={styles.value}>{detailData?.email || "â€”"}</div>
+                    <div style={styles.value}>{detailData?.email || "—"}</div>
                   </div>
                 </div>
 
@@ -615,13 +615,13 @@ export default function RepresentativesContent({ vm }) {
                   <div>
                     <div style={styles.label}>Kode Voucher</div>
                     <div style={styles.value}>
-                      {detailData?.voucher_code || "â€”"}
+                      {detailData?.voucher_code || "—"}
                     </div>
                   </div>
                   <div>
                     <div style={styles.label}>Ticket ID (Order)</div>
                     <div style={styles.value}>
-                      {detailData?.order_id || "â€”"}
+                      {detailData?.order_id || "—"}
                     </div>
                   </div>
                 </div>
@@ -635,7 +635,7 @@ export default function RepresentativesContent({ vm }) {
                 >
                   <div>
                     <div style={styles.label}>Status</div>
-                    <div style={styles.value}>{detailData?.status || "â€”"}</div>
+                    <div style={styles.value}>{detailData?.status || "—"}</div>
                   </div>
                   <div>
                     <div style={styles.label}>Dibuat</div>

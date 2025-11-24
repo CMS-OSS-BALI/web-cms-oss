@@ -14,19 +14,28 @@ export default function PageviewTracker({ ignoreAdmin = false }) {
       referrer: document.referrer || "",
     };
 
-    const blob = new Blob([JSON.stringify(payload)], {
-      type: "application/json",
-    });
-    if (navigator.sendBeacon) {
-      navigator.sendBeacon("/api/analytics/track", blob);
-    } else {
+    const body = JSON.stringify(payload);
+    const blob = new Blob([body], { type: "application/json" });
+
+    // sendBeacon tidak selalu tersedia / dapat gagal; fallback ke fetch keepalive
+    const sendWithFetch = () =>
       fetch("/api/analytics/track", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body,
         keepalive: true,
-        credentials: "same-origin",
-      });
+        credentials: "include",
+      }).catch(() => {});
+
+    try {
+      if (navigator.sendBeacon) {
+        const ok = navigator.sendBeacon("/api/analytics/track", blob);
+        if (!ok) sendWithFetch();
+      } else {
+        sendWithFetch();
+      }
+    } catch {
+      sendWithFetch();
     }
   }, [pathname, ignoreAdmin]);
 

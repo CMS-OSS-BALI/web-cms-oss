@@ -141,7 +141,7 @@ export default function useCareerViewModel({ locale = "id" } = {}) {
   }, [router]);
 
   const onCTAReferral = useCallback(() => {
-    router.push("/user/referral?menu=career");
+    router.push("/user/apply");
   }, [router]);
 
   const onSendCV = useCallback(() => {

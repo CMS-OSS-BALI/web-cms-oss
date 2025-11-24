@@ -4,6 +4,7 @@ import { ensureAnalyticsCookies } from "@/lib/analytics/cookies";
 import { consumeRateLimit } from "@/lib/security/rateLimit";
 import { cookies } from "next/headers";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function getClientIp(req) {

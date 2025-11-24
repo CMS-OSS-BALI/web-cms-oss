@@ -227,7 +227,7 @@ export default function StudentsContent({ vm }) {
               <div style={styles.totalBadgeWrap}>
                 <div style={styles.totalBadgeLabel}>{T.totalLabel}</div>
                 <div style={styles.totalBadgeValue}>
-                  {vm.total ?? rows.length ?? "â€”"}
+                  {vm.total ?? rows.length ?? "—"}
                 </div>
               </div>
             </div>
@@ -269,12 +269,12 @@ export default function StudentsContent({ vm }) {
                   allowClear
                   showSearch
                   placeholder={T.categoryPh}
-                  value={vm.eventId || undefined} // â† nilai = id event
+                  value={vm.eventId || undefined} // <- nilai = id event
                   onChange={(v) => {
                     vm.setEventId(v || "");
                     vm.setPage(1);
                   }}
-                  options={vm.eventOptions} // â† dari VM
+                  options={vm.eventOptions} // <- dari VM
                   optionFilterProp="label" // agar pencarian pakai label (judul)
                   filterOption={(input, opt) =>
                     String(opt?.label ?? "")
@@ -340,7 +340,7 @@ export default function StudentsContent({ vm }) {
                         ) : statusLabel === "Pending" ? (
                           <Tag color="blue">Pending</Tag>
                         ) : (
-                          <Tag>â€”</Tag>
+                          <Tag>—</Tag>
                         );
 
                       return (
@@ -349,9 +349,9 @@ export default function StudentsContent({ vm }) {
                             <div style={styles.nameWrap}>
                               <div
                                 style={styles.nameText}
-                                title={r.event_title || "â€”"}
+                                title={r.event_title || "—"}
                               >
-                                {r.event_title || "â€”"}
+                                {r.event_title || "—"}
                               </div>
                               <div style={styles.subDate}>
                                 {fmtDateId(r.created_at)}
@@ -465,7 +465,7 @@ export default function StudentsContent({ vm }) {
                 <div>
                   <div style={styles.label}>Nama Event</div>
                   <div style={styles.value}>
-                    {detailData?.event_title || "â€”"}
+                    {detailData?.event_title || "—"}
                   </div>
                 </div>
                 <div
@@ -478,12 +478,12 @@ export default function StudentsContent({ vm }) {
                   <div>
                     <div style={styles.label}>Nama Student</div>
                     <div style={styles.value}>
-                      {detailData?.full_name || "â€”"}
+                      {detailData?.full_name || "—"}
                     </div>
                   </div>
                   <div>
                     <div style={styles.label}>Email</div>
-                    <div style={styles.value}>{detailData?.email || "â€”"}</div>
+                    <div style={styles.value}>{detailData?.email || "—"}</div>
                   </div>
                 </div>
                 <div
@@ -496,13 +496,13 @@ export default function StudentsContent({ vm }) {
                   <div>
                     <div style={styles.label}>WhatsApp</div>
                     <div style={styles.value}>
-                      {detailData?.whatsapp || "â€”"}
+                      {detailData?.whatsapp || "—"}
                     </div>
                   </div>
                   <div>
                     <div style={styles.label}>ID Tiket</div>
                     <div style={styles.value}>
-                      {detailData?.ticket_code || "â€”"}
+                      {detailData?.ticket_code || "—"}
                     </div>
                   </div>
                 </div>
@@ -515,12 +515,12 @@ export default function StudentsContent({ vm }) {
                 >
                   <div>
                     <div style={styles.label}>Status</div>
-                    <div style={styles.value}>{detailData?.status || "â€”"}</div>
+                    <div style={styles.value}>{detailData?.status || "—"}</div>
                   </div>
                   <div>
                     <div style={styles.label}>Check-in</div>
                     <div style={styles.value}>
-                      {detailData?.checkin_status || "â€”"}
+                      {detailData?.checkin_status || "—"}
                     </div>
                   </div>
                 </div>

@@ -203,7 +203,10 @@ export default function VisitorsSection() {
 
   useEffect(() => {
     let ignore = false;
-    fetch(`/api/analytics/metrics?days=${days}`, { cache: "no-store" })
+    fetch(`/api/analytics/metrics?days=${days}`, {
+      cache: "no-store",
+      credentials: "include",
+    })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((res) => !ignore && setSeries(res?.series ?? []))
       .catch(() => !ignore && setSeries([]));
@@ -213,7 +216,11 @@ export default function VisitorsSection() {
   }, [days]);
 
   const points = useMemo(
-    () => (series || []).map((d) => ({ x: d.date, y: Number(d[metric] || 0) })),
+    () =>
+      (series || []).map((d) => ({
+        x: d.bucket || d.date,
+        y: Number(d?.[metric] || 0),
+      })),
     [series, metric]
   );
 

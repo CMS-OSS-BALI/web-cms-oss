@@ -10,11 +10,11 @@ import Loading from "@/app/components/loading/LoadingImage";
 // ==== Dynamic imports (code splitting)
 const PieDonut = dynamic(() => import("@/app/components/charts/PieDonut"), {
   ssr: false,
-  loading: () => <Loading label="Memuat chartâ€¦" />,
+  loading: () => <Loading label="Memuat chart…" />,
 });
 const SeoSection = dynamic(() => import("@/app/components/charts/SeoSection"), {
   ssr: false,
-  loading: () => <Loading label="Memuat modul SEOâ€¦" />,
+  loading: () => <Loading label="Memuat modul SEO…" />,
 });
 
 /* ===== tokens ===== */
@@ -32,7 +32,7 @@ const PIE_COLORS = [
 ];
 
 export default function DashboardContent({ vm }) {
-  // â¤· HAPUS instansiasi hook di sini. Kita pakai vm dari props.
+  // NOTE: Hapus instansiasi hook di sini. Kita pakai vm dari props.
   const { shellW, maxW, blue, text } = TOKENS;
 
   const yearOptions = useMemo(
@@ -151,7 +151,7 @@ export default function DashboardContent({ vm }) {
                 </div>
 
                 {vm?.loading?.leads ? (
-                  <Loading label="Memuat ringkasan leadsâ€¦" />
+                  <Loading label="Memuat ringkasan leads…" />
                 ) : !vm?.yearA || !vm?.yearB ? (
                   <div style={{ padding: 16 }}>
                     <Empty description="Pilih kedua tahun untuk melihat perbandingan" />
@@ -248,7 +248,7 @@ export default function DashboardContent({ vm }) {
                 </div>
 
                 {vm?.loading?.leads ? (
-                  <Loading label="Memuat representativeâ€¦" />
+                  <Loading label="Memuat representative…" />
                 ) : !vm?.yearA || !vm?.yearB ? (
                   <div style={{ padding: 16 }}>
                     <Empty description="Pilih kedua tahun untuk melihat perbandingan" />

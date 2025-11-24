@@ -67,6 +67,7 @@ export default function useDashboardViewModel() {
   async function loadMetrics(y) {
     const r = await fetch(`/api/analytics/metrics?year=${y}&group=month`, {
       cache: "no-store",
+      credentials: "include", // pastikan cookie admin terkirim di prod
     });
     if (!r.ok) throw new Error("Metrics error");
     const j = await safeJSON(r);
@@ -272,6 +273,7 @@ export default function useDashboardViewModel() {
         const q = new URLSearchParams({ group: seoGroup, period: seoPeriod });
         const r = await fetch(`/api/analytics/metrics?${q.toString()}`, {
           cache: "no-store",
+          credentials: "include",
         });
         const j = r.ok ? await r.json() : { series: [] };
         const series = Array.isArray(j.series) ? j.series : [];
@@ -305,6 +307,7 @@ export default function useDashboardViewModel() {
         const q = new URLSearchParams({ period: seoPeriod });
         const r = await fetch(`/api/analytics/top-pages?${q.toString()}`, {
           cache: "no-store",
+          credentials: "include",
         });
         const j = r.ok ? await r.json() : { rows: [] };
         if (!ignore) setSeoTop(Array.isArray(j.rows) ? j.rows : []);

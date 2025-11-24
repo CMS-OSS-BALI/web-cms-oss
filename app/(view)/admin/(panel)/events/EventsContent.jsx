@@ -12,7 +12,7 @@ import { normalizeEvent } from "./utils/eventUtils";
 import dayjs from "dayjs";
 import Loading from "@/app/components/loading/LoadingImage";
 
-/** Bagian berat â†’ lazy */
+/** Bagian berat -> lazy */
 const EventsCharts = lazy(() => import("./components/EventsCharts"));
 const CreateEventModal = lazy(() => import("./modals/CreateEventModal"));
 const EditEventModal = lazy(() => import("./modals/EditEventModal"));
@@ -341,7 +341,7 @@ export default function EventsContent({ vm }) {
           {/* Header */}
           <EventsHeader
             title="Manajemen Event"
-            total={vm?.total ?? rows.length ?? "â€”"}
+            total={vm?.total ?? rows.length ?? "—"}
           />
 
           {/* Stats */}

@@ -44,8 +44,8 @@ export default function BlastContent(props) {
       <div style={styles.cardInner}>
         <div style={styles.cardTitle}>Blast Email</div>
         <div style={{ color: "#5b75a1", fontSize: 13 }}>
-          Kirim email massal ke pilihan <b>Kampus</b> dan{" "}
-          <b>Mitra Dalam Negeri</b> tanpa input manual.
+          Kirim email massal ke pilihan <b>Kampus</b> dan <b>Mitra</b> tanpa
+          input manual.
         </div>
       </div>
     </div>
@@ -233,7 +233,7 @@ export default function BlastContent(props) {
                         tooltip="Subjek email yang akan diterima penerima"
                       >
                         <Input
-                          placeholder="Subjek emailâ€¦"
+                          placeholder="Subjek email…"
                           value={vm.subject}
                           onChange={(e) => vm.setSubject(e.target.value)}
                         />
@@ -258,7 +258,7 @@ export default function BlastContent(props) {
                             value={vm.html}
                             onChange={vm.setHtml}
                             minHeight={240}
-                            placeholder="Tulis kontenâ€¦"
+                            placeholder="Tulis konten…"
                           />
                         </div>
                       </Form.Item>
@@ -320,7 +320,7 @@ export default function BlastContent(props) {
                           allowClear
                           showSearch
                           filterOption={false}
-                          placeholder="Cari & pilih kampusâ€¦"
+                          placeholder="Cari & pilih kampus…"
                           value={vm.collegeIds}
                           options={vm.collegeOptions}
                           onSearch={vm.searchColleges}
@@ -373,7 +373,7 @@ export default function BlastContent(props) {
                         label={
                           <Space size={6}>
                             <Building2 size={16} />
-                            <span>Pilih Mitra Dalam Negeri</span>
+                            <span>Pilih Mitra</span>
                           </Space>
                         }
                       >
@@ -382,7 +382,7 @@ export default function BlastContent(props) {
                           allowClear
                           showSearch
                           filterOption={false}
-                          placeholder="Cari & pilih Mitra Dalam Negeriâ€¦"
+                          placeholder="Cari & pilih Mitra…"
                           value={vm.mitraIds}
                           options={vm.mitraOptions}
                           onSearch={vm.searchMitras}
@@ -487,7 +487,7 @@ export default function BlastContent(props) {
                             fontSize: 12,
                           }}
                         >
-                          Total {vm.summary.total} â€¢ Sent {vm.summary.sent} â€¢
+                          Total {vm.summary.total} • Sent {vm.summary.sent} •
                           Failed {vm.summary.failed}
                         </div>
                       )}
@@ -502,28 +502,28 @@ export default function BlastContent(props) {
                           }}
                         >
                           {l.type === "start" && (
-                            <span>Start â€¢ total {l.total}</span>
+                            <span>Start • total {l.total}</span>
                           )}
                           {l.type === "progress" && (
                             <>
-                              {l.ok ? "âœ…" : "âŒ"} <b>{l.to}</b>
+                              {l.ok ? "✓" : "❌"} <b>{l.to}</b>
                               {!l.ok && (
                                 <span style={{ color: "#b91c1c" }}>
                                   {" "}
-                                  â€” {l.error}
+                                  — {l.error}
                                 </span>
                               )}
                             </>
                           )}
                           {l.type === "done" && (
                             <b>
-                              Done â€¢ sent {l.sent} / {l.total} â€¢ failed{" "}
+                              Done • sent {l.sent} / {l.total} • failed{" "}
                               {l.failed}
                             </b>
                           )}
                           {l.type === "error" && (
                             <span style={{ color: "#b91c1c" }}>
-                              ERROR â€¢ {l.message}
+                              ERROR • {l.message}
                             </span>
                           )}
                         </div>
@@ -573,7 +573,7 @@ export default function BlastContent(props) {
                               fontSize: 12,
                             }}
                           >
-                            +{vm.preview.recipients.length - 200} lagiâ€¦
+                            +{vm.preview.recipients.length - 200} lagi…
                           </div>
                         )}
                       </div>
@@ -620,4 +620,3 @@ const styles = {
     color: "#64748b",
   },
 };
-

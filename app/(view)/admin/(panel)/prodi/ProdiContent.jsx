@@ -67,8 +67,8 @@ const T = {
   sort: "Urutkan",
   sNewest: "Terbaru",
   sOldest: "Terlama",
-  sNameAsc: "Nama Aâ€“Z",
-  sNameDesc: "Nama Zâ€“A",
+  sNameAsc: "Nama A–Z",
+  sNameDesc: "Nama Z–A",
   sPriceAsc: "Harga termurah",
   sPriceDesc: "Harga termahal",
 };
@@ -98,7 +98,7 @@ const fmtDateId = (dLike) => {
     return "-";
   }
 };
-// pick created_ts â†’ created_at â†’ updated_ts â†’ updated_at
+// pick created_ts -> created_at -> updated_ts -> updated_at
 const pickCreated = (obj) =>
   obj?.created_ts ??
   obj?.created_at ??
@@ -110,9 +110,9 @@ const stripTags = (s) => (s ? String(s).replace(/<[^>]*>/g, "") : "");
 
 /* ==== currency helpers ==== */
 const fmtIdr = (v) => {
-  if (v === null || v === undefined || v === "") return "â€”";
+  if (v === null || v === undefined || v === "") return "—";
   const n = Number(v);
-  if (!Number.isFinite(n)) return "â€”";
+  if (!Number.isFinite(n)) return "—";
   const hasFrac = Math.abs(n - Math.round(n)) > 1e-6;
   return (
     "Rp " +
@@ -228,7 +228,7 @@ export default function ProdiContent({ vm }) {
     const label = jName
       ? `${jName}${
           viewModel.collegeName?.(viewModel.collegeIdOfJurusan?.(sid) || "")
-            ? " â€” " +
+            ? " — " +
               (viewModel.collegeName?.(viewModel.collegeIdOfJurusan?.(sid)) ||
                 "")
             : ""
@@ -261,14 +261,14 @@ export default function ProdiContent({ vm }) {
       name: v.name,
       description: v.description || "",
       in_take: v.in_take ?? null, // <<< NEW
-      harga: v.harga ?? null, // stringMode â†’ string, server normalizes
+      harga: v.harga ?? null, // stringMode -> string, server normalizes
       autoTranslate: true,
     });
     if (!out.ok) {
       toast.err("Gagal membuat prodi", out.error || "Gagal menyimpan data.");
       return;
     }
-    toast.ok("Berhasil", `Prodi â€œ${v.name}â€ berhasil dibuat.`);
+    toast.ok("Berhasil", `Prodi "${v.name}" berhasil dibuat.`);
     setCreateOpen(false);
     formCreate.resetFields();
   };
@@ -294,7 +294,7 @@ export default function ProdiContent({ vm }) {
         const has = prev.some((x) => x.value === d.jurusan_id);
         const label = `${jName}${
           viewModel.collegeName?.(d.college_id)
-            ? " â€” " + viewModel.collegeName(d.college_id)
+            ? " — " + viewModel.collegeName(d.college_id)
             : ""
         }`;
         return has ? prev : [{ value: d.jurusan_id, label }, ...prev];
@@ -319,7 +319,7 @@ export default function ProdiContent({ vm }) {
       name: v.name,
       description: v.description ?? null,
       in_take: v.in_take ?? null, // <<< NEW
-      harga: v.harga ?? null, // stringMode â†’ server normalize
+      harga: v.harga ?? null, // stringMode -> server normalize
       autoTranslate: false,
     });
 
@@ -332,7 +332,7 @@ export default function ProdiContent({ vm }) {
     }
     toast.ok(
       "Perubahan disimpan",
-      `Prodi â€œ${v.name || activeRow.name}â€ telah diperbarui.`
+      `Prodi "${v.name || activeRow.name}" telah diperbarui.`
     );
     setEditOpen(false);
     formEdit.resetFields();
@@ -404,7 +404,7 @@ export default function ProdiContent({ vm }) {
               <div style={styles.totalBadgeWrap}>
                 <div style={styles.totalBadgeLabel}>{T.totalLabel}</div>
                 <div style={styles.totalBadgeValue}>
-                  {viewModel.total ?? rows.length ?? "â€”"}
+                  {viewModel.total ?? rows.length ?? "—"}
                 </div>
               </div>
             </div>
@@ -574,7 +574,7 @@ export default function ProdiContent({ vm }) {
                                 {jurusanLabel}
                               </div>
                             ) : (
-                              "â€”"
+                              "—"
                             )}
                           </div>
 
@@ -585,7 +585,7 @@ export default function ProdiContent({ vm }) {
                                 {intake}
                               </div>
                             ) : (
-                              "â€”"
+                              "—"
                             )}
                           </div>
 
@@ -602,7 +602,7 @@ export default function ProdiContent({ vm }) {
                                 {collegeLabel}
                               </div>
                             ) : (
-                              "â€”"
+                              "—"
                             )}
                           </div>
 
@@ -712,7 +712,7 @@ export default function ProdiContent({ vm }) {
             <Form.Item label={T.jurusan} name="jurusan_id">
               <Select
                 showSearch
-                placeholder="Cari jurusanâ€¦"
+                placeholder="Cari jurusan…"
                 filterOption={false}
                 onSearch={fetchJurusanOpts}
                 notFoundContent={fetchingJurusan ? "Loading..." : null}
@@ -849,7 +849,7 @@ export default function ProdiContent({ vm }) {
               <div>
                 <div style={styles.label}>{T.name}</div>
                 <div style={styles.value}>
-                  {detailData?.name || activeRow?.name || "â€”"}
+                  {detailData?.name || activeRow?.name || "—"}
                 </div>
               </div>
               <div>
@@ -857,13 +857,13 @@ export default function ProdiContent({ vm }) {
                 <div style={styles.value}>
                   {viewModel.jurusanName?.(
                     detailData?.jurusan_id || activeRow?.jurusan_id
-                  ) || "â€”"}
+                  ) || "—"}
                 </div>
               </div>
               <div>
                 <div style={styles.label}>{T.intakeCol}</div>
                 <div style={styles.value}>
-                  {detailData?.in_take ?? activeRow?.in_take ?? "â€”"}
+                  {detailData?.in_take ?? activeRow?.in_take ?? "—"}
                 </div>
               </div>
               <div>
@@ -871,7 +871,7 @@ export default function ProdiContent({ vm }) {
                 <div style={styles.value}>
                   {viewModel.collegeName?.(
                     detailData?.college_id || activeRow?.college_id
-                  ) || "â€”"}
+                  ) || "—"}
                 </div>
               </div>
               <div>
@@ -891,7 +891,7 @@ export default function ProdiContent({ vm }) {
               <div>
                 <div style={styles.label}>{T.desc}</div>
                 <div style={{ ...styles.value, whiteSpace: "pre-wrap" }}>
-                  {stripTags(detailData?.description) || "â€”"}
+                  {stripTags(detailData?.description) || "—"}
                 </div>
               </div>
             </div>
