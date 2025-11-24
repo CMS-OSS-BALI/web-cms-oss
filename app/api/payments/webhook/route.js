@@ -42,13 +42,6 @@ export async function POST(req) {
     ).toLowerCase();
     const gross_amount_raw = String(body?.gross_amount ?? "").trim();
 
-    console.log("[MIDTRANS:WEBHOOK] HIT", {
-      order_id,
-      transaction_status,
-      status_code,
-      has_signature: Boolean(signature_key),
-    });
-
     if (!order_id) {
       return json(
         { error: { code: "BAD_REQUEST", message: "order_id wajib ada" } },

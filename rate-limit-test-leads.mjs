@@ -16,14 +16,7 @@ async function main() {
       }),
     });
 
-    const body = await res.json().catch(() => ({}));
-    console.log(
-      `Req #${i} => ${res.status}`,
-      "remaining=" + res.headers.get("X-RateLimit-Remaining"),
-      "backend=" + res.headers.get("X-RateLimit-Backend"),
-      "body=",
-      body.error?.code || body.message
-    );
+    await res.json().catch(() => ({}));
   }
 }
 

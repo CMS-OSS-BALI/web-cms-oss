@@ -78,7 +78,7 @@ export async function POST(req) {
       email
     )}`;
 
-    // Kirim email (jika SMTP terkonfigurasi), jika tidak → log ke console
+    // Kirim email (jika SMTP terkonfigurasi)
     try {
       if (process.env.SMTP_HOST) {
         const transporter = nodemailer.createTransport({
@@ -109,8 +109,6 @@ export async function POST(req) {
             <p>Abaikan jika kamu tidak meminta.</p>
           `,
         });
-      } else {
-        console.log("[DEV] RESET CODE:", code, "| open:", resetPage);
       }
     } catch (mailErr) {
       // jangan bocorkan kegagalan kirim email ke klien
