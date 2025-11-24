@@ -4,6 +4,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { getPrismaClient } from "@/lib/prisma";
 import { sendMail } from "@/lib/mailer";
+import { readFile } from "fs/promises";
+import path from "path";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,6 +33,23 @@ const LIMITS = {
   MIN_CONCURRENCY: 1,
   MAX_CONCURRENCY: 20,
 };
+const FOOTER_IMAGE_PATH = "/footer-email.jpg";
+const FOOTER_CID = "blast-footer-img";
+let footerImageCache = null; // { ok: true, attachment } | { ok: false }
+const db = getPrismaClient();
+
+function logError(context, err) {
+  const stack = err?.stack || err?.message || String(err);
+  console.error(`[Blast] ${context}:`, stack);
+}
+
+function assertDbOrThrow() {
+  if (!db) throw new Error("Prisma client is undefined");
+  if (!db.college?.findMany) {
+    throw new Error("Prisma client missing expected model methods (college.findMany)");
+  }
+  return db;
+}
 
 function normStr(x, max = 512) {
   return (x ?? "").toString().slice(0, max);
@@ -76,6 +95,70 @@ function normalizeAttachments(attachments) {
   return norm.length ? norm : undefined;
 }
 
+function baseUrl() {
+  const raw =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.APP_URL ||
+    process.env.NEXTAUTH_URL ||
+    "";
+  const trimmed = raw.replace(/\/+$/, "");
+  return trimmed.startsWith("https://")
+    ? trimmed
+    : trimmed.replace(/^http:\/\//i, "https://");
+}
+
+function toAbs(u) {
+  if (!u) return "";
+  if (/^https?:\/\//i.test(u)) return u;
+  const b = baseUrl();
+  const path = u.startsWith("/") ? u : `/${u}`;
+  return b ? `${b}${path}` : path;
+}
+
+function buildFooterHtml({ src, cid } = {}) {
+  const imgSrc = cid ? `cid:${cid}` : src ? toAbs(src) : "";
+  if (!imgSrc) return "";
+  return `
+    <div style="margin-top:24px;text-align:center">
+      <img src="${imgSrc}" alt="Footer" style="max-width:100%;height:auto;display:block;margin:0 auto" />
+    </div>
+  `;
+}
+
+function appendFooter(html, { cid } = {}) {
+  const footer = buildFooterHtml({ cid, src: FOOTER_IMAGE_PATH });
+  if (!footer) return html;
+  const body = (html || "").trim();
+  if (!body) return footer;
+  // Sisipkan sebelum </body> jika ada, jika tidak append di akhir
+  const closingTag = /<\/body>/i;
+  if (closingTag.test(body)) {
+    return body.replace(closingTag, `${footer}</body>`);
+  }
+  return `${body}\n${footer}`;
+}
+
+async function loadFooterAttachment() {
+  if (footerImageCache) return footerImageCache.ok ? footerImageCache.attachment : null;
+  try {
+    const absPath = path.join(process.cwd(), "public", FOOTER_IMAGE_PATH.replace(/^\//, ""));
+    const buf = await readFile(absPath);
+    const attachment = {
+      filename: path.basename(absPath),
+      content: buf,
+      cid: FOOTER_CID,
+      contentType: "image/jpeg",
+      contentDisposition: "inline",
+    };
+    footerImageCache = { ok: true, attachment };
+    return attachment;
+  } catch (e) {
+    console.error("[Blast] Failed to load footer image:", e?.message || e);
+    footerImageCache = { ok: false };
+    return null;
+  }
+}
+
 /* =========================
    DB fetchers
 ========================= */
@@ -83,14 +166,19 @@ const db = getPrismaClient(); // pastikan PrismaClient selalu tersedia (deployme
 
 async function fetchCollegeEmails(collegeIds = []) {
   if (!Array.isArray(collegeIds) || collegeIds.length === 0) return [];
-  const ids = collegeIds.map(String);
-  const rows = await db.college.findMany({
-    where: { id: { in: ids } },
-    select: { id: true, email: true },
-  });
-  const bag = [];
-  for (const r of rows) if (r?.email) bag.push(...splitMaybeList(r.email));
-  return bag;
+  try {
+    const ids = collegeIds.map(String);
+    const rows = await assertDbOrThrow().college.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, email: true },
+    });
+    const bag = [];
+    for (const r of rows) if (r?.email) bag.push(...splitMaybeList(r.email));
+    return bag;
+  } catch (e) {
+    logError("fetchCollegeEmails failed", e);
+    throw e;
+  }
 }
 
 function extractEmailsFromPartnerContact(contact) {
@@ -137,7 +225,7 @@ async function fetchPartnerEmails(partnerIds = []) {
   if (!Array.isArray(partnerIds) || partnerIds.length === 0) return [];
   try {
     const ids = partnerIds.map(String);
-    const rows = await db.partners.findMany({
+    const rows = await assertDbOrThrow().partners.findMany({
       where: { id: { in: ids } },
       select: { id: true, contact: true },
     });
@@ -145,7 +233,8 @@ async function fetchPartnerEmails(partnerIds = []) {
     for (const p of rows)
       bag.push(...extractEmailsFromPartnerContact(p?.contact));
     return bag;
-  } catch {
+  } catch (e) {
+    logError("fetchPartnerEmails failed", e);
     // legacy fallback: abaikan error biar tidak memutus flow
     return [];
   }
@@ -153,14 +242,19 @@ async function fetchPartnerEmails(partnerIds = []) {
 
 async function fetchMerchantEmails(merchantIds = []) {
   if (!Array.isArray(merchantIds) || merchantIds.length === 0) return [];
-  const ids = merchantIds.map(String);
-  const rows = await db.mitra_dalam_negeri.findMany({
-    where: { id: { in: ids } },
-    select: { id: true, email: true },
-  });
-  const bag = [];
-  for (const r of rows) if (r?.email) bag.push(...splitMaybeList(r.email));
-  return bag;
+  try {
+    const ids = merchantIds.map(String);
+    const rows = await assertDbOrThrow().mitra_dalam_negeri.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, email: true },
+    });
+    const bag = [];
+    for (const r of rows) if (r?.email) bag.push(...splitMaybeList(r.email));
+    return bag;
+  } catch (e) {
+    logError("fetchMerchantEmails failed", e);
+    throw e;
+  }
 }
 
 /* =========================
@@ -194,6 +288,13 @@ function createNdjsonStream() {
 ========================= */
 export async function POST(req) {
   try {
+    // Validate DB early to catch undefined client/methods with clear logs
+    try {
+      assertDbOrThrow();
+    } catch (e) {
+      logError("DB validation at handler start failed", e);
+      throw e;
+    }
     await assertAdmin();
 
     const body = await req.json().catch(() => ({}));
@@ -311,6 +412,14 @@ export async function POST(req) {
 
     // ---- prepare once (avoid per-email recompute) ----
     const normalizedAttachments = normalizeAttachments(attachments);
+    const footerAttachment = await loadFooterAttachment();
+    const htmlWithFooter = appendFooter(
+      safeHtml,
+      footerAttachment ? { cid: FOOTER_CID } : {}
+    );
+    const finalAttachments = [];
+    if (normalizedAttachments) finalAttachments.push(...normalizedAttachments);
+    if (footerAttachment) finalAttachments.push(footerAttachment);
     const ccHeader = ccList.length ? ccList.join(", ") : undefined;
     const bccHeader = bccList.length ? bccList.join(", ") : undefined;
 
@@ -332,9 +441,11 @@ export async function POST(req) {
               sendMail({
                 to,
                 subject: safeSubject,
-                html: safeHtml || undefined,
+                html: htmlWithFooter || undefined,
                 text: safeText || undefined,
-                attachments: normalizedAttachments,
+                attachments: finalAttachments.length
+                  ? finalAttachments
+                  : undefined,
                 cc: ccHeader,
                 bcc: bccHeader,
               })
@@ -373,6 +484,7 @@ export async function POST(req) {
       },
     });
   } catch (e) {
+    logError("POST /api/blast failed", e);
     const msg = e?.message || String(e);
     const status = msg === "UNAUTHORIZED" ? 401 : 500;
     return NextResponse.json({ ok: false, error: msg }, { status });
