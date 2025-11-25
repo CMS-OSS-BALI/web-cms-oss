@@ -475,6 +475,7 @@ model consultants_translate {
   id_consultant String      @db.VarChar(36)
   locale        String      @db.VarChar(5)
   name          String      @db.VarChar(150)
+  role          String      @db.VarChar(150)
   description   String?     @db.LongText
   created_at    DateTime    @default(now()) @db.Timestamp(0)
   updated_at    DateTime    @default(now()) @db.Timestamp(0)

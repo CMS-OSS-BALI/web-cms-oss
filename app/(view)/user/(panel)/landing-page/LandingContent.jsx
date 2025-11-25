@@ -1,4 +1,5 @@
-﻿"use client";
+﻿// app/(view)/user/(landing)/LandingContent.jsx
+"use client";
 
 import { useMemo, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
@@ -354,8 +355,6 @@ const hero = {
       padding: "24px 14px",
     };
   },
-
-  // 🔽 ini yang dibikin lebih terang
   video: {
     position: "absolute",
     top: 0,
@@ -364,12 +363,9 @@ const hero = {
     height: "100%",
     objectFit: "cover",
     zIndex: -2,
-    // semula brightness(0.55), sekarang lebih soft
     filter: "brightness(0.72) contrast(1.05)",
     pointerEvents: "none",
   },
-
-  // 🔽 overlay juga dikurangi opacity-nya
   overlay: {
     position: "absolute",
     inset: 0,
@@ -379,7 +375,6 @@ const hero = {
     zIndex: 0,
     pointerEvents: "none",
   },
-
   copy: {
     position: "relative",
     zIndex: 1,
@@ -1113,6 +1108,11 @@ export default function LandingContent({ locale: initialLocale = "id" }) {
                 slug
               )}`;
 
+              // ==== TEKS DI BAWAH NAMA: ROLE (FALLBACK BIO) ====
+              const roleText =
+                (c.role && c.role.trim()) ||
+                (Array.isArray(c.bio) ? c.bio.join("<br/>") : c.bio || "");
+
               return (
                 <Col
                   key={c.id || slug}
@@ -1149,13 +1149,7 @@ export default function LandingContent({ locale: initialLocale = "id" }) {
                         <div
                           className="consult3-role"
                           dangerouslySetInnerHTML={{
-                            __html: sanitizeHtml(
-                              c.role ||
-                                c.title ||
-                                (Array.isArray(c.bio)
-                                  ? c.bio.join("<br/>")
-                                  : c.bio || "")
-                            ),
+                            __html: sanitizeHtml(roleText),
                           }}
                         />
                       </div>

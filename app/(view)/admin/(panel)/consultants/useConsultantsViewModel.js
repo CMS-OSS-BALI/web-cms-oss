@@ -1,4 +1,4 @@
-﻿// useConsultantsViewModel.js
+﻿// app/(view)/admin/consultants/useConsultantsViewModel.js
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -28,6 +28,7 @@ function toFormData(payload = {}) {
 
   const map = {
     name_id: payload.name_id ?? payload.name,
+    role_id: payload.role_id ?? payload.role,
     description_id: payload.description_id ?? payload.description,
     whatsapp: payload.whatsapp ?? payload.no_whatsapp,
     email: payload.email,
@@ -186,8 +187,11 @@ export default function useConsultantsViewModel() {
 
   const consultants = useMemo(() => {
     const arr = listJson?.data ?? [];
-    // server sudah kirim profile_image_url (public URL) & whatsapp
-    return arr.map((x) => ({ ...x, phone: x.whatsapp ?? null }));
+    // server sudah kirim profile_image_url (public URL) & whatsapp + role
+    return arr.map((x) => ({
+      ...x,
+      phone: x.whatsapp ?? null,
+    }));
   }, [listJson?.data]);
 
   const total = listJson?.meta?.total ?? 0;
@@ -227,7 +231,13 @@ export default function useConsultantsViewModel() {
       }
       const d = info?.data ?? {};
       // data sudah punya profile_image_url & program_images[].image_url
-      return { ok: true, data: { ...d, phone: d.whatsapp ?? null } };
+      return {
+        ok: true,
+        data: {
+          ...d,
+          phone: d.whatsapp ?? null,
+        },
+      };
     } catch (e) {
       return { ok: false, error: e?.message || "Gagal memuat detail" };
     }
@@ -307,6 +317,7 @@ export default function useConsultantsViewModel() {
             next.data[idx] = {
               ...prev,
               name: payload.name ?? prev.name,
+              role: payload.role ?? prev.role,
               description: payload.description ?? prev.description,
               email: payload.email ?? prev.email,
               whatsapp:
@@ -416,6 +427,7 @@ export default function useConsultantsViewModel() {
       title: "Manajemen Konsultan",
       listTitle: "Data Konsultan",
       name: "Nama Konsultan",
+      role: "Role / Jabatan",
       email: "Email",
       phone: "No Whatsapp",
       action: "Action",

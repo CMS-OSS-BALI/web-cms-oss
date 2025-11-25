@@ -234,7 +234,7 @@ export async function GET(req, { params }) {
     updated_at: true,
     consultants_translate: {
       where: { locale: { in: [locale, fallback] } },
-      select: { locale: true, name: true, description: true },
+      select: { locale: true, name: true, role: true, description: true },
     },
     program_images: {
       orderBy: [{ sort: "asc" }, { id: "asc" }],
@@ -257,6 +257,7 @@ export async function GET(req, { params }) {
     created_at: row.created_at,
     updated_at: row.updated_at,
     name: t?.name ?? null,
+    role: t?.role ?? null,
     description: t?.description ?? null,
     locale_used: t?.locale ?? null,
     program_images: (row.program_images || []).map((pi) => ({
@@ -315,9 +316,11 @@ export async function PATCH(req, { params }) {
     if (pf && typeof pf !== "string") profileFile = pf;
 
     if (form.has("name_id")) payload.name_id = toStr("name_id");
+    if (form.has("role_id")) payload.role_id = toStr("role_id");
     if (form.has("description_id"))
       payload.description_id = form.get("description_id") ?? null;
     if (form.has("name_en")) payload.name_en = toStr("name_en");
+    if (form.has("role_en")) payload.role_en = toStr("role_en");
     if (form.has("description_en"))
       payload.description_en = form.get("description_en") ?? null;
     if (form.has("autoTranslate"))
@@ -382,13 +385,24 @@ export async function PATCH(req, { params }) {
 
   // Upsert translations: kumpulkan sebagai batch ops
   const ops = [];
-  if (payload.name_id !== undefined || payload.description_id !== undefined) {
+
+  // ID locale: name / role / description
+  if (
+    payload.name_id !== undefined ||
+    payload.role_id !== undefined ||
+    payload.description_id !== undefined
+  ) {
     ops.push(
       prisma.consultants_translate.upsert({
         where: { id_consultant_locale: { id_consultant: id, locale: "id" } },
         update: {
           ...(payload.name_id !== undefined
-            ? { name: String(payload.name_id ?? "(no title)").slice(0, 150) }
+            ? {
+                name: String(payload.name_id ?? "(no title)").slice(0, 150),
+              }
+            : {}),
+          ...(payload.role_id !== undefined
+            ? { role: String(payload.role_id ?? "").slice(0, 150) }
             : {}),
           ...(payload.description_id !== undefined
             ? { description: payload.description_id ?? null }
@@ -400,18 +414,30 @@ export async function PATCH(req, { params }) {
           id_consultant: id,
           locale: "id",
           name: String(payload.name_id ?? "(no title)").slice(0, 150),
+          role: String(payload.role_id ?? "").slice(0, 150),
           description: payload.description_id ?? null,
         },
       })
     );
   }
-  if (payload.name_en !== undefined || payload.description_en !== undefined) {
+
+  // EN locale (manual)
+  if (
+    payload.name_en !== undefined ||
+    payload.role_en !== undefined ||
+    payload.description_en !== undefined
+  ) {
     ops.push(
       prisma.consultants_translate.upsert({
         where: { id_consultant_locale: { id_consultant: id, locale: "en" } },
         update: {
           ...(payload.name_en !== undefined
-            ? { name: String(payload.name_en ?? "(no title)").slice(0, 150) }
+            ? {
+                name: String(payload.name_en ?? "(no title)").slice(0, 150),
+              }
+            : {}),
+          ...(payload.role_en !== undefined
+            ? { role: String(payload.role_en ?? "").slice(0, 150) }
             : {}),
           ...(payload.description_en !== undefined
             ? { description: payload.description_en ?? null }
@@ -423,20 +449,30 @@ export async function PATCH(req, { params }) {
           id_consultant: id,
           locale: "en",
           name: String(payload.name_en ?? "(no title)").slice(0, 150),
+          role: String(payload.role_en ?? "").slice(0, 150),
           description: payload.description_en ?? null,
         },
       })
     );
   }
+
+  // EN locale (autoTranslate dari ID)
   if (
     payload?.autoTranslate &&
-    (payload.name_id !== undefined || payload.description_id !== undefined)
+    (payload.name_id !== undefined ||
+      payload.role_id !== undefined ||
+      payload.description_id !== undefined)
   ) {
     let name_en;
+    let role_en;
     let description_en;
     try {
       if (payload.name_id)
         name_en = await translate(String(payload.name_id), "id", "en");
+    } catch {}
+    try {
+      if (payload.role_id)
+        role_en = await translate(String(payload.role_id), "id", "en");
     } catch {}
     try {
       if (payload.description_id)
@@ -446,7 +482,11 @@ export async function PATCH(req, { params }) {
           "en"
         );
     } catch {}
-    if (name_en !== undefined || description_en !== undefined) {
+    if (
+      name_en !== undefined ||
+      role_en !== undefined ||
+      description_en !== undefined
+    ) {
       ops.push(
         prisma.consultants_translate.upsert({
           where: {
@@ -454,6 +494,7 @@ export async function PATCH(req, { params }) {
           },
           update: {
             ...(name_en ? { name: name_en.slice(0, 150) } : {}),
+            ...(role_en ? { role: role_en.slice(0, 150) } : {}),
             ...(description_en !== undefined
               ? { description: description_en ?? null }
               : {}),
@@ -464,6 +505,7 @@ export async function PATCH(req, { params }) {
             id_consultant: id,
             locale: "en",
             name: (name_en || "(no title)").slice(0, 150),
+            role: (role_en || "").slice(0, 150),
             description: description_en ?? null,
           },
         })

@@ -1,4 +1,4 @@
-﻿// ConsultantsContent.jsx
+﻿// app/(view)/admin/consultants/ConsultantsContent.jsx
 "use client";
 
 import { useMemo, useState } from "react";
@@ -62,6 +62,7 @@ export default function ConsultantsContent({ vm }) {
       (vm.consultants || []).map((c) => ({
         id: c.id,
         name: c.name || "-",
+        role: c.role || "",
         email: c.email || "-",
         phone: c.whatsapp || c.phone || c.no_whatsapp || "-",
         description: c.description || "",
@@ -116,6 +117,7 @@ export default function ConsultantsContent({ vm }) {
 
     const res = await vm.createConsultant({
       name: v.name,
+      role: v.role,
       email: v.email || null,
       no_whatsapp: v.no_whatsapp,
       description: v.description || "",
@@ -149,13 +151,15 @@ export default function ConsultantsContent({ vm }) {
       .map((pi) => pi.image_url || "")
       .filter(Boolean);
 
-    // cek apakah nama / deskripsi berubah dibanding row awal
+    // cek apakah nama / role / deskripsi berubah dibanding row awal
     const textChanged =
       (v.name || "").trim() !== (activeRow?.name || "").trim() ||
+      (v.role || "").trim() !== (activeRow?.role || "").trim() ||
       (v.description || "").trim() !== (activeRow?.description || "").trim();
 
     const res = await vm.updateConsultant(activeRow.id, {
       name: v.name,
+      role: v.role,
       email: v.email || null,
       no_whatsapp: v.no_whatsapp,
       description: v.description || "",
@@ -190,6 +194,7 @@ export default function ConsultantsContent({ vm }) {
     setActiveRow(row);
     formEdit.setFieldsValue({
       name: row.name || "",
+      role: row.role || "",
       email: row.email && row.email !== "-" ? row.email : "",
       no_whatsapp: row.phone && row.phone !== "-" ? row.phone : "",
       description: row.description || "",
@@ -209,6 +214,7 @@ export default function ConsultantsContent({ vm }) {
     const d = data || {};
     formEdit.setFieldsValue({
       name: d.name ?? row.name ?? "",
+      role: d.role ?? row.role ?? "",
       email: d.email ?? row.email ?? "",
       no_whatsapp: d.whatsapp ?? row.phone ?? "",
       description: d.description ?? row.description ?? "",
@@ -361,8 +367,15 @@ export default function ConsultantsContent({ vm }) {
                       <div style={styles.colName}>
                         <div style={styles.nameCell}>
                           {renderAvatar(r.avatarUrl, r.name)}
-                          <div style={styles.nameText} title={r.name}>
-                            {r.name}
+                          <div style={styles.nameTextWrap}>
+                            <div style={styles.nameText} title={r.name}>
+                              {r.name}
+                            </div>
+                            {r.role ? (
+                              <div style={styles.roleText} title={r.role}>
+                                {r.role}
+                              </div>
+                            ) : null}
                           </div>
                         </div>
                       </div>
@@ -487,6 +500,16 @@ export default function ConsultantsContent({ vm }) {
             </Form.Item>
 
             <Form.Item
+              label={t.role}
+              name="role"
+              rules={[
+                { required: true, message: "Role / jabatan wajib diisi" },
+              ]}
+            >
+              <Input placeholder="Contoh: Senior Education Consultant" />
+            </Form.Item>
+
+            <Form.Item
               label={t.email}
               name="email"
               rules={[{ type: "email", message: "Format email tidak valid" }]}
@@ -606,6 +629,16 @@ export default function ConsultantsContent({ vm }) {
                 rules={[{ required: true, message: "Nama wajib diisi" }]}
               >
                 <Input placeholder="Nama konsultan" />
+              </Form.Item>
+
+              <Form.Item
+                label={t.role}
+                name="role"
+                rules={[
+                  { required: true, message: "Role / jabatan wajib diisi" },
+                ]}
+              >
+                <Input placeholder="Contoh: Senior Education Consultant" />
               </Form.Item>
 
               <Form.Item
@@ -746,6 +779,12 @@ export default function ConsultantsContent({ vm }) {
                 <div style={styles.label}>{t.name}</div>
                 <div style={styles.value}>
                   {viewData?.name || activeRow?.name || "-"}
+                </div>
+              </div>
+              <div>
+                <div style={styles.label}>{t.role}</div>
+                <div style={styles.value}>
+                  {viewData?.role || activeRow?.role || "-"}
                 </div>
               </div>
               <div>
@@ -892,9 +931,23 @@ const styles = {
     gap: 12,
     justifyContent: "flex-start",
   },
+  nameTextWrap: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    minWidth: 0,
+  },
   nameText: {
     fontWeight: 600,
     color: "#111827",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    maxWidth: 320,
+  },
+  roleText: {
+    fontSize: 12,
+    color: "#4b5563",
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",

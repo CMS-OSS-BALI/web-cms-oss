@@ -195,6 +195,7 @@ function serializeConsultant(row, { locale, fallback, includePII }) {
     created_at: row.created_at,
     updated_at: row.updated_at,
     name: t?.name ?? null,
+    role: t?.role ?? null,
     description: t?.description ?? null,
     locale_used: t?.locale ?? null,
     program_images: (row.program_images || []).map((pi) => ({
@@ -242,7 +243,7 @@ export async function GET(req) {
     updated_at: true,
     consultants_translate: {
       where: { locale: { in: [locale, fallback] } },
-      select: { locale: true, name: true, description: true },
+      select: { locale: true, name: true, role: true, description: true },
     },
     program_images: {
       orderBy: [{ sort: "asc" }, { id: "asc" }],
@@ -289,7 +290,11 @@ export async function GET(req) {
           consultants_translate: {
             some: {
               locale: { in: [locale, fallback] },
-              OR: [{ name: { contains: q } }, { description: { contains: q } }],
+              OR: [
+                { name: { contains: q } },
+                { role: { contains: q } },
+                { description: { contains: q } },
+              ],
             },
           },
         },
@@ -354,10 +359,12 @@ export async function POST(req) {
       whatsapp: form.get("whatsapp"),
       profile_image_url: form.get("profile_image_url"),
       name_id: form.get("name_id") ?? form.get("name"),
+      role_id: form.get("role_id") ?? form.get("role"),
       description_id: form.has("description_id")
         ? form.get("description_id")
         : form.get("description"),
       name_en: form.get("name_en"),
+      role_en: form.get("role_en"),
       description_en: form.get("description_en"),
       autoTranslate:
         String(form.get("autoTranslate") ?? "true").toLowerCase() !== "false",
@@ -396,6 +403,19 @@ export async function POST(req) {
     );
   }
 
+  const role_id = String(body?.role_id ?? "").trim();
+  if (!role_id || role_id.length < 2) {
+    return ok(
+      {
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "role_id wajib (min 2 chars)",
+        },
+      },
+      { status: 422 }
+    );
+  }
+
   const description_id =
     typeof body?.description_id === "string" ? body.description_id : null;
 
@@ -410,6 +430,7 @@ export async function POST(req) {
   const autoTranslate = body?.autoTranslate !== false;
 
   let name_en = String(body?.name_en || "").trim();
+  let role_en = String(body?.role_en || "").trim();
   let description_en =
     typeof body?.description_en === "string" ? body.description_en : "";
 
@@ -417,6 +438,9 @@ export async function POST(req) {
   if (autoTranslate) {
     try {
       if (!name_en && name_id) name_en = await translate(name_id, "id", "en");
+    } catch {}
+    try {
+      if (!role_en && role_id) role_en = await translate(role_id, "id", "en");
     } catch {}
     try {
       if (!description_en && description_id)
@@ -490,7 +514,7 @@ export async function POST(req) {
   // === 4) Kumpulan query DB SAJA dalam $transaction([...]) ===
   const queries = [];
 
-  // translations
+  // translations (ID)
   queries.push(
     prisma.consultants_translate.create({
       data: {
@@ -498,11 +522,14 @@ export async function POST(req) {
         id_consultant: id,
         locale: "id",
         name: name_id.slice(0, 150),
+        role: role_id.slice(0, 150),
         description: description_id || null,
       },
     })
   );
-  if (name_en || description_en) {
+
+  // translations (EN) jika ada data
+  if (name_en || role_en || description_en) {
     queries.push(
       prisma.consultants_translate.create({
         data: {
@@ -510,6 +537,7 @@ export async function POST(req) {
           id_consultant: id,
           locale: "en",
           name: (name_en || "(no title)").slice(0, 150),
+          role: (role_en || role_id).slice(0, 150),
           description: description_en || null,
         },
       })

@@ -1,4 +1,5 @@
-﻿import { useMemo } from "react";
+﻿// app/(view)/user/(landing)/useLandingViewModel.js
+import { useMemo } from "react";
 import useSWR from "swr";
 import { fetcher } from "../../../../utils/fetcher";
 
@@ -247,12 +248,14 @@ export function useLandingViewModel(arg) {
         c?.name_en ??
         "",
       photo: pickPublicImage(c, DEFAULT_AVATAR),
+      // description tetap kita simpan sebagai bio (kalau mau dipakai di halaman detail)
       bio:
         c?.description ??
         (locale === "en" ? c?.description_en : c?.description_id) ??
         c?.description_id ??
         c?.description_en ??
         "",
+      // 🔽 ROLE yang dipakai di card landing (di bawah nama)
       role: c?.role || c?.title || "",
       slug: c?.slug || null,
     }));
