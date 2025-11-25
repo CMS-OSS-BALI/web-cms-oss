@@ -29,15 +29,37 @@ function sanitizeReferrer(referrer) {
 
 function sameOriginGuard(req) {
   const origin = req.headers.get("origin");
-  const url = new URL(req.url);
-  if (origin && origin !== url.origin) {
+  const referer = req.headers.get("referer") || "";
+  const host = req.headers.get("x-forwarded-host") || req.headers.get("host");
+  const proto =
+    req.headers.get("x-forwarded-proto") || new URL(req.url).protocol || "https";
+  const expectedOrigin =
+    host && proto ? `${proto}://${host}`.replace(/\/+$/, "") : null;
+
+  // allow if Origin matches expected host (or url.origin as fallback)
+  if (origin) {
+    if (
+      origin === expectedOrigin ||
+      origin === new URL(req.url).origin ||
+      (!expectedOrigin && origin === referer?.split("/", 3).slice(0, 3).join("/"))
+    ) {
+      return true;
+    }
+    console.warn("[analytics][track] origin mismatch", {
+      origin,
+      expectedOrigin,
+      urlOrigin: new URL(req.url).origin,
+    });
     return false;
   }
-  if (!origin) {
-    const referer = req.headers.get("referer");
-    if (referer && !referer.startsWith(url.origin)) {
-      return false;
-    }
+
+  // no Origin header: check referer host
+  if (referer && expectedOrigin && !referer.startsWith(expectedOrigin)) {
+    console.warn("[analytics][track] referer mismatch", {
+      referer,
+      expectedOrigin,
+    });
+    return false;
   }
   return true;
 }
@@ -51,8 +73,18 @@ export async function POST(req) {
       );
     }
 
-    const { visitorId, sessionId, cookiesToSet } =
-      ensureAnalyticsCookies(cookies());
+    let visitorId, sessionId, cookiesToSet;
+    try {
+      ({ visitorId, sessionId, cookiesToSet } = ensureAnalyticsCookies(cookies()));
+    } catch (err) {
+      console.error("[analytics][track] ensure cookies failed", {
+        message: err?.message,
+      });
+      return NextResponse.json(
+        { ok: false, error: "cookie_error" },
+        { status: 400 }
+      );
+    }
     const withAnalyticsCookies = (resp) => {
       for (const cookie of cookiesToSet) {
         resp.cookies.set({
@@ -90,11 +122,17 @@ export async function POST(req) {
     }
 
     let body = {};
+    let rawPayload = "";
     const text = await req.text();
+    rawPayload = text || "";
     if (text) {
       try {
         body = JSON.parse(text);
-      } catch {
+      } catch (err) {
+        console.warn("[analytics][track] invalid JSON payload", {
+          message: err?.message,
+          sample: text.slice(0, 200),
+        });
         return withAnalyticsCookies(
           NextResponse.json(
             { ok: false, error: "invalid_payload" },
@@ -106,6 +144,7 @@ export async function POST(req) {
 
     const path = validatePath(body?.path);
     if (!path) {
+      console.warn("[analytics][track] invalid path", { path: body?.path });
       return withAnalyticsCookies(
         NextResponse.json(
           { ok: false, error: "invalid_path" },
@@ -116,15 +155,29 @@ export async function POST(req) {
 
     const ua = req.headers.get("user-agent")?.slice(0, 250) ?? null;
 
-    await prisma.analytics_pageviews.create({
-      data: {
+    try {
+      await prisma.analytics_pageviews.create({
+        data: {
+          path,
+          referrer: sanitizeReferrer(body?.referrer),
+          user_agent: ua,
+          visitor_id: visitorId,
+          session_id: sessionId,
+        },
+      });
+    } catch (err) {
+      console.error("[analytics][track] failed to insert", {
+        message: err?.message,
+        code: err?.code,
         path,
-        referrer: sanitizeReferrer(body?.referrer),
-        user_agent: ua,
-        visitor_id: visitorId,
-        session_id: sessionId,
-      },
-    });
+      });
+      return withAnalyticsCookies(
+        NextResponse.json(
+          { ok: false, error: "db_error" },
+          { status: 500 }
+        )
+      );
+    }
 
     const resp = NextResponse.json({ ok: true });
     resp.headers.set("X-RateLimit-Remaining", String(limitMeta.remaining));
@@ -135,7 +188,13 @@ export async function POST(req) {
     resp.headers.set("X-RateLimit-Limit", String(limitMeta.limit));
     return withAnalyticsCookies(resp);
   } catch (e) {
-    console.error("track error", e);
-    return NextResponse.json({ ok: false }, { status: 500 });
+    console.error("[analytics][track] unexpected error", {
+      message: e?.message,
+      stack: e?.stack,
+    });
+    return NextResponse.json(
+      { ok: false, error: "server_error" },
+      { status: 500 }
+    );
   }
 }

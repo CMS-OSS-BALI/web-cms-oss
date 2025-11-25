@@ -27,14 +27,30 @@ export default function PageviewTracker({ ignoreAdmin = false }) {
     const blob = new Blob([body], { type: "application/json" });
 
     // sendBeacon tidak selalu tersedia / dapat gagal; fallback ke fetch keepalive
-    const sendWithFetch = () =>
-      fetch("/api/analytics/track", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body,
-        keepalive: true,
-        credentials: "include",
-      }).catch(() => {});
+    const sendWithFetch = async () => {
+      try {
+        const res = await fetch("/api/analytics/track", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+          keepalive: true,
+          credentials: "include",
+        });
+        if (res.ok) {
+          console.info("[analytics] track success", { path: pathname });
+        } else {
+          console.warn("[analytics] track failed", {
+            path: pathname,
+            status: res.status,
+          });
+        }
+      } catch (err) {
+        console.warn("[analytics] track error", {
+          path: pathname,
+          message: err?.message,
+        });
+      }
+    };
 
     try {
       if (navigator.sendBeacon) {

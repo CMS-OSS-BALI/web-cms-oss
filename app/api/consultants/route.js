@@ -108,6 +108,11 @@ function pickTrans(list, primary, fallback) {
   const by = (loc) => list?.find?.((t) => t.locale === loc);
   return by(primary) || by(fallback) || null;
 }
+function readPositiveInt(searchParams, key, fallback) {
+  const raw = searchParams.get(key);
+  const n = raw == null ? NaN : parseInt(String(raw), 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
 function normalizeOrder(sort) {
   if (!sort) return DEFAULT_ORDER;
   const [field = "", dir = ""] = String(sort).split(":");
@@ -224,13 +229,13 @@ export async function GET(req) {
 
   const idFilter = parseIdString(url.searchParams.get("id"));
   const q = (url.searchParams.get("q") || "").trim();
-  const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
+  const page = readPositiveInt(url.searchParams, "page", 1);
+  const perPageRaw =
+    readPositiveInt(url.searchParams, "perPage", null) ??
+    readPositiveInt(url.searchParams, "perpage", null);
   const perPage = Math.min(
     includePII ? MAX_ADMIN_PER_PAGE : MAX_PUBLIC_PER_PAGE,
-    Math.max(
-      1,
-      parseInt(url.searchParams.get("perPage") || (includePII ? "10" : "3"), 10)
-    )
+    Math.max(1, perPageRaw || (includePII ? 10 : 3))
   );
   const orderBy = normalizeOrder(url.searchParams.get("sort"));
   const locale = pickLocale(req, "locale", "id");
