@@ -9,6 +9,57 @@ function safeJSON(res) {
   return res.json().catch(() => ({}));
 }
 
+const LOG_BODY_LIMIT = 1400;
+
+function trimBody(body) {
+  if (typeof body !== "string") return body;
+  if (body.length <= LOG_BODY_LIMIT) return body;
+  return `${body.slice(0, LOG_BODY_LIMIT)}… (truncated)`;
+}
+
+function logSeo(level, label, meta = {}) {
+  const payload = { ...meta };
+  if (payload.body) payload.body = trimBody(payload.body);
+  const fn = level === "error" ? console.error : console.warn;
+  fn(`[dashboard][seo] ${label}`, payload);
+}
+
+function loggedError(message) {
+  const err = new Error(message);
+  err.__seoLogged = true;
+  return err;
+}
+
+async function readSeoJson(response, label) {
+  const body = await response.text();
+  if (!response.ok) {
+    logSeo("error", `${label} request failed`, {
+      url: response.url,
+      status: response.status,
+      statusText: response.statusText,
+      body,
+    });
+    throw loggedError(`Permintaan ${label} gagal (${response.status || "ERR"})`);
+  }
+  if (!body) {
+    logSeo("warn", `${label} returned empty body`, {
+      url: response.url,
+      status: response.status,
+    });
+    return { data: {}, body: "" };
+  }
+  try {
+    return { data: JSON.parse(body), body };
+  } catch (err) {
+    logSeo("error", `${label} JSON parse error`, {
+      url: response.url,
+      body,
+      error: err?.message,
+    });
+    throw loggedError(`Respon ${label} tidak valid`);
+  }
+}
+
 /** Ambil ringkasan (server agregasi) */
 async function fetchLeadsSummary(year) {
   if (year == null)
@@ -269,14 +320,25 @@ export default function useDashboardViewModel() {
     let ignore = false;
     (async () => {
       try {
+        setError((s) => ({ ...s, seo: undefined }));
         setLoading((s) => ({ ...s, seo: true }));
         const q = new URLSearchParams({ group: seoGroup, period: seoPeriod });
-        const r = await fetch(`/api/analytics/metrics?${q.toString()}`, {
+        const url = `/api/analytics/metrics?${q.toString()}`;
+        const r = await fetch(url, {
           cache: "no-store",
           credentials: "include",
         });
-        const j = r.ok ? await r.json() : { series: [] };
-        const series = Array.isArray(j.series) ? j.series : [];
+        const { data, body } = await readSeoJson(r, "metrics");
+        const series = Array.isArray(data?.series) ? data.series : [];
+        if (!series.length) {
+          logSeo("warn", "metrics empty series", {
+            url,
+            status: r.status,
+            group: seoGroup,
+            period: seoPeriod,
+            body,
+          });
+        }
         const labeled = series.map((row) => ({
           ...row,
           label:
@@ -286,10 +348,23 @@ export default function useDashboardViewModel() {
         }));
         if (!ignore) {
           setSeoSeries(labeled);
-          setSeoLabel(j?.label || "");
+          setSeoLabel(data?.label || "");
         }
-      } catch {
-        if (!ignore) setSeoSeries([]);
+      } catch (err) {
+        if (!err?.__seoLogged) {
+          logSeo("error", "metrics fetch error", {
+            error: err?.message,
+            group: seoGroup,
+            period: seoPeriod,
+          });
+        }
+        if (!ignore) {
+          setSeoSeries([]);
+          setError((s) => ({
+            ...s,
+            seo: err?.message || "Grafik SEO gagal dimuat",
+          }));
+        }
       } finally {
         if (!ignore) setLoading((s) => ({ ...s, seo: false }));
       }
@@ -303,16 +378,42 @@ export default function useDashboardViewModel() {
     let ignore = false;
     (async () => {
       try {
+        setError((s) => ({ ...s, seoTop: undefined }));
         setLoading((s) => ({ ...s, seoTop: true }));
         const q = new URLSearchParams({ period: seoPeriod });
-        const r = await fetch(`/api/analytics/top-pages?${q.toString()}`, {
+        const url = `/api/analytics/top-pages?${q.toString()}`;
+        const r = await fetch(url, {
           cache: "no-store",
           credentials: "include",
         });
-        const j = r.ok ? await r.json() : { rows: [] };
-        if (!ignore) setSeoTop(Array.isArray(j.rows) ? j.rows : []);
-      } catch {
-        if (!ignore) setSeoTop([]);
+        const { data, body } = await readSeoJson(r, "top-pages");
+        const rows = Array.isArray(data?.rows) ? data.rows : [];
+        if (!rows.length) {
+          logSeo("warn", "top pages empty rows", {
+            url,
+            status: r.status,
+            period: seoPeriod,
+            body,
+          });
+        }
+        if (!ignore) {
+          setSeoTop(rows);
+          setError((s) => ({ ...s, seoTop: undefined }));
+        }
+      } catch (err) {
+        if (!err?.__seoLogged) {
+          logSeo("error", "top pages fetch error", {
+            error: err?.message,
+            period: seoPeriod,
+          });
+        }
+        if (!ignore) {
+          setSeoTop([]);
+          setError((s) => ({
+            ...s,
+            seoTop: err?.message || "Top pages gagal dimuat",
+          }));
+        }
       } finally {
         if (!ignore) setLoading((s) => ({ ...s, seoTop: false }));
       }

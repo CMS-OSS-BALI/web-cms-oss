@@ -1,6 +1,6 @@
 "use client";
 
-import { Segmented, Empty, Typography, Table } from "antd";
+import { Segmented, Empty, Typography, Table, Alert } from "antd";
 import LineChart from "./LineChart";
 import Loading from "@/app/components/loading/LoadingImage";
 
@@ -16,6 +16,7 @@ function metricColor(metric) {
 export default function SeoSection({
   seo, // { series, metric, group, period, periodOptions, label, totalPageviews, top }
   loading, // { seo: bool, seoTop: bool }
+  error, // { seo?: string, seoTop?: string }
   onMetricChange,
   onGroupChange,
   onPeriodChange,
@@ -156,6 +157,15 @@ export default function SeoSection({
       {/* Chart */}
       {loading?.seo ? (
         <Loading label="Memuat grafik SEO…" />
+      ) : error?.seo ? (
+        <div style={{ padding: "12px 0" }}>
+          <Alert
+            type="error"
+            showIcon
+            message="Grafik trafik tidak dapat dimuat"
+            description={error.seo}
+          />
+        </div>
       ) : !points.length ? (
         <div style={{ padding: "20px 0" }}>
           <Empty description="Belum ada data untuk rentang ini" />
@@ -192,14 +202,25 @@ export default function SeoSection({
         {loading?.seoTop ? (
           <Loading label="Memuat top pages…" />
         ) : (
-          <Table
-            size="small"
-            rowKey="path"
-            columns={topColumns}
-            dataSource={seo?.top || []}
-            pagination={false}
-            bordered
-          />
+          <>
+            {error?.seoTop && (
+              <Alert
+                type="warning"
+                showIcon
+                message="Top pages tidak dapat dimuat"
+                description={error.seoTop}
+                style={{ marginBottom: 8 }}
+              />
+            )}
+            <Table
+              size="small"
+              rowKey="path"
+              columns={topColumns}
+              dataSource={seo?.top || []}
+              pagination={false}
+              bordered
+            />
+          </>
         )}
       </div>
     </div>

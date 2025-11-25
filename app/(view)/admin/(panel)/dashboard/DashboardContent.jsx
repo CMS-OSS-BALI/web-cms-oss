@@ -312,6 +312,7 @@ export default function DashboardContent({ vm }) {
               <SeoSection
                 seo={vm?.seo}
                 loading={vm?.loading}
+                error={vm?.error}
                 onMetricChange={vm?.setSeoMetric}
                 onGroupChange={vm?.setSeoGroup}
                 onPeriodChange={vm?.setSeoPeriod}
