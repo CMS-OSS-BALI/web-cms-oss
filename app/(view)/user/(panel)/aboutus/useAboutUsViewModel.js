@@ -42,7 +42,7 @@ const DICT = {
     },
     video: {
       title: "Mengenal Lebih Dekat Dengan OSS Bali",
-      url: "https://youtu.be/Py1jA2EjCmk?si=qke7rB0X2BlWXHsv",
+      url: "https://www.youtube.com/watch?v=kqwYiZvcw-A",
     },
 
     /* ===== SUPPORT (NEW) ===== */
@@ -142,7 +142,7 @@ const DICT = {
     },
     video: {
       title: "Get to Know OSS Bali Better",
-      url: "https://youtu.be/Py1jA2EjCmk?si=qke7rB0X2BlWXHsv",
+      url: "https://www.youtube.com/watch?v=kqwYiZvcw-A",
     },
 
     support: {

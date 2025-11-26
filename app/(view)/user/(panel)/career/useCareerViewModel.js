@@ -59,7 +59,7 @@ export default function useCareerViewModel({ locale = "id" } = {}) {
         "Bergabunglah sebagai Sahabat Referral OSS Bali! Cukup rekomendasikan calon siswa yang berencana melanjutkan studi ke luar negeri, dan dapatkan insentif serta bonus menarik untuk setiap referensi yang berhasil. Bersama, kita bantu lebih banyak generasi muda mewujudkan impian global mereka!",
         "Join as an OSS Bali Referral Buddy! Recommend prospective students planning to study abroad and earn incentives and bonuses for every successful referral. Together, we help more young people realize their global dreams!"
       ),
-      youtube: "https://youtu.be/Py1jA2EjCmk?si=qke7rB0X2BlWXHsv",
+      youtube: "https://www.youtube.com/watch?v=KwpCBa8Et9M",
       benefitsTitle: L(
         "Manfaat Bergabung Dalam Program Sahabat Referral OSS Bali",
         "Benefits of Joining the OSS Bali Referral Program"
