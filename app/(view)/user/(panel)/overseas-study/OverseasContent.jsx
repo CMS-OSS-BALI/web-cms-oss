@@ -269,6 +269,7 @@ const styles = {
       fontSize: "clamp(14px, 1.6vw, 18px)",
       letterSpacing: ".01em",
       maxWidth: 640,
+      textAlign: "justify",
     },
     pillWrap: {
       marginTop: 18,
@@ -458,7 +459,7 @@ const styles = {
       flex: "1 1 0",
       display: "flex",
       flexDirection: "column",
-      alignItems: "flex-start",
+      textAlign: "justify",
       justifyContent: "center",
     },
     cardTitle: {

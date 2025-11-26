@@ -109,7 +109,7 @@ export function useLandingViewModel(arg) {
           "Your First Step to Overseas Study & Career"
         ),
         desc: t(
-          "Jangan khawatir—kami akan menuntunmu dari awal hingga berhasil kuliah dan karier di luar negeri.",
+          "Jangan khawatir kami akan menuntunmu dari awal hingga berhasil kuliah dan karier di luar negeri.",
           "Don't worry—we'll guide you from the start until you succeed in studying and building a career abroad."
         ),
         youtube: "https://youtu.be/BdcyBPoG-kY?si=pR1xpVMjgjjSePvB",

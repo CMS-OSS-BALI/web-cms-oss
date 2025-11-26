@@ -550,7 +550,7 @@ export default function useOverseasViewModel({ locale = "id" } = {}) {
         title:
           "Jadwalkan Konsultasi Gratis Dengan Ahli Kami Sekarang Juga Dan Rasakan Manfaatnya",
         buttonLabel: "Tanya Aja Dulu",
-        buttonHref: "/konsultasi",
+        buttonHref: "/user/leads",
       },
     };
 
