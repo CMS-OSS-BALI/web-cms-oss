@@ -6,7 +6,6 @@ import prisma from "@/lib/prisma";
 import { translate } from "@/app/utils/geminiTranslator";
 import storageClient from "@/app/utils/storageClient";
 import { randomUUID } from "crypto";
-import { cropFileTo1x1Webp } from "@/app/utils/cropper";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -15,6 +14,7 @@ const DEFAULT_LOCALE = "id";
 const EN_LOCALE = "en";
 const NIK_LENGTH = 16;
 const DIGIT_ONLY = /\D+/g;
+const LOGO_MAX_EDGE = 1600;
 
 /* =========================
    Storage & URL helpers
@@ -155,36 +155,48 @@ async function uploadPublicFile(file, folder) {
   return res?.publicUrl || null;
 }
 
-/* =============== NEW: upload square 1:1 =============== */
-async function uploadLogoSquare1x1(file, folder) {
+/* =============== Upload logo (preserve aspect, compress) =============== */
+async function uploadLogoOptimized(file, folder) {
   await assertImageFileOrThrow(file);
 
-  // SVG tidak dicrop
+  // SVG tidak dikompresi supaya tetap tajam
   if (String(file.type).toLowerCase() === "image/svg+xml") {
     return uploadPublicFile(file, folder);
   }
 
-  const processed = await cropFileTo1x1Webp(file, { size: 1080, quality: 92 });
-  let { buffer, contentType } = processed || {};
-  if (!buffer) {
-    const ab = await file.arrayBuffer();
-    buffer = Buffer.from(ab);
-  } else if (buffer instanceof ArrayBuffer) {
-    buffer = Buffer.from(buffer);
-  } else if (ArrayBuffer.isView(buffer)) {
-    buffer = Buffer.from(buffer.buffer);
+  const ab = await file.arrayBuffer();
+  let buffer = Buffer.from(ab);
+  let contentType = file.type || "application/octet-stream";
+  const fallbackExt =
+    (file.type && file.type.split("/").pop()) || "bin";
+  const baseName = (file.name || "").trim();
+  let filename =
+    baseName && baseName.includes(".")
+      ? baseName
+      : `logo-upload.${fallbackExt}`;
+
+  try {
+    const sharpModule = await import("sharp");
+    const sharp = sharpModule.default || sharpModule;
+    buffer = await sharp(buffer)
+      .rotate()
+      .resize({
+        width: LOGO_MAX_EDGE,
+        height: LOGO_MAX_EDGE,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .webp({ quality: 90 })
+      .toBuffer();
+    contentType = "image/webp";
+    filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.webp`;
+  } catch (_) {
+    // fallback: kirim file asli tanpa crop
   }
-  if (!Buffer.isBuffer(buffer)) buffer = Buffer.from(buffer);
-  if (!buffer?.length) throw new Error("EMPTY_FILE_BUFFER");
 
-  const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.webp`;
-  const outFile = new File([buffer], filename, {
-    type: contentType || "image/webp",
-  });
-
+  const outFile = new File([buffer], filename, { type: contentType });
   return uploadPublicFile(outFile, folder);
 }
-
 /* =========================
    Shared helpers
 ========================= */
@@ -425,7 +437,7 @@ export async function PUT(req, ctx) {
   return PATCH(req, ctx);
 }
 
-/* ---------- PATCH (admin, + storage baru, + CROP 1:1) ---------- */
+/* ---------- PATCH (admin, + storage baru, + optimasi logo) ---------- */
 export async function PATCH(req, { params }) {
   try {
     const admin = await assertAdmin(req);
@@ -551,7 +563,7 @@ export async function PATCH(req, { params }) {
       body.merchant_name = trimmed;
     }
 
-    // Upload image baru (opsional) di luar transaksi, crop 1:1
+    // Upload image baru (opsional) di luar transaksi, optimasi rasio asli
     let postCleanupImageUrl = null;
     if (imageFile) {
       try {
@@ -559,7 +571,7 @@ export async function PATCH(req, { params }) {
           where: { id },
           select: { image_url: true },
         });
-        const newUrl = await uploadLogoSquare1x1(imageFile, `mitra/${id}`);
+        const newUrl = await uploadLogoOptimized(imageFile, `mitra/${id}`);
         data.image_url = newUrl;
         if (existing?.image_url && existing.image_url !== newUrl) {
           postCleanupImageUrl = existing.image_url;

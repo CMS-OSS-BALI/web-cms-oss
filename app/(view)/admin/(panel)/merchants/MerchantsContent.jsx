@@ -174,7 +174,7 @@ const T = {
   contact_position: "Jabatan PIC",
   contact_whatsapp: "WhatsApp PIC",
   categoryLbl: "Kategori",
-  logo: "Logo / Gambar (1:1)",
+  logo: "Logo / Gambar (rasio bebas)",
   about: "Tentang",
   attachments: "Lampiran (opsional)",
   review_notes: "Catatan Review",
@@ -497,7 +497,7 @@ export default function MerchantsContent({ vm }) {
       .filter(Boolean);
 
     const payload = {
-      file, // akan di-crop 1:1 di VM sebelum dikirim
+      file, // dikirim apa adanya; server akan optimasi rasio asli
       merchant_name: v.merchant_name,
       nik: v.nik || null,
       email: v.email,
@@ -579,7 +579,7 @@ export default function MerchantsContent({ vm }) {
     >
       {contextHolder}
 
-      {/* paksa rasio 1:1 untuk Upload logo */}
+      {/* Kotak preview logo (rasio bebas) */}
       <style jsx global>{`
         .square-uploader.ant-upload.ant-upload-select-picture-card {
           width: 180px !important;
@@ -1233,7 +1233,7 @@ export default function MerchantsContent({ vm }) {
                   getValueFromEvent={(e) =>
                     Array.isArray(e) ? e : e?.fileList || []
                   }
-                  label={`${T.logo} — akan di-crop otomatis saat simpan`}
+                  label={`${T.logo} - akan dioptimalkan otomatis saat simpan`}
                   style={{ marginBottom: 8 }}
                 >
                   <Upload
@@ -1649,15 +1649,16 @@ const styles = {
     width: 44,
     height: 44,
     borderRadius: 8,
-    background: "#fff",
+    background: "#f8fbff",
     border: "1px solid #e5edff",
     display: "grid",
     placeItems: "center",
     overflow: "hidden",
     boxShadow: "0 2px 6px rgba(0,0,0,.04) inset",
     flex: "0 0 44px",
+    padding: 4,
   },
-  thumbImg: { width: "100%", height: "100%", objectFit: "cover" },
+  thumbImg: { width: "100%", height: "100%", objectFit: "contain" },
   thumbFallback: { fontSize: 18 },
   nameWrap: { display: "grid", gap: 2, minWidth: 0 },
   nameText: {
@@ -1726,12 +1727,14 @@ const styles = {
     background: "#f8fbff",
     display: "grid",
     placeItems: "center",
+    padding: 10,
   },
   coverImgRead: {
     maxWidth: "100%",
     maxHeight: "48vh",
     width: "auto",
     height: "auto",
+    objectFit: "contain",
     display: "block",
   },
 
@@ -1744,8 +1747,9 @@ const styles = {
     display: "grid",
     placeItems: "center",
     overflow: "hidden",
+    padding: 8,
   },
-  coverImg: { width: "100%", height: "100%", objectFit: "cover" },
+  coverImg: { width: "100%", height: "100%", objectFit: "contain" },
   coverPlaceholder: { fontWeight: 700, color: "#0b56c9", userSelect: "none" },
 
   modalFooter: { marginTop: 8, display: "grid", placeItems: "center" },

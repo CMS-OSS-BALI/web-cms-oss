@@ -1,8 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-/* ==== NEW: import cropper 1:1 ==== */
-import { cropCenterAndResize1x1 } from "@/app/utils/cropper";
 
 const DEFAULT_SORT = "created_at:desc";
 const DEFAULT_LOCALE = "id";
@@ -308,16 +306,9 @@ export default function useMerchantsViewModel() {
         } else {
           const fd = new FormData();
 
-          // ==== NEW: crop 1:1 sebelum kirim ====
           const rawFile = payload?.file || null;
           if (rawFile) {
-            try {
-              const squared = await cropCenterAndResize1x1(rawFile, 720); // 720x720 default
-              fd.set("image", squared);
-            } catch {
-              // fallback kirim file asli kalau crop gagal
-              fd.set("image", rawFile);
-            }
+            fd.set("image", rawFile); // server akan optimasi rasio asli
           }
 
           const attachmentsNew = Array.isArray(payload?.attachments_new)
