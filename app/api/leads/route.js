@@ -8,7 +8,6 @@ import {
   parseDate,
   parseId,
   trimStr,
-  parseSort,
   readQuery,
   readBodyFlexible,
   assertAdmin,
@@ -91,7 +90,8 @@ export async function GET(req) {
     100,
     Math.max(1, parseInt(sp.get("perPage") || "10", 10))
   );
-  const orderBy = parseSort(sp.get("sort"));
+  // selalu tampilkan lead terbaru di halaman pertama (created_at desc + id desc untuk stabil)
+  const orderBy = [{ created_at: "desc" }, { id: "desc" }];
 
   // base where (dipakai summary)
   const baseWhere = {

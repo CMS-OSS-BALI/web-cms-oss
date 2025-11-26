@@ -208,7 +208,8 @@ export async function PUT(req, { params }) {
         {
           error: {
             code: "CONFLICT",
-            message: "Slug sudah digunakan. Gunakan slug lain.",
+            message:
+              "Gagal memperbarui data: slug kategori testimonial sudah digunakan.",
             field: "slug",
           },
         },

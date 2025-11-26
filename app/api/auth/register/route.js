@@ -44,7 +44,7 @@ export async function POST(request) {
     const existed = await prisma.admin_users.findUnique({ where: { email } });
     if (existed) {
       return NextResponse.json(
-        { message: "email sudah terdaftar" },
+        { message: "Gagal membuat data: email sudah terdaftar.", field: "email" },
         { status: 409 }
       );
     }
@@ -66,7 +66,7 @@ export async function POST(request) {
       e.meta.target.includes("email")
     ) {
       return NextResponse.json(
-        { message: "email sudah terdaftar" },
+        { message: "Gagal membuat data: email sudah terdaftar.", field: "email" },
         { status: 409 }
       );
     }

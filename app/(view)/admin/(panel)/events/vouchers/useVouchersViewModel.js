@@ -120,6 +120,7 @@ export default function useVouchersViewModel() {
           return {
             ok: false,
             error: data?.error?.message || "Gagal membuat voucher.",
+            field: data?.error?.field || data?.field,
           };
         await load();
         return { ok: true, data: data?.data };
@@ -148,6 +149,7 @@ export default function useVouchersViewModel() {
           return {
             ok: false,
             error: data?.error?.message || "Gagal memperbarui voucher.",
+            field: data?.error?.field || data?.field,
           };
         await load();
         return { ok: true, data: data?.data };

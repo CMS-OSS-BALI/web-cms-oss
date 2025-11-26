@@ -44,7 +44,13 @@ export async function POST(req) {
 
     if (!order_id) {
       return json(
-        { error: { code: "BAD_REQUEST", message: "order_id wajib ada" } },
+        {
+          error: {
+            code: "BAD_REQUEST",
+            message: "Field order_id pada webhook wajib diisi.",
+            field: "order_id",
+          },
+        },
         { status: 400 }
       );
     }

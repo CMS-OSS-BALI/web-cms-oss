@@ -304,7 +304,13 @@ export async function POST(req) {
   // --- validate required ---
   if (!nik || nik.length !== 16)
     return json(
-      { error: { code: "VALIDATION_ERROR", message: "NIK harus 16 digit" } },
+      {
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Field nik wajib diisi dan harus 16 digit angka.",
+          field: "nik",
+        },
+      },
       { status: 422 }
     );
   if (!full_name || full_name.length < 2)
@@ -312,7 +318,8 @@ export async function POST(req) {
       {
         error: {
           code: "VALIDATION_ERROR",
-          message: "Nama lengkap wajib diisi (min 2 karakter)",
+          message: "Field full_name wajib diisi (minimal 2 karakter).",
+          field: "full_name",
         },
       },
       { status: 422 }
@@ -322,7 +329,8 @@ export async function POST(req) {
       {
         error: {
           code: "VALIDATION_ERROR",
-          message: "Tanggal lahir wajib (format YYYY-MM-DD)",
+          message: "Field date_of_birth wajib diisi dengan format YYYY-MM-DD.",
+          field: "date_of_birth",
         },
       },
       { status: 422 }
@@ -332,7 +340,8 @@ export async function POST(req) {
       {
         error: {
           code: "VALIDATION_ERROR",
-          message: "Jenis kelamin wajib (MALE/FEMALE)",
+          message: "Field gender wajib diisi dan hanya boleh MALE atau FEMALE.",
+          field: "gender",
         },
       },
       { status: 422 }
@@ -343,7 +352,8 @@ export async function POST(req) {
       {
         error: {
           code: "VALIDATION_ERROR",
-          message: "Pekerjaan wajib diisi (min 2 karakter)",
+          message: "Field pekerjaan wajib diisi (minimal 2 karakter).",
+          field: "pekerjaan",
         },
       },
       { status: 422 }
@@ -351,42 +361,90 @@ export async function POST(req) {
 
   if (!address_line)
     return json(
-      { error: { code: "VALIDATION_ERROR", message: "Alamat wajib" } },
+      {
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Field address_line wajib diisi.",
+          field: "address_line",
+        },
+      },
       { status: 422 }
     );
   if (!rt)
     return json(
-      { error: { code: "VALIDATION_ERROR", message: "RT wajib" } },
+      {
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Field rt wajib diisi.",
+          field: "rt",
+        },
+      },
       { status: 422 }
     );
   if (!rw)
     return json(
-      { error: { code: "VALIDATION_ERROR", message: "RW wajib" } },
+      {
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Field rw wajib diisi.",
+          field: "rw",
+        },
+      },
       { status: 422 }
     );
   if (!kelurahan)
     return json(
-      { error: { code: "VALIDATION_ERROR", message: "Kelurahan wajib" } },
+      {
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Field kelurahan wajib diisi.",
+          field: "kelurahan",
+        },
+      },
       { status: 422 }
     );
   if (!kecamatan)
     return json(
-      { error: { code: "VALIDATION_ERROR", message: "Kecamatan wajib" } },
+      {
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Field kecamatan wajib diisi.",
+          field: "kecamatan",
+        },
+      },
       { status: 422 }
     );
   if (!city)
     return json(
-      { error: { code: "VALIDATION_ERROR", message: "Kota/Kabupaten wajib" } },
+      {
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Field city wajib diisi.",
+          field: "city",
+        },
+      },
       { status: 422 }
     );
   if (!province)
     return json(
-      { error: { code: "VALIDATION_ERROR", message: "Provinsi wajib" } },
+      {
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Field province wajib diisi.",
+          field: "province",
+        },
+      },
       { status: 422 }
     );
   if (!postal_code)
     return json(
-      { error: { code: "VALIDATION_ERROR", message: "Kode pos wajib" } },
+      {
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Field postal_code wajib diisi.",
+          field: "postal_code",
+        },
+      },
       { status: 422 }
     );
 
@@ -395,14 +453,21 @@ export async function POST(req) {
       {
         error: {
           code: "VALIDATION_ERROR",
-          message: "Nomor WhatsApp wajib diisi",
+          message: "Field whatsapp wajib diisi.",
+          field: "whatsapp",
         },
       },
       { status: 422 }
     );
   if (!email)
     return json(
-      { error: { code: "VALIDATION_ERROR", message: "Email wajib diisi" } },
+      {
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Field email wajib diisi.",
+          field: "email",
+        },
+      },
       { status: 422 }
     );
 
@@ -411,7 +476,9 @@ export async function POST(req) {
       {
         error: {
           code: "VALIDATION_ERROR",
-          message: "Harus menyetujui S&K / Kebijakan Privasi",
+          message:
+            "Field consent_agreed wajib true (setujui S&K / Kebijakan Privasi).",
+          field: "consent_agreed",
         },
       },
       { status: 422 }
@@ -424,7 +491,8 @@ export async function POST(req) {
       {
         error: {
           code: "VALIDATION_ERROR",
-          message: "Foto Kartu Identitas wajib diunggah",
+          message: "Field front (foto Kartu Identitas) wajib diunggah.",
+          field: "front",
         },
       },
       { status: 422 }
@@ -436,13 +504,23 @@ export async function POST(req) {
   } catch (e) {
     if (e?.message === "PAYLOAD_TOO_LARGE")
       return json(
-        { error: { code: "PAYLOAD_TOO_LARGE", message: "Maksimal 5MB" } },
+        {
+          error: {
+            code: "PAYLOAD_TOO_LARGE",
+            message: "Ukuran file front melebihi batas 5MB.",
+            field: "front",
+          },
+        },
         { status: 413 }
       );
     if (e?.message === "UNSUPPORTED_TYPE")
       return json(
         {
-          error: { code: "UNSUPPORTED_TYPE", message: "Harus JPEG/PNG/WebP" },
+          error: {
+            code: "UNSUPPORTED_TYPE",
+            message: "Format front harus JPEG/PNG/WebP.",
+            field: "front",
+          },
         },
         { status: 415 }
       );
@@ -462,7 +540,8 @@ export async function POST(req) {
           {
             error: {
               code: "VALIDATION_ERROR",
-              message: "PIC Konsultan tidak ditemukan",
+              message: "PIC Konsultan tidak ditemukan.",
+              field: "pic_consultant_id",
             },
           },
           { status: 422 }
@@ -535,7 +614,8 @@ export async function POST(req) {
         {
           error: {
             code: "CONFLICT",
-            message: "NIK atau data unik sudah terdaftar",
+            message: "Gagal membuat data: NIK sudah terdaftar.",
+            field: "nik",
           },
         },
         { status: 409 }

@@ -393,7 +393,10 @@ export async function POST(req) {
   } catch (err) {
     if (err?.code === "P2002") {
       return NextResponse.json(
-        { message: "Email ini sudah terdaftar di event ini." },
+        {
+          message: "Gagal membuat data: email sudah terdaftar di event ini.",
+          field: "email",
+        },
         { status: 409 }
       );
     }

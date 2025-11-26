@@ -580,18 +580,34 @@ export async function POST(req) {
     if (!merchantName)
       return json(
         {
-          error: { code: "BAD_REQUEST", message: "merchant_name wajib diisi" },
+          error: {
+            code: "BAD_REQUEST",
+            message: "Field merchant_name wajib diisi.",
+            field: "merchant_name",
+          },
         },
         { status: 400 }
       );
     if (!email)
       return json(
-        { error: { code: "BAD_REQUEST", message: "email wajib diisi" } },
+        {
+          error: {
+            code: "BAD_REQUEST",
+            message: "Field email wajib diisi.",
+            field: "email",
+          },
+        },
         { status: 400 }
       );
     if (!phone)
       return json(
-        { error: { code: "BAD_REQUEST", message: "phone wajib diisi" } },
+        {
+          error: {
+            code: "BAD_REQUEST",
+            message: "Field phone wajib diisi.",
+            field: "phone",
+          },
+        },
         { status: 400 }
       );
     if (!nik)
@@ -618,7 +634,13 @@ export async function POST(req) {
       );
     if (!address)
       return json(
-        { error: { code: "BAD_REQUEST", message: "address wajib diisi" } },
+        {
+          error: {
+            code: "BAD_REQUEST",
+            message: "Field address wajib diisi.",
+            field: "address",
+          },
+        },
         { status: 400 }
       );
 
@@ -636,6 +658,7 @@ export async function POST(req) {
             error: {
               code: "BAD_REQUEST",
               message: "Kategori tidak ditemukan.",
+              field: body.category_id ? "category_id" : "category_slug",
             },
           },
           { status: 400 }
@@ -648,7 +671,12 @@ export async function POST(req) {
     if (!image_url && !imageFile) {
       return json(
         {
-          error: { code: "BAD_REQUEST", message: "logo/image wajib diunggah" },
+          error: {
+            code: "BAD_REQUEST",
+            message:
+              "Logo/image wajib diunggah melalui field image_url atau image_file.",
+            field: "image_url",
+          },
         },
         { status: 400 }
       );

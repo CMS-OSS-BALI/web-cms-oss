@@ -223,7 +223,7 @@ export async function POST(req) {
         {
           error: {
             code: "CONFLICT",
-            message: "Slug sudah digunakan. Gunakan slug lain.",
+            message: "Gagal membuat data: slug kategori event sudah digunakan.",
             field: "slug",
           },
         },

@@ -38,6 +38,26 @@ export default function ConsultantsContent({ vm }) {
   const err = (msg, desc) =>
     notify.error({ message: msg, description: desc, placement: "topRight" });
 
+  const describeError = (res, fallback = "Terjadi kesalahan.") => {
+    const lines = [];
+    if (res?.error) lines.push(res.error);
+    else if (res?.message) lines.push(res.message);
+    else lines.push(fallback);
+
+    const fields = res?.fields || {};
+    const fieldLine = res?.field
+      ? `${res.field}: ${fields[res.field] || "sudah digunakan."}`
+      : null;
+    if (fieldLine) lines.push(fieldLine);
+    if (!fieldLine) {
+      const entries = Object.entries(fields);
+      entries.forEach(([k, v]) => {
+        lines.push(`${k}: ${v}`);
+      });
+    }
+    return lines.filter(Boolean).join("\n");
+  };
+
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
@@ -132,7 +152,7 @@ export default function ConsultantsContent({ vm }) {
       setAvatarPreviewCreate("");
       formCreate.resetFields();
     } else {
-      err("Gagal membuat data", res.error || "Terjadi kesalahan.");
+      err("Gagal membuat data", describeError(res));
     }
   };
 
@@ -177,7 +197,7 @@ export default function ConsultantsContent({ vm }) {
       setAvatarPreviewEdit("");
       setEditProgramImages([]);
     } else {
-      err("Gagal memperbarui", res.error || "Terjadi kesalahan.");
+      err("Gagal memperbarui", describeError(res));
     }
   };
 

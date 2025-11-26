@@ -327,7 +327,7 @@ export async function PATCH(req) {
         {
           error: {
             code: "BAD_REQUEST",
-            message: "Email already in use",
+            message: "Gagal memperbarui data: email sudah terdaftar.",
             field: "email",
           },
         },

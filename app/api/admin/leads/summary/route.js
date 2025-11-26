@@ -35,7 +35,13 @@ export async function GET(req) {
   const year = Number(searchParams.get("year"));
   if (!Number.isFinite(year)) {
     return json(
-      { error: { code: "BAD_REQUEST", message: "Invalid year" } },
+      {
+        error: {
+          code: "BAD_REQUEST",
+          message: "Parameter year wajib angka (contoh: 2025).",
+          field: "year",
+        },
+      },
       { status: 400 }
     );
   }

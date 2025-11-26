@@ -203,7 +203,8 @@ export async function PATCH(req, { params }) {
         {
           error: {
             code: "DUPLICATE",
-            message: "Slug sudah digunakan. Gunakan slug lain.",
+            message:
+              "Gagal memperbarui data: slug kategori mitra sudah digunakan.",
             field: "slug",
           },
         },

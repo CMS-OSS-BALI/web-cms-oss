@@ -184,7 +184,17 @@ export async function GET(_req, { params }) {
   }
 
   const id = String(params?.id || "");
-  if (!id) return json({ error: { code: "BAD_REQUEST" } }, { status: 400 });
+  if (!id)
+    return json(
+      {
+        error: {
+          code: "BAD_REQUEST",
+          message: "Parameter id referral wajib diisi.",
+          field: "id",
+        },
+      },
+      { status: 400 }
+    );
 
   const row = await prisma.referral.findUnique({ where: { id } });
   if (!row) return json({ error: { code: "NOT_FOUND" } }, { status: 404 });
@@ -201,7 +211,17 @@ export async function PATCH(req, { params }) {
     return handleAuthError(err);
   }
   const id = String(params?.id || "");
-  if (!id) return json({ error: { code: "BAD_REQUEST" } }, { status: 400 });
+  if (!id)
+    return json(
+      {
+        error: {
+          code: "BAD_REQUEST",
+          message: "Parameter id referral wajib diisi.",
+          field: "id",
+        },
+      },
+      { status: 400 }
+    );
 
   const ct = req.headers.get("content-type") || "";
   const data = {};
@@ -218,11 +238,26 @@ export async function PATCH(req, { params }) {
       } catch (e) {
         if (e?.message === "PAYLOAD_TOO_LARGE")
           return json(
-            { error: { code: "PAYLOAD_TOO_LARGE" } },
+            {
+              error: {
+                code: "PAYLOAD_TOO_LARGE",
+                message: "Ukuran file front melebihi batas 5MB.",
+                field: "front",
+              },
+            },
             { status: 413 }
           );
         if (e?.message === "UNSUPPORTED_TYPE")
-          return json({ error: { code: "UNSUPPORTED_TYPE" } }, { status: 415 });
+          return json(
+            {
+              error: {
+                code: "UNSUPPORTED_TYPE",
+                message: "Format front harus JPEG/PNG/WebP.",
+                field: "front",
+              },
+            },
+            { status: 415 }
+          );
         return json({ error: { code: "SERVER_ERROR" } }, { status: 500 });
       }
 
@@ -257,7 +292,8 @@ export async function PATCH(req, { params }) {
             {
               error: {
                 code: "VALIDATION_ERROR",
-                message: "PIC Konsultan tidak ditemukan",
+                message: "PIC Konsultan tidak ditemukan.",
+                field: "pic_consultant_id",
               },
             },
             { status: 422 }
@@ -287,7 +323,13 @@ export async function PATCH(req, { params }) {
       const g = pickEnum(body.gender, GENDERS);
       if (!g)
         return json(
-          { error: { code: "VALIDATION_ERROR", message: "invalid gender" } },
+          {
+            error: {
+              code: "VALIDATION_ERROR",
+              message: "Field gender harus MALE atau FEMALE.",
+              field: "gender",
+            },
+          },
           { status: 422 }
         );
       data.gender = g;
@@ -328,7 +370,8 @@ export async function PATCH(req, { params }) {
             {
               error: {
                 code: "VALIDATION_ERROR",
-                message: "PIC Konsultan tidak ditemukan",
+                message: "PIC Konsultan tidak ditemukan.",
+                field: "pic_consultant_id",
               },
             },
             { status: 422 }
@@ -341,7 +384,14 @@ export async function PATCH(req, { params }) {
       const s = String(body.status || "").toUpperCase();
       if (!STATUSES.includes(s))
         return json(
-          { error: { code: "VALIDATION_ERROR", message: "invalid status" } },
+          {
+            error: {
+              code: "VALIDATION_ERROR",
+              message:
+                "Field status tidak valid. Gunakan PENDING, REJECTED, atau VERIFIED.",
+              field: "status",
+            },
+          },
           { status: 422 }
         );
       data.status = s;
@@ -465,7 +515,17 @@ export async function DELETE(_req, { params }) {
     return handleAuthError(err);
   }
   const id = String(params?.id || "");
-  if (!id) return json({ error: { code: "BAD_REQUEST" } }, { status: 400 });
+  if (!id)
+    return json(
+      {
+        error: {
+          code: "BAD_REQUEST",
+          message: "Parameter id referral wajib diisi.",
+          field: "id",
+        },
+      },
+      { status: 400 }
+    );
 
   try {
     const deleted = await prisma.referral.update({

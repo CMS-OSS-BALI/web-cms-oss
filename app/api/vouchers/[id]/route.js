@@ -213,7 +213,13 @@ export async function PATCH(req, { params }) {
       String(err?.meta?.target || "").includes("code")
     ) {
       return json(
-        { error: { code: "CONFLICT", message: "Kode voucher sudah dipakai." } },
+        {
+          error: {
+            code: "CONFLICT",
+            message: "Gagal memperbarui data: kode voucher sudah digunakan.",
+            field: "code",
+          },
+        },
         { status: 409 }
       );
     }

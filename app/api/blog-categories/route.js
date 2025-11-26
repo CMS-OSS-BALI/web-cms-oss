@@ -185,7 +185,8 @@ export async function POST(req) {
         {
           error: {
             code: "DUPLICATE",
-            message: "Slug sudah digunakan. Gunakan slug lain.",
+            message:
+              "Gagal membuat data: slug kategori blog sudah digunakan.",
             field: "slug",
           },
         },

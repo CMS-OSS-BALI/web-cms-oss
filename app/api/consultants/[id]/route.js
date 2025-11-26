@@ -371,9 +371,15 @@ export async function PATCH(req, { params }) {
       existing = { ...existing, profile_image_url: next };
     } catch (e) {
       if (e?.code === "P2002") {
-        const field = e?.meta?.target?.join?.(", ") || "unique";
+        const field = e?.meta?.target?.[0] || "email/whatsapp";
         return ok(
-          { error: { code: "CONFLICT", message: `${field} already in use` } },
+          {
+            error: {
+              code: "CONFLICT",
+              message: `Gagal memperbarui data: ${field} sudah digunakan.`,
+              field,
+            },
+          },
           { status: 409 }
         );
       }

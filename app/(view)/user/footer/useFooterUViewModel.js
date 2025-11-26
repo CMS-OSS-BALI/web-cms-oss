@@ -150,10 +150,6 @@ export default function useFooterUViewModel(opts = {}) {
             href: withLang("/user/form-mitra"),
           },
           {
-            label: t("Form Representative", "Representative Form"),
-            href: withLang("/user/form-rep"),
-          },
-          {
             label: t("Kalkulator Biaya Studi", "Study Cost Calculator"),
             href: withLang("/user/calculator"),
           },

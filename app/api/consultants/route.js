@@ -401,7 +401,8 @@ export async function POST(req) {
       {
         error: {
           code: "VALIDATION_ERROR",
-          message: "name_id wajib (min 2 chars)",
+          message: "Field name_id wajib diisi (minimal 2 karakter).",
+          field: "name_id",
         },
       },
       { status: 422 }
@@ -414,7 +415,8 @@ export async function POST(req) {
       {
         error: {
           code: "VALIDATION_ERROR",
-          message: "role_id wajib (min 2 chars)",
+          message: "Field role_id wajib diisi (minimal 2 karakter).",
+          field: "role_id",
         },
       },
       { status: 422 }
@@ -473,9 +475,15 @@ export async function POST(req) {
     });
   } catch (e) {
     if (e?.code === "P2002") {
-      const field = e?.meta?.target?.join?.(", ") || "unique";
+      const field = e?.meta?.target?.[0] || "email/whatsapp";
       return ok(
-        { error: { code: "CONFLICT", message: `${field} already in use` } },
+        {
+          error: {
+            code: "CONFLICT",
+            message: `Gagal membuat data: ${field} sudah digunakan.`,
+            field,
+          },
+        },
         { status: 409 }
       );
     }
@@ -584,9 +592,15 @@ export async function POST(req) {
       await prisma.consultants.delete({ where: { id } });
     } catch {}
     if (err?.code === "P2002") {
-      const field = err?.meta?.target?.join?.(", ") || "unique";
+      const field = err?.meta?.target?.[0] || "email/whatsapp";
       return ok(
-        { error: { code: "CONFLICT", message: `${field} already in use` } },
+        {
+          error: {
+            code: "CONFLICT",
+            message: `Gagal membuat data: ${field} sudah digunakan.`,
+            field,
+          },
+        },
         { status: 409 }
       );
     }

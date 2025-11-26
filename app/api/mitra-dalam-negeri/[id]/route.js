@@ -331,7 +331,13 @@ export async function GET(req, { params }) {
     const id = params?.id;
     if (!id)
       return json(
-        { error: { code: "BAD_REQUEST", message: "id kosong" } },
+        {
+          error: {
+            code: "BAD_REQUEST",
+            message: "Parameter id mitra wajib diisi.",
+            field: "id",
+          },
+        },
         { status: 400 }
       );
 
@@ -426,7 +432,13 @@ export async function PATCH(req, { params }) {
     const id = params?.id;
     if (!id)
       return json(
-        { error: { code: "BAD_REQUEST", message: "id kosong" } },
+        {
+          error: {
+            code: "BAD_REQUEST",
+            message: "Parameter id mitra wajib diisi.",
+            field: "id",
+          },
+        },
         { status: 400 }
       );
 
@@ -479,6 +491,7 @@ export async function PATCH(req, { params }) {
               error: {
                 code: "BAD_REQUEST",
                 message: "Kategori tidak ditemukan.",
+                field: body.category_id ? "category_id" : "category_slug",
               },
             },
             { status: 400 }
@@ -492,7 +505,14 @@ export async function PATCH(req, { params }) {
       const next = String(body.status).toUpperCase();
       if (!["PENDING", "APPROVED", "DECLINED"].includes(next)) {
         return json(
-          { error: { code: "BAD_REQUEST", message: "status tidak valid" } },
+          {
+            error: {
+              code: "BAD_REQUEST",
+              message:
+                "Field status tidak valid. Gunakan PENDING, APPROVED, atau DECLINED.",
+              field: "status",
+            },
+          },
           { status: 400 }
         );
       }
@@ -522,7 +542,8 @@ export async function PATCH(req, { params }) {
           {
             error: {
               code: "BAD_REQUEST",
-              message: "merchant_name wajib diisi",
+              message: "Field merchant_name wajib diisi.",
+              field: "merchant_name",
             },
           },
           { status: 400 }
@@ -547,7 +568,11 @@ export async function PATCH(req, { params }) {
         if (e?.message === "PAYLOAD_TOO_LARGE")
           return json(
             {
-              error: { code: "PAYLOAD_TOO_LARGE", message: "Gambar max 10MB" },
+              error: {
+                code: "PAYLOAD_TOO_LARGE",
+                message: "File image_file melebihi batas 10MB.",
+                field: "image_file",
+              },
             },
             { status: 413 }
           );
@@ -556,7 +581,8 @@ export async function PATCH(req, { params }) {
             {
               error: {
                 code: "UNSUPPORTED_TYPE",
-                message: "Gambar harus JPEG/PNG/WebP/SVG",
+                message: "File image_file harus JPEG/PNG/WebP/SVG.",
+                field: "image_file",
               },
             },
             { status: 415 }
@@ -705,7 +731,13 @@ export async function DELETE(req, { params }) {
 
     if (!id)
       return json(
-        { error: { code: "BAD_REQUEST", message: "id kosong" } },
+        {
+          error: {
+            code: "BAD_REQUEST",
+            message: "Parameter id mitra wajib diisi.",
+            field: "id",
+          },
+        },
         { status: 400 }
       );
     if (hard && restore)
@@ -713,7 +745,9 @@ export async function DELETE(req, { params }) {
         {
           error: {
             code: "BAD_REQUEST",
-            message: "Gunakan salah satu: hard=1 atau restore=1",
+            message:
+              "Gunakan salah satu parameter: hard=1 atau restore=1 (tidak keduanya).",
+            field: "hard/restore",
           },
         },
         { status: 400 }

@@ -216,7 +216,8 @@ export async function POST(req) {
         {
           error: {
             code: "CONFLICT",
-            message: "Slug sudah digunakan. Gunakan slug lain.",
+            message:
+              "Gagal membuat data: slug kategori testimonial sudah digunakan.",
             field: "slug",
           },
         },

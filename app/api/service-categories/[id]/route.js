@@ -125,7 +125,10 @@ export async function PUT(req, { params }) {
   } catch (e) {
     if (e?.code === "P2002")
       return NextResponse.json(
-        { message: "Slug sudah dipakai" },
+        {
+          message: "Gagal memperbarui data: slug sudah digunakan.",
+          field: "slug",
+        },
         { status: 409 }
       );
     if (e?.message === "UNAUTHORIZED")

@@ -148,6 +148,14 @@ export default function VouchersContent({ vm }) {
   const err = (message, description) =>
     notify.error({ message, description, placement: "topRight" });
 
+  const describeError = (res, fallback = "Operasi gagal") => {
+    const parts = [
+      res?.error || res?.message || fallback,
+      res?.field ? `Field: ${res.field}` : "",
+    ].filter(Boolean);
+    return parts.join("\n");
+  };
+
   const { shellW, maxW, blue, text } = TOKENS;
   const isNarrow = useIsNarrow(920);
 
@@ -283,7 +291,7 @@ export default function VouchersContent({ vm }) {
         : await vm.updateVoucher(currentId, payload);
     setFormLoading(false);
 
-    if (!res?.ok) return err("Gagal", res?.error || "Operasi gagal");
+    if (!res?.ok) return err("Gagal", describeError(res, "Operasi gagal"));
     ok(
       "Berhasil",
       formMode === "create" ? "Voucher dibuat" : "Voucher diperbarui"

@@ -922,14 +922,14 @@ const prevEv = {
     boxShadow: "0 14px 30px rgba(15,23,42,.10)",
     border: "1px solid #e5ecff",
     scrollSnapAlign: "start",
-    width: "var(--slide-w)",
-    maxWidth: "none",
+    width: "100%",
+    maxWidth: "360px",
     margin: "0 auto",
   },
   frame: {
     position: "relative",
     width: "100%",
-    height: "var(--img-h)",
+    aspectRatio: "16 / 9",
     borderRadius: 16,
     overflow: "hidden",
     background: "#f1f5ff",
@@ -950,17 +950,23 @@ function PreviousEventsSection({ title, subtitle, photos = [] }) {
 
   const isTablet = useIsNarrow(1024);
   const isMobile = useIsNarrow(640);
-  const slideW = isMobile ? 300 : isTablet ? 420 : 560;
-  const imgH = Math.round((slideW * 9) / 16);
+
+  const slidesPerView = useMemo(() => {
+    if (isMobile) return 1.2; // 1 kartu + ngintip
+    if (isTablet) return 2.4; // 2 kartu + ngintip
+    return 4; // desktop: 4 kartu rata
+  }, [isMobile, isTablet]);
+
+  const spaceBetween = useMemo(
+    () => (isMobile ? 12 : isTablet ? 16 : 24),
+    [isMobile, isTablet]
+  );
 
   const loop = items.length > 1;
   const swiperKey =
     items.map((p) => p.id ?? p.src ?? "").join("|") || "prev-empty";
 
-  const speed = Math.max(
-    5000,
-    Math.min(14000, Math.max(1, items.length) * 900)
-  );
+  const speed = 3000;
 
   const autoplay = loop
     ? {
@@ -996,16 +1002,12 @@ function PreviousEventsSection({ title, subtitle, photos = [] }) {
         style={{ ...prevEv.scrollerOuter, ["--rvd"]: "180ms" }}
       >
         <Swiper
-          key={`${swiperKey}-${slideW}`}
+          key={`${swiperKey}-${slidesPerView}`}
           className={`${ACT_SWIPER_CLASS} prev-swiper`}
-          style={{
-            ...prevEv.swiper,
-            ["--slide-w"]: `${slideW}px`,
-            ["--img-h"]: `${imgH}px`,
-          }}
+          style={prevEv.swiper}
           modules={[Autoplay]}
-          slidesPerView="auto"
-          spaceBetween={isMobile ? 12 : isTablet ? 16 : 18}
+          slidesPerView={slidesPerView}
+          spaceBetween={spaceBetween}
           loop={loop}
           loopAdditionalSlides={loop ? Math.max(10, items.length) : 0}
           speed={speed}
@@ -1017,13 +1019,7 @@ function PreviousEventsSection({ title, subtitle, photos = [] }) {
           preloadImages={false}
         >
           {items.map((p, idx) => (
-            <SwiperSlide
-              key={p.id || idx}
-              style={{
-                ["--slide-w"]: `${slideW}px`,
-                ["--img-h"]: `${imgH}px`,
-              }}
-            >
+            <SwiperSlide key={p.id || idx}>
               <article className="prev-card" style={prevEv.card}>
                 <div style={prevEv.frame}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1055,6 +1051,9 @@ function PreviousEventsSection({ title, subtitle, photos = [] }) {
         }
         .${ACT_SWIPER_CLASS} .swiper-slide {
           height: auto;
+          display: flex;
+          align-items: stretch;
+          justify-content: center;
         }
         .prev-swiper {
           width: 100vw;
@@ -1062,10 +1061,6 @@ function PreviousEventsSection({ title, subtitle, photos = [] }) {
           margin-right: calc(50% - 50vw);
           padding: 0 !important;
           overflow: hidden;
-        }
-        .prev-swiper .swiper-slide {
-          height: auto;
-          width: var(--slide-w) !important;
         }
       `}</style>
     </section>

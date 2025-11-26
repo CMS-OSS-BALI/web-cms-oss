@@ -232,7 +232,7 @@ export async function PATCH(req, { params }) {
         {
           error: {
             code: "CONFLICT",
-            message: "Slug sudah digunakan. Gunakan slug lain.",
+            message: "Gagal memperbarui data: slug kategori event sudah digunakan.",
             field: "slug",
           },
         },

@@ -165,7 +165,10 @@ export async function POST(req) {
   } catch (e) {
     if (e?.code === "P2002") {
       return NextResponse.json(
-        { message: "Slug sudah dipakai" },
+        {
+          message: "Gagal membuat data: slug sudah digunakan.",
+          field: "slug",
+        },
         { status: 409 }
       );
     }

@@ -15,7 +15,13 @@ export async function POST(req, { params }) {
     const id = params?.id;
     if (!id)
       return json(
-        { error: { code: "BAD_REQUEST", message: "id wajib" } },
+        {
+          error: {
+            code: "BAD_REQUEST",
+            message: "Parameter id blog wajib diisi.",
+            field: "id",
+          },
+        },
         { status: 400 }
       );
 
