@@ -618,7 +618,7 @@ export default function useOverseasViewModel({ locale = "id" } = {}) {
         title:
           "Book a Free Consultation With Our Experts Today and Feel the Benefits",
         buttonLabel: "Ask Us First",
-        buttonHref: "/consultation",
+        buttonHref: "/user/leads",
       },
     };
 

@@ -1,4 +1,4 @@
-// useAboutUsViewModel.js
+// app/(view)/user/(panel)/aboutus/useAboutUsViewModel.js
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -91,7 +91,7 @@ const DICT = {
     },
 
     activities: {
-      title: "OUR ACTIVITY",
+      title: "AKTIVITAS KAMI",
       subtitle:
         "Kegiatan kami dirancang untuk memperkuat karakter, kompetensi, dan koneksi—modal utama menuju masa depan global yang berdaya.",
     },
@@ -207,10 +207,12 @@ const DICT = {
 
 const DEFAULT_LOCALE = "id";
 const SUPPORTED = Object.keys(DICT);
+
 const normalize = (l) => {
   const v = (l || "").toLowerCase().slice(0, 2);
   return SUPPORTED.includes(v) ? v : DEFAULT_LOCALE;
 };
+
 const pick = (loc, path) =>
   path.split(".").reduce((o, k) => (o ? o[k] : undefined), DICT[loc]);
 
@@ -244,7 +246,10 @@ export default function useAboutUsViewModel({ locale = "id" } = {}) {
   );
 
   const video = useMemo(
-    () => ({ title: pick(loc, "video.title"), url: pick(loc, "video.url") }),
+    () => ({
+      title: pick(loc, "video.title"),
+      url: pick(loc, "video.url"),
+    }),
     [loc]
   );
 
@@ -326,6 +331,7 @@ export default function useAboutUsViewModel({ locale = "id" } = {}) {
 
   return {
     locale: loc,
+    supportedLocales: SUPPORTED,
     hero,
     vision,
     mission,

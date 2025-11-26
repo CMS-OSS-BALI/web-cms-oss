@@ -261,6 +261,12 @@ const panel = {
     color: "#305899",
     letterSpacing: ".02em",
   },
+  chip: {
+    textAlign: "center",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+  },
 };
 
 function Chip({ value, label }) {
@@ -278,7 +284,7 @@ function Chip({ value, label }) {
       className="cd-chip-col"
       aria-live="polite"
     >
-      <div className="cd-chip" style={{ textAlign: "center" }}>
+      <div className="cd-chip" style={panel.chip}>
         <div style={panel.pill}>{v}</div>
         <div style={panel.label}>{safeText(label)}</div>
       </div>
@@ -331,7 +337,7 @@ function CountdownPanel({ vm, locale = "id" }) {
             <Col key={key} xs={12} sm={12} md={12} lg={6} xl={6}>
               <div
                 className="cd-chip"
-                style={{ textAlign: "center" }}
+                style={panel.chip}
                 aria-hidden="true"
               >
                 <div style={panel.pill}>--</div>

@@ -175,7 +175,13 @@ const layout = {
     border: "none",
     margin: "8px 0 18px",
   },
-  body: { color: "#2b3a5e", lineHeight: 1.8, opacity: 0.98 },
+  body: {
+    color: "#2b3a5e",
+    lineHeight: 1.8,
+    opacity: 0.98,
+    textAlign: "justify",
+  },
+
   media: `
     .cd-grid {
       display: grid;

@@ -1,3 +1,4 @@
+// app/(view)/user/(panel)/career/CareerContent.jsx
 "use client";
 
 import React, {
@@ -437,6 +438,7 @@ export default function CareerContent(props) {
     levelsCTA: levelsCTAOverride,
     onLevelsCTA: onLevelsCTAOverride,
     levelsHeroImg: levelsHeroImgOverride,
+    levelsTitle: levelsTitleOverride, // NEW override support
   } = props || {};
 
   const router = useRouter();
@@ -476,6 +478,7 @@ export default function CareerContent(props) {
   const levels = levelsOverride ?? vm.levels;
   const levelsCTA = levelsCTAOverride ?? vm.levelsCTA;
   const levelsHeroImg = levelsHeroImgOverride ?? vm.levelsHeroImg;
+  const levelsTitle = levelsTitleOverride ?? vm.levelsTitle; // NEW: localized title
   const onCTATeam = onCTATeamOverride ?? vm.onCTATeam;
   const onCTAReferral = onCTAReferralOverride ?? vm.onCTAReferral;
   const onSendCV = onSendCVOverride ?? vm.onSendCV;
@@ -767,9 +770,7 @@ export default function CareerContent(props) {
 
       {/* LEVELS */}
       <section id="referral-levels" style={styles.levWrap}>
-        <h3 style={styles.levTitle}>
-          Peluang Level Program Sahabat Referral OSS Bali
-        </h3>
+        <h3 style={styles.levTitle}>{levelsTitle}</h3>
 
         <div
           style={{

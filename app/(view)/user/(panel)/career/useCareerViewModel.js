@@ -115,7 +115,7 @@ export default function useCareerViewModel({ locale = "id" } = {}) {
         title: L("PRO SOLITAIRE LEVEL", "PRO SOLITAIRE LEVEL"),
         desc: L(
           "Keanggotaan Sahabat Referral OSS Bali tertinggi dengan akses eksklusif ke bonus komisi lebih besar dan trip luar negeri gratis tahunan.",
-          "Top-tier OSS Bali Referral membership with exclusive access to higher commission bonuses and annual free overseas trip."
+          "Top-tier OSS Bali Referral membership with exclusive access to higher commission bonuses and an annual free overseas trip."
         ),
       },
       {
@@ -130,6 +130,12 @@ export default function useCareerViewModel({ locale = "id" } = {}) {
       },
     ],
     [locale]
+  );
+
+  // 🔹 NEW: Judul section Level (dictionary)
+  const levelsTitle = L(
+    "Peluang Level Program Sahabat Referral OSS Bali",
+    "Level Opportunities in the OSS Bali Referral Buddy Program"
   );
 
   const levelsCTA = L("Wujudkan sekarang!", "Make it happen!");
@@ -161,6 +167,7 @@ export default function useCareerViewModel({ locale = "id" } = {}) {
     referral,
     benefits,
     levels,
+    levelsTitle, // 🔹 dikirim ke luar
     levelsCTA,
     levelsHeroImg,
     onCTATeam,
