@@ -19,7 +19,7 @@ import {
   Skeleton,
 } from "antd";
 import { Mail, Users, Building2, PlayCircle, Eye, XCircle } from "lucide-react";
-import HtmlEditor from "@/../app/components/editor/HtmlEditor";
+import HtmlEditor from "@/app/components/editor/HtmlEditor";
 import useBlastViewModel from "./useBlastViewModel";
 
 /* ===== compact tokens (selaras halaman lain) ===== */

@@ -28,6 +28,8 @@ import {
   SearchOutlined,
   FilterOutlined,
 } from "@ant-design/icons";
+import HtmlEditor from "@/app/components/editor/HtmlEditor";
+import { sanitizeHtml } from "@/app/utils/dompurify";
 
 /* ===== tokens ===== */
 const TOKENS = {
@@ -96,6 +98,53 @@ const abbr = (n) => {
   if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1).replace(".", ",")}M`;
   if (v >= 1_000) return `${(v / 1_000).toFixed(0)}K`;
   return String(v);
+};
+
+const SANITIZE_DESC_OPTIONS = {
+  allowedTags: [
+    "p",
+    "br",
+    "b",
+    "strong",
+    "i",
+    "em",
+    "u",
+    "s",
+    "strike",
+    "a",
+    "ul",
+    "ol",
+    "li",
+    "blockquote",
+    "code",
+    "pre",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "span",
+    "div",
+    "img",
+  ],
+  allowedAttrs: [
+    "href",
+    "title",
+    "target",
+    "rel",
+    "src",
+    "alt",
+    "width",
+    "height",
+    "loading",
+  ],
+};
+
+const normalizeRichText = (value) => {
+  const str = typeof value === "string" ? value.trim() : "";
+  if (!str || str === "<p><br></p>") return "";
+  return value || "";
 };
 
 export default function BlogContent({ initialLocale = "id" }) {
@@ -371,6 +420,15 @@ export default function BlogContent({ initialLocale = "id" }) {
       ? vm.page >= vm.totalPages
       : rows.length < (vm.perPage || 10));
 
+  const safeDetailDescription = useMemo(
+    () =>
+      sanitizeHtml(
+        detailData?.description || detailData?.description_id || "",
+        SANITIZE_DESC_OPTIONS
+      ),
+    [detailData]
+  );
+
   return (
     <ConfigProvider
       componentSize="middle"
@@ -399,6 +457,32 @@ export default function BlogContent({ initialLocale = "id" }) {
         .landscape-uploader .ant-upload {
           width: 100% !important;
           height: 100% !important;
+        }
+
+        /* Rich text editor styling */
+        .blog-editor {
+          border: 1px solid #e6eeff;
+          border-radius: 12px;
+          background: #fff;
+          overflow: hidden;
+          box-shadow: inset 0 2px 6px rgba(11, 86, 201, 0.04);
+        }
+        .blog-editor .ql-toolbar {
+          border: 0;
+          border-bottom: 1px solid #e6eeff;
+          background: #f5f8ff;
+          border-radius: 12px 12px 0 0;
+          padding: 8px 10px;
+        }
+        .blog-editor .ql-container {
+          border: 0;
+        }
+        .blog-editor .ql-editor {
+          min-height: 220px;
+          padding: 12px;
+          font-size: 14px;
+          line-height: 1.6;
+          color: #0f172a;
         }
       `}</style>
 
@@ -672,8 +756,18 @@ export default function BlogContent({ initialLocale = "id" }) {
                 optionFilterProp="label"
               />
             </Form.Item>
-            <Form.Item label={T.blogDesc} name="description">
-              <Input.TextArea rows={4} placeholder="Deskripsi singkat..." />
+            <Form.Item
+              label={T.blogDesc}
+              name="description"
+              valuePropName="value"
+              getValueFromEvent={normalizeRichText}
+              initialValue=""
+            >
+              <HtmlEditor
+                className="blog-editor"
+                placeholder="Tulis deskripsi atau konten berita..."
+                minHeight={220}
+              />
             </Form.Item>
             <div style={styles.modalFooter}>
               <Button
@@ -758,8 +852,18 @@ export default function BlogContent({ initialLocale = "id" }) {
                   optionFilterProp="label"
                 />
               </Form.Item>
-              <Form.Item label={T.blogDesc} name="description">
-                <Input.TextArea rows={4} placeholder="Deskripsi (opsional)" />
+              <Form.Item
+              label={T.blogDesc}
+              name="description"
+              valuePropName="value"
+              getValueFromEvent={normalizeRichText}
+              initialValue=""
+            >
+              <HtmlEditor
+                className="blog-editor"
+                placeholder="Perbarui deskripsi atau isi berita..."
+                minHeight={220}
+                />
               </Form.Item>
               <div style={styles.modalFooter}>
                 <Button
@@ -856,9 +960,12 @@ export default function BlogContent({ initialLocale = "id" }) {
               </div>
               <div>
                 <div style={styles.label}>{T.blogDesc}</div>
-                <div style={styles.value}>
-                  {detailData?.description || detailData?.description_id || "-"}
-                </div>
+                <div
+                  style={styles.value}
+                  dangerouslySetInnerHTML={{
+                    __html: safeDetailDescription || "-",
+                  }}
+                />
               </div>
             </div>
           </Spin>

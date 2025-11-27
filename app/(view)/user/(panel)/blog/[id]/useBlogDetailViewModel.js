@@ -5,6 +5,7 @@ import useSWR from "swr";
 import { notification, message } from "antd";
 import { useParams } from "next/navigation";
 import { fetcher } from "@/lib/swr/fetcher";
+import { sanitizeHtml } from "@/app/utils/dompurify";
 
 /* ---------- helpers ---------- */
 const imgSrc = (r) => r?.image_public_url || r?.image_url || "";
@@ -20,6 +21,47 @@ function splitTitle(name = "") {
   }
   return [s, ""];
 }
+
+const BLOG_HTML_SANITIZE_OPTIONS = {
+  allowedTags: [
+    "p",
+    "br",
+    "b",
+    "strong",
+    "i",
+    "em",
+    "u",
+    "s",
+    "strike",
+    "a",
+    "ul",
+    "ol",
+    "li",
+    "blockquote",
+    "code",
+    "pre",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "span",
+    "div",
+    "img",
+  ],
+  allowedAttrs: [
+    "href",
+    "title",
+    "target",
+    "rel",
+    "src",
+    "alt",
+    "width",
+    "height",
+    "loading",
+  ],
+};
 
 /* ---------- dictionary form (id/en) ---------- */
 const FORM_TEXT = {
@@ -169,6 +211,10 @@ export default function useBlogDetailViewModel({
   const vm = useMemo(() => {
     const row = data?.data || {};
     const [titleMain, titleSub] = splitTitle(row?.name || "");
+    const safeHtml = sanitizeHtml(
+      row?.description || row?.description_id || "",
+      BLOG_HTML_SANITIZE_OPTIONS
+    );
 
     return {
       // info locale
@@ -183,7 +229,7 @@ export default function useBlogDetailViewModel({
       titleMain,
       titleSub,
       image: imgSrc(row),
-      html: row?.description || "",
+      html: safeHtml,
       source: row?.source || "",
 
       // form
