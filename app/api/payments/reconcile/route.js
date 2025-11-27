@@ -77,6 +77,16 @@ async function reconcileOne(order_id) {
 
   if (!booking) return { order_id, ok: false, reason: "BOOKING_NOT_FOUND" };
 
+  const lastPayment = await prisma.payments.findFirst({
+    where: { order_id },
+    orderBy: { created_at: "desc" },
+    select: { gross_amount: true, channel: true },
+  });
+  const lastPaymentGross = Number.isFinite(Number(lastPayment?.gross_amount))
+    ? Number(lastPayment.gross_amount)
+    : null;
+  const lastPaymentChannel = lastPayment?.channel || null;
+
   const mid = await fetchStatus(order_id);
   const mapped = mapStatus(mid);
   const payment_type = mid?.payment_type || null;
@@ -87,19 +97,30 @@ async function reconcileOne(order_id) {
   // Expected gross if passthrough
   let expected = Number(booking.amount || 0);
   const ch = detectChannelFromMidtrans(mid);
-  if (isPassthroughEnabled() && ch) {
-    expected = grossUp(booking.amount, ch).gross;
+  if (isPassthroughEnabled()) {
+    if (ch) {
+      expected = grossUp(booking.amount, ch).gross;
+    } else if (lastPaymentGross != null) {
+      expected = lastPaymentGross;
+    }
+  } else if (lastPaymentGross != null) {
+    expected = lastPaymentGross;
   }
   const amountMatch =
     gross_amount == null
       ? true
       : Math.abs(Number(expected) - Number(gross_amount)) <= 2;
+  const channelForLog = ch || payment_type || lastPaymentChannel;
+  const effectivePaidAmount =
+    Number.isFinite(Number(gross_amount)) && Number(gross_amount) > 0
+      ? Number(gross_amount)
+      : Number(booking.amount || 0);
 
   await prisma.payments.upsert({
     where: { order_id },
     update: {
       status: String(mid?.transaction_status || "").toUpperCase(),
-      channel: ch || payment_type,
+      channel: channelForLog,
       gross_amount: gross_amount ?? booking.amount,
       raw: mid,
       updated_at: new Date(),
@@ -108,7 +129,7 @@ async function reconcileOne(order_id) {
       order_id,
       booking_id: booking.id,
       status: String(mid?.transaction_status || "").toUpperCase(),
-      channel: ch || payment_type,
+      channel: channelForLog,
       gross_amount: gross_amount ?? booking.amount,
       raw: mid,
     },
@@ -119,14 +140,6 @@ async function reconcileOne(order_id) {
 
     await prisma.$transaction(
       async (tx) => {
-        if (!amountMatch) {
-          await tx.event_booth_bookings.updateMany({
-            where: { id: booking.id, NOT: { status: "PAID" } },
-            data: { status: "REVIEW", updated_at: new Date() },
-          });
-          return;
-        }
-
         const quota = booking.event?.booth_quota ?? null;
         const sold = Number(booking.event?.booth_sold_count || 0);
 
@@ -140,7 +153,12 @@ async function reconcileOne(order_id) {
 
         const updated = await tx.event_booth_bookings.updateMany({
           where: { id: booking.id, NOT: { status: "PAID" } },
-          data: { status: "PAID", paid_at: new Date(), updated_at: new Date() },
+          data: {
+            status: "PAID",
+            paid_at: new Date(),
+            updated_at: new Date(),
+            ...(amountMatch ? {} : { amount: effectivePaidAmount }),
+          },
         });
 
         if (updated.count > 0) {
@@ -181,10 +199,10 @@ async function reconcileOne(order_id) {
         await sendBoothInvoiceEmail({
           to: booking.email,
           order_id,
-          amount: Number(booking.amount || 0),
+          amount: amountMatch ? Number(booking.amount || 0) : effectivePaidAmount,
           status: "PAID",
           paid_at: new Date(),
-          channel: ch || payment_type,
+          channel: channelForLog,
           event: booking.event || {},
           support_email: process.env.SUPPORT_EMAIL || process.env.MAIL_FROM,
         });

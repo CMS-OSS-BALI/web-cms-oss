@@ -85,17 +85,33 @@ export async function DELETE(req, { params }) {
       );
     }
 
-    const up = await prisma.event_booth_bookings.update({
-      where: { id },
-      data: { status: "CANCELLED", updated_at: new Date() },
-      select: { id: true, status: true },
+    const res = await prisma.$transaction(async (tx) => {
+      // hapus log payment terkait dulu untuk elak FK constraint
+      await tx.payments.deleteMany({ where: { booking_id: id } });
+
+      // hapus booking
+      return tx.event_booth_bookings.delete({
+        where: { id },
+        select: { id: true, status: true },
+      });
     });
 
-    return json({ message: "Booking dibatalkan.", data: up });
+    return json({ message: "Booking dihapus.", data: res });
   } catch (err) {
     const status = err?.status || 500;
     if (status === 401 || status === 403) return err;
     if (err?.code === "P2025") return notFound();
+    if (err?.code === "P2003") {
+      return json(
+        {
+          error: {
+            code: "FK_CONSTRAINT",
+            message: "Tidak bisa menghapus booking karena ada relasi terkait.",
+          },
+        },
+        { status: 409 }
+      );
+    }
     console.error(`DELETE /api/bookings/${params?.id} error:`, err);
     return json(
       {

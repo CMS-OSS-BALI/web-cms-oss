@@ -93,27 +93,52 @@ export async function POST(req) {
       );
     }
 
+    const lastPayment = await prisma.payments.findFirst({
+      where: { order_id },
+      orderBy: { created_at: "desc" },
+      select: { gross_amount: true, channel: true },
+    });
+    const lastPaymentGross = Number.isFinite(Number(lastPayment?.gross_amount))
+      ? Number(lastPayment.gross_amount)
+      : null;
+    const lastPaymentChannel = lastPayment?.channel || null;
+
     const bookingAmount = Number(booking.amount || 0);
     const grossAmount = Number.isFinite(Number(gross_amount_raw))
       ? Number(gross_amount_raw)
-      : 0;
+      : null;
 
     // === Amount match logic ===
     let expected = bookingAmount;
     let detectedChannel = detectChannelFromWebhook(body);
-    if (isPassthroughEnabled() && detectedChannel) {
-      expected = grossUp(bookingAmount, detectedChannel).gross;
+    if (isPassthroughEnabled()) {
+      if (detectedChannel) {
+        expected = grossUp(bookingAmount, detectedChannel).gross;
+      } else if (lastPaymentGross != null) {
+        expected = lastPaymentGross;
+      }
+    } else if (lastPaymentGross != null) {
+      expected = lastPaymentGross;
     }
-    const diff = Math.abs(Number(expected) - Number(grossAmount));
-    const amountMatch = diff <= 2; // toleransi pembulatan 1-2 IDR
+    const diff =
+      grossAmount == null
+        ? 0
+        : Math.abs(Number(expected) - Number(grossAmount));
+    const amountMatch = grossAmount == null ? true : diff <= 2; // toleransi pembulatan 1-2 IDR
+    const channelForLog =
+      detectedChannel || body?.payment_type || lastPaymentChannel || null;
+    const effectivePaidAmount =
+      Number.isFinite(Number(grossAmount)) && Number(grossAmount) > 0
+        ? Number(grossAmount)
+        : bookingAmount;
 
     // Upsert payments log
     await prisma.payments.upsert({
       where: { order_id },
       update: {
         status: String(transaction_status || "").toUpperCase(),
-        channel: detectedChannel || body?.payment_type || null,
-        gross_amount: grossAmount || bookingAmount,
+        channel: channelForLog,
+        gross_amount: grossAmount ?? bookingAmount,
         raw: body,
         updated_at: new Date(),
       },
@@ -121,8 +146,8 @@ export async function POST(req) {
         order_id,
         booking_id: booking.id,
         status: String(transaction_status || "").toUpperCase(),
-        channel: detectedChannel || body?.payment_type || null,
-        gross_amount: grossAmount || bookingAmount,
+        channel: channelForLog,
+        gross_amount: grossAmount ?? bookingAmount,
         raw: body,
       },
     });
@@ -132,15 +157,6 @@ export async function POST(req) {
 
     if (mapped === "paid") {
       await prisma.$transaction(async (tx) => {
-        // Jika jumlah tidak cocok → REVIEW
-        if (!amountMatch) {
-          await tx.event_booth_bookings.updateMany({
-            where: { id: booking.id, NOT: { status: "PAID" } },
-            data: { status: "REVIEW", updated_at: new Date() },
-          });
-          return;
-        }
-
         const quota = booking.event?.booth_quota ?? null;
         const sold = Number(booking.event?.booth_sold_count || 0);
 
@@ -154,7 +170,13 @@ export async function POST(req) {
 
         const updated = await tx.event_booth_bookings.updateMany({
           where: { id: booking.id, NOT: { status: "PAID" } },
-          data: { status: "PAID", paid_at: new Date(), updated_at: new Date() },
+          data: {
+            status: "PAID",
+            paid_at: new Date(),
+            updated_at: new Date(),
+            // Saat nominal selisih, pakai nominal aktual dibayar
+            ...(amountMatch ? {} : { amount: effectivePaidAmount }),
+          },
         });
 
         if (updated.count > 0) {
@@ -193,10 +215,10 @@ export async function POST(req) {
           await sendBoothInvoiceEmail({
             to: booking.email,
             order_id,
-            amount: bookingAmount,
+            amount: amountMatch ? bookingAmount : effectivePaidAmount,
             status: "PAID",
             paid_at: new Date(),
-            channel: detectedChannel || body?.payment_type || null,
+            channel: channelForLog,
             event: booking.event || {},
             support_email: process.env.SUPPORT_EMAIL || process.env.MAIL_FROM,
           });

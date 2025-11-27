@@ -128,6 +128,10 @@ export async function GET(req) {
     let mid_summary = null;
     let expected_gross = Number(booking.amount || 0);
     let amount_match = null;
+    const lastPayment = booking.payments?.[0] || null;
+    const lastPaymentGross = Number.isFinite(Number(lastPayment?.gross_amount))
+      ? Number(lastPayment.gross_amount)
+      : null;
 
     if (!mid?.error) {
       const mapped = mapStatus(mid);
@@ -136,8 +140,14 @@ export async function GET(req) {
         : null;
       const ch = detectChannelFromMidtrans(mid);
 
-      if (isPassthroughEnabled() && ch) {
-        expected_gross = grossUp(booking.amount, ch).gross;
+      if (isPassthroughEnabled()) {
+        if (ch) {
+          expected_gross = grossUp(booking.amount, ch).gross;
+        } else if (lastPaymentGross != null) {
+          expected_gross = lastPaymentGross;
+        }
+      } else if (lastPaymentGross != null) {
+        expected_gross = lastPaymentGross;
       }
 
       amount_match =
