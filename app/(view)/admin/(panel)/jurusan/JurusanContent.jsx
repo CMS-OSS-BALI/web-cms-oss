@@ -35,19 +35,19 @@ const TOKENS = {
 };
 
 /* ===== Grid kolom konsisten (header & baris)
-   Jurusan | Kampus | Intake | Harga | Aksi  ===== */
+   Fakultas | Kampus | Kota | Harga | Aksi  ===== */
 const GRID_COLS =
   "minmax(320px,2fr) minmax(260px,1.2fr) minmax(140px,.9fr) minmax(160px,.9fr) 120px";
 
 const T = {
-  title: "Manajemen Jurusan",
-  totalLabel: "Total Jurusan",
-  listTitle: "Data Jurusan",
+  title: "Manajemen Fakultas",
+  totalLabel: "Total Fakultas",
+  listTitle: "Data Fakultas",
   addNew: "Buat Data Baru",
-  searchPh: "Cari nama jurusan",
-  majorCol: "Nama Jurusan",
+  searchPh: "Cari nama fakultas",
+  majorCol: "Nama Fakultas",
   collegeCol: "Nama Kampus",
-  intakeCol: "Intake",
+  intakeCol: "Kota", // kolom ketiga sekarang kota
   priceCol: "Harga",
   action: "Aksi",
   view: "Lihat",
@@ -56,11 +56,11 @@ const T = {
   save: "Simpan",
 
   // form
-  name: "Nama Jurusan",
+  name: "Nama Fakultas",
   desc: "Deskripsi",
   college: "Kampus",
   price: "Harga (IDR)",
-  intake: "Intake (opsional)",
+  intake: "Kota (boleh lebih dari satu / opsional)",
 
   // sorting
   sort: "Urutkan",
@@ -88,6 +88,7 @@ const monthsId = [
   "November",
   "Desember",
 ];
+
 const fmtDateId = (dLike) => {
   if (dLike === null || dLike === undefined || dLike === "") return "-";
   try {
@@ -99,6 +100,7 @@ const fmtDateId = (dLike) => {
     return "-";
   }
 };
+
 /* tanggal: created_ts -> created_at -> updated_ts -> updated_at */
 const pickCreated = (obj) =>
   obj?.created_ts ??
@@ -108,6 +110,38 @@ const pickCreated = (obj) =>
   null;
 
 const stripTags = (s) => (s ? String(s).replace(/<[^>]*>/g, "") : "");
+
+/* ==== Shortcut helper untuk Multiple Select (Pilih Semua / Hapus Semua) ==== */
+const renderSelectShortcuts = ({ menu, onSelectAll, onClear, disabledAll }) => (
+  <div>
+    {menu}
+    <div style={{ display: "flex", gap: 8, padding: "6px 8px" }}>
+      <Button size="small" onClick={onSelectAll} disabled={disabledAll}>
+        Pilih Semua
+      </Button>
+      <Button size="small" danger onClick={onClear}>
+        Hapus Semua
+      </Button>
+    </div>
+  </div>
+);
+
+const normalizeArray = (val) => {
+  if (!val) return [];
+  if (Array.isArray(val))
+    return val
+      .map((v) => (v ?? "").toString().trim())
+      .filter(Boolean)
+      .filter((v, i, arr) => arr.indexOf(v) === i);
+  return (val || "")
+    .toString()
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+};
+
+const toKotaArray = (val) => normalizeArray(val);
+const toIntakeArray = (val) => normalizeArray(val);
 
 /* ==== currency helpers ==== */
 const fmtIdr = (v) => {
@@ -217,7 +251,20 @@ export default function JurusanContent({ vm }) {
     fetchCollegeOpts("");
   }, []); // eslint-disable-line
 
-  // Pastikan label untuk value terpilih selalu ada di options (UX aman)
+  // kota options (remote, opsional)
+  const [kotaOptions, setKotaOptions] = useState([]);
+  const [fetchingKota, setFetchingKota] = useState(false);
+  const fetchKotaOpts = async (kw = "") => {
+    setFetchingKota(true);
+    const opts = await viewModel.searchKotaOptions?.(kw).catch(() => []);
+    setKotaOptions(opts || []);
+    setFetchingKota(false);
+  };
+  useEffect(() => {
+    fetchKotaOpts("");
+  }, []); // eslint-disable-line
+
+  // Pastikan label untuk value kampus terpilih selalu ada di options (UX aman)
   useEffect(() => {
     const id = viewModel.collegeId;
     if (!id) return;
@@ -259,19 +306,22 @@ export default function JurusanContent({ vm }) {
     const v = await formCreate.validateFields().catch(() => null);
     if (!v) return;
 
+    const selectedKotaIds = toKotaArray(v.kota_id);
+
     const out = await viewModel.createJurusan({
       college_id: v.college_id,
       name: v.name,
       description: v.description || "",
-      in_take: v.in_take ?? null,
+      // kirim array ID kota; kalau kosong, jangan kirim field ke API
+      kota_id: selectedKotaIds.length ? selectedKotaIds : undefined,
       harga: v.harga ?? null,
       autoTranslate: true,
     });
     if (!out.ok) {
-      toast.err("Gagal membuat jurusan", out.error || "Gagal menyimpan data.");
+      toast.err("Gagal membuat fakultas", out.error || "Gagal menyimpan data.");
       return;
     }
-    toast.ok("Berhasil", `Jurusan "${v.name}" berhasil dibuat.`);
+    toast.ok("Berhasil", `Fakultas "${v.name}" berhasil dibuat.`);
     setCreateOpen(false);
     formCreate.resetFields();
   };
@@ -290,6 +340,8 @@ export default function JurusanContent({ vm }) {
     }
     const d = data?.data || data || row;
     setDetailData(d);
+
+    // pastikan kampus terpilih keinject ke options
     const label = viewModel.collegeName?.(d.college_id) || "";
     if (d.college_id && label) {
       setCollegeOptions((prev) => {
@@ -297,11 +349,32 @@ export default function JurusanContent({ vm }) {
         return has ? prev : [{ value: d.college_id, label }, ...prev];
       });
     }
+
+    // pastikan kota terpilih keinject ke options (backward compatible: single / multi)
+    if (d.kota_id) {
+      const ids = Array.isArray(d.kota_id) ? d.kota_id : [d.kota_id];
+      setKotaOptions((prev) => {
+        const existing = new Set(prev.map((x) => String(x.value)));
+        const extra = ids
+          .filter((id) => !existing.has(String(id)))
+          .map((id) => ({
+            value: id,
+            label: d.kota_name || `Kota ID ${id}`,
+          }));
+        return extra.length ? [...extra, ...prev] : prev;
+      });
+    }
+
     formEdit.setFieldsValue({
       college_id: d.college_id || undefined,
+      // Multiple select selalu butuh array
+      kota_id: Array.isArray(d.kota_ids)
+        ? d.kota_ids
+        : d.kota_id
+        ? [d.kota_id]
+        : [],
       name: d.name || "",
       description: d.description || "",
-      in_take: d.in_take || "",
       harga: d.harga !== undefined && d.harga !== null ? String(d.harga) : "",
     });
   };
@@ -311,11 +384,14 @@ export default function JurusanContent({ vm }) {
     const v = await formEdit.validateFields().catch(() => null);
     if (!v) return;
 
+    const selectedKotaIds = toKotaArray(v.kota_id);
+
     const res = await viewModel.updateJurusan(activeRow.id, {
       college_id: v.college_id,
       name: v.name,
       description: v.description ?? null,
-      in_take: v.in_take ?? null,
+      // kirim array ID kota; kalau kosong, jangan kirim field ke API
+      kota_id: selectedKotaIds.length ? selectedKotaIds : undefined,
       harga: v.harga ?? null,
       autoTranslate: false,
     });
@@ -329,7 +405,7 @@ export default function JurusanContent({ vm }) {
     }
     toast.ok(
       "Perubahan disimpan",
-      `Jurusan "${v.name || activeRow.name}" telah diperbarui.`
+      `Fakultas "${v.name || activeRow.name}" telah diperbarui.`
     );
     setEditOpen(false);
     formEdit.resetFields();
@@ -341,7 +417,7 @@ export default function JurusanContent({ vm }) {
       toast.err("Gagal menghapus", res.error || "Tidak bisa menghapus data.");
       return;
     }
-    toast.ok("Terhapus", "Jurusan berhasil dihapus.");
+    toast.ok("Terhapus", "Fakultas berhasil dihapus.");
   };
 
   const sortOptions = [
@@ -545,11 +621,19 @@ export default function JurusanContent({ vm }) {
                       const name = r.name || "(untitled)";
                       const collegeLabel =
                         viewModel.collegeName?.(r.college_id) || "";
-                      const intake = (r.in_take || "").trim();
+                      const kotaLabelArr = Array.isArray(r.kota_names)
+                        ? r.kota_names
+                        : r.kota_name
+                        ? [r.kota_name]
+                        : [];
+                      const kotaLabel =
+                        kotaLabelArr.length > 0
+                          ? kotaLabelArr.join(", ")
+                          : "—";
 
                       return (
                         <div key={r.id} style={styles.row}>
-                          {/* Nama Jurusan */}
+                          {/* Nama Fakultas */}
                           <div style={styles.colName}>
                             <div style={styles.nameWrap}>
                               <div style={styles.nameText} title={name}>
@@ -586,12 +670,10 @@ export default function JurusanContent({ vm }) {
                             )}
                           </div>
 
-                          {/* Intake */}
+                          {/* Kota */}
                           <div style={styles.colCenter}>
-                            {intake ? (
-                              <Tooltip title={intake}>
-                                <div style={styles.clampCell}>{intake}</div>
-                              </Tooltip>
+                            {kotaLabel !== "—" ? (
+                              <div style={styles.clampCell}>{kotaLabel}</div>
                             ) : (
                               "—"
                             )}
@@ -631,7 +713,7 @@ export default function JurusanContent({ vm }) {
                             </Tooltip>
                             <Tooltip title={T.del}>
                               <Popconfirm
-                                title="Hapus jurusan ini?"
+                                title="Hapus fakultas ini?"
                                 okText="Ya"
                                 cancelText="Batal"
                                 onConfirm={() => onDelete(r.id)}
@@ -721,17 +803,39 @@ export default function JurusanContent({ vm }) {
             <Form.Item
               label={T.name}
               name="name"
-              rules={req("Nama jurusan wajib diisi")}
+              rules={req("Nama fakultas wajib diisi")}
             >
-              <Input placeholder="Contoh: Computer Science" />
+              <Input placeholder="Contoh: Fakultas Teknik" />
             </Form.Item>
 
             <Form.Item label={T.desc} name="description">
               <Input.TextArea rows={3} placeholder="Deskripsi (opsional)" />
             </Form.Item>
 
-            <Form.Item label={T.intake} name="in_take">
-              <Input placeholder="Contoh: Jan, May, Sep" />
+            {/* Kota (Multiple Select + shortcut) */}
+            <Form.Item label={T.intake} name="kota_id">
+              <Select
+                mode="multiple"
+                allowClear
+                showSearch
+                placeholder="Pilih kota (bisa lebih dari satu / opsional)"
+                filterOption={false}
+                onSearch={fetchKotaOpts}
+                notFoundContent={fetchingKota ? "Loading..." : null}
+                options={kotaOptions}
+                optionFilterProp="label"
+                dropdownRender={(menu) =>
+                  renderSelectShortcuts({
+                    menu,
+                    onSelectAll: () =>
+                      formCreate.setFieldsValue({
+                        kota_id: kotaOptions.map((o) => o.value),
+                      }),
+                    onClear: () => formCreate.setFieldsValue({ kota_id: [] }),
+                    disabledAll: !kotaOptions.length,
+                  })
+                }
+              />
             </Form.Item>
 
             <Form.Item label={T.price} name="harga">
@@ -775,7 +879,11 @@ export default function JurusanContent({ vm }) {
         <div style={styles.modalShell}>
           <Spin spinning={detailLoading}>
             <Form layout="vertical" form={formEdit}>
-              <Form.Item label={T.college} name="college_id">
+              <Form.Item
+                label={T.college}
+                name="college_id"
+                rules={req("Kampus wajib dipilih")}
+              >
                 <Select
                   showSearch
                   placeholder="Pilih kampus"
@@ -787,15 +895,37 @@ export default function JurusanContent({ vm }) {
               </Form.Item>
 
               <Form.Item label={T.name} name="name">
-                <Input placeholder="Nama jurusan" />
+                <Input placeholder="Nama fakultas" />
               </Form.Item>
 
               <Form.Item label={T.desc} name="description">
                 <Input.TextArea rows={3} placeholder="Deskripsi (opsional)" />
               </Form.Item>
 
-              <Form.Item label={T.intake} name="in_take">
-                <Input placeholder="Contoh: Jan, May, Sep" />
+              {/* Kota (Multiple Select + shortcut) */}
+              <Form.Item label={T.intake} name="kota_id">
+                <Select
+                  mode="multiple"
+                  allowClear
+                  showSearch
+                  placeholder="Pilih kota (opsional)"
+                  filterOption={false}
+                  onSearch={fetchKotaOpts}
+                  notFoundContent={fetchingKota ? "Loading..." : null}
+                  options={kotaOptions}
+                  optionFilterProp="label"
+                  dropdownRender={(menu) =>
+                    renderSelectShortcuts({
+                      menu,
+                      onSelectAll: () =>
+                        formEdit.setFieldsValue({
+                          kota_id: kotaOptions.map((o) => o.value),
+                        }),
+                      onClear: () => formEdit.setFieldsValue({ kota_id: [] }),
+                      disabledAll: !kotaOptions.length,
+                    })
+                  }
+                />
               </Form.Item>
 
               <Form.Item label={T.price} name="harga">
@@ -857,7 +987,21 @@ export default function JurusanContent({ vm }) {
               <div>
                 <div style={styles.label}>{T.intake}</div>
                 <div style={styles.value}>
-                  {detailData?.in_take ?? activeRow?.in_take ?? "—"}
+                  {(() => {
+                    const names =
+                      Array.isArray(detailData?.kota_names) &&
+                      detailData.kota_names.length
+                        ? detailData.kota_names
+                        : Array.isArray(activeRow?.kota_names) &&
+                          activeRow.kota_names.length
+                        ? activeRow.kota_names
+                        : detailData?.kota_name
+                        ? [detailData.kota_name]
+                        : activeRow?.kota_name
+                        ? [activeRow.kota_name]
+                        : [];
+                    return names.length ? names.join(", ") : "—";
+                  })()}
                 </div>
               </div>
               <div>
@@ -1011,13 +1155,13 @@ const styles = {
     color: "#0f172a",
     fontWeight: 700,
     paddingRight: 6,
-    fontVariantNumeric: "tabular-nums", // angka rata rapi
+    fontVariantNumeric: "tabular-nums",
   },
   colActionsCenter: {
     display: "flex",
     justifyContent: "center",
     gap: 6,
-    minWidth: 120, // kunci kolom aksi
+    minWidth: 120,
   },
   iconBtn: { borderRadius: 8 },
 
@@ -1054,4 +1198,3 @@ const styles = {
   modalFooter: { marginTop: 8, display: "grid", placeItems: "center" },
   saveBtn: { minWidth: 200, height: 40, borderRadius: 12 },
 };
-

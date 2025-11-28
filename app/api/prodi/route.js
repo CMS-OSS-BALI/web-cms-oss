@@ -15,7 +15,7 @@ import {
   DEFAULT_LOCALE,
   EN_LOCALE,
   toDecimalNullable,
-  toNullableLongText, // ← NEW
+  toNullableLongText,
   assertAdmin,
 } from "@/app/api/prodi/_utils";
 
@@ -27,6 +27,7 @@ function mapProdi(row, locale, fallback) {
   const t = pickTrans(row.prodi_translate || [], locale, fallback);
   const created_ts = toTs(row.created_at) ?? toTs(row.updated_at) ?? null;
   const updated_ts = toTs(row.updated_at) ?? null;
+
   return {
     id: row.id,
     jurusan_id: row.jurusan_id ?? null,
@@ -40,7 +41,7 @@ function mapProdi(row, locale, fallback) {
     name: t?.name || null,
     description: t?.description || null,
     harga: row.harga ?? null, // Decimal → number by sanitize
-    in_take: row.in_take ?? null, // ← NEW
+    in_take: row.in_take ?? null,
   };
 }
 
@@ -105,7 +106,7 @@ export async function GET(req) {
           updated_at: true,
           deleted_at: true,
           harga: true,
-          in_take: true, // ← NEW
+          in_take: true,
           prodi_translate: {
             where: { locale: { in: locales } },
             select: { locale: true, name: true, description: true },
@@ -125,6 +126,7 @@ export async function GET(req) {
       const total = dataAll.length;
       const start = (page - 1) * perPage;
       const data = dataAll.slice(start, start + perPage);
+
       return json({
         message: "OK",
         data,
@@ -160,7 +162,7 @@ export async function GET(req) {
           updated_at: true,
           deleted_at: true,
           harga: true,
-          in_take: true, // ← NEW
+          in_take: true,
           prodi_translate: {
             where: { locale: { in: locales } },
             select: { locale: true, name: true, description: true },
@@ -223,7 +225,7 @@ export async function POST(req) {
     if (hargaDec && hargaDec.lessThan(0))
       return badRequest("harga cannot be negative", "harga");
 
-    const in_take = toNullableLongText(body.in_take); // ← NEW
+    const in_take = toNullableLongText(body.in_take);
 
     // derive/validate college_id
     let college_id = null;
@@ -267,7 +269,7 @@ export async function POST(req) {
           jurusan_id,
           college_id,
           harga: hargaDec ?? null,
-          in_take, // ← NEW
+          in_take,
           created_at: new Date(),
           updated_at: new Date(),
         },

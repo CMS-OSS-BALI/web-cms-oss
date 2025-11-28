@@ -188,7 +188,6 @@ function mapCollege(row, locale, fallback) {
     logo_url: toPublicUrl(row.logo_url),
     address: row.address,
     city: row.city,
-    state: row.state,
     postal_code: row.postal_code,
     tuition_min: row.tuition_min,
     tuition_max: row.tuition_max,
@@ -197,6 +196,7 @@ function mapCollege(row, locale, fallback) {
     contact_name: row.contact_name,
     no_telp: row.no_telp,
     email: row.email,
+    catatan: row.catatan ?? null, // 👈 notes internal admin
     created_at: row.created_at,
     updated_at: row.updated_at,
     locale_used: t?.locale || null,
@@ -238,7 +238,6 @@ export async function GET(req) {
       and.push({
         OR: [
           { city: { contains: q, mode: "insensitive" } },
-          { state: { contains: q, mode: "insensitive" } },
           { country: { contains: q, mode: "insensitive" } },
           {
             college_translate: {
@@ -278,7 +277,6 @@ export async function GET(req) {
         logo_url: true,
         address: true,
         city: true,
-        state: true,
         postal_code: true,
         tuition_min: true,
         tuition_max: true,
@@ -287,6 +285,7 @@ export async function GET(req) {
         contact_name: true,
         no_telp: true,
         email: true,
+        catatan: true, // 👈 ikut di-select
         created_at: true,
         updated_at: true,
         college_translate: {
@@ -341,6 +340,11 @@ export async function POST(req) {
         ? String(body.description)
         : null;
 
+    const catatan =
+      body.catatan !== undefined && body.catatan !== null
+        ? String(body.catatan)
+        : null; // 👈 internal notes (HTML dari ReactQuill)
+
     // Mulai translate sebelum transaksi DB agar durasi transaksi singkat
     const autoTranslate =
       String(body.autoTranslate ?? "true").toLowerCase() !== "false";
@@ -376,7 +380,6 @@ export async function POST(req) {
           logo_url: file ? null : inlineLogo,
           address: body.address ?? null,
           city: body.city ?? null,
-          state: body.state ?? null,
           postal_code: body.postal_code ?? null,
           tuition_min: toNumeric(body.tuition_min),
           tuition_max: toNumeric(body.tuition_max),
@@ -394,6 +397,7 @@ export async function POST(req) {
             body.email !== undefined && body.email !== null
               ? String(body.email).toLowerCase().slice(0, 191)
               : null,
+          catatan, // 👈 simpan catatan internal
           created_at: new Date(),
           updated_at: new Date(),
         },

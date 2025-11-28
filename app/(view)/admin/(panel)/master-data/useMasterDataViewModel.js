@@ -29,6 +29,22 @@ const jsonFetcher = async (url, init = {}) => {
 
 const otherLocale = (loc) => (loc === "en" ? "id" : "en");
 
+/** Generate kode jenjang berdasarkan nama (UPPER_SNAKE, max 32 char) */
+const makeJenjangCode = (name) => {
+  const raw = String(name || "")
+    .trim()
+    .toUpperCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "") // remove accent
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 32);
+
+  if (raw) return raw;
+  // fallback kalau nama kosong
+  return `JENJANG_${Date.now().toString(36).toUpperCase()}`;
+};
+
 /* ---------- type registry ---------- */
 const TYPES = {
   blog: {
@@ -128,6 +144,77 @@ const TYPES = {
       }),
     remove: (id) =>
       jsonFetcher(`/api/event-categories/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      }),
+  },
+
+  /* ======= BARU: jenjang master ======= */
+  jenjang: {
+    key: "jenjang",
+    label: "Kategori Jenjang",
+    buildListUrl: ({ page, perPage, q, locale, withDeleted, onlyDeleted }) => {
+      const u = new URL("/api/jenjang-master", window.location.origin);
+      u.searchParams.set("page", String(page));
+      u.searchParams.set("perPage", String(perPage));
+      // default sort by sort ascending
+      u.searchParams.set("sort", "sort:asc");
+
+      const loc = (locale || "id").slice(0, 2).toLowerCase();
+      u.searchParams.set("locale", loc);
+      u.searchParams.set("fallback", otherLocale(loc));
+
+      // mapping soft-delete flag ke inactive di backend
+      if (withDeleted) u.searchParams.set("with_inactive", "1");
+      if (onlyDeleted) u.searchParams.set("only_inactive", "1");
+
+      if (q?.trim()) u.searchParams.set("q", q.trim());
+      return u.toString();
+    },
+    normalizeList: (json) => ({
+      total: Number(json?.meta?.total || 0),
+      totalPages: Number(json?.meta?.totalPages || 1),
+      rows: (json?.data || []).map((r) => ({
+        id: r.id,
+        name: r.name ?? "-", // dari projector: t.name atau master.name
+        created_at: r.created_at ?? null,
+      })),
+    }),
+    getOne: (id, { locale } = {}) => {
+      const loc = (locale || "id").slice(0, 2).toLowerCase();
+      return jsonFetcher(
+        `/api/jenjang-master/${encodeURIComponent(
+          id
+        )}?locale=${encodeURIComponent(loc)}&fallback=${encodeURIComponent(
+          otherLocale(loc)
+        )}`
+      );
+    },
+    create: (name) => {
+      const nm = String(name || "").trim();
+      const code = makeJenjangCode(nm);
+      return jsonFetcher("/api/jenjang-master", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code, // penting: endpoint butuh code
+          name_id: nm,
+          autoTranslate: true, // ID -> EN otomatis
+        }),
+      });
+    },
+    update: (id, name) => {
+      const nm = String(name || "").trim();
+      return jsonFetcher(`/api/jenjang-master/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name_id: nm,
+          autoTranslate: true, // sinkron EN dari ID
+        }),
+      });
+    },
+    remove: (id) =>
+      jsonFetcher(`/api/jenjang-master/${encodeURIComponent(id)}`, {
         method: "DELETE",
       }),
   },
@@ -296,10 +383,10 @@ export default function useMasterDataViewModel() {
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
 
-  // locale untuk endpoint yang mendukung (mitra)
+  // locale untuk endpoint yang mendukung (mitra, jenjang)
   const [locale, setLocale] = useState("id");
 
-  // dukungan soft-delete flags (hanya dipakai oleh mitra)
+  // dukungan soft-delete flags (mitra) / inactive flags (jenjang)
   const [withDeleted, setWithDeleted] = useState(false);
   const [onlyDeleted, setOnlyDeleted] = useState(false);
 

@@ -17,6 +17,7 @@ import {
   FileText,
   Layers,
   Activity,
+  Globe, // ⬅️ NEW: icon untuk Negara
 } from "lucide-react";
 
 /** ===== MENU: Prodi jadi child-nya Jurusan ===== */
@@ -31,7 +32,6 @@ export const MENU = [
       { label: "Data Student", href: "/admin/events/students" },
       { label: "Data Representative", href: "/admin/events/representatives" },
       { label: "Kode Voucher", href: "/admin/events/vouchers" },
-
       // ⬇️ NEW: menu Foto Event (previous_event_photos)
       { label: "Foto Event", href: "/admin/events/photos" },
     ],
@@ -47,11 +47,19 @@ export const MENU = [
     icon: GraduationCap,
     children: [
       {
-        label: "Jurusan",
+        label: "Fakultas",
         href: "/admin/jurusan",
-        children: [{ label: "Prodi", href: "/admin/prodi" }],
+        children: [{ label: "Jurusan", href: "/admin/prodi" }],
       },
     ],
+  },
+
+  // ⬇️ NEW: Menu Negara dengan child Kota
+  {
+    label: "Negara",
+    href: "/admin/negara",
+    icon: Globe,
+    children: [{ label: "Kota", href: "/admin/kota" }],
   },
 
   { label: "Data Leads", href: "/admin/leads", icon: Users },
@@ -68,6 +76,7 @@ export const MENU = [
 function hrefIsActive(pathname, href) {
   return pathname === href || pathname.startsWith(href + "/");
 }
+
 export function findPathByHref(pathname, nodes = MENU) {
   for (const n of nodes) {
     if (n.children?.length) {

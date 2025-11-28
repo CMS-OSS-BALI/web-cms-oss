@@ -612,8 +612,8 @@ export default function CollegeContent({
                       type="text"
                       placeholder={
                         locale === "en"
-                          ? "Search campus, major, or program"
-                          : "Cari kampus, jurusan, atau prodi"
+                          ? "Search campus, faculty, or major"
+                          : "Cari kampus, fakultas, atau jurusan"
                       }
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
@@ -741,15 +741,15 @@ export default function CollegeContent({
                           }}
                           title={
                             locale === "en"
-                              ? "Number of program/major matches from your search"
-                              : "Jumlah kecocokan program/jurusan berdasarkan pencarian"
+                              ? "Number of faculty/major matches from your search"
+                              : "Jumlah kecocokan fakultas/jurusan berdasarkan pencarian"
                           }
                         >
                           <BulletIcon />
                           <span style={styles.uni.bulletText}>
                             {locale === "en"
-                              ? `${matchCount} matching program(s)`
-                              : `${matchCount} program/jurusan cocok`}
+                              ? `${matchCount} matching faculty/major`
+                              : `${matchCount} fakultas/jurusan cocok`}
                           </span>
                         </div>
                       )}

@@ -9,6 +9,7 @@ import {
   forwardRef,
   useImperativeHandle,
 } from "react";
+import dynamic from "next/dynamic";
 import useCollegeAViewModel from "./useCollegeAViewModel";
 import {
   ConfigProvider,
@@ -39,6 +40,10 @@ import {
   PlusOutlined,
 } from "@ant-design/icons";
 
+// ReactQuill (rich text) – client only
+const ReactQuill = dynamic(() => import("react-quill"), { ssr: false });
+import "react-quill/dist/quill.snow.css";
+
 /* ===== compact tokens ===== */
 const TOKENS = {
   shellW: "94%",
@@ -54,10 +59,11 @@ const T = {
   addNew: "Buat Data Baru",
   searchPh: "Cari nama/desk kampus",
   nameCol: "Nama Kampus",
+  countryCol: "Negara",
+  cityCol: "Kota",
+  jenjangCol: "Jenjang",
   priceCol: "Price",
   livingCol: "Living Cost",
-  jenjangCol: "Jenjang",
-  countryCol: "Negara",
   action: "Aksi",
   view: "Lihat",
   edit: "Edit",
@@ -81,6 +87,7 @@ const T = {
   phone: "No. Telp",
   email: "Email",
   jenjang: "Jenjang",
+  notes: "Catatan / Notes (Internal)",
 
   // requirements
   reqTitleCreate: "Requirement",
@@ -103,6 +110,7 @@ const monthsId = [
   "November",
   "Desember",
 ];
+
 const fmtDateId = (dLike) => {
   if (dLike === null || dLike === undefined || dLike === "") return "-";
   try {
@@ -137,6 +145,52 @@ const numOrNull = (v) =>
   v === undefined || v === null || v === "" ? null : Number(v);
 
 const stripTags = (s) => (s ? String(s).replace(/<[^>]*>/g, "") : "");
+
+// normalize rich text dari ReactQuill
+const normalizeRichText = (value) => {
+  const str = typeof value === "string" ? value.trim() : "";
+  if (!str || str === "<p><br></p>") return "";
+  return value || "";
+};
+
+const renderSelectShortcuts = ({
+  menu,
+  onSelectAll,
+  onClear,
+  disabledAll = false,
+}) => (
+  <div>
+    {menu}
+    <div style={{ display: "flex", gap: 8, padding: "6px 8px" }}>
+      <Button size="small" onClick={onSelectAll} disabled={disabledAll}>
+        Pilih Semua
+      </Button>
+      <Button size="small" danger onClick={onClear}>
+        Hapus Semua
+      </Button>
+    </div>
+  </div>
+);
+
+const toJenjangArray = (val) => {
+  if (!val) return [];
+  if (Array.isArray(val)) {
+    return val
+      .map((v) => (v ?? "").toString().trim())
+      .filter(Boolean)
+      .filter((v, i, arr) => arr.indexOf(v) === i);
+  }
+  return (val || "")
+    .toString()
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+};
+
+const jenjangDisplay = (val, fallback = "—") => {
+  const arr = toJenjangArray(val);
+  return arr.length ? arr.join(", ") : fallback;
+};
 
 /* ===== util ===== */
 const safeGetId = (resObj) =>
@@ -548,21 +602,226 @@ export default function CollegeAContent(props) {
   const viewModalWidth =
     (viewImgMeta.h || 0) >= (viewImgMeta.w || 0) ? 560 : 900;
 
+  // ===== Geo: Negara & Kota (dinamis) =====
+  const [negaraOptions, setNegaraOptions] = useState([]); // {id, label}
+  const [negaraLoading, setNegaraLoading] = useState(false);
+
+  const kotaCacheRef = useRef(new Map());
+  const [selectedNegaraCreate, setSelectedNegaraCreate] = useState("");
+  const [selectedNegaraEdit, setSelectedNegaraEdit] = useState("");
+  const [kotaOptionsCreate, setKotaOptionsCreate] = useState([]); // {value,label,living_cost}
+  const [kotaOptionsEdit, setKotaOptionsEdit] = useState([]);
+  const [loadingKotaCreate, setLoadingKotaCreate] = useState(false);
+  const [loadingKotaEdit, setLoadingKotaEdit] = useState(false);
+
+  const fetchNegaraOptions = useCallback(async () => {
+    setNegaraLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("page", "1");
+      params.set("perPage", "200");
+      params.set("locale", vm.locale || "id");
+      params.set("fallback", vm.fallback || "en");
+
+      const res = await fetch(`/api/negara?${params.toString()}`);
+      if (!res.ok) {
+        console.error("Failed to fetch negara list:", await res.text());
+        return;
+      }
+      const json = await res.json().catch(() => ({}));
+      const list = Array.isArray(json?.data) ? json.data : [];
+
+      const opts = list.map((n) => {
+        const label =
+          n.name ||
+          n.name_id ||
+          n.name_en ||
+          (typeof n.id !== "undefined" ? String(n.id) : "Negara");
+        return {
+          id: n.id,
+          label,
+        };
+      });
+
+      setNegaraOptions(opts);
+    } catch (e) {
+      console.error("Error loading negara list:", e);
+    } finally {
+      setNegaraLoading(false);
+    }
+  }, [vm.locale, vm.fallback]);
+
+  useEffect(() => {
+    fetchNegaraOptions();
+  }, [fetchNegaraOptions]);
+
+  const loadKotaForNegara = useCallback(
+    async (negaraId, target = "create") => {
+      if (!negaraId) {
+        if (target === "create") setKotaOptionsCreate([]);
+        else setKotaOptionsEdit([]);
+        return;
+      }
+
+      const key = String(negaraId);
+      if (kotaCacheRef.current.has(key)) {
+        const cached = kotaCacheRef.current.get(key) || [];
+        if (target === "create") setKotaOptionsCreate(cached);
+        else setKotaOptionsEdit(cached);
+        return;
+      }
+
+      if (target === "create") setLoadingKotaCreate(true);
+      else setLoadingKotaEdit(true);
+
+      try {
+        const params = new URLSearchParams();
+        params.set("page", "1");
+        params.set("perPage", "200");
+        params.set("locale", vm.locale || "id");
+        params.set("fallback", vm.fallback || "en");
+        params.set("negara_id", String(negaraId));
+
+        const res = await fetch(`/api/kota?${params.toString()}`);
+        if (!res.ok) {
+          console.error("Failed to fetch kota list:", await res.text());
+          if (target === "create") setKotaOptionsCreate([]);
+          else setKotaOptionsEdit([]);
+          return;
+        }
+
+        const json = await res.json().catch(() => ({}));
+        const list = Array.isArray(json?.data) ? json.data : [];
+
+        const opts = list.map((k) => {
+          const label =
+            k.name ||
+            k.name_id ||
+            k.name_en ||
+            (typeof k.id !== "undefined" ? String(k.id) : "Kota");
+
+          let living = null;
+          if (k.living_cost !== null && k.living_cost !== undefined) {
+            if (typeof k.living_cost === "number") {
+              living = k.living_cost;
+            } else if (typeof k.living_cost === "string") {
+              const parsed = Number(k.living_cost.replace(/[^\d.-]/g, ""));
+              living = Number.isFinite(parsed) ? parsed : null;
+            }
+          }
+
+          return {
+            id: k.id,
+            value: label,
+            label,
+            living_cost: living,
+          };
+        });
+
+        kotaCacheRef.current.set(key, opts);
+        if (target === "create") setKotaOptionsCreate(opts);
+        else setKotaOptionsEdit(opts);
+      } catch (e) {
+        console.error("Error loading kota list:", e);
+        if (target === "create") setKotaOptionsCreate([]);
+        else setKotaOptionsEdit([]);
+      } finally {
+        if (target === "create") setLoadingKotaCreate(false);
+        else setLoadingKotaEdit(false);
+      }
+    },
+    [vm.locale, vm.fallback]
+  );
+
+  const editCountryOptions = useMemo(() => {
+    const baseOpts = negaraOptions.map((n) => ({
+      value: String(n.id),
+      label: n.label,
+      __id: n.id,
+    }));
+    const current = (detailData?.country || "").trim();
+    if (!current) return baseOpts;
+    const exists = baseOpts.some((o) => o.label === current);
+    if (exists) return baseOpts;
+    // Tambah opsi custom supaya country lama tetap tampil meski tidak ada di master negara
+    return [...baseOpts, { value: "custom", label: current, __id: null }];
+  }, [negaraOptions, detailData?.country]);
+
+  // Preselect negara & load kota di modal edit ketika detail & master negara sudah ada
+  useEffect(() => {
+    if (!detailData?.country || !editCountryOptions.length) return;
+
+    const currentName = (detailData.country || "").trim();
+    const match = editCountryOptions.find((o) => o.label === currentName);
+    if (!match) return;
+
+    formEdit.setFieldsValue({ country: match.value });
+
+    if (match.__id) {
+      const negaraId = match.__id;
+      setSelectedNegaraEdit(String(negaraId));
+      loadKotaForNegara(negaraId, "edit");
+    } else {
+      setSelectedNegaraEdit("");
+      setKotaOptionsEdit([]);
+    }
+  }, [detailData, editCountryOptions, formEdit, loadKotaForNegara]);
+
   const rows = useMemo(() => vm.colleges || [], [vm.colleges]);
+
+  // opsi jenjang fallback dari data kampus (kalau master kosong)
+  const jenjangOptionsLocal = useMemo(() => {
+    const uniq = new Set();
+    (rows || []).forEach((r) => {
+      toJenjangArray(r?.jenjang).forEach((v) => uniq.add(v));
+    });
+    return Array.from(uniq).map((v) => ({ value: v, label: v }));
+  }, [rows]);
+
+  // opsi jenjang utama dari endpoint jenjang-master (via view model)
+  const jenjangFilterOptions = useMemo(() => {
+    const master = vm.jenjangMasterOptions || [];
+    if (master.length) return master;
+    return jenjangOptionsLocal;
+  }, [vm.jenjangMasterOptions, jenjangOptionsLocal]);
+
+  // opsi jenjang untuk form (master + fallback lokal)
+  const jenjangSelectOptions = useMemo(() => {
+    const map = new Map();
+    [...(vm.jenjangMasterOptions || []), ...jenjangOptionsLocal].forEach(
+      (opt) => {
+        const key = String(opt.value || opt.label || "");
+        if (!key) return;
+        if (!map.has(key)) map.set(key, { value: key, label: opt.label || key });
+      }
+    );
+    return Array.from(map.values());
+  }, [vm.jenjangMasterOptions, jenjangOptionsLocal]);
 
   // search/filter client-side kecil
   const [searchValue, setSearchValue] = useState(vm.q || "");
   useEffect(() => setSearchValue(vm.q || ""), [vm.q]);
+
+  // normalisasi filter jenjang (array)
+  const jenjangFilterArr = useMemo(() => toJenjangArray(vm.jenjang), [vm.jenjang]);
+
   const filteredRows = useMemo(() => {
     const s = (searchValue || "").trim().toLowerCase();
-    const jf = (vm.jenjang || "").trim().toLowerCase();
+    const jfSet = new Set(
+      jenjangFilterArr.map((v) => v.trim().toLowerCase()).filter(Boolean)
+    );
     return rows.filter((r) => {
       const okName = !s || (r?.name || "").toLowerCase().includes(s);
       const okCountry = !vm.country || (r?.country || "") === vm.country;
-      const okJenjang = !jf || (r?.jenjang || "").toLowerCase().includes(jf);
+      const rJenjangVals = toJenjangArray(r?.jenjang).map((x) =>
+        x.toLowerCase()
+      );
+      const okJenjang =
+        jfSet.size === 0 ||
+        rJenjangVals.some((val) => val && jfSet.has(val.toLowerCase()));
       return okName && okCountry && okJenjang;
     });
-  }, [rows, searchValue, vm.country, vm.jenjang]);
+  }, [rows, searchValue, vm.country, jenjangFilterArr]);
 
   const normList = (e) => (Array.isArray(e) ? e : e?.fileList || []);
   const beforeLogoCreate = (file) => {
@@ -590,13 +849,21 @@ export default function CollegeAContent(props) {
     if (!v) return;
     const file = v.logo?.[0]?.originFileObj || null;
 
+    // v.country berisi negara_id (string); mapping ke nama negara untuk disimpan di college.country
+    let countryName = "";
+    if (v.country) {
+      const negaraOpt = negaraOptions.find(
+        (n) => String(n.id) === String(v.country)
+      );
+      countryName = negaraOpt?.label || "";
+    }
+
     const out = await vm.createCollege({
       file,
       name: v.name,
       description: v.description || "",
-      country: v.country || "",
+      country: countryName,
       city: v.city || "",
-      state: v.state || "",
       postal_code: v.postal || "",
       website: v.website || "",
       address: v.address || "",
@@ -606,7 +873,8 @@ export default function CollegeAContent(props) {
       contact_name: v.contact || "",
       no_telp: v.phone || "",
       email: v.email || "",
-      jenjang: (v.jenjang || "").trim() || null,
+      jenjang: toJenjangArray(v.jenjang).join(", "),
+      catatan: v.catatan || "",
       autoTranslate: true,
     });
 
@@ -631,6 +899,8 @@ export default function CollegeAContent(props) {
     formCreate.resetFields();
     if (logoPrevCreate) URL.revokeObjectURL(logoPrevCreate);
     setLogoPrevCreate("");
+    setSelectedNegaraCreate("");
+    setKotaOptionsCreate([]);
   };
 
   // ===== EDIT (load) =====
@@ -639,6 +909,11 @@ export default function CollegeAContent(props) {
     setEditOpen(true);
     setDetailLoading(true);
     setDetailData(null);
+
+    // reset geo state untuk modal edit
+    setSelectedNegaraEdit("");
+    setKotaOptionsEdit([]);
+
     const { ok: okDetail, data, error } = await vm.getCollege(row.id);
     setDetailLoading(false);
     if (!okDetail) {
@@ -646,15 +921,15 @@ export default function CollegeAContent(props) {
       err("Gagal memuat detail", error);
       return;
     }
-    const d = data || row;
+    const d = data?.data || data || row;
     setDetailData(d);
     // isi angka murni
     formEdit.setFieldsValue({
       name: d.name || "",
       description: d.description || "",
-      country: d.country || "",
+      // country akan di-set oleh efek berdasarkan detailData.country & master negara
+      country: undefined,
       city: d.city || "",
-      state: d.state || "",
       postal: d.postal_code || "",
       website: d.website || "",
       address: d.address || "",
@@ -664,7 +939,8 @@ export default function CollegeAContent(props) {
       contact: d.contact_name || "",
       phone: d.no_telp || "",
       email: d.email || "",
-      jenjang: d.jenjang || "",
+      jenjang: toJenjangArray(d.jenjang),
+      catatan: d.catatan || "",
     });
     setLogoPrevEdit(d.logo_url || "");
   };
@@ -676,13 +952,23 @@ export default function CollegeAContent(props) {
     if (!v) return;
     const file = v.logo?.[0]?.originFileObj || null;
 
+    // v.country berisi negara_id atau "custom"
+    let countryName = detailData?.country || activeRow.country || "";
+    if (v.country && v.country !== "custom") {
+      const negaraOpt = negaraOptions.find(
+        (n) => String(n.id) === String(v.country)
+      );
+      if (negaraOpt?.label) {
+        countryName = negaraOpt.label;
+      }
+    }
+
     const res = await vm.updateCollege(activeRow.id, {
       file,
       name: v.name,
       description: v.description || "",
-      country: v.country || "",
+      country: countryName,
       city: v.city || "",
-      state: v.state || "",
       postal_code: v.postal || "",
       website: v.website || "",
       address: v.address || "",
@@ -692,7 +978,8 @@ export default function CollegeAContent(props) {
       contact_name: v.contact || "",
       no_telp: v.phone || "",
       email: v.email || "",
-      jenjang: (v.jenjang || "").trim(),
+      jenjang: toJenjangArray(v.jenjang).join(", "),
+      catatan: v.catatan || "",
       autoTranslate: false,
     });
 
@@ -711,6 +998,8 @@ export default function CollegeAContent(props) {
     formEdit.resetFields();
     if (logoPrevEdit) URL.revokeObjectURL(logoPrevEdit);
     setLogoPrevEdit("");
+    setSelectedNegaraEdit("");
+    setKotaOptionsEdit([]);
   };
 
   const onDelete = async (id) => {
@@ -722,7 +1011,7 @@ export default function CollegeAContent(props) {
     ok("Terhapus", "Kampus berhasil dihapus.");
   };
 
-  // Search & Filter debounce kecil
+  // Search & Filter debounce kecil (untuk query search)
   useEffect(() => {
     const v = (searchValue || "").trim();
     const t = setTimeout(() => {
@@ -734,15 +1023,6 @@ export default function CollegeAContent(props) {
 
   const { shellW, maxW, blue, text } = TOKENS;
   const req = (msg) => [{ required: true, message: msg }];
-
-  const jenjangOptions = useMemo(() => {
-    const uniq = Array.from(
-      new Set(
-        (rows || []).map((r) => (r?.jenjang || "").trim()).filter(Boolean)
-      )
-    );
-    return uniq.map((v) => ({ value: v, label: v }));
-  }, [rows]);
 
   return (
     <ConfigProvider
@@ -771,6 +1051,32 @@ export default function CollegeAContent(props) {
         .portrait-uploader .ant-upload {
           width: 100% !important;
           height: 100% !important;
+        }
+
+        /* Rich text editor untuk Catatan */
+        .college-notes-editor {
+          border: 1px solid #e6eeff;
+          border-radius: 12px;
+          background: #fff;
+          overflow: hidden;
+          box-shadow: inset 0 2px 6px rgba(11, 86, 201, 0.04);
+        }
+        .college-notes-editor .ql-toolbar {
+          border: 0;
+          border-bottom: 1px solid #e6eeff;
+          background: #f5f8ff;
+          border-radius: 12px 12px 0 0;
+          padding: 8px 10px;
+        }
+        .college-notes-editor .ql-container {
+          border: 0;
+        }
+        .college-notes-editor .ql-editor {
+          min-height: 120px;
+          padding: 10px 12px;
+          font-size: 13px;
+          line-height: 1.6;
+          color: #0f172a;
         }
       `}</style>
 
@@ -862,15 +1168,23 @@ export default function CollegeAContent(props) {
                   style={styles.filterSelect}
                 />
                 <Select
+                  mode="multiple"
                   allowClear
                   showSearch
                   placeholder="Filter jenjang"
-                  value={vm.jenjang || undefined}
-                  onChange={(v) => {
-                    vm.setJenjang?.(v || "");
+                  value={
+                    Array.isArray(vm.jenjang)
+                      ? vm.jenjang
+                      : vm.jenjang
+                      ? [vm.jenjang]
+                      : []
+                  }
+                  onChange={(values) => {
+                    vm.setJenjang?.(values || []);
                     vm.setPage?.(1);
                   }}
-                  options={jenjangOptions}
+                  options={jenjangFilterOptions}
+                  loading={vm.jenjangMasterLoading}
                   style={styles.filterSelect}
                   filterOption={(input, option) =>
                     (option?.label || "")
@@ -886,10 +1200,11 @@ export default function CollegeAContent(props) {
                   <div style={{ ...styles.thLeft, paddingLeft: 8 }}>
                     {T.nameCol}
                   </div>
-                  <div style={styles.thCenter}>{T.priceCol}</div>
+                  <div style={styles.thCenter}>{T.countryCol}</div>
+                  <div style={styles.thCenter}>{T.cityCol}</div>
                   <div style={styles.thCenter}>{T.livingCol}</div>
                   <div style={styles.thCenter}>{T.jenjangCol}</div>
-                  <div style={styles.thCenter}>{T.countryCol}</div>
+                  <div style={styles.thCenter}>{T.priceCol}</div>
                   <div style={styles.thCenter}>{T.action}</div>
                 </div>
 
@@ -911,6 +1226,7 @@ export default function CollegeAContent(props) {
                   ) : (
                     filteredRows.map((r) => {
                       const name = r.name || "(untitled)";
+
                       const priceMin =
                         r.tuition_min != null
                           ? vm.money(r.tuition_min, r.currency || "IDR")
@@ -919,6 +1235,7 @@ export default function CollegeAContent(props) {
                         r.tuition_max != null
                           ? vm.money(r.tuition_max, r.currency || "IDR")
                           : null;
+                      const city = (r.city || "").trim() || "—";
                       const price =
                         priceMin && priceMax
                           ? `${priceMin} - ${priceMax}`
@@ -955,10 +1272,13 @@ export default function CollegeAContent(props) {
                               </div>
                             </div>
                           </div>
-                          <div style={styles.colCenter}>{price}</div>
-                          <div style={styles.colCenter}>{living}</div>
-                          <div style={styles.colCenter}>{r.jenjang || "—"}</div>
                           <div style={styles.colCenter}>{r.country || "-"}</div>
+                          <div style={styles.colCenter}>{city}</div>
+                          <div style={styles.colCenter}>{living}</div>
+                          <div style={styles.colCenter}>
+                            {jenjangDisplay(r.jenjang)}
+                          </div>
+                          <div style={styles.colCenter}>{price}</div>
                           <div style={styles.colActionsCenter}>
                             <Tooltip title={T.view}>
                               <Button
@@ -978,7 +1298,8 @@ export default function CollegeAContent(props) {
                                         err("Gagal memuat detail", error);
                                         return;
                                       }
-                                      setDetailData(data);
+                                      const payload = data?.data || data || r;
+                                      setDetailData(payload);
                                     }
                                   );
                                 }}
@@ -1051,6 +1372,8 @@ export default function CollegeAContent(props) {
           if (logoPrevCreate) URL.revokeObjectURL(logoPrevCreate);
           setLogoPrevCreate("");
           formCreate.resetFields();
+          setSelectedNegaraCreate("");
+          setKotaOptionsCreate([]);
         }}
         footer={null}
         width={920}
@@ -1121,39 +1444,81 @@ export default function CollegeAContent(props) {
                 name="country"
                 rules={req("Negara wajib diisi")}
               >
-                <Input placeholder="Contoh: Australia" />
+                <Select
+                  showSearch
+                  allowClear
+                  placeholder="Pilih negara"
+                  optionFilterProp="label"
+                  loading={negaraLoading}
+                  options={negaraOptions.map((n) => ({
+                    value: String(n.id),
+                    label: n.label,
+                  }))}
+                  onChange={(value) => {
+                    setSelectedNegaraCreate(value || "");
+                    formCreate.setFieldsValue({
+                      city: undefined,
+                      living: undefined,
+                    });
+                    if (value) {
+                      loadKotaForNegara(value, "create");
+                    } else {
+                      setKotaOptionsCreate([]);
+                    }
+                  }}
+                  onClear={() => {
+                    setSelectedNegaraCreate("");
+                    setKotaOptionsCreate([]);
+                    formCreate.setFieldsValue({
+                      country: undefined,
+                      city: undefined,
+                      living: undefined,
+                    });
+                  }}
+                />
               </Form.Item>
               <Form.Item
                 label={T.city}
                 name="city"
                 rules={req("Kota wajib diisi")}
               >
-                <Input placeholder="Kota" />
+                <Select
+                  showSearch
+                  allowClear
+                  placeholder={
+                    selectedNegaraCreate
+                      ? "Pilih kota"
+                      : "Pilih negara terlebih dahulu"
+                  }
+                  optionFilterProp="label"
+                  disabled={!selectedNegaraCreate}
+                  loading={loadingKotaCreate}
+                  options={kotaOptionsCreate}
+                  onChange={(value, option) => {
+                    const opt = Array.isArray(option) ? option[0] : option;
+                    const living = opt?.living_cost;
+                    formCreate.setFieldsValue({
+                      city: value || "",
+                      living:
+                        living != null
+                          ? living
+                          : formCreate.getFieldValue("living"),
+                    });
+                  }}
+                  onClear={() => {
+                    formCreate.setFieldsValue({ city: undefined });
+                  }}
+                />
               </Form.Item>
             </div>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 8,
-              }}
+            <Form.Item
+              label={T.postal}
+              name="postal"
+              rules={req("Kode Pos wajib diisi")}
             >
-              <Form.Item
-                label={T.state}
-                name="state"
-                rules={req("Provinsi/State wajib diisi")}
-              >
-                <Input placeholder="Provinsi/State" />
-              </Form.Item>
-              <Form.Item
-                label={T.postal}
-                name="postal"
-                rules={req("Kode Pos wajib diisi")}
-              >
-                <Input placeholder="Kode Pos" />
-              </Form.Item>
-            </div>
+              <Input placeholder="Kode Pos" />
+            </Form.Item>
 
             <Form.Item
               label={T.website}
@@ -1211,7 +1576,29 @@ export default function CollegeAContent(props) {
             </Form.Item>
 
             <Form.Item label={T.jenjang} name="jenjang">
-              <Input placeholder="cth: Universitas / Politeknik / Institut" />
+              <Select
+                mode="multiple"
+                allowClear
+                showSearch
+                placeholder="Pilih jenjang (boleh lebih dari satu)"
+                options={jenjangSelectOptions}
+                filterOption={(input, option) =>
+                  (option?.label || "")
+                    .toLowerCase()
+                    .includes(input.toLowerCase())
+                }
+                dropdownRender={(menu) =>
+                  renderSelectShortcuts({
+                    menu,
+                    onSelectAll: () =>
+                      formCreate.setFieldsValue({
+                        jenjang: jenjangSelectOptions.map((o) => o.value),
+                      }),
+                    onClear: () => formCreate.setFieldsValue({ jenjang: [] }),
+                    disabledAll: !jenjangSelectOptions.length,
+                  })
+                }
+              />
             </Form.Item>
 
             <div
@@ -1246,12 +1633,27 @@ export default function CollegeAContent(props) {
               notifyErr={(m, d) => err(m, d)}
             />
 
+            {/* Catatan (ReactQuill) – Create (paling bawah) */}
+            <Form.Item
+              label={T.notes}
+              name="catatan"
+              valuePropName="value"
+              getValueFromEvent={normalizeRichText}
+              initialValue=""
+            >
+              <ReactQuill
+                className="college-notes-editor"
+                placeholder="Catatan internal untuk kampus ini (tidak tampil di user)..."
+              />
+            </Form.Item>
+
             <div style={styles.modalFooter}>
               <Button
                 type="primary"
                 size="large"
                 onClick={onCreate}
                 style={styles.saveBtn}
+                loading={vm.opLoading}
               >
                 {T.save}
               </Button>
@@ -1268,6 +1670,8 @@ export default function CollegeAContent(props) {
           if (logoPrevEdit) URL.revokeObjectURL(logoPrevEdit);
           setLogoPrevEdit("");
           formEdit.resetFields();
+          setSelectedNegaraEdit("");
+          setKotaOptionsEdit([]);
         }}
         footer={null}
         width={960}
@@ -1327,27 +1731,75 @@ export default function CollegeAContent(props) {
                 }}
               >
                 <Form.Item label={T.country} name="country">
-                  <Input />
+                  <Select
+                    showSearch
+                    allowClear
+                    placeholder="Pilih negara"
+                    optionFilterProp="label"
+                    loading={negaraLoading}
+                    options={editCountryOptions}
+                    onChange={(value) => {
+                      const match = editCountryOptions.find(
+                        (o) => o.value === value
+                      );
+                      const negaraId = match?.__id || null;
+                      setSelectedNegaraEdit(negaraId ? String(negaraId) : "");
+                      formEdit.setFieldsValue({
+                        country: value || undefined,
+                        city: undefined,
+                        living: undefined,
+                      });
+                      if (negaraId) {
+                        loadKotaForNegara(negaraId, "edit");
+                      } else {
+                        setKotaOptionsEdit([]);
+                      }
+                    }}
+                    onClear={() => {
+                      setSelectedNegaraEdit("");
+                      setKotaOptionsEdit([]);
+                      formEdit.setFieldsValue({
+                        country: undefined,
+                        city: undefined,
+                        living: undefined,
+                      });
+                    }}
+                  />
                 </Form.Item>
                 <Form.Item label={T.city} name="city">
-                  <Input />
+                  <Select
+                    showSearch
+                    allowClear
+                    placeholder={
+                      selectedNegaraEdit
+                        ? "Pilih kota"
+                        : "Pilih negara terlebih dahulu"
+                    }
+                    optionFilterProp="label"
+                    disabled={!selectedNegaraEdit}
+                    loading={loadingKotaEdit}
+                    options={kotaOptionsEdit}
+                    onChange={(value, option) => {
+                      const opt = Array.isArray(option) ? option[0] : option;
+                      const living = opt?.living_cost;
+                      formEdit.setFieldsValue({
+                        city: value || "",
+                        living:
+                          living != null
+                            ? living
+                            : formEdit.getFieldValue("living"),
+                      });
+                    }}
+                    onClear={() => {
+                      formEdit.setFieldsValue({ city: undefined });
+                    }}
+                  />
                 </Form.Item>
               </div>
 
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 8,
-                }}
-              >
-                <Form.Item label={T.state} name="state">
-                  <Input />
-                </Form.Item>
-                <Form.Item label={T.postal} name="postal">
-                  <Input />
-                </Form.Item>
-              </div>
+              <Form.Item label={T.postal} name="postal">
+                <Input />
+              </Form.Item>
 
               <Form.Item label={T.website} name="website">
                 <Input />
@@ -1394,7 +1846,29 @@ export default function CollegeAContent(props) {
               </Form.Item>
 
               <Form.Item label={T.jenjang} name="jenjang">
-                <Input placeholder="cth: Universitas / Politeknik / Institut" />
+                <Select
+                  mode="multiple"
+                  allowClear
+                  showSearch
+                  placeholder="Pilih jenjang"
+                  options={jenjangSelectOptions}
+                  filterOption={(input, option) =>
+                    (option?.label || "")
+                      .toLowerCase()
+                      .includes(input.toLowerCase())
+                  }
+                  dropdownRender={(menu) =>
+                    renderSelectShortcuts({
+                      menu,
+                      onSelectAll: () =>
+                        formEdit.setFieldsValue({
+                          jenjang: jenjangSelectOptions.map((o) => o.value),
+                        }),
+                      onClear: () => formEdit.setFieldsValue({ jenjang: [] }),
+                      disabledAll: !jenjangSelectOptions.length,
+                    })
+                  }
+                />
               </Form.Item>
 
               <div
@@ -1432,12 +1906,27 @@ export default function CollegeAContent(props) {
                 />
               )}
 
+              {/* Catatan (ReactQuill) – Edit (paling bawah) */}
+              <Form.Item
+                label={T.notes}
+                name="catatan"
+                valuePropName="value"
+                getValueFromEvent={normalizeRichText}
+                initialValue=""
+              >
+                <ReactQuill
+                  className="college-notes-editor"
+                  placeholder="Catatan internal untuk kampus ini (tidak tampil di user)..."
+                />
+              </Form.Item>
+
               <div style={styles.modalFooter}>
                 <Button
                   type="primary"
                   size="large"
                   onClick={onEditSubmit}
                   style={styles.saveBtn}
+                  loading={vm.opLoading}
                 >
                   Simpan Perubahan
                 </Button>
@@ -1516,23 +2005,9 @@ export default function CollegeAContent(props) {
                 </div>
               </div>
 
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 8,
-                }}
-              >
-                <div>
-                  <div style={styles.label}>{T.state}</div>
-                  <div style={styles.value}>{detailData?.state || "—"}</div>
-                </div>
-                <div>
-                  <div style={styles.label}>{T.postal}</div>
-                  <div style={styles.value}>
-                    {detailData?.postal_code || "—"}
-                  </div>
-                </div>
+              <div>
+                <div style={styles.label}>{T.postal}</div>
+                <div style={styles.value}>{detailData?.postal_code || "—"}</div>
               </div>
 
               <div>
@@ -1602,7 +2077,9 @@ export default function CollegeAContent(props) {
 
               <div>
                 <div style={styles.label}>{T.jenjang}</div>
-                <div style={styles.value}>{detailData?.jenjang || "—"}</div>
+                <div style={styles.value}>
+                  {jenjangDisplay(detailData?.jenjang ?? activeRow?.jenjang)}
+                </div>
               </div>
 
               <div
@@ -1627,6 +2104,23 @@ export default function CollegeAContent(props) {
               <div>
                 <div style={styles.label}>{T.email}</div>
                 <div style={styles.value}>{detailData?.email || "—"}</div>
+              </div>
+
+              {/* Catatan (view-only, strip HTML) */}
+              <div>
+                <div style={styles.label}>{T.notes}</div>
+                <div style={{ ...styles.value, whiteSpace: "normal" }}>
+                  {(detailData?.catatan || "").trim() ? (
+                    <div
+                      style={{ lineHeight: 1.6 }}
+                      dangerouslySetInnerHTML={{
+                        __html: detailData.catatan,
+                      }}
+                    />
+                  ) : (
+                    "—"
+                  )}
+                </div>
               </div>
             </div>
           </Spin>
@@ -1700,20 +2194,20 @@ const styles = {
 
   tableHeader: {
     display: "grid",
-    gridTemplateColumns: "2.2fr 1fr 1.1fr 1fr .8fr .7fr",
+    gridTemplateColumns: "2.2fr 1fr 1fr 1fr .9fr 1fr .7fr",
     gap: 8,
     marginBottom: 4,
     color: "#0b3e91",
     fontWeight: 700,
     alignItems: "center",
-    minWidth: 1020,
+    minWidth: 1160,
   },
   thLeft: { display: "flex", justifyContent: "flex-start", width: "100%" },
   thCenter: { display: "flex", justifyContent: "center", width: "100%" },
 
   row: {
     display: "grid",
-    gridTemplateColumns: "2.2fr 1fr 1.1fr 1fr .8fr .7fr",
+    gridTemplateColumns: "2.2fr 1fr 1fr 1fr .9fr 1fr .7fr",
     gap: 8,
     alignItems: "center",
     background: "#f5f8ff",
@@ -1721,7 +2215,7 @@ const styles = {
     border: "1px solid #e8eeff",
     padding: "8px 10px",
     boxShadow: "0 6px 12px rgba(11, 86, 201, 0.05)",
-    minWidth: 1020,
+    minWidth: 1160,
   },
 
   colName: {

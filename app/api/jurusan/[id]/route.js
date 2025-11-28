@@ -9,7 +9,7 @@ import {
   mapJurusan,
   assertAdmin,
   toDecimalNullable,
-  toNullableLongText, // ← NEW
+  toBigIntNullable,
 } from "@/app/api/jurusan/_utils";
 
 export const dynamic = "force-dynamic";
@@ -40,11 +40,25 @@ export async function GET(req, { params }) {
       select: {
         id: true,
         college_id: true,
+        kota_id: true,
+        kota_multi: {
+          select: {
+            kota_id: true,
+            kota: {
+              select: {
+                id: true,
+                kota_translate: {
+                  where: { locale: { in: locales } },
+                  select: { locale: true, name: true },
+                },
+              },
+            },
+          },
+        },
         created_at: true,
         updated_at: true,
         deleted_at: true,
         harga: true,
-        in_take: true, // ← NEW
         jurusan_translate: {
           where: { locale: { in: locales } },
           select: { locale: true, name: true, description: true },
@@ -67,6 +81,7 @@ export async function GET(req, { params }) {
 export async function PUT(req, ctx) {
   return PATCH(req, ctx);
 }
+
 export async function PATCH(req, { params }) {
   try {
     await assertAdmin(req);
@@ -78,7 +93,7 @@ export async function PATCH(req, { params }) {
 
     const ops = [];
 
-    // parent update (college_id / harga / in_take)
+    // parent update (college_id / harga / kota_id)
     const wantsUpdateCollege = Object.prototype.hasOwnProperty.call(
       body,
       "college_id"
@@ -87,12 +102,12 @@ export async function PATCH(req, { params }) {
       body,
       "harga"
     );
-    const wantsUpdateInTake = Object.prototype.hasOwnProperty.call(
+    const wantsUpdateKota = Object.prototype.hasOwnProperty.call(
       body,
-      "in_take"
-    ); // ← NEW
+      "kota_id"
+    );
 
-    if (wantsUpdateCollege || wantsUpdateHarga || wantsUpdateInTake) {
+    if (wantsUpdateCollege || wantsUpdateHarga || wantsUpdateKota) {
       const data = { updated_at: new Date() };
 
       if (wantsUpdateCollege) {
@@ -116,11 +131,50 @@ export async function PATCH(req, { params }) {
         data.harga = hargaDec ?? null; // allow null to clear
       }
 
-      if (wantsUpdateInTake) {
-        data.in_take = toNullableLongText(body.in_take); // ← NEW (allow null)
+      let kotaIds = null;
+      if (wantsUpdateKota) {
+        const rawArr = Array.isArray(body.kota_id)
+          ? body.kota_id
+          : [body.kota_id];
+        const cleaned = rawArr
+          .map((v) => toBigIntNullable(v))
+          .filter((v) => v !== null);
+        kotaIds = Array.from(new Set(cleaned));
+
+        // validate
+        for (const kid of kotaIds) {
+          const kota = await prisma.kota.findUnique({
+            where: { id: kid },
+            select: { id: true },
+          });
+          if (!kota)
+            return badRequest("kota_id invalid (not found)", "kota_id");
+        }
+
+        data.kota_id = kotaIds[0] ?? null; // legacy column stores first
       }
 
       ops.push(prisma.jurusan.update({ where: { id }, data }));
+
+      if (kotaIds !== null) {
+        // replace jurusan_kota entries
+        ops.push(
+          prisma.jurusan_kota.deleteMany({
+            where: { jurusan_id: id },
+          })
+        );
+        if (kotaIds.length) {
+          ops.push(
+            prisma.jurusan_kota.createMany({
+              data: kotaIds.map((kid) => ({
+                jurusan_id: id,
+                kota_id: kid,
+              })),
+              skipDuplicates: true,
+            })
+          );
+        }
+      }
     } else {
       // jika tidak ada update parent, pastikan row ada
       const exists = await prisma.jurusan.findUnique({
@@ -151,7 +205,7 @@ export async function PATCH(req, { params }) {
       ops.push(
         prisma.jurusan_translate.upsert({
           where: {
-            id_jurusan_locale: { id: undefined, id_jurusan: id, locale },
+            id_jurusan_locale: { id_jurusan: id, locale },
           },
           update,
           create: {
@@ -179,7 +233,9 @@ export async function PATCH(req, { params }) {
 
         ops.push(
           prisma.jurusan_translate.upsert({
-            where: { id_jurusan_locale: { id_jurusan: id, locale: EN_LOCALE } },
+            where: {
+              id_jurusan_locale: { id_jurusan: id, locale: EN_LOCALE },
+            },
             update: enUpdate,
             create: {
               id_jurusan: id,
@@ -202,11 +258,20 @@ export async function PATCH(req, { params }) {
       select: {
         id: true,
         college_id: true,
+        kota_id: true,
         created_at: true,
         updated_at: true,
         deleted_at: true,
         harga: true,
-        in_take: true, // ← NEW
+        kota: {
+          select: {
+            id: true,
+            kota_translate: {
+              where: { locale: { in: locales } },
+              select: { locale: true, name: true },
+            },
+          },
+        },
         jurusan_translate: {
           where: { locale: { in: locales } },
           select: { locale: true, name: true, description: true },
@@ -221,7 +286,7 @@ export async function PATCH(req, { params }) {
     });
   } catch (err) {
     if (err?.code === "P2003")
-      return badRequest("college_id invalid (FK failed)", "college_id");
+      return badRequest("college_id or kota_id invalid (FK failed)", "fk");
     if (err?.code === "P2025") return notFound();
     const status = err?.status || 500;
     if (status === 401)

@@ -262,8 +262,8 @@ export default function useCollegeViewModel({
       label: t("Pencarian", "Search"),
       // placeholder hero diganti langsung di component (Cari Kampus / Search Campus)
       placeholder: t(
-        "Cari program/jurusan atau universitas (mis. Informatika, Kanada)",
-        "Find a program/major or university (e.g., Computer Science, Canada)"
+        "Cari program/fakultas atau universitas (mis. Informatika, Kanada)",
+        "Find a program/faculty or university (e.g., Computer Science, Canada)"
       ),
       onSearchHref: "/user/layanan?menu=layanan",
     },

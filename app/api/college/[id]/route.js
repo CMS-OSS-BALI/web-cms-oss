@@ -242,7 +242,6 @@ export async function GET(req, { params }) {
         logo_url: true,
         address: true,
         city: true,
-        state: true,
         postal_code: true,
         tuition_min: true,
         tuition_max: true,
@@ -251,6 +250,7 @@ export async function GET(req, { params }) {
         contact_name: true,
         no_telp: true,
         email: true,
+        catatan: true, // 👈 ikut diambil
         created_at: true,
         updated_at: true,
         college_translate: {
@@ -268,6 +268,7 @@ export async function GET(req, { params }) {
     return NextResponse.json({
       ...base,
       logo_url: toPublicUrl(base.logo_url),
+      catatan: base.catatan ?? null, // 👈 normalize null
       locale_used: t?.locale || null,
       name: t?.name || null,
       description: t?.description || null,
@@ -319,7 +320,6 @@ export async function PATCH(req, { params }) {
     if (body.mou_url !== undefined) patch.mou_url = body.mou_url ?? null;
     if (body.address !== undefined) patch.address = body.address ?? null;
     if (body.city !== undefined) patch.city = body.city ?? null;
-    if (body.state !== undefined) patch.state = body.state ?? null;
     if (body.postal_code !== undefined)
       patch.postal_code = body.postal_code ?? null;
 
@@ -329,6 +329,11 @@ export async function PATCH(req, { params }) {
       patch.tuition_max = toNumeric(body.tuition_max);
     if (body.living_cost_estimate !== undefined)
       patch.living_cost_estimate = toNumeric(body.living_cost_estimate);
+
+    // 👇 catatan internal admin (HTML dari editor)
+    if (body.catatan !== undefined) {
+      patch.catatan = body.catatan === null ? null : String(body.catatan);
+    }
 
     patch.currency = ALWAYS_CURRENCY;
 

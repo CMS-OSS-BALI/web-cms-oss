@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/lib/swr/fetcher";
+import { ALIAS_TO_CODE } from "@/app/utils/countryAliases";
 
 /* ========================= Helpers ========================= */
 const strip = (html = "") =>
@@ -26,7 +27,12 @@ const fmtMoney = (n, currency = "IDR") => {
   }
 };
 
-const SWR_OPTS = { revalidateOnFocus: false, shouldRetryOnError: false };
+const SWR_OPTS = {
+  revalidateOnFocus: true,
+  revalidateIfStale: true,
+  revalidateOnReconnect: true,
+  shouldRetryOnError: false,
+};
 
 const normalizeLocale = (v, fb = "id") => {
   const raw = String(v ?? "")
@@ -224,6 +230,34 @@ export default function useCollegeDetailViewModel({ id, locale = "id" } = {}) {
     [college?.currency]
   );
 
+  // ===== negara flag via API (dinamis) =====
+  const countryName = useMemo(
+    () => (college?.country || "").trim(),
+    [college?.country]
+  );
+
+  const countryFlagKey = useMemo(() => {
+    if (!countryName) return null;
+    const p = new URLSearchParams();
+    p.set("page", "1");
+    p.set("perPage", "1");
+    p.set("q", countryName);
+    p.set("locale", activeLocale);
+    p.set("fallback", fallbackLocale);
+    return `/api/negara?${p.toString()}`;
+  }, [countryName, activeLocale, fallbackLocale]);
+
+  const { data: negaraRes } = useSWR(countryFlagKey, fetcher, {
+    revalidateOnFocus: false,
+  });
+
+  const flagFromApi = useMemo(() => {
+    const row = Array.isArray(negaraRes?.data)
+      ? negaraRes.data[0]
+      : negaraRes?.data;
+    return row?.flag || null;
+  }, [negaraRes]);
+
   // ===== utils: pickFlag =====
   const FLAG_PATH = {
     au: "/flags/au.svg",
@@ -245,70 +279,8 @@ export default function useCollegeDetailViewModel({ id, locale = "id" } = {}) {
     it: "/flags/it.svg",
   };
 
-  const ALIAS_TO_CODE = {
-    australia: "au",
-    au: "au",
-    "new zealand": "nz",
-    "selandia baru": "nz",
-    nz: "nz",
-    canada: "ca",
-    kanada: "ca",
-    ca: "ca",
-    netherlands: "nl",
-    holland: "nl",
-    belanda: "nl",
-    nl: "nl",
-    "united states": "us",
-    usa: "us",
-    america: "us",
-    amerika: "us",
-    "amerika serikat": "us",
-    as: "us",
-    us: "us",
-    japan: "jp",
-    jepang: "jp",
-    jp: "jp",
-    taiwan: "tw",
-    tw: "tw",
-    france: "fr",
-    prancis: "fr",
-    fr: "fr",
-    germany: "de",
-    jerman: "de",
-    deutschland: "de",
-    de: "de",
-    "united kingdom": "gb",
-    uk: "gb",
-    britain: "gb",
-    "great britain": "gb",
-    england: "gb",
-    inggris: "gb",
-    gb: "gb",
-    poland: "pl",
-    polandia: "pl",
-    pl: "pl",
-    "south korea": "kr",
-    "korea selatan": "kr",
-    korea: "kr",
-    kr: "kr",
-    switzerland: "ch",
-    swiss: "ch",
-    ch: "ch",
-    china: "cn",
-    tiongkok: "cn",
-    cn: "cn",
-    singapore: "sg",
-    singapura: "sg",
-    sg: "sg",
-    malaysia: "my",
-    my: "my",
-    italy: "it",
-    italia: "it",
-    it: "it",
-  };
-
   const pickFlag = (countryRaw = "") => {
-    const s = String(countryRaw)
+    const s = String(countryRaw || "")
       .trim()
       .toLowerCase()
       .normalize("NFD")
@@ -329,8 +301,6 @@ export default function useCollegeDetailViewModel({ id, locale = "id" } = {}) {
 
   // ====== Hero ======
   const hero = useMemo(() => {
-    const countryName = (college?.country || "").trim();
-
     return {
       name: college?.name || "College",
       cover: "/aus-campus.svg",
@@ -342,21 +312,34 @@ export default function useCollegeDetailViewModel({ id, locale = "id" } = {}) {
         ? String(college.website).replace(/^https?:\/\//, "")
         : "",
       objectPosition: "50% 50%",
-      flagSrc: pickFlag(countryName),
+      flagSrc: flagFromApi || pickFlag(countryName),
       countryName,
     };
-  }, [college?.name, college?.logo_url, college?.website, college?.country]);
+  }, [
+    college?.name,
+    college?.logo_url,
+    college?.website,
+    countryName,
+    flagFromApi,
+  ]);
 
   const { faculties, prodiById } = useMemo(() => {
     const byId = {};
     const facs = jurusanList.map((j) => {
       const jid = getJurusanId(j);
       const progs = prodiMap[jid] || [];
+      const kotaNames = Array.isArray(j?.kota_names)
+        ? j.kota_names.filter(Boolean)
+        : j?.kota_name
+        ? [j.kota_name]
+        : [];
+      const kotaLabel = kotaNames.join(", ");
 
       progs.forEach((p) => {
         byId[p.id] = {
           ...p,
           priceLabel: p.harga != null ? fmtMoney(p.harga, currency) : null,
+          kotaLabel,
         };
       });
 
@@ -365,7 +348,9 @@ export default function useCollegeDetailViewModel({ id, locale = "id" } = {}) {
         title: getTitle(j) || "-",
         description: getDesc(j) || "",
         priceLabel: j?.harga != null ? fmtMoney(j.harga, currency) : null,
-        intake: getIntake(j), // <<< NEW (intake jurusan)
+        intake: getIntake(j), // retained for compatibility
+        kotaNames,
+        kotaLabel,
         programs: progs.map((p) => ({
           ...p,
           priceLabel: p.harga != null ? fmtMoney(p.harga, currency) : null,

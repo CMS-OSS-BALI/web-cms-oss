@@ -37,6 +37,21 @@ function buildListKey({
   return `/api/college?${p.toString()}`;
 }
 
+const normalizeJenjangList = (input) => {
+  if (!input) return [];
+  if (Array.isArray(input)) {
+    return input
+      .map((v) => (v ?? "").toString().trim())
+      .filter(Boolean)
+      .filter((v, i, arr) => arr.indexOf(v) === i);
+  }
+  return (input || "")
+    .toString()
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+};
+
 function pickEnglishLines(reqItems = []) {
   const out = [];
   for (const it of reqItems) {
@@ -54,9 +69,17 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
   const [perPage, setPerPage] = useState(DEFAULT_PER_PAGE);
   const [q, setQ] = useState("");
   const [country, setCountry] = useState("");
-  const [jenjang, setJenjang] = useState("");
+  // jenjang sekarang disimpan sebagai array (untuk multiple select)
+  const [jenjang, setJenjang] = useState([]);
 
   const fallback = FALLBACK_FOR(locale);
+
+  // Param yang dikirim ke API (join dengan koma kalau multiple)
+  const jenjangParam = useMemo(() => {
+    const arr = normalizeJenjangList(jenjang);
+    return arr.join(",");
+  }, [jenjang]);
+
   const key = buildListKey({
     page,
     perPage,
@@ -64,7 +87,7 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
     locale,
     fallback,
     country,
-    jenjang,
+    jenjang: jenjangParam,
   });
 
   const { data, error, isLoading, mutate } = useSWR(key, jsonFetcher, {
@@ -73,6 +96,37 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
   });
 
   const colleges = useMemo(() => data?.data || [], [data]);
+
+  // =================== JENJANG MASTER (untuk dropdown) ===================
+  const jenjangMasterKey = useMemo(() => {
+    const p = new URLSearchParams();
+    p.set("page", "1");
+    p.set("perPage", "200");
+    p.set("locale", locale || DEFAULT_LOCALE);
+    p.set("fallback", fallback || FALLBACK_FOR(locale || DEFAULT_LOCALE));
+    return `/api/jenjang-master?${p.toString()}`;
+  }, [locale, fallback]);
+
+  const {
+    data: jenjangMasterData,
+    isLoading: jenjangMasterLoading,
+    error: jenjangMasterError,
+  } = useSWR(jenjangMasterKey, jsonFetcher, {
+    revalidateOnFocus: false,
+  });
+
+  const jenjangMasterOptions = useMemo(() => {
+    const list = Array.isArray(jenjangMasterData?.data)
+      ? jenjangMasterData.data
+      : [];
+    return list.map((row) => ({
+      value: row.name || row.code || row.id,
+      label: row.name || row.code || row.id,
+      id: row.id,
+      code: row.code,
+      is_active: row.is_active,
+    }));
+  }, [jenjangMasterData]);
 
   const total = useMemo(() => {
     const d = data || {};
@@ -258,6 +312,7 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
   );
 
   /* ==================== CRUD COLLEGE ==================== */
+  const [opLoading, setOpLoading] = useState(false);
 
   const clampPageAfterDelete = useCallback(() => {
     if (Number.isFinite(total)) {
@@ -282,7 +337,7 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
       description,
       country,
       city,
-      state,
+      // state,  // sudah tidak dipakai
       postal_code,
       website,
       address,
@@ -293,15 +348,17 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
       no_telp,
       email,
       jenjang,
+      catatan,
       autoTranslate = true,
     }) => {
+      const jenjangList = normalizeJenjangList(jenjang);
       const form = new FormData();
       form.set("locale", locale);
       form.set("name", name || "");
       if (description != null) form.set("description", description || "");
       if (country) form.set("country", country);
       if (city) form.set("city", city);
-      if (state) form.set("state", state);
+      // state dihapus dari payload
       if (postal_code) form.set("postal_code", postal_code);
       if (website) form.set("website", website);
       if (address) form.set("address", address);
@@ -312,26 +369,34 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
       if (contact_name != null) form.set("contact_name", String(contact_name));
       if (no_telp != null) form.set("no_telp", String(no_telp));
       if (email != null) form.set("email", String(email));
-      if (jenjang != null && jenjang !== "")
-        form.set("jenjang", String(jenjang));
+      if (jenjangList.length) form.set("jenjang", jenjangList.join(", "));
+      if (catatan != null) form.set("catatan", String(catatan));
       form.set("autoTranslate", String(Boolean(autoTranslate)));
 
-      // ⬇⬇⬇ DI SINI DI-FIX → backend butuh field "file"
+      // backend pakai field "file" untuk logo
       if (file) form.set("file", file);
 
-      const res = await fetch("/api/college", { method: "POST", body: form });
-      if (!res.ok) {
-        return {
-          ok: false,
-          error: (await res.json().catch(() => ({})))?.message || res.status,
-        };
+      try {
+        setOpLoading(true);
+        const res = await fetch("/api/college", {
+          method: "POST",
+          body: form,
+        });
+        if (!res.ok) {
+          return {
+            ok: false,
+            error: (await res.json().catch(() => ({})))?.message || res.status,
+          };
+        }
+        const json = await res.json().catch(() => ({}));
+
+        if (page !== 1) setPage(1);
+        await mutate();
+
+        return { ok: true, data: json };
+      } finally {
+        setOpLoading(false);
       }
-      const json = await res.json().catch(() => ({}));
-
-      if (page !== 1) setPage(1);
-      await mutate();
-
-      return { ok: true, data: json };
     },
     [locale, mutate, page]
   );
@@ -354,7 +419,7 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
     async (id, payload = {}) => {
       const form = new FormData();
 
-      // ⬇⬇⬇ DI SINI DI-FIX → backend butuh field "file"
+      // backend butuh field "file"
       if (payload.file) form.set("file", payload.file);
 
       if ("name" in payload) {
@@ -365,7 +430,7 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
       for (const k of [
         "country",
         "city",
-        "state",
+        // "state", // dihapus
         "postal_code",
         "website",
         "address",
@@ -375,6 +440,7 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
         "contact_name",
         "no_telp",
         "email",
+        "catatan", // 👈 kirim catatan juga
       ]) {
         if (payload[k] !== undefined && payload[k] !== null) {
           form.set(k, String(payload[k]));
@@ -382,9 +448,9 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
       }
 
       if ("jenjang" in payload && payload.jenjang !== undefined) {
-        const v = payload.jenjang;
-        if (v === null || v === "") form.set("jenjang", "");
-        else form.set("jenjang", String(v));
+        const list = normalizeJenjangList(payload.jenjang);
+        if (!list.length) form.set("jenjang", "");
+        else form.set("jenjang", list.join(", "));
       }
 
       if ("description" in payload) {
@@ -399,22 +465,27 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
         form.set("autoTranslate", String(Boolean(payload.autoTranslate)));
       }
 
-      const res = await fetch(`/api/college/${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        body: form,
-      });
+      try {
+        setOpLoading(true);
+        const res = await fetch(`/api/college/${encodeURIComponent(id)}`, {
+          method: "PATCH",
+          body: form,
+        });
 
-      if (!res.ok) {
-        return {
-          ok: false,
-          error: (await res.json().catch(() => ({})))?.message || res.status,
-        };
+        if (!res.ok) {
+          return {
+            ok: false,
+            error: (await res.json().catch(() => ({})))?.message || res.status,
+          };
+        }
+
+        const json = await res.json().catch(() => ({}));
+        await mutate();
+
+        return { ok: true, data: json };
+      } finally {
+        setOpLoading(false);
       }
-
-      const json = await res.json().catch(() => ({}));
-      await mutate();
-
-      return { ok: true, data: json };
     },
     [locale, mutate]
   );
@@ -460,6 +531,11 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
     setCountry,
     setJenjang,
 
+    // master jenjang untuk dropdown
+    jenjangMasterOptions,
+    jenjangMasterLoading,
+    jenjangMasterError,
+
     colleges,
     total,
     totalPages,
@@ -482,5 +558,6 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
     updateRequirement,
     deleteRequirement,
     bulkCreateRequirements,
+    opLoading,
   };
 }

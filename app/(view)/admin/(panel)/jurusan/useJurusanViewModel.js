@@ -86,7 +86,7 @@ export default function useJurusanViewModel(initial = {}) {
       ...r,
       created_ts:
         r.created_ts ?? toTs(r.created_at) ?? toTs(r.updated_at) ?? null,
-      // in_take & harga sudah dipetakan oleh server (mapJurusan + sanitize)
+      // kota_name & harga sudah dipetakan server (mapJurusan + sanitize)
     }));
   }, [data]);
 
@@ -152,6 +152,25 @@ export default function useJurusanViewModel(initial = {}) {
     [locale, fallback]
   );
 
+  /* ---------- Kota options (untuk form) ---------- */
+  const searchKotaOptions = useCallback(
+    async (keyword = "") => {
+      const p = new URLSearchParams();
+      p.set("perPage", "10");
+      if (keyword.trim()) p.set("q", keyword.trim());
+      p.set("locale", locale);
+      p.set("fallback", fallback);
+      const url = `/api/kota?${p.toString()}`;
+      const json = await jsonFetcher(url).catch(() => ({ data: [] }));
+      const opts = (json?.data || []).map((k) => ({
+        value: k.id,
+        label: k.name || k.name_id || k.name_en || k.label || "(Tanpa Nama)",
+      }));
+      return opts;
+    },
+    [locale, fallback]
+  );
+
   /* ----------------------------- CRUD ----------------------------- */
   const createJurusan = useCallback(
     async ({
@@ -159,6 +178,7 @@ export default function useJurusanViewModel(initial = {}) {
       name,
       description,
       harga,
+      kota_id,
       in_take,
       autoTranslate,
     }) => {
@@ -168,7 +188,9 @@ export default function useJurusanViewModel(initial = {}) {
         name,
         description: description ?? null,
         harga: harga ?? null, // stringMode → server toDecimalNullable
-        in_take: in_take ?? null, // ← NEW
+        in_take: joinInTake(in_take) || null,
+        // kota_id optional; boleh null/array
+        ...(kota_id !== undefined ? { kota_id } : {}),
         autoTranslate: !!(autoTranslate ?? true),
       };
       const res = await fetch("/api/jurusan", {
@@ -186,10 +208,12 @@ export default function useJurusanViewModel(initial = {}) {
         }
         return { ok: false, error: msg || res.status };
       }
-      await mutate();
-      return { ok: true, data: await res.json() };
+      const json = await res.json();
+      setPage(1); // pastikan item baru tampil di halaman pertama
+      await mutate(undefined, { revalidate: true });
+      return { ok: true, data: json };
     },
-    [locale, mutate]
+    [locale, mutate, setPage]
   );
 
   const getJurusan = useCallback(
@@ -215,7 +239,10 @@ export default function useJurusanViewModel(initial = {}) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           locale,
-          ...payload, // boleh kirim college_id, name, description, harga, in_take, autoTranslate
+          ...payload,
+          ...(payload.in_take !== undefined
+            ? { in_take: joinInTake(payload.in_take) || null }
+            : {}),
         }),
       });
       if (!res.ok) {
@@ -228,8 +255,9 @@ export default function useJurusanViewModel(initial = {}) {
         }
         return { ok: false, error: msg || res.status };
       }
-      await mutate();
-      return { ok: true, data: await res.json() };
+      const json = await res.json();
+      await mutate(undefined, { revalidate: true });
+      return { ok: true, data: json };
     },
     [locale, mutate]
   );
@@ -249,7 +277,7 @@ export default function useJurusanViewModel(initial = {}) {
         }
         return { ok: false, error: msg || res.status };
       }
-      await mutate();
+      await mutate(undefined, { revalidate: true });
       return { ok: true };
     },
     [mutate]
@@ -282,6 +310,9 @@ export default function useJurusanViewModel(initial = {}) {
     collegeName,
     refreshCollegeNamesForPage,
     searchCollegeOptions,
+
+    // kota helpers
+    searchKotaOptions,
 
     // ops
     createJurusan,

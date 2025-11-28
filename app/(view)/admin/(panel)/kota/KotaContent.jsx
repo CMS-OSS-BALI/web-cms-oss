@@ -1,4 +1,5 @@
-﻿"use client";
+// app/(view)/admin/kota/KotaContent.jsx
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -14,6 +15,7 @@ import {
   Tooltip,
   Spin,
   Select,
+  Switch,
   notification,
 } from "antd";
 import {
@@ -24,6 +26,7 @@ import {
   LeftOutlined,
   RightOutlined,
   SearchOutlined,
+  FilterOutlined,
 } from "@ant-design/icons";
 
 /* ===== compact tokens ===== */
@@ -34,43 +37,46 @@ const TOKENS = {
   text: "#0f172a",
 };
 
-/* ===== Grid kolom konsisten (header & baris) =====
-   Jurusan | Fakultas | Intake | Harga | Kampus | Aksi  */
+/* ===== Grid kolom
+   Kota | Negara | Living cost | Status | Aksi  ===== */
 const GRID_COLS =
-  "minmax(300px,2fr) minmax(220px,1.2fr) minmax(140px,.9fr) minmax(160px,.9fr) minmax(260px,1.2fr) 120px";
+  "minmax(260px,2fr) minmax(220px,1.3fr) minmax(180px,.9fr) minmax(120px,.7fr) 120px";
 
 const T = {
-  title: "Manajemen Jurusan",
-  totalLabel: "Total Jurusan",
-  listTitle: "Data Jurusan",
-  addNew: "Buat Data Baru",
-  searchPh: "Cari nama jurusan",
-  programCol: "Nama Jurusan",
-  majorCol: "Nama Fakultas",
-  intakeCol: "Intake",
-  priceCol: "Harga",
-  collegeCol: "Nama Kampus",
+  title: "Manajemen Kota",
+  totalLabel: "Total Kota",
+  listTitle: "Data Kota",
+  addNew: "Buat Kota Baru",
+  searchPh: "Cari nama kota",
+  kotaCol: "Nama Kota",
+  negaraCol: "Negara",
+  livingCol: "Living Cost (IDR)",
+  statusCol: "Status",
   action: "Aksi",
   view: "Lihat",
   edit: "Edit",
-  del: "Hapus",
+  del: "Nonaktifkan",
+  activate: "Aktifkan",
   save: "Simpan",
 
   // form
-  name: "Nama Jurusan",
-  desc: "Deskripsi",
-  jurusan: "Fakultas",
-  price: "Harga (IDR)",
-  intake: "Intake (boleh lebih dari satu / opsional)",
+  nameId: "Nama Kota (Bahasa Indonesia)",
+  negara: "Negara",
+  livingCost: "Perkiraan living cost (IDR) (opsional)",
+  isActive: "Status Aktif",
 
   // sorting
   sort: "Urutkan",
-  sNewest: "Terbaru",
-  sOldest: "Terlama",
-  sNameAsc: "Nama A–Z",
-  sNameDesc: "Nama Z–A",
-  sPriceAsc: "Harga termurah",
-  sPriceDesc: "Harga termahal",
+  sNewest: "Dibuat terbaru",
+  sOldest: "Dibuat terlama",
+  sUpdatedNewest: "Diubah terbaru",
+  sUpdatedOldest: "Diubah terlama",
+
+  // status filter
+  statusFilter: "Status",
+  statusAll: "Semua",
+  statusActive: "Aktif",
+  statusInactive: "Nonaktif",
 };
 
 const monthsId = [
@@ -87,64 +93,29 @@ const monthsId = [
   "November",
   "Desember",
 ];
-const MONTH_OPTIONS = monthsId.map((m) => ({ value: m, label: m }));
 
 const fmtDateId = (dLike) => {
-  if (dLike === null || dLike === undefined || dLike === "") return "-";
+  if (dLike === null || dLike === undefined || dLike === "") return "—";
   try {
     const dt =
       typeof dLike === "number" ? new Date(dLike) : new Date(String(dLike));
-    if (isNaN(dt.getTime())) return "-";
-    return `${dt.getDate()} ${monthsId[dt.getMonth()]}`;
+    if (Number.isNaN(dt.getTime())) return "—";
+    const day = dt.getDate();
+    const month = monthsId[dt.getMonth()];
+    const year = dt.getFullYear();
+    return `${day} ${month} ${year}`;
   } catch {
-    return "-";
+    return "—";
   }
 };
 
-// pick created_ts -> created_at -> updated_ts -> updated_at
+/* tanggal: created_ts -> created_at -> updated_ts -> updated_at */
 const pickCreated = (obj) =>
   obj?.created_ts ??
   obj?.created_at ??
   obj?.updated_ts ??
   obj?.updated_at ??
   null;
-
-const stripTags = (s) => (s ? String(s).replace(/<[^>]*>/g, "") : "");
-
-/* ==== Intake helpers ==== */
-const toIntakeArray = (val) => {
-  if (!val) return [];
-  if (Array.isArray(val)) {
-    return val
-      .map((v) => (v ?? "").toString().trim())
-      .filter(Boolean)
-      .filter((v, i, arr) => arr.indexOf(v) === i);
-  }
-  return (val || "")
-    .toString()
-    .split(",")
-    .map((v) => v.trim())
-    .filter(Boolean);
-};
-
-const intakeDisplay = (val, fallback = "—") => {
-  const arr = toIntakeArray(val);
-  return arr.length ? arr.join(", ") : fallback;
-};
-
-const renderSelectShortcuts = ({ menu, onSelectAll, onClear, disabledAll }) => (
-  <div>
-    {menu}
-    <div style={{ display: "flex", gap: 8, padding: "6px 8px" }}>
-      <Button size="small" onClick={onSelectAll} disabled={disabledAll}>
-        Pilih Semua
-      </Button>
-      <Button size="small" danger onClick={onClear}>
-        Hapus Semua
-      </Button>
-    </div>
-  </div>
-);
 
 /* ==== currency helpers ==== */
 const fmtIdr = (v) => {
@@ -198,18 +169,25 @@ const idrParser = (val) => {
   return noThousand.replace(/,/g, "");
 };
 
-export default function ProdiContent({ vm }) {
-  const viewModel = vm ?? require("./useProdiViewModel").default();
+export default function KotaContent({ vm, initialLocale = "id" }) {
+  const viewModel = vm ?? require("./useKotaViewModel").default();
 
-  // notifications
+  // sinkron locale dari prop (kalau nanti multi-locale)
+  useEffect(() => {
+    viewModel.setLocale?.(initialLocale);
+    viewModel.setFallback?.(initialLocale);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialLocale]);
+
+  // ----- notifications -----
   const [api, contextHolder] = notification.useNotification();
   const toast = {
-    ok: (m, d) =>
-      api.success({ message: m, description: d, placement: "topRight" }),
-    err: (m, d) =>
-      api.error({ message: m, description: d, placement: "topRight" }),
-    info: (m, d) =>
-      api.info({ message: m, description: d, placement: "topRight" }),
+    ok: (msg, desc) =>
+      api.success({ message: msg, description: desc, placement: "topRight" }),
+    err: (msg, desc) =>
+      api.error({ message: msg, description: desc, placement: "topRight" }),
+    info: (msg, desc) =>
+      api.info({ message: msg, description: desc, placement: "topRight" }),
   };
 
   // ----- UI state
@@ -222,72 +200,53 @@ export default function ProdiContent({ vm }) {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailData, setDetailData] = useState(null);
 
-  const rows = useMemo(() => viewModel.prodi || [], [viewModel.prodi]);
+  const rows = useMemo(() => viewModel.kota || [], [viewModel.kota]);
 
-  // opsi intake tetap static, tapi kalau ada custom dari detail maka ditambahkan
-  const intakeOptionsForEdit = useMemo(() => {
-    const curr = toIntakeArray(detailData?.in_take);
-    const base = [...MONTH_OPTIONS];
-    if (!curr.length) return base;
-    const existing = new Set(base.map((o) => o.value));
-    const extra = curr.filter((v) => !existing.has(v));
-    return [...base, ...extra.map((v) => ({ value: v, label: v }))];
-  }, [detailData?.in_take]);
-
-  // hydrate jurusan & kampus names for this page
+  // refresh nama negara berdasar rows (cache di VM)
   useEffect(() => {
-    viewModel.refreshNamesForPage?.(rows);
-  }, [rows]); // eslint-disable-line
+    viewModel.refreshNegaraNamesForPage?.(rows);
+  }, [rows, viewModel]); // eslint-disable-line
 
   // ===== Search & Filter =====
   const [searchValue, setSearchValue] = useState(viewModel.q || "");
   useEffect(() => setSearchValue(viewModel.q || ""), [viewModel.q]);
 
-  // debounce 400ms
+  // debounce search
   useEffect(() => {
     const v = (searchValue || "").trim();
     const t = setTimeout(() => {
-      viewModel.setQ?.(v);
+      viewModel.setQ?.(v); // setter di VM auto setPage(1)
     }, 400);
     return () => clearTimeout(t);
   }, [searchValue, viewModel]); // eslint-disable-line
 
-  // jurusan options untuk filter & form
-  const [jurusanOptions, setJurusanOptions] = useState([]);
-  const [fetchingJurusan, setFetchingJurusan] = useState(false);
+  // negara options (remote)
+  const [negaraOptions, setNegaraOptions] = useState([]);
+  const [fetchingNegara, setFetchingNegara] = useState(false);
 
-  const fetchJurusanOpts = async (kw = "") => {
-    setFetchingJurusan(true);
-    const opts = await viewModel.searchJurusanOptions?.(kw).catch(() => []);
-    setJurusanOptions(opts || []);
-    setFetchingJurusan(false);
+  const fetchNegaraOpts = async (kw = "") => {
+    setFetchingNegara(true);
+    const opts = await viewModel.searchNegaraOptions?.(kw).catch(() => []);
+    setNegaraOptions(opts || []);
+    setFetchingNegara(false);
   };
 
   useEffect(() => {
-    fetchJurusanOpts("");
+    fetchNegaraOpts("");
   }, []); // eslint-disable-line
 
-  // Pastikan label untuk value terpilih selalu ada di options (UX aman)
+  // Pastikan label untuk value terpilih selalu ada di options
   useEffect(() => {
-    const id = viewModel.jurusanId;
+    const id = viewModel.negaraId;
     if (!id) return;
     const sid = String(id);
-    const already = jurusanOptions.some((o) => String(o.value) === sid);
+    const already = negaraOptions.some((o) => String(o.value) === sid);
     if (already) return;
-    const jName = viewModel.jurusanName?.(sid) || "";
-    const label = jName
-      ? `${jName}${
-          viewModel.collegeName?.(viewModel.collegeIdOfJurusan?.(sid) || "")
-            ? " — " +
-              (viewModel.collegeName?.(viewModel.collegeIdOfJurusan?.(sid)) ||
-                "")
-            : ""
-        }`
-      : "";
+    const label = viewModel.negaraName?.(sid) || "";
     if (label) {
-      setJurusanOptions((prev) => [{ value: id, label }, ...prev]);
+      setNegaraOptions((prev) => [{ value: id, label }, ...prev]);
     }
-  }, [viewModel.jurusanId]); // eslint-disable-line
+  }, [viewModel.negaraId, viewModel, negaraOptions]);
 
   const { shellW, maxW, blue, text } = TOKENS;
   const req = (msg) => [{ required: true, message: msg }];
@@ -295,33 +254,34 @@ export default function ProdiContent({ vm }) {
   const sortOptions = [
     { value: "created_at:desc", label: T.sNewest },
     { value: "created_at:asc", label: T.sOldest },
-    { value: "name:asc", label: T.sNameAsc },
-    { value: "name:desc", label: T.sNameDesc },
-    { value: "harga:asc", label: T.sPriceAsc },
-    { value: "harga:desc", label: T.sPriceDesc },
+    { value: "updated_at:desc", label: T.sUpdatedNewest },
+    { value: "updated_at:asc", label: T.sUpdatedOldest },
   ];
 
-  /* ========================== CRUD ========================== */
+  const statusOptions = [
+    { value: "active", label: T.statusActive },
+    { value: "all", label: T.statusAll },
+    { value: "inactive", label: T.statusInactive },
+  ];
+
+  /* ========================== CRUD Handlers ========================== */
   const onCreate = async () => {
     const v = await formCreate.validateFields().catch(() => null);
     if (!v) return;
 
-    const intakeArr = toIntakeArray(v.in_take);
-    const intakeStr = intakeArr.length ? intakeArr.join(", ") : null;
-
-    const out = await viewModel.createProdi({
-      jurusan_id: v.jurusan_id || "",
-      name: v.name,
-      description: v.description || "",
-      in_take: intakeStr,
-      harga: v.harga ?? null, // stringMode -> string, server normalizes
-      autoTranslate: true,
+    const out = await viewModel.createKota({
+      negara_id: v.negara_id,
+      name_id: v.name_id,
+      living_cost: v.living_cost ?? null,
+      is_active: v.is_active ?? true,
+      // autoTranslate tidak perlu dikirim; server default true
     });
+
     if (!out.ok) {
-      toast.err("Gagal membuat jurusan", out.error || "Gagal menyimpan data.");
+      toast.err("Gagal membuat kota", out.error || "Gagal menyimpan data.");
       return;
     }
-    toast.ok("Berhasil", `Jurusan "${v.name}" berhasil dibuat.`);
+    toast.ok("Berhasil", `Kota "${v.name_id}" berhasil dibuat.`);
     setCreateOpen(false);
     formCreate.resetFields();
   };
@@ -331,35 +291,35 @@ export default function ProdiContent({ vm }) {
     setEditOpen(true);
     setDetailLoading(true);
     setDetailData(null);
-    const { ok, data, error } = await viewModel.getProdi(row.id);
+
+    const { ok, data, error } = await viewModel.getKota(row.id);
     setDetailLoading(false);
     if (!ok) {
       setEditOpen(false);
       toast.err("Gagal memuat detail", error || "Tidak dapat memuat data.");
       return;
     }
+
     const d = data?.data || data || row;
     setDetailData(d);
-    // ensure jurusan option exists
-    const jName = viewModel.jurusanName?.(d.jurusan_id) || "";
-    if (d.jurusan_id && jName) {
-      setJurusanOptions((prev) => {
-        const has = prev.some((x) => x.value === d.jurusan_id);
-        const label = `${jName}${
-          viewModel.collegeName?.(d.college_id)
-            ? " — " + viewModel.collegeName(d.college_id)
-            : ""
-        }`;
-        return has ? prev : [{ value: d.jurusan_id, label }, ...prev];
+
+    // pastikan negara terpilih ada di options
+    const label = viewModel.negaraName?.(d.negara_id) || "";
+    if (d.negara_id && label) {
+      setNegaraOptions((prev) => {
+        const has = prev.some((x) => x.value === d.negara_id);
+        return has ? prev : [{ value: d.negara_id, label }, ...prev];
       });
     }
 
     formEdit.setFieldsValue({
-      jurusan_id: d.jurusan_id || undefined,
-      name: d.name || "",
-      description: d.description || "",
-      in_take: toIntakeArray(d.in_take),
-      harga: d.harga !== undefined && d.harga !== null ? String(d.harga) : "",
+      negara_id: d.negara_id || undefined,
+      name_id: d.name || "",
+      living_cost:
+        d.living_cost !== undefined && d.living_cost !== null
+          ? String(d.living_cost)
+          : "",
+      is_active: d.is_active ?? true,
     });
   };
 
@@ -368,16 +328,12 @@ export default function ProdiContent({ vm }) {
     const v = await formEdit.validateFields().catch(() => null);
     if (!v) return;
 
-    const intakeArr = toIntakeArray(v.in_take);
-    const intakeStr = intakeArr.length ? intakeArr.join(", ") : null;
-
-    const res = await viewModel.updateProdi(activeRow.id, {
-      jurusan_id: v.jurusan_id,
-      name: v.name,
-      description: v.description ?? null,
-      in_take: intakeStr,
-      harga: v.harga ?? null,
-      autoTranslate: false,
+    const res = await viewModel.updateKota(activeRow.id, {
+      negara_id: v.negara_id,
+      name_id: v.name_id,
+      living_cost: v.living_cost ?? null,
+      is_active: v.is_active ?? true,
+      // autoTranslate tidak dikirim; update manual saja
     });
 
     if (!res.ok) {
@@ -389,19 +345,36 @@ export default function ProdiContent({ vm }) {
     }
     toast.ok(
       "Perubahan disimpan",
-      `Jurusan "${v.name || activeRow.name}" telah diperbarui.`
+      `Kota "${v.name_id || activeRow.name}" telah diperbarui.`
     );
     setEditOpen(false);
     formEdit.resetFields();
   };
 
-  const onDelete = async (id) => {
-    const res = await viewModel.deleteProdi(id);
+  const onSoftDelete = async (row) => {
+    if (!row) return;
+    const res = await viewModel.deleteKota(row.id);
     if (!res.ok) {
-      toast.err("Gagal menghapus", res.error || "Tidak bisa menghapus data.");
+      toast.err(
+        "Gagal",
+        res.error || "Kota tidak bisa dinonaktifkan saat ini."
+      );
       return;
     }
-    toast.ok("Terhapus", "Jurusan berhasil dihapus.");
+    toast.ok("Berhasil", "Kota berhasil dinonaktifkan.");
+  };
+
+  const onActivate = async (row) => {
+    if (!row) return;
+    const res = await viewModel.updateKota(row.id, { is_active: true });
+    if (!res.ok) {
+      toast.err(
+        "Gagal",
+        res.error || "Kota tidak bisa diaktifkan kembali saat ini."
+      );
+      return;
+    }
+    toast.ok("Berhasil", "Kota berhasil diaktifkan kembali.");
   };
 
   /* ============================== UI =============================== */
@@ -422,6 +395,7 @@ export default function ProdiContent({ vm }) {
       }}
     >
       {contextHolder}
+      {/* notification portal */}
       <section
         style={{
           width: "100%",
@@ -487,9 +461,9 @@ export default function ProdiContent({ vm }) {
                   allowClear
                   value={searchValue}
                   onChange={(e) => setSearchValue(e.target.value)}
-                  onPressEnter={() => {
-                    viewModel.setQ?.((searchValue || "").trim());
-                  }}
+                  onPressEnter={() =>
+                    viewModel.setQ?.((searchValue || "").trim())
+                  }
                   placeholder={T.searchPh}
                   prefix={<SearchOutlined />}
                   style={styles.searchInput}
@@ -498,13 +472,13 @@ export default function ProdiContent({ vm }) {
                 <Select
                   allowClear
                   showSearch
-                  placeholder="Filter fakultas"
-                  value={viewModel.jurusanId || undefined}
-                  onChange={(v) => viewModel.setJurusanId?.(v || "")}
+                  placeholder="Filter negara"
+                  value={viewModel.negaraId || undefined}
+                  onChange={(v) => viewModel.setNegaraId?.(v || "")}
                   filterOption={false}
-                  notFoundContent={fetchingJurusan ? "Loading..." : null}
-                  onSearch={fetchJurusanOpts}
-                  options={jurusanOptions}
+                  notFoundContent={fetchingNegara ? "Loading..." : null}
+                  onSearch={fetchNegaraOpts}
+                  options={negaraOptions}
                   style={styles.filterSelect}
                 />
 
@@ -512,7 +486,15 @@ export default function ProdiContent({ vm }) {
                   value={viewModel.sort}
                   onChange={(v) => viewModel.setSort(v)}
                   options={sortOptions}
-                  style={styles.filterSort}
+                  style={styles.filterSelect}
+                />
+
+                <Select
+                  value={viewModel.status || "active"}
+                  onChange={(v) => viewModel.setStatus?.(v)}
+                  options={statusOptions}
+                  style={styles.filterStatus}
+                  suffixIcon={<FilterOutlined />}
                 />
               </div>
 
@@ -521,12 +503,11 @@ export default function ProdiContent({ vm }) {
                 {/* Header */}
                 <div style={styles.tableHeader}>
                   <div style={{ ...styles.thLeft, paddingLeft: 8 }}>
-                    {T.programCol}
+                    {T.kotaCol}
                   </div>
-                  <div style={styles.thCenter}>{T.majorCol}</div>
-                  <div style={styles.thCenter}>{T.intakeCol}</div>
-                  <div style={styles.thRight}>{T.priceCol}</div>
-                  <div style={styles.thCenter}>{T.collegeCol}</div>
+                  <div style={styles.thCenter}>{T.negaraCol}</div>
+                  <div style={styles.thRight}>{T.livingCol}</div>
+                  <div style={styles.thCenter}>{T.statusCol}</div>
                   <div style={styles.thCenter}>{T.action}</div>
                 </div>
 
@@ -541,33 +522,14 @@ export default function ProdiContent({ vm }) {
                           <Skeleton.Input
                             active
                             size="small"
-                            style={{
-                              width: 240,
-                              height: 16,
-                              borderRadius: 6,
-                            }}
+                            style={{ width: 220, height: 16, borderRadius: 6 }}
                           />
                         </div>
                         <div style={styles.colCenter}>
                           <Skeleton.Input
                             active
                             size="small"
-                            style={{
-                              width: 180,
-                              height: 16,
-                              borderRadius: 6,
-                            }}
-                          />
-                        </div>
-                        <div style={styles.colCenter}>
-                          <Skeleton.Input
-                            active
-                            size="small"
-                            style={{
-                              width: 120,
-                              height: 16,
-                              borderRadius: 6,
-                            }}
+                            style={{ width: 180, height: 16, borderRadius: 6 }}
                           />
                         </div>
                         <div style={styles.colRight}>
@@ -575,7 +537,7 @@ export default function ProdiContent({ vm }) {
                             active
                             size="small"
                             style={{
-                              width: 100,
+                              width: 120,
                               height: 16,
                               borderRadius: 6,
                               marginLeft: "auto",
@@ -586,22 +548,14 @@ export default function ProdiContent({ vm }) {
                           <Skeleton.Input
                             active
                             size="small"
-                            style={{
-                              width: 200,
-                              height: 16,
-                              borderRadius: 6,
-                            }}
+                            style={{ width: 80, height: 16, borderRadius: 6 }}
                           />
                         </div>
                         <div style={styles.colActionsCenter}>
                           <Skeleton.Input
                             active
                             size="small"
-                            style={{
-                              width: 96,
-                              height: 28,
-                              borderRadius: 8,
-                            }}
+                            style={{ width: 96, height: 28, borderRadius: 8 }}
                           />
                         </div>
                       </div>
@@ -614,19 +568,18 @@ export default function ProdiContent({ vm }) {
                         padding: "20px 0",
                       }}
                     >
-                      <Empty description="Belum ada data" />
+                      <Empty description="Belum ada data kota" />
                     </div>
                   ) : (
                     rows.map((r) => {
-                      const name = r.name || "(untitled)";
-                      const jurusanLabel =
-                        viewModel.jurusanName?.(r.jurusan_id) || "";
-                      const collegeLabel =
-                        viewModel.collegeName?.(r.college_id) || "";
+                      const name = r.name || "(tanpa nama)";
+                      const negaraLabel =
+                        viewModel.negaraName?.(r.negara_id) || "";
+                      const living = r.living_cost;
 
                       return (
                         <div key={r.id} style={styles.row}>
-                          {/* Nama Prodi */}
+                          {/* Nama Kota */}
                           <div style={styles.colName}>
                             <div style={styles.nameWrap}>
                               <div style={styles.nameText} title={name}>
@@ -638,49 +591,52 @@ export default function ProdiContent({ vm }) {
                             </div>
                           </div>
 
-                          {/* Nama Jurusan */}
+                          {/* Negara */}
                           <div style={styles.colCenter}>
-                            {jurusanLabel ? (
-                              <div
-                                style={styles.clampCell}
-                                title={jurusanLabel}
-                              >
-                                {jurusanLabel}
+                            {negaraLabel ? (
+                              <div style={styles.clampCell} title={negaraLabel}>
+                                {negaraLabel}
                               </div>
+                            ) : r.negara_id ? (
+                              <Skeleton.Input
+                                active
+                                size="small"
+                                style={{
+                                  width: 160,
+                                  height: 16,
+                                  borderRadius: 6,
+                                  margin: "0 auto",
+                                }}
+                              />
                             ) : (
                               "—"
                             )}
                           </div>
 
-                          {/* Intake (multi) */}
-                          <div style={styles.colCenter}>
-                            {r.in_take ? (
-                              <div
-                                style={styles.clampCell}
-                                title={intakeDisplay(r.in_take)}
-                              >
-                                {intakeDisplay(r.in_take)}
-                              </div>
-                            ) : (
-                              "—"
-                            )}
-                          </div>
+                          {/* Living cost */}
+                          <div style={styles.colRight}>{fmtIdr(living)}</div>
 
-                          {/* Harga */}
-                          <div style={styles.colRight}>{fmtIdr(r.harga)}</div>
-
-                          {/* Nama Kampus */}
+                          {/* Status */}
                           <div style={styles.colCenter}>
-                            {collegeLabel ? (
-                              <div
-                                style={styles.clampCell}
-                                title={collegeLabel}
-                              >
-                                {collegeLabel}
-                              </div>
-                            ) : (
-                              "—"
-                            )}
+                            <span
+                              style={{
+                                padding: "2px 10px",
+                                borderRadius: 999,
+                                fontSize: 11.5,
+                                fontWeight: 600,
+                                backgroundColor: r.is_active
+                                  ? "rgba(22,163,74,0.08)"
+                                  : "rgba(248,113,113,0.08)",
+                                color: r.is_active ? "#15803d" : "#b91c1c",
+                                border: `1px solid ${
+                                  r.is_active
+                                    ? "rgba(22,163,74,0.35)"
+                                    : "rgba(248,113,113,0.5)"
+                                }`,
+                              }}
+                            >
+                              {r.is_active ? "Aktif" : "Nonaktif"}
+                            </span>
                           </div>
 
                           {/* Aksi */}
@@ -695,7 +651,7 @@ export default function ProdiContent({ vm }) {
                                   setDetailLoading(true);
                                   setDetailData(null);
                                   viewModel
-                                    .getProdi(r.id)
+                                    .getKota(r.id)
                                     .then(({ ok, data, error }) => {
                                       setDetailLoading(false);
                                       if (!ok) {
@@ -712,21 +668,36 @@ export default function ProdiContent({ vm }) {
                                 style={styles.iconBtn}
                               />
                             </Tooltip>
-                            <Tooltip title={T.del}>
-                              <Popconfirm
-                                title="Hapus jurusan ini?"
-                                okText="Ya"
-                                cancelText="Batal"
-                                onConfirm={() => onDelete(r.id)}
-                              >
+
+                            {r.is_active ? (
+                              <Tooltip title={T.del}>
+                                <Popconfirm
+                                  title="Nonaktifkan kota ini?"
+                                  okText="Ya"
+                                  cancelText="Batal"
+                                  onConfirm={() => onSoftDelete(r)}
+                                >
+                                  <Button
+                                    size="small"
+                                    danger
+                                    icon={<DeleteOutlined />}
+                                    style={styles.iconBtn}
+                                  />
+                                </Popconfirm>
+                              </Tooltip>
+                            ) : (
+                              <Tooltip title={T.activate}>
                                 <Button
                                   size="small"
-                                  danger
-                                  icon={<DeleteOutlined />}
+                                  type="default"
+                                  onClick={() => onActivate(r)}
                                   style={styles.iconBtn}
-                                />
-                              </Popconfirm>
-                            </Tooltip>
+                                >
+                                  {T.activate}
+                                </Button>
+                              </Tooltip>
+                            )}
+
                             <Tooltip title={T.edit}>
                               <Button
                                 size="small"
@@ -785,64 +756,52 @@ export default function ProdiContent({ vm }) {
         title={null}
       >
         <div style={styles.modalShell}>
-          <Form layout="vertical" form={formCreate}>
-            <Form.Item label={T.jurusan} name="jurusan_id">
+          <Form
+            layout="vertical"
+            form={formCreate}
+            initialValues={{ is_active: true }}
+          >
+            <Form.Item
+              label={T.negara}
+              name="negara_id"
+              rules={req("Negara wajib dipilih")}
+            >
               <Select
                 showSearch
-                placeholder="Cari fakultas…"
+                placeholder="Cari negara…"
                 filterOption={false}
-                onSearch={fetchJurusanOpts}
-                notFoundContent={fetchingJurusan ? "Loading..." : null}
-                options={jurusanOptions}
-                allowClear
+                onSearch={fetchNegaraOpts}
+                notFoundContent={fetchingNegara ? "Loading..." : null}
+                options={negaraOptions}
               />
             </Form.Item>
 
             <Form.Item
-              label={T.name}
-              name="name"
-              rules={req("Nama jurusan wajib diisi")}
+              label={T.nameId}
+              name="name_id"
+              rules={req("Nama kota wajib diisi")}
             >
-              <Input placeholder="Contoh: Informatika" />
+              <Input placeholder="Contoh: Melbourne" />
             </Form.Item>
 
-            <Form.Item label={T.desc} name="description">
-              <Input.TextArea rows={3} placeholder="Deskripsi (opsional)" />
-            </Form.Item>
-
-            {/* Intake (multiple select + shortcut) */}
-            <Form.Item label={T.intake} name="in_take">
-              <Select
-                mode="multiple"
-                allowClear
-                showSearch
-                placeholder="Pilih bulan intake (boleh lebih dari satu)"
-                options={MONTH_OPTIONS}
-                optionFilterProp="label"
-                dropdownRender={(menu) =>
-                  renderSelectShortcuts({
-                    menu,
-                    onSelectAll: () =>
-                      formCreate.setFieldsValue({
-                        in_take: MONTH_OPTIONS.map((o) => o.value),
-                      }),
-                    onClear: () => formCreate.setFieldsValue({ in_take: [] }),
-                    disabledAll: !MONTH_OPTIONS.length,
-                  })
-                }
-              />
-            </Form.Item>
-
-            <Form.Item label={T.price} name="harga">
+            <Form.Item label={T.livingCost} name="living_cost">
               <InputNumber
                 stringMode
                 min={0}
-                step="1000"
+                step="100000"
                 style={{ width: "100%" }}
                 formatter={idrFormatter}
                 parser={idrParser}
-                placeholder="Contoh: Rp 2.500.000"
+                placeholder="Contoh: Rp 15.000.000"
               />
+            </Form.Item>
+
+            <Form.Item
+              label={T.isActive}
+              name="is_active"
+              valuePropName="checked"
+            >
+              <Switch checkedChildren="Aktif" unCheckedChildren="Nonaktif" />
             </Form.Item>
 
             <div style={styles.modalFooter}>
@@ -850,6 +809,7 @@ export default function ProdiContent({ vm }) {
                 type="primary"
                 size="large"
                 onClick={onCreate}
+                loading={viewModel.opLoading}
                 style={styles.saveBtn}
               >
                 {T.save}
@@ -874,59 +834,39 @@ export default function ProdiContent({ vm }) {
         <div style={styles.modalShell}>
           <Spin spinning={detailLoading}>
             <Form layout="vertical" form={formEdit}>
-              <Form.Item label={T.jurusan} name="jurusan_id">
+              <Form.Item label={T.negara} name="negara_id">
                 <Select
                   showSearch
-                  placeholder="Pilih fakultas"
+                  placeholder="Pilih negara"
                   filterOption={false}
-                  onSearch={fetchJurusanOpts}
-                  notFoundContent={fetchingJurusan ? "Loading..." : null}
-                  options={jurusanOptions}
-                  allowClear
+                  onSearch={fetchNegaraOpts}
+                  notFoundContent={fetchingNegara ? "Loading..." : null}
+                  options={negaraOptions}
                 />
               </Form.Item>
 
-              <Form.Item label={T.name} name="name">
-                <Input placeholder="Nama jurusan" />
+              <Form.Item label={T.nameId} name="name_id">
+                <Input placeholder="Nama kota" />
               </Form.Item>
 
-              <Form.Item label={T.desc} name="description">
-                <Input.TextArea rows={3} placeholder="Deskripsi (opsional)" />
-              </Form.Item>
-
-              {/* Intake (multiple select + shortcut) */}
-              <Form.Item label={T.intake} name="in_take">
-                <Select
-                  mode="multiple"
-                  allowClear
-                  showSearch
-                  placeholder="Pilih bulan intake"
-                  options={intakeOptionsForEdit}
-                  optionFilterProp="label"
-                  dropdownRender={(menu) =>
-                    renderSelectShortcuts({
-                      menu,
-                      onSelectAll: () =>
-                        formEdit.setFieldsValue({
-                          in_take: intakeOptionsForEdit.map((o) => o.value),
-                        }),
-                      onClear: () => formEdit.setFieldsValue({ in_take: [] }),
-                      disabledAll: !intakeOptionsForEdit.length,
-                    })
-                  }
-                />
-              </Form.Item>
-
-              <Form.Item label={T.price} name="harga">
+              <Form.Item label={T.livingCost} name="living_cost">
                 <InputNumber
                   stringMode
                   min={0}
-                  step="1000"
+                  step="100000"
                   style={{ width: "100%" }}
                   formatter={idrFormatter}
                   parser={idrParser}
-                  placeholder="Contoh: Rp 2.500.000"
+                  placeholder="Contoh: Rp 15.000.000"
                 />
+              </Form.Item>
+
+              <Form.Item
+                label={T.isActive}
+                name="is_active"
+                valuePropName="checked"
+              >
+                <Switch checkedChildren="Aktif" unCheckedChildren="Nonaktif" />
               </Form.Item>
 
               <div style={styles.modalFooter}>
@@ -934,6 +874,7 @@ export default function ProdiContent({ vm }) {
                   type="primary"
                   size="large"
                   onClick={onEditSubmit}
+                  loading={viewModel.opLoading}
                   style={styles.saveBtn}
                 >
                   Simpan Perubahan
@@ -960,40 +901,31 @@ export default function ProdiContent({ vm }) {
           <Spin spinning={detailLoading}>
             <div style={{ display: "grid", gap: 8 }}>
               <div>
-                <div style={styles.label}>{T.name}</div>
+                <div style={styles.label}>{T.kotaCol}</div>
                 <div style={styles.value}>
                   {detailData?.name || activeRow?.name || "—"}
                 </div>
               </div>
               <div>
-                <div style={styles.label}>{T.jurusan}</div>
+                <div style={styles.label}>{T.negara}</div>
                 <div style={styles.value}>
-                  {viewModel.jurusanName?.(
-                    detailData?.jurusan_id || activeRow?.jurusan_id
+                  {viewModel.negaraName?.(
+                    detailData?.negara_id || activeRow?.negara_id
                   ) || "—"}
                 </div>
               </div>
               <div>
-                <div style={styles.label}>{T.intakeCol}</div>
+                <div style={styles.label}>{T.livingCol}</div>
                 <div style={styles.value}>
-                  {intakeDisplay(
-                    detailData?.in_take ?? activeRow?.in_take,
-                    "—"
-                  )}
+                  {fmtIdr(detailData?.living_cost ?? activeRow?.living_cost)}
                 </div>
               </div>
               <div>
-                <div style={styles.label}>{T.collegeCol}</div>
+                <div style={styles.label}>{T.statusCol}</div>
                 <div style={styles.value}>
-                  {viewModel.collegeName?.(
-                    detailData?.college_id || activeRow?.college_id
-                  ) || "—"}
-                </div>
-              </div>
-              <div>
-                <div style={styles.label}>{T.priceCol}</div>
-                <div style={styles.value}>
-                  {fmtIdr(detailData?.harga ?? activeRow?.harga)}
+                  {detailData?.is_active ?? activeRow?.is_active
+                    ? "Aktif"
+                    : "Nonaktif"}
                 </div>
               </div>
               <div>
@@ -1002,12 +934,6 @@ export default function ProdiContent({ vm }) {
                   {fmtDateId(
                     pickCreated(detailData) ?? pickCreated(activeRow) ?? null
                   )}
-                </div>
-              </div>
-              <div>
-                <div style={styles.label}>{T.desc}</div>
-                <div style={{ ...styles.value, whiteSpace: "pre-wrap" }}>
-                  {stripTags(detailData?.description) || "—"}
                 </div>
               </div>
             </div>
@@ -1072,24 +998,24 @@ const styles = {
 
   filtersRow: {
     display: "grid",
-    gridTemplateColumns: "1fr 220px 220px", // search | jurusan | sort
+    gridTemplateColumns: "1.4fr 1fr 1fr 0.9fr",
     gap: 8,
     marginBottom: 10,
     alignItems: "center",
   },
   searchInput: { height: 36, borderRadius: 10 },
   filterSelect: { width: "100%" },
-  filterSort: { width: "100%" },
+  filterStatus: { width: "100%" },
 
   tableHeader: {
     display: "grid",
-    gridTemplateColumns: GRID_COLS, // konsisten dengan row
+    gridTemplateColumns: GRID_COLS,
     gap: 8,
     marginBottom: 4,
     color: "#0b3e91",
     fontWeight: 700,
     alignItems: "center",
-    minWidth: 1140,
+    minWidth: 960,
   },
   thLeft: { display: "flex", justifyContent: "flex-start", width: "100%" },
   thCenter: { display: "flex", justifyContent: "center", width: "100%" },
@@ -1097,7 +1023,7 @@ const styles = {
 
   row: {
     display: "grid",
-    gridTemplateColumns: GRID_COLS, // konsisten dengan header
+    gridTemplateColumns: GRID_COLS,
     gap: 8,
     alignItems: "center",
     background: "#f5f8ff",
@@ -1105,7 +1031,7 @@ const styles = {
     border: "1px solid #e8eeff",
     padding: "8px 10px",
     boxShadow: "0 6px 12px rgba(11, 86, 201, 0.05)",
-    minWidth: 1140,
+    minWidth: 960,
   },
 
   colName: {

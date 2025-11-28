@@ -56,6 +56,20 @@ const shell = {
   inner: { width: "min(1180px, 96%)", margin: "0 auto" },
 };
 
+const normalizeList = (val) => {
+  if (!val) return [];
+  if (Array.isArray(val))
+    return val
+      .map((v) => (v ?? "").toString().trim())
+      .filter(Boolean)
+      .filter((v, i, arr) => arr.indexOf(v) === i);
+  return (val || "")
+    .toString()
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+};
+
 /* ============================ HERO ============================ */
 const heroStyles = {
   wrapBleed: {
@@ -516,15 +530,16 @@ export default function CollegeDetailContent({
     title: "",
     description: "",
     priceLabel: "",
-    intakeLabel: "",
+    kotaLabel: "",
   });
 
   const openModal = useCallback((payload) => {
+    const kotaLabel = payload?.kotaLabel || payload?.kotaName || "";
     setModalData({
       title: payload?.title || "",
       description: payload?.description || "",
       priceLabel: payload?.priceLabel || "",
-      intakeLabel: payload?.intake || "",
+      kotaLabel,
     });
     setModalOpen(true);
   }, []);
@@ -580,7 +595,7 @@ export default function CollegeDetailContent({
       ],
       [
         "fakultas",
-        locale === "en" ? "Departments & Programs" : "Jurusan & Prodi",
+        locale === "en" ? "Faculties & Majors" : "Fakultas & Jurusan",
       ],
       ["syarat", locale === "en" ? "Requirements" : "Persyaratan"],
     ],
@@ -731,7 +746,7 @@ export default function CollegeDetailContent({
               style={{ ...layout.content, marginTop: 22, marginLeft: -22 }}
             >
               <h2 style={layout.h2}>
-                {locale === "en" ? "Departments & Programs" : "Jurusan & Prodi"}
+                {locale === "en" ? "Faculties & Majors" : "Fakultas & Jurusan"}
               </h2>
               <hr style={layout.hr} />
 
@@ -746,13 +761,17 @@ export default function CollegeDetailContent({
                             title: grp.title,
                             description: grp.description,
                             priceLabel: grp.priceLabel,
-                            intake: grp.intake,
+                            kotaLabel:
+                              grp.kotaLabel ||
+                              (Array.isArray(grp.kotaNames)
+                                ? grp.kotaNames.join(", ")
+                                : grp.kotaName || ""),
                           })
                         }
                         title={
                           locale === "en"
-                            ? "Click to see department details"
-                            : "Klik untuk lihat detail jurusan"
+                            ? "Click to see faculty details"
+                            : "Klik untuk lihat detail fakultas"
                         }
                       >
                         {grp.title}
@@ -767,8 +786,14 @@ export default function CollegeDetailContent({
                               typeof it === "string" ? "" : it.description;
                             const priceLabel =
                               typeof it === "string" ? "" : it.priceLabel;
-                            const intake =
-                              typeof it === "string" ? "" : it.intake || "";
+                            const kotaLabel =
+                              typeof it === "string"
+                                ? ""
+                                : it.kotaLabel ||
+                                  grp.kotaLabel ||
+                                  (Array.isArray(grp.kotaNames)
+                                    ? grp.kotaNames.join(", ")
+                                    : grp.kotaName || "");
                             return (
                               <li key={i} style={progListStyles.li}>
                                 <span
@@ -785,13 +810,13 @@ export default function CollegeDetailContent({
                                       title,
                                       description,
                                       priceLabel,
-                                      intake,
+                                      kotaLabel,
                                     })
                                   }
                                   title={
                                     locale === "en"
-                                      ? "Click to see program details"
-                                      : "Klik untuk lihat detail program"
+                                      ? "Click to see major details"
+                                      : "Klik untuk lihat detail jurusan"
                                   }
                                 >
                                   {title}
@@ -804,8 +829,8 @@ export default function CollegeDetailContent({
                         <ul style={facultyStyles.ul}>
                           <li style={{ opacity: 0.6, listStyle: "none" }}>
                             {locale === "en"
-                              ? "No programs listed."
-                              : "Belum ada program."}
+                              ? "No majors listed."
+                              : "Belum ada jurusan."}
                           </li>
                         </ul>
                       )}
@@ -814,13 +839,13 @@ export default function CollegeDetailContent({
                 ) : (
                   <article style={facultyStyles.card}>
                     <h4 style={facultyStyles.title}>
-                      {locale === "en" ? "Departments" : "Jurusan"}
+                      {locale === "en" ? "Faculties" : "Fakultas"}
                     </h4>
                     <ul style={facultyStyles.ul}>
                       <li style={{ opacity: 0.6, listStyle: "none" }}>
                         {locale === "en"
-                          ? "No departments found."
-                          : "Belum ada jurusan."}
+                          ? "No faculties found."
+                          : "Belum ada fakultas."}
                       </li>
                     </ul>
                   </article>
@@ -964,9 +989,11 @@ export default function CollegeDetailContent({
               </div>
 
               <div className="cd-modal__row">
-                <div className="cd-modal__label">Intake</div>
+                <div className="cd-modal__label">
+                  {locale === "en" ? "City" : "Kota"}
+                </div>
                 <div className="cd-modal__value">
-                  {modalData.intakeLabel || "—"}
+                  {modalData.kotaLabel || "—"}
                 </div>
               </div>
             </div>

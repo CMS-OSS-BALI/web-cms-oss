@@ -13,7 +13,7 @@ import {
   DEFAULT_LOCALE,
   EN_LOCALE,
   toDecimalNullable,
-  toNullableLongText, // ← NEW
+  toNullableLongText,
   assertAdmin,
 } from "@/app/api/prodi/_utils";
 
@@ -38,7 +38,7 @@ function mapProdi(row, locale, fallback) {
     name: t?.name || null,
     description: t?.description || null,
     harga: row.harga ?? null,
-    in_take: row.in_take ?? null, // ← NEW
+    in_take: row.in_take ?? null,
   };
 }
 
@@ -69,7 +69,7 @@ export async function GET(req, { params }) {
         updated_at: true,
         deleted_at: true,
         harga: true,
-        in_take: true, // ← NEW
+        in_take: true,
         prodi_translate: {
           where: { locale: { in: locales } },
           select: { locale: true, name: true, description: true },
@@ -77,6 +77,7 @@ export async function GET(req, { params }) {
       },
     });
     if (!row) return notFound("Prodi tidak ditemukan.");
+
     return json({ message: "OK", data: mapProdi(row, locale, fallback) });
   } catch (err) {
     console.error(`GET /api/prodi/${params?.id} error:`, err);
@@ -93,6 +94,7 @@ export async function GET(req, { params }) {
 export async function PUT(req, ctx) {
   return PATCH(req, ctx);
 }
+
 export async function PATCH(req, { params }) {
   try {
     await assertAdmin(req);
@@ -116,7 +118,7 @@ export async function PATCH(req, { params }) {
     const hasJurusan = Object.prototype.hasOwnProperty.call(body, "jurusan_id");
     const hasCollege = Object.prototype.hasOwnProperty.call(body, "college_id");
     const hasHarga = Object.prototype.hasOwnProperty.call(body, "harga");
-    const hasInTake = Object.prototype.hasOwnProperty.call(body, "in_take"); // ← NEW
+    const hasInTake = Object.prototype.hasOwnProperty.call(body, "in_take");
 
     if (hasJurusan || hasCollege || hasHarga || hasInTake) {
       const data = { updated_at: new Date() };
@@ -144,7 +146,7 @@ export async function PATCH(req, { params }) {
             );
           }
           data.jurusan_id = newJurId;
-          data.college_id = jur.college_id ?? null; // derive
+          data.college_id = jur.college_id ?? null; // derive dari jurusan
         } else {
           data.jurusan_id = null; // clear jurusan
           if (hasCollege) {
@@ -186,7 +188,7 @@ export async function PATCH(req, { params }) {
       }
 
       if (hasInTake) {
-        data.in_take = toNullableLongText(body.in_take); // ← NEW
+        data.in_take = toNullableLongText(body.in_take);
       }
 
       ops.push(prisma.prodi.update({ where: { id }, data }));
@@ -270,7 +272,7 @@ export async function PATCH(req, { params }) {
         updated_at: true,
         deleted_at: true,
         harga: true,
-        in_take: true, // ← NEW
+        in_take: true,
         prodi_translate: {
           where: { locale: { in: locales } },
           select: { locale: true, name: true, description: true },
@@ -278,6 +280,7 @@ export async function PATCH(req, { params }) {
       },
     });
     if (!updated) return notFound("Prodi tidak ditemukan.");
+
     return json({
       message: "Prodi berhasil diperbarui.",
       data: mapProdi(updated, locale, DEFAULT_LOCALE),

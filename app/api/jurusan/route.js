@@ -9,8 +9,8 @@ import {
   normalizeLocale,
   mapJurusan,
   assertAdmin,
-  toDecimalNullable, // ← existing
-  toNullableLongText, // ← NEW
+  toDecimalNullable,
+  toBigIntNullable,
 } from "@/app/api/jurusan/_utils";
 
 export const dynamic = "force-dynamic";
@@ -28,13 +28,16 @@ export async function GET(req) {
     const q = (sp.get("q") || "").trim();
     const college_id = (sp.get("college_id") || "").trim() || undefined;
 
+    // optional filter by kota_id (BigInt)
+    const kotaId = toBigIntNullable(sp.get("kota_id"));
+
     const sortParam = String(sp.get("sort") || "created_at:desc");
     const [sortField = "created_at", sortDirRaw = "desc"] =
       sortParam.split(":");
     const sortDir = sortDirRaw === "asc" ? "asc" : "desc";
 
     // izinkan sortir by harga juga
-    const allowed = new Set(["created_at", "updated_at", "name", "harga"]); // (in_take tidak disortir)
+    const allowed = new Set(["created_at", "updated_at", "name", "harga"]);
     const nameSort = sortField === "name";
     const orderBy =
       !allowed.has(sortField) || nameSort
@@ -59,6 +62,7 @@ export async function GET(req) {
     const where = {
       ...baseDeleted,
       ...(college_id ? { college_id } : {}),
+      ...(kotaId !== null ? { kota_id: kotaId } : {}),
       ...(q
         ? {
             jurusan_translate: {
@@ -84,11 +88,25 @@ export async function GET(req) {
         select: {
           id: true,
           college_id: true,
+          kota_id: true,
+          kota_multi: {
+            select: {
+              kota_id: true,
+              kota: {
+                select: {
+                  id: true,
+                  kota_translate: {
+                    where: { locale: { in: locales } },
+                    select: { locale: true, name: true },
+                  },
+                },
+              },
+            },
+          },
           created_at: true,
           updated_at: true,
           deleted_at: true,
           harga: true,
-          in_take: true, // ← NEW
           jurusan_translate: {
             where: { locale: { in: locales } },
             select: { locale: true, name: true, description: true },
@@ -155,12 +173,31 @@ export async function POST(req) {
     if (hargaDec && hargaDec.lessThan(0))
       return badRequest("harga cannot be negative", "harga");
 
-    const in_take = toNullableLongText(body.in_take); // ← NEW
+    // kota_id optional (BigInt) - allow multiple -> use first as legacy, store all in jurusan_kota
+    let kotaIds = [];
+    if (Object.prototype.hasOwnProperty.call(body, "kota_id")) {
+      const raw = Array.isArray(body.kota_id)
+        ? body.kota_id
+        : [body.kota_id];
+      const cleaned = raw
+        .map((v) => toBigIntNullable(v))
+        .filter((v) => v !== null);
+      kotaIds = Array.from(new Set(cleaned));
+
+      // verify all kota exist
+      for (const kid of kotaIds) {
+        const kota = await prisma.kota.findUnique({
+          where: { id: kid },
+          select: { id: true },
+        });
+        if (!kota) return badRequest("kota_id invalid (not found)", "kota_id");
+      }
+    }
 
     const autoTranslate =
       String(body.autoTranslate ?? "true").toLowerCase() !== "false";
 
-    // pre-check FK
+    // pre-check FK college
     const college = await prisma.college.findUnique({
       where: { id: college_id },
       select: { id: true },
@@ -173,18 +210,30 @@ export async function POST(req) {
         data: {
           college_id,
           harga: hargaDec ?? null,
-          in_take, // ← NEW
+          kota_id: kotaIds[0] ?? null, // legacy column (first kota)
           created_at: new Date(),
           updated_at: new Date(),
         },
       });
 
+      if (kotaIds.length) {
+        await tx.jurusan_kota.createMany({
+          data: kotaIds.map((k) => ({
+            jurusan_id: parent.id,
+            kota_id: k,
+          })),
+          skipDuplicates: true,
+        });
+      }
+
+      // translation (locale utama)
       await tx.jurusan_translate.upsert({
         where: { id_jurusan_locale: { id_jurusan: parent.id, locale } },
         update: { name, description },
         create: { id_jurusan: parent.id, locale, name, description },
       });
 
+      // auto translate ke EN
       if (autoTranslate && locale !== EN_LOCALE && (name || description)) {
         const [nameEn, descEn] = await Promise.all([
           name ? translate(name, locale, EN_LOCALE) : Promise.resolve(name),
@@ -219,7 +268,7 @@ export async function POST(req) {
     );
   } catch (err) {
     if (err?.code === "P2003") {
-      return badRequest("college_id invalid (FK failed)", "college_id");
+      return badRequest("college_id or kota_id invalid (FK failed)", "fk");
     }
     const status = err?.status || 500;
     if (status === 401)

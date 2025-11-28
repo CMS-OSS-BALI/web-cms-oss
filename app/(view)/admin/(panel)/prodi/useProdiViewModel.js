@@ -12,8 +12,14 @@ const DEFAULT_SORT = "created_at:desc";
 const jsonFetcher = (url) =>
   fetch(url).then(async (r) => {
     if (!r.ok) {
-      const t = await r.text().catch(() => "");
-      throw new Error(t || `Request failed: ${r.status}`);
+      let msg = "";
+      try {
+        const j = await r.json();
+        msg = j?.error?.message || j?.message || "";
+      } catch {
+        msg = await r.text().catch(() => "");
+      }
+      throw new Error(msg || `Request failed: ${r.status}`);
     }
     return r.json();
   });
@@ -67,22 +73,16 @@ export default function useProdiViewModel(initial = {}) {
 
   // wrap setters to reset page on filter changes
   const [_q, _setQ] = useState("");
-  const setQ = useCallback(
-    (v) => {
-      _setQ(v);
-      setPage(1);
-    },
-    [setPage]
-  );
+  const setQ = useCallback((v) => {
+    _setQ(v);
+    setPage(1);
+  }, []);
 
   const [_jurusanId, _setJurusanId] = useState("");
-  const setJurusanId = useCallback(
-    (v) => {
-      _setJurusanId(v);
-      setPage(1);
-    },
-    [setPage]
-  );
+  const setJurusanId = useCallback((v) => {
+    _setJurusanId(v);
+    setPage(1);
+  }, []);
 
   const fallback = FALLBACK_FOR(locale);
   const key = buildListKey({
@@ -256,7 +256,7 @@ export default function useProdiViewModel(initial = {}) {
         jurusan_id: jurusan_id || null,
         name,
         description: description ?? null,
-        in_take: in_take ?? null,
+        in_take: in_take ?? null, // string: "Januari, Maret" atau null
         harga: harga ?? null, // stringMode (server normalize)
         autoTranslate: Boolean(autoTranslate),
       };
@@ -266,9 +266,16 @@ export default function useProdiViewModel(initial = {}) {
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
+        let msg = "";
+        try {
+          const j = await res.json();
+          msg = j?.error?.message || j?.message;
+        } catch {
+          msg = await res.text();
+        }
         return {
           ok: false,
-          error: (await res.json().catch(() => ({})))?.message || res.status,
+          error: msg || res.status,
         };
       }
       await mutate();
@@ -284,7 +291,10 @@ export default function useProdiViewModel(initial = {}) {
           id
         )}?locale=${locale}&fallback=${fallback}`
       );
-      if (!res.ok) return { ok: false, error: await res.text() };
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        return { ok: false, error: txt || res.status };
+      }
       const json = await res.json();
       if (json?.data) json.data.harga = toNum(json.data.harga);
       const d = json?.data || json;
@@ -303,9 +313,16 @@ export default function useProdiViewModel(initial = {}) {
         body: JSON.stringify({ locale, ...payload }), // kirim locale untuk upsert translate
       });
       if (!res.ok) {
+        let msg = "";
+        try {
+          const j = await res.json();
+          msg = j?.error?.message || j?.message;
+        } catch {
+          msg = await res.text();
+        }
         return {
           ok: false,
-          error: (await res.json().catch(() => ({})))?.message || res.status,
+          error: msg || res.status,
         };
       }
       await mutate();
@@ -320,9 +337,16 @@ export default function useProdiViewModel(initial = {}) {
         method: "DELETE",
       });
       if (!res.ok) {
+        let msg = "";
+        try {
+          const j = await res.json();
+          msg = j?.error?.message || j?.message;
+        } catch {
+          msg = await res.text();
+        }
         return {
           ok: false,
-          error: (await res.json().catch(() => ({})))?.message || res.status,
+          error: msg || res.status,
         };
       }
       await mutate();
