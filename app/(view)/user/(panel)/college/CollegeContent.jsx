@@ -493,6 +493,13 @@ export default function CollegeContent({
     country: countryApplied,
     perPage: 100,
   });
+  const universitiesKey = useMemo(
+    () =>
+      (universities || [])
+        .map((u) => u?.id ?? u?.slug ?? u?.name ?? "")
+        .join("|"),
+    [universities]
+  );
 
   /* relevant campus */
   const relevantCampus = useMemo(
@@ -510,7 +517,8 @@ export default function CollegeContent({
   /* pagination */
   const PAGE_SIZE = 3;
   const [page, setPage] = useState(1);
-  useEffect(() => setPage(1), [qApplied, countryApplied, universities]);
+  // Reset ke halaman pertama hanya ketika filter/hasil berubah, bukan setiap render.
+  useEffect(() => setPage(1), [qApplied, countryApplied, universitiesKey]);
 
   const pageItems = useMemo(() => {
     const arr = universities || [];
