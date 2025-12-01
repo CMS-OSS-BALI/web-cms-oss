@@ -197,15 +197,17 @@ export async function PATCH(req, { params }) {
       String(body.autoTranslate ?? "true").toLowerCase() !== "false";
 
     if (hasText) {
+      const now = new Date();
       ops.push(
         prisma.college_requirement_item_translate.upsert({
           where: { item_id_locale: { item_id: reqId, locale } },
-          update: { text },
+          update: { text, updated_at: now },
           create: {
             id: randomUUID(),
             item_id: reqId,
             locale,
             text: text ?? "",
+            updated_at: now,
           }, // <- force UUID
         })
       );
@@ -216,15 +218,19 @@ export async function PATCH(req, { params }) {
             ? await translate(text, locale, EN_LOCALE).catch(() => undefined)
             : undefined;
 
+        // paksa update teks EN dengan hasil terjemahan atau fallback teks asli
+        const textEnFinal = textEn ?? (text ?? "");
+
         ops.push(
           prisma.college_requirement_item_translate.upsert({
             where: { item_id_locale: { item_id: reqId, locale: EN_LOCALE } },
-            update: { ...(textEn !== undefined ? { text: textEn } : {}) },
+            update: { text: textEnFinal, updated_at: now },
             create: {
               id: randomUUID(),
               item_id: reqId,
               locale: EN_LOCALE,
-              text: textEn ?? text ?? "",
+              text: textEnFinal,
+              updated_at: now,
             }, // <- force UUID
           })
         );

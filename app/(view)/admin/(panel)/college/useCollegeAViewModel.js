@@ -197,7 +197,8 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
       const res = await fetch(
         `/api/college/${encodeURIComponent(
           collegeId
-        )}/requirements?${p.toString()}`
+        )}/requirements?${p.toString()}`,
+        { cache: "no-store" }
       );
       if (!res.ok) {
         return { ok: false, error: await res.text() };
@@ -255,6 +256,7 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
         {
           method: "PATCH",
           headers: { "content-type": "application/json" },
+          cache: "no-store",
           body: JSON.stringify(body),
         }
       );
@@ -419,11 +421,13 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
     async (id, payload = {}) => {
       const form = new FormData();
 
+      // selalu kirim locale agar backend tidak fallback ke default
+      form.set("locale", locale);
+
       // backend butuh field "file"
       if (payload.file) form.set("file", payload.file);
 
       if ("name" in payload) {
-        form.set("locale", locale);
         form.set("name", payload.name || "");
       }
 
@@ -454,11 +458,16 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
       }
 
       if ("description" in payload) {
-        form.set("locale", locale);
         form.set(
           "description",
           payload.description === null ? "" : String(payload.description || "")
         );
+      }
+
+      if ("catatan" in payload) {
+        const note =
+          payload.catatan === null ? "" : String(payload.catatan || "").trim();
+        form.set("catatan", note);
       }
 
       if ("autoTranslate" in payload) {

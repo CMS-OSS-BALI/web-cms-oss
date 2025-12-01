@@ -146,11 +146,17 @@ const numOrNull = (v) =>
 
 const stripTags = (s) => (s ? String(s).replace(/<[^>]*>/g, "") : "");
 
-// normalize rich text dari ReactQuill
+// normalize rich text dari ReactQuill: hilangkan paragraf kosong berulang/trailing
 const normalizeRichText = (value) => {
-  const str = typeof value === "string" ? value.trim() : "";
-  if (!str || str === "<p><br></p>") return "";
-  return value || "";
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw || raw === "<p><br></p>") return "";
+  let out = raw
+    // hapus paragraf kosong di awal/akhir
+    .replace(/^(?:<p><br><\/p>\s*)+/gi, "")
+    .replace(/(?:<p><br><\/p>\s*)+$/gi, "");
+  // satukan paragraf kosong beruntun di tengah
+  out = out.replace(/(?:<p><br><\/p>\s*){2,}/gi, "<p><br></p>");
+  return out;
 };
 
 const renderSelectShortcuts = ({
@@ -213,15 +219,22 @@ const RequirementsEditor = forwardRef(function RequirementsEditor(
   const originalRef = useRef([]);
   const [loading, setLoading] = useState(mode === "edit");
 
+  // gunakan referensi fungsi agar efek tidak rerun saat state lain pada vm berubah
+  const loadRequirements = vm?.listRequirements;
+  const notifyErrRef = useRef(notifyErr);
   useEffect(() => {
-    if (mode !== "edit" || !collegeId) return;
+    notifyErrRef.current = notifyErr;
+  }, [notifyErr]);
+
+  useEffect(() => {
+    if (mode !== "edit" || !collegeId || !loadRequirements) return;
     let alive = true;
     (async () => {
       setLoading(true);
-      const { ok, data, error } = await vm.listRequirements(collegeId);
+      const { ok, data, error } = await loadRequirements(collegeId);
       if (!alive) return;
       if (!ok) {
-        notifyErr?.("Gagal memuat requirement", error);
+        notifyErrRef.current?.("Gagal memuat requirement", error);
         originalRef.current = [];
         setItems([]);
       } else {
@@ -240,7 +253,7 @@ const RequirementsEditor = forwardRef(function RequirementsEditor(
     return () => {
       alive = false;
     };
-  }, [mode, collegeId, vm, notifyErr]);
+  }, [mode, collegeId, loadRequirements]);
 
   // helpers UI
   const addDraft = () =>
@@ -390,24 +403,22 @@ const RequirementsEditor = forwardRef(function RequirementsEditor(
       }
 
       // update
-      for (const it of live) {
+      for (const [i, it] of live.entries()) {
         const oid = String(it.id);
         if (oid.startsWith("new:")) continue;
-        const orig = origMap.get(oid);
-        if (!orig) continue;
-        const changed =
-          (orig.text || "") !== (it.text || "") ||
-          Number(orig.sort || 0) !== Number(it.sort || 0);
-        if (changed) {
-          const r = await vm.updateRequirement(targetCollegeId, oid, {
-            text: (it.text || "").trim(),
-            sort: it.sort,
-          });
-          if (!r.ok) {
-            anyError = true;
-            notifyErr?.("Gagal memperbarui requirement", r.error || oid);
-          } else updated++;
-        }
+        const textTrim = (it.text || "").trim();
+        const sortNum = Number.isFinite(it.sort)
+          ? it.sort
+          : Number(it.sort) || i + 1;
+
+        const r = await vm.updateRequirement(targetCollegeId, oid, {
+          text: textTrim,
+          sort: sortNum,
+        });
+        if (!r.ok) {
+          anyError = true;
+          notifyErr?.("Gagal memperbarui requirement", r.error || oid);
+        } else updated++;
       }
 
       if (!anyError) {
@@ -415,7 +426,7 @@ const RequirementsEditor = forwardRef(function RequirementsEditor(
         if (total > 0)
           notifyOk?.(
             "Requirement disinkronkan",
-            `Create ${created} • Update ${updated} • Delete ${deleted}`
+            `Create ${created} / Update ${updated} / Delete ${deleted}`
           );
       }
       return { ok: !anyError, created, updated, deleted };
@@ -940,7 +951,7 @@ export default function CollegeAContent(props) {
       phone: d.no_telp || "",
       email: d.email || "",
       jenjang: toJenjangArray(d.jenjang),
-      catatan: d.catatan || "",
+      catatan: normalizeRichText(d.catatan || ""),
     });
     setLogoPrevEdit(d.logo_url || "");
   };
@@ -951,6 +962,7 @@ export default function CollegeAContent(props) {
     const v = await formEdit.validateFields().catch(() => null);
     if (!v) return;
     const file = v.logo?.[0]?.originFileObj || null;
+    const nextCatatan = normalizeRichText(v.catatan ?? "");
 
     // v.country berisi negara_id atau "custom"
     let countryName = detailData?.country || activeRow.country || "";
@@ -979,7 +991,7 @@ export default function CollegeAContent(props) {
       no_telp: v.phone || "",
       email: v.email || "",
       jenjang: toJenjangArray(v.jenjang).join(", "),
-      catatan: v.catatan || "",
+      catatan: nextCatatan,
       autoTranslate: false,
     });
 
@@ -988,11 +1000,29 @@ export default function CollegeAContent(props) {
       return;
     }
 
-    await reqEditRef.current?.applyChanges(activeRow.id);
+    // lock UI state supaya tidak revert ke nilai lama saat menunggu request lain
+    setDetailData((prev) =>
+      prev ? { ...prev, catatan: nextCatatan } : prev
+    );
+    formEdit.setFieldsValue({ catatan: nextCatatan });
+
+    if (!reqEditRef.current) {
+      err("Requirement belum siap", "Silakan buka ulang form edit lalu coba lagi.");
+      return;
+    }
+
+    const reqRes = await reqEditRef.current.applyChanges(activeRow.id);
+    if (reqRes && reqRes.ok === false) {
+      err(
+        "Requirement belum tersimpan",
+        "Silakan cek pesan error sebelumnya lalu coba lagi."
+      );
+      return;
+    }
 
     ok(
       "Perubahan tersimpan",
-      `Data kampus “${v.name || activeRow.name}” diperbarui.`
+      `Data kampus "${v.name || activeRow.name}" diperbarui.`
     );
     setEditOpen(false);
     formEdit.resetFields();
@@ -1629,8 +1659,8 @@ export default function CollegeAContent(props) {
               ref={reqCreateRef}
               mode="create"
               vm={vm}
-              notifyOk={(m, d) => ok(m, d)}
-              notifyErr={(m, d) => err(m, d)}
+              notifyOk={ok}
+              notifyErr={err}
             />
 
             {/* Catatan (ReactQuill) – Create (paling bawah) */}
@@ -1896,14 +1926,14 @@ export default function CollegeAContent(props) {
 
               {/* Requirements — Edit */}
               {activeRow?.id && (
-                <RequirementsEditor
-                  ref={reqEditRef}
-                  mode="edit"
-                  vm={vm}
-                  collegeId={activeRow.id}
-                  notifyOk={(m, d) => ok(m, d)}
-                  notifyErr={(m, d) => err(m, d)}
-                />
+              <RequirementsEditor
+                ref={reqEditRef}
+                mode="edit"
+                vm={vm}
+                collegeId={activeRow.id}
+                notifyOk={ok}
+                notifyErr={err}
+              />
               )}
 
               {/* Catatan (ReactQuill) – Edit (paling bawah) */}
@@ -2110,11 +2140,11 @@ export default function CollegeAContent(props) {
               <div>
                 <div style={styles.label}>{T.notes}</div>
                 <div style={{ ...styles.value, whiteSpace: "normal" }}>
-                  {(detailData?.catatan || "").trim() ? (
+                  {normalizeRichText(detailData?.catatan || "") ? (
                     <div
                       style={{ lineHeight: 1.6 }}
                       dangerouslySetInnerHTML={{
-                        __html: detailData.catatan,
+                        __html: normalizeRichText(detailData.catatan || ""),
                       }}
                     />
                   ) : (
