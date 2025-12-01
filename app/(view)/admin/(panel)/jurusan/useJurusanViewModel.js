@@ -179,7 +179,6 @@ export default function useJurusanViewModel(initial = {}) {
       description,
       harga,
       kota_id,
-      in_take,
       autoTranslate,
     }) => {
       const payload = {
@@ -187,8 +186,7 @@ export default function useJurusanViewModel(initial = {}) {
         college_id,
         name,
         description: description ?? null,
-        harga: harga ?? null, // stringMode → server toDecimalNullable
-        in_take: joinInTake(in_take) || null,
+        harga: harga ?? null, // stringMode -> server toDecimalNullable
         // kota_id optional; boleh null/array
         ...(kota_id !== undefined ? { kota_id } : {}),
         autoTranslate: !!(autoTranslate ?? true),
@@ -234,16 +232,29 @@ export default function useJurusanViewModel(initial = {}) {
 
   const updateJurusan = useCallback(
     async (id, payload = {}) => {
+      const {
+        college_id,
+        name,
+        description,
+        harga,
+        kota_id,
+        autoTranslate,
+      } = payload;
+
+      const body = {
+        locale,
+        ...(college_id !== undefined ? { college_id } : {}),
+        ...(name !== undefined ? { name } : {}),
+        ...(description !== undefined ? { description } : {}),
+        ...(harga !== undefined ? { harga } : {}),
+        ...(kota_id !== undefined ? { kota_id } : {}),
+        ...(autoTranslate !== undefined ? { autoTranslate } : {}),
+      };
+
       const res = await fetch(`/api/jurusan/${encodeURIComponent(id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          locale,
-          ...payload,
-          ...(payload.in_take !== undefined
-            ? { in_take: joinInTake(payload.in_take) || null }
-            : {}),
-        }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         let msg = "";

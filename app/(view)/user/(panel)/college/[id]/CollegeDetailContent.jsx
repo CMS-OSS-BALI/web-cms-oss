@@ -530,16 +530,33 @@ export default function CollegeDetailContent({
     title: "",
     description: "",
     priceLabel: "",
-    kotaLabel: "",
+    intakeLabel: "",
+    cityLabel: "",
+    kind: "program", // "faculty" atau "program"
   });
 
   const openModal = useCallback((payload) => {
-    const kotaLabel = payload?.kotaLabel || payload?.kotaName || "";
+    const intakeLabel = (() => {
+      const raw = payload?.intakeLabel || payload?.intake || "";
+      const parts = String(raw || "")
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean);
+      return parts.join(", ");
+    })();
+    const cityLabel =
+      payload?.cityLabel ||
+      payload?.kotaLabel ||
+      (Array.isArray(payload?.kotaNames)
+        ? payload.kotaNames.join(", ")
+        : payload?.kotaName || "");
     setModalData({
       title: payload?.title || "",
       description: payload?.description || "",
       priceLabel: payload?.priceLabel || "",
-      kotaLabel,
+      intakeLabel,
+      cityLabel: cityLabel || "",
+      kind: payload?.kind === "faculty" ? "faculty" : "program",
     });
     setModalOpen(true);
   }, []);
@@ -758,14 +775,18 @@ export default function CollegeDetailContent({
                         style={{ ...facultyStyles.title, ...clickable }}
                         onClick={() =>
                           openModal({
+                            kind: "faculty",
                             title: grp.title,
                             description: grp.description,
                             priceLabel: grp.priceLabel,
-                            kotaLabel:
+                            intake: grp.intake,
+                            intakeLabel: grp.intakeLabel,
+                            cityLabel:
                               grp.kotaLabel ||
                               (Array.isArray(grp.kotaNames)
                                 ? grp.kotaNames.join(", ")
                                 : grp.kotaName || ""),
+                            kotaNames: grp.kotaNames,
                           })
                         }
                         title={
@@ -786,14 +807,10 @@ export default function CollegeDetailContent({
                               typeof it === "string" ? "" : it.description;
                             const priceLabel =
                               typeof it === "string" ? "" : it.priceLabel;
-                            const kotaLabel =
+                            const intake =
                               typeof it === "string"
                                 ? ""
-                                : it.kotaLabel ||
-                                  grp.kotaLabel ||
-                                  (Array.isArray(grp.kotaNames)
-                                    ? grp.kotaNames.join(", ")
-                                    : grp.kotaName || "");
+                                : it.intake || it.intakeLabel || grp.intakeLabel || grp.intake;
                             return (
                               <li key={i} style={progListStyles.li}>
                                 <span
@@ -805,14 +822,22 @@ export default function CollegeDetailContent({
                                     ...clickable,
                                     ...progListStyles.text,
                                   }}
-                                  onClick={() =>
-                                    openModal({
-                                      title,
-                                      description,
-                                      priceLabel,
-                                      kotaLabel,
-                                    })
-                                  }
+                                onClick={() =>
+                                  openModal({
+                                    kind: "program",
+                                    title,
+                                    description,
+                                    priceLabel,
+                                    intake,
+                                    intakeLabel:
+                                      (typeof it === "string"
+                                        ? ""
+                                        : it.intakeLabel) ||
+                                        grp.intakeLabel ||
+                                        grp.intake,
+                                    kotaNames: grp.kotaNames,
+                                  })
+                                }
                                   title={
                                     locale === "en"
                                       ? "Click to see major details"
@@ -959,7 +984,7 @@ export default function CollegeDetailContent({
                 <div className="cd-modal__label">
                   {locale === "en" ? "Name" : "Nama"}
                 </div>
-                <div className="cd-modal__value">{modalData.title || "—"}</div>
+                <div className="cd-modal__value">{modalData.title || "-"}</div>
               </div>
 
               <div className="cd-modal__row" style={{ alignItems: "start" }}>
@@ -984,18 +1009,29 @@ export default function CollegeDetailContent({
                   {locale === "en" ? "Price" : "Harga"}
                 </div>
                 <div className="cd-modal__value">
-                  {modalData.priceLabel || "—"}
+                  {modalData.priceLabel || "-"}
                 </div>
               </div>
 
-              <div className="cd-modal__row">
-                <div className="cd-modal__label">
-                  {locale === "en" ? "City" : "Kota"}
+              {modalData.kind === "faculty" ? (
+                <div className="cd-modal__row">
+                  <div className="cd-modal__label">
+                    {locale === "en" ? "City" : "Kota"}
+                  </div>
+                  <div className="cd-modal__value">
+                    {modalData.cityLabel || "-"}
+                  </div>
                 </div>
-                <div className="cd-modal__value">
-                  {modalData.kotaLabel || "—"}
+              ) : (
+                <div className="cd-modal__row">
+                  <div className="cd-modal__label">
+                    {locale === "en" ? "Intake (Month)" : "Intake (Bulan)"}
+                  </div>
+                  <div className="cd-modal__value">
+                    {modalData.intakeLabel || "-"}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </div>

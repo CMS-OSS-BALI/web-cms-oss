@@ -216,6 +216,8 @@ export default function JurusanContent({ vm }) {
   const [activeRow, setActiveRow] = useState(null);
   const [formCreate] = Form.useForm();
   const [formEdit] = Form.useForm();
+  const [createLoading, setCreateLoading] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailData, setDetailData] = useState(null);
 
@@ -303,27 +305,36 @@ export default function JurusanContent({ vm }) {
 
   /* ========================== CRUD Handlers ========================== */
   const onCreate = async () => {
+    if (createLoading) return;
     const v = await formCreate.validateFields().catch(() => null);
     if (!v) return;
 
     const selectedKotaIds = toKotaArray(v.kota_id);
 
-    const out = await viewModel.createJurusan({
-      college_id: v.college_id,
-      name: v.name,
-      description: v.description || "",
-      // kirim array ID kota; kalau kosong, jangan kirim field ke API
-      kota_id: selectedKotaIds.length ? selectedKotaIds : undefined,
-      harga: v.harga ?? null,
-      autoTranslate: true,
-    });
-    if (!out.ok) {
-      toast.err("Gagal membuat fakultas", out.error || "Gagal menyimpan data.");
-      return;
+    setCreateLoading(true);
+    try {
+      const out = await viewModel.createJurusan({
+        college_id: v.college_id,
+        name: v.name,
+        description: v.description || "",
+        // kirim array ID kota; kalau kosong, jangan kirim field ke API
+        kota_id: selectedKotaIds.length ? selectedKotaIds : undefined,
+        harga: v.harga ?? null,
+        autoTranslate: true,
+      });
+      if (!out.ok) {
+        toast.err(
+          "Gagal membuat fakultas",
+          out.error || "Gagal menyimpan data."
+        );
+        return;
+      }
+      toast.ok("Berhasil", `Fakultas "${v.name}" berhasil dibuat.`);
+      setCreateOpen(false);
+      formCreate.resetFields();
+    } finally {
+      setCreateLoading(false);
     }
-    toast.ok("Berhasil", `Fakultas "${v.name}" berhasil dibuat.`);
-    setCreateOpen(false);
-    formCreate.resetFields();
   };
 
   const openEdit = async (row) => {
@@ -380,35 +391,41 @@ export default function JurusanContent({ vm }) {
   };
 
   const onEditSubmit = async () => {
+    if (editLoading) return;
     if (!activeRow) return;
     const v = await formEdit.validateFields().catch(() => null);
     if (!v) return;
 
     const selectedKotaIds = toKotaArray(v.kota_id);
 
-    const res = await viewModel.updateJurusan(activeRow.id, {
-      college_id: v.college_id,
-      name: v.name,
-      description: v.description ?? null,
-      // kirim array ID kota; kalau kosong, jangan kirim field ke API
-      kota_id: selectedKotaIds.length ? selectedKotaIds : undefined,
-      harga: v.harga ?? null,
-      autoTranslate: false,
-    });
+    setEditLoading(true);
+    try {
+      const res = await viewModel.updateJurusan(activeRow.id, {
+        college_id: v.college_id,
+        name: v.name,
+        description: v.description ?? null,
+        // kirim array ID kota; kalau kosong, jangan kirim field ke API
+        kota_id: selectedKotaIds.length ? selectedKotaIds : undefined,
+        harga: v.harga ?? null,
+        autoTranslate: false,
+      });
 
-    if (!res.ok) {
-      toast.err(
-        "Gagal menyimpan perubahan",
-        res.error || "Perubahan tidak tersimpan."
+      if (!res.ok) {
+        toast.err(
+          "Gagal menyimpan perubahan",
+          res.error || "Perubahan tidak tersimpan."
+        );
+        return;
+      }
+      toast.ok(
+        "Perubahan disimpan",
+        `Fakultas "${v.name || activeRow.name}" telah diperbarui.`
       );
-      return;
+      setEditOpen(false);
+      formEdit.resetFields();
+    } finally {
+      setEditLoading(false);
     }
-    toast.ok(
-      "Perubahan disimpan",
-      `Fakultas "${v.name || activeRow.name}" telah diperbarui.`
-    );
-    setEditOpen(false);
-    formEdit.resetFields();
   };
 
   const onDelete = async (id) => {
@@ -850,16 +867,18 @@ export default function JurusanContent({ vm }) {
               />
             </Form.Item>
 
-            <div style={styles.modalFooter}>
-              <Button
-                type="primary"
-                size="large"
-                onClick={onCreate}
-                style={styles.saveBtn}
-              >
-                {T.save}
-              </Button>
-            </div>
+              <div style={styles.modalFooter}>
+                <Button
+                  type="primary"
+                  size="large"
+                  onClick={onCreate}
+                  style={styles.saveBtn}
+                  loading={createLoading}
+                  disabled={createLoading}
+                >
+                  {T.save}
+                </Button>
+              </div>
           </Form>
         </div>
       </Modal>
@@ -946,6 +965,8 @@ export default function JurusanContent({ vm }) {
                   size="large"
                   onClick={onEditSubmit}
                   style={styles.saveBtn}
+                  loading={editLoading}
+                  disabled={editLoading}
                 >
                   Simpan Perubahan
                 </Button>

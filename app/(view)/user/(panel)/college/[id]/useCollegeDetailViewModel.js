@@ -94,6 +94,14 @@ const getIntake = (it) => {
   return String(v || "").trim();
 };
 
+const formatIntakeLabel = (raw) => {
+  const parts = String(raw || "")
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+  return parts.join(", ");
+};
+
 /* ========================= Hook ========================= */
 export default function useCollegeDetailViewModel({ id, locale = "id" } = {}) {
   const safeId = normalizeId(id);
@@ -188,6 +196,7 @@ export default function useCollegeDetailViewModel({ id, locale = "id" } = {}) {
           jurusan_id: p.jurusan_id ?? null,
           college_id: p.college_id ?? null,
           intake: getIntake(p), // <<< NEW
+          intakeLabel: formatIntakeLabel(getIntake(p)),
         }));
       });
       return map;
@@ -328,6 +337,8 @@ export default function useCollegeDetailViewModel({ id, locale = "id" } = {}) {
     const facs = jurusanList.map((j) => {
       const jid = getJurusanId(j);
       const progs = prodiMap[jid] || [];
+      const intakeRaw = getIntake(j);
+      const intakeLabel = formatIntakeLabel(intakeRaw);
       const kotaNames = Array.isArray(j?.kota_names)
         ? j.kota_names.filter(Boolean)
         : j?.kota_name
@@ -340,6 +351,8 @@ export default function useCollegeDetailViewModel({ id, locale = "id" } = {}) {
           ...p,
           priceLabel: p.harga != null ? fmtMoney(p.harga, currency) : null,
           kotaLabel,
+          intake: p.intake,
+          intakeLabel: p.intakeLabel ?? formatIntakeLabel(p.intake),
         };
       });
 
@@ -348,12 +361,15 @@ export default function useCollegeDetailViewModel({ id, locale = "id" } = {}) {
         title: getTitle(j) || "-",
         description: getDesc(j) || "",
         priceLabel: j?.harga != null ? fmtMoney(j.harga, currency) : null,
-        intake: getIntake(j), // retained for compatibility
+        intake: intakeRaw, // retained for compatibility
+        intakeLabel,
         kotaNames,
         kotaLabel,
         programs: progs.map((p) => ({
           ...p,
           priceLabel: p.harga != null ? fmtMoney(p.harga, currency) : null,
+          intake: p.intake,
+          intakeLabel: p.intakeLabel ?? formatIntakeLabel(p.intake),
         })),
       };
     });
