@@ -803,7 +803,8 @@ export default function CollegeAContent(props) {
       (opt) => {
         const key = String(opt.value || opt.label || "");
         if (!key) return;
-        if (!map.has(key)) map.set(key, { value: key, label: opt.label || key });
+        if (!map.has(key))
+          map.set(key, { value: key, label: opt.label || key });
       }
     );
     return Array.from(map.values());
@@ -814,7 +815,10 @@ export default function CollegeAContent(props) {
   useEffect(() => setSearchValue(vm.q || ""), [vm.q]);
 
   // normalisasi filter jenjang (array)
-  const jenjangFilterArr = useMemo(() => toJenjangArray(vm.jenjang), [vm.jenjang]);
+  const jenjangFilterArr = useMemo(
+    () => toJenjangArray(vm.jenjang),
+    [vm.jenjang]
+  );
 
   const filteredRows = useMemo(() => {
     const s = (searchValue || "").trim().toLowerCase();
@@ -1001,13 +1005,14 @@ export default function CollegeAContent(props) {
     }
 
     // lock UI state supaya tidak revert ke nilai lama saat menunggu request lain
-    setDetailData((prev) =>
-      prev ? { ...prev, catatan: nextCatatan } : prev
-    );
+    setDetailData((prev) => (prev ? { ...prev, catatan: nextCatatan } : prev));
     formEdit.setFieldsValue({ catatan: nextCatatan });
 
     if (!reqEditRef.current) {
-      err("Requirement belum siap", "Silakan buka ulang form edit lalu coba lagi.");
+      err(
+        "Requirement belum siap",
+        "Silakan buka ulang form edit lalu coba lagi."
+      );
       return;
     }
 
@@ -1926,14 +1931,14 @@ export default function CollegeAContent(props) {
 
               {/* Requirements — Edit */}
               {activeRow?.id && (
-              <RequirementsEditor
-                ref={reqEditRef}
-                mode="edit"
-                vm={vm}
-                collegeId={activeRow.id}
-                notifyOk={ok}
-                notifyErr={err}
-              />
+                <RequirementsEditor
+                  ref={reqEditRef}
+                  mode="edit"
+                  vm={vm}
+                  collegeId={activeRow.id}
+                  notifyOk={ok}
+                  notifyErr={err}
+                />
               )}
 
               {/* Catatan (ReactQuill) – Edit (paling bawah) */}

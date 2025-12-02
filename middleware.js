@@ -9,12 +9,49 @@ const PUBLIC_ADMIN = new Set([
   "/admin/reset-password",
 ]);
 
+// API publik yang memang boleh diakses tanpa token (misal NextAuth callbacks, analytics track, swagger)
+const PUBLIC_API_PREFIXES = [
+  "/api/auth",
+  "/api/analytics/track",
+  "/api/docs",
+];
+
+const API_SHARED_SECRET = (process.env.API_SHARED_SECRET || "").trim();
+
+function hasPublicApiPrefix(pathname) {
+  return PUBLIC_API_PREFIXES.some((p) => pathname.startsWith(p));
+}
+
+function extractBearer(req) {
+  const auth = req.headers.get("authorization") || "";
+  if (auth.toLowerCase().startsWith("bearer ")) return auth.slice(7).trim();
+  return "";
+}
+
+async function hasSessionOrToken(req) {
+  // 1) API key/bearer secret
+  const bearer = extractBearer(req);
+  const xApiKey = (req.headers.get("x-api-key") || "").trim();
+  if (API_SHARED_SECRET) {
+    if (bearer && bearer === API_SHARED_SECRET) return true;
+    if (xApiKey && xApiKey === API_SHARED_SECRET) return true;
+  }
+
+  // 2) NextAuth session (admin)
+  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+  if (token?.forceReauth) return false;
+  if (token?.sub || token?.email) return true;
+
+  return false;
+}
+
 export async function middleware(req) {
   const { pathname, searchParams } = req.nextUrl;
   const search = req.nextUrl.search || "";
 
   const isAdminPage = pathname.startsWith("/admin");
   const isAdminApi = pathname.startsWith("/api/admin");
+  const isApi = pathname.startsWith("/api");
   const isPublicAdmin = PUBLIC_ADMIN.has(pathname);
 
   // ===== Inject x-pathname ke REQUEST headers,
@@ -29,7 +66,7 @@ export async function middleware(req) {
       },
     });
 
-  // ===== API privat (/api/admin/**)
+  // ===== API privat (/api/admin/**) -> harus session admin
   if (isAdminApi) {
     const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
     if (!token) {
@@ -41,6 +78,18 @@ export async function middleware(req) {
     if (token.forceReauth) {
       return NextResponse.json(
         { ok: false, error: "relogin_required" },
+        { status: 401 }
+      );
+    }
+    return next();
+  }
+
+  // ===== API umum: jika API_SHARED_SECRET disetel (prod), wajib bearer/x-api-key atau session admin
+  if (isApi && API_SHARED_SECRET && !hasPublicApiPrefix(pathname)) {
+    const ok = await hasSessionOrToken(req);
+    if (!ok) {
+      return NextResponse.json(
+        { ok: false, error: "unauthorized" },
         { status: 401 }
       );
     }
@@ -71,11 +120,11 @@ export async function middleware(req) {
     return next();
   }
 
-  // Selain /admin/** dan /api/admin/**: public pages, tapi tetap kita kirim x-pathname
+  // Selain /admin/** dan /api/**: public pages, tapi tetap kita kirim x-pathname
   return next();
 }
 
-// Sekarang middleware juga jalan untuk /user/** supaya x-pathname sampai ke PanelLayout
+// Middleware berlaku ke seluruh /api (untuk gate bearer) + /admin + /user
 export const config = {
-  matcher: ["/admin/:path*", "/api/admin/:path*", "/user/:path*"],
+  matcher: ["/admin/:path*", "/api/:path*", "/user/:path*"],
 };
