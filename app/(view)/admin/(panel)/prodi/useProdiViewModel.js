@@ -1,7 +1,7 @@
 "use client";
 
 import useSWR from "swr";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const DEFAULT_LOCALE = "id";
 const FALLBACK_FOR = (loc) =>
@@ -99,6 +99,10 @@ export default function useProdiViewModel(initial = {}) {
     keepPreviousData: true,
     revalidateOnFocus: false,
   });
+  // revalidate setiap parameter key (page/filter/sort) berubah
+  useEffect(() => {
+    mutate();
+  }, [key, mutate]);
 
   const prodi = useMemo(() => {
     const rows = data?.data || [];

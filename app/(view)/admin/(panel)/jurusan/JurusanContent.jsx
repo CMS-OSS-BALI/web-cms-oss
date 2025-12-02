@@ -255,14 +255,17 @@ export default function JurusanContent({ vm }) {
   const [searchValue, setSearchValue] = useState(viewModel.q || "");
   useEffect(() => setSearchValue(viewModel.q || ""), [viewModel.q]);
 
+  const applySearch = viewModel.setQ;
+
   // debounce search
   useEffect(() => {
+    if (!applySearch) return undefined;
     const v = (searchValue || "").trim();
     const t = setTimeout(() => {
-      viewModel.setQ?.(v); // setter di VM auto setPage(1)
+      applySearch(v); // setter di VM auto setPage(1)
     }, 400);
     return () => clearTimeout(t);
-  }, [searchValue, viewModel]); // eslint-disable-line
+  }, [searchValue, applySearch]);
 
   // college options (remote)
   const [collegeOptions, setCollegeOptions] = useState([]);

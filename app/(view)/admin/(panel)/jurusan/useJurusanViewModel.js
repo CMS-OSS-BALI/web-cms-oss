@@ -1,7 +1,7 @@
 "use client";
 
 import useSWR from "swr";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const DEFAULT_LOCALE = "id";
 const FALLBACK_FOR = (loc) =>
@@ -78,6 +78,10 @@ export default function useJurusanViewModel(initial = {}) {
     keepPreviousData: true,
     revalidateOnFocus: false,
   });
+  // revalidate saat key berubah (page/filter/sort)
+  useEffect(() => {
+    mutate();
+  }, [key, mutate]);
 
   // normalize rows
   const jurusan = useMemo(() => {

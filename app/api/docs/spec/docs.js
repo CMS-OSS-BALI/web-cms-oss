@@ -2,7 +2,7 @@
  * @openapi
  * tags:
  *   - name: Docs
- *     description: Endpoint untuk mengeluarkan spesifikasi OpenAPI (swagger) dinamis. Menambahkan `servers` sesuai host permintaan. Format JSON/YAML.
+ *     description: Endpoint untuk mengeluarkan spesifikasi OpenAPI (swagger) dinamis. Menambahkan `servers` sesuai host permintaan. Mendukung format JSON dan YAML.
  *
  * components:
  *   schemas:
@@ -10,26 +10,34 @@
  *       type: object
  *       description: Spesifikasi OpenAPI 3.0 yang dihasilkan oleh swagger-jsdoc.
  *       properties:
- *         openapi: { type: string, example: "3.0.0" }
+ *         openapi:
+ *           type: string
+ *           example: "3.0.0"
  *         info:
  *           type: object
  *           properties:
- *             title: { type: string }
- *             version: { type: string }
- *             description: { type: string }
+ *             title:
+ *               type: string
+ *             version:
+ *               type: string
+ *             description:
+ *               type: string
  *         servers:
  *           type: array
  *           items:
  *             type: object
  *             properties:
- *               url: { type: string }
+ *               url:
+ *                 type: string
  *
  * /api/docs/spec:
  *   get:
  *     tags: [Docs]
  *     summary: Ambil spesifikasi OpenAPI
  *     description: |
- *       Mengembalikan spesifikasi OpenAPI 3.0 berbasis anotasi swagger-jsdoc. Menyesuaikan `servers` dengan header host saat dipanggil. Mendukung output JSON (default) atau YAML (`?format=yaml` atau header Accept: application/yaml).
+ *       Mengembalikan spesifikasi OpenAPI 3.0 berbasis anotasi swagger-jsdoc.
+ *       Endpoint ini selalu aktif di semua environment. `servers` akan disesuaikan dengan host dari permintaan saat dipanggil.
+ *       Mendukung output JSON (default) atau YAML (`?format=yaml` / `?format=yml` atau header Accept: application/yaml).
  *     parameters:
  *       - in: query
  *         name: format
@@ -47,8 +55,6 @@
  *           application/yaml:
  *             schema:
  *               type: string
- *       "404":
- *         description: Swagger dimatikan (NEXT_PUBLIC_ENABLE_SWAGGER!=true dan production).
  *       "500":
  *         description: Gagal membangkitkan spesifikasi.
  */

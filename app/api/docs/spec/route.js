@@ -7,10 +7,6 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const swaggerEnabled =
-  process.env.NEXT_PUBLIC_ENABLE_SWAGGER === "true" ||
-  process.env.NODE_ENV !== "production";
-
 // Normalisasi path agar glob swagger-jsdoc terbaca di Windows maupun Unix
 const projectRoot = process.cwd().replace(/\\/g, "/");
 const apiGlobs = [
@@ -75,7 +71,7 @@ function buildServers(request) {
     servers.push({
       url: `${forwardedProto || "https"}://${forwardedHost}`,
     });
-  } else if (request?.nextUrl?.origin) {
+  } else if (request && request.nextUrl && request.nextUrl.origin) {
     servers.push({ url: request.nextUrl.origin });
   }
 
@@ -93,10 +89,6 @@ function wantsYaml(request) {
 }
 
 export async function GET(request) {
-  if (!swaggerEnabled) {
-    return NextResponse.json({ message: "Not Found" }, { status: 404 });
-  }
-
   try {
     // Clone supaya base spec tetap bersih saat kita menambahkan server dinamis
     const spec = JSON.parse(JSON.stringify(getBaseSpec()));

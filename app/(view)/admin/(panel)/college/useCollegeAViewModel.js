@@ -1,7 +1,7 @@
 "use client";
 
 import useSWR from "swr";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const DEFAULT_LOCALE = "id";
 const FALLBACK_FOR = (loc) =>
@@ -94,6 +94,10 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
     keepPreviousData: true,
     revalidateOnFocus: false,
   });
+  // pastikan revalidate saat param halaman/filter berubah
+  useEffect(() => {
+    mutate();
+  }, [key, mutate]);
 
   const colleges = useMemo(() => data?.data || [], [data]);
 

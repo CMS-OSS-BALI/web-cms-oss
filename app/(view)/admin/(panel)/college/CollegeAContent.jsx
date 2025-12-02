@@ -1069,15 +1069,18 @@ export default function CollegeAContent(props) {
     ok("Terhapus", "Kampus berhasil dihapus.");
   };
 
+  const applySearchQuery = vm.setQ;
+  const resetToFirstPage = vm.setPage;
+
   // Search & Filter debounce kecil (untuk query search)
   useEffect(() => {
     const v = (searchValue || "").trim();
     const t = setTimeout(() => {
-      vm.setQ?.(v);
-      vm.setPage?.(1);
+      applySearchQuery?.(v);
+      resetToFirstPage?.(1);
     }, 400);
     return () => clearTimeout(t);
-  }, [searchValue]); // eslint-disable-line
+  }, [searchValue, applySearchQuery, resetToFirstPage]);
 
   const { shellW, maxW, blue, text } = TOKENS;
   const req = (msg) => [{ required: true, message: msg }];

@@ -269,14 +269,17 @@ export default function ProdiContent({ vm }) {
   const [searchValue, setSearchValue] = useState(viewModel.q || "");
   useEffect(() => setSearchValue(viewModel.q || ""), [viewModel.q]);
 
+  const applySearch = viewModel.setQ;
+
   // debounce 400ms
   useEffect(() => {
+    if (!applySearch) return undefined;
     const v = (searchValue || "").trim();
     const t = setTimeout(() => {
-      viewModel.setQ?.(v);
+      applySearch(v);
     }, 400);
     return () => clearTimeout(t);
-  }, [searchValue, viewModel]); // eslint-disable-line
+  }, [searchValue, applySearch]);
 
   // jurusan options untuk filter & form
   const [jurusanOptions, setJurusanOptions] = useState([]);
