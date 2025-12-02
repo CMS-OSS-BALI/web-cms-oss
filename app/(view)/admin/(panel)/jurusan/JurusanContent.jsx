@@ -25,6 +25,8 @@ import {
   RightOutlined,
   SearchOutlined,
 } from "@ant-design/icons";
+import { sanitizeHtml } from "@/app/utils/dompurify";
+import HtmlEditor from "@/app/components/editor/HtmlEditor";
 
 /* ===== compact tokens ===== */
 const TOKENS = {
@@ -109,7 +111,29 @@ const pickCreated = (obj) =>
   obj?.updated_at ??
   null;
 
-const stripTags = (s) => (s ? String(s).replace(/<[^>]*>/g, "") : "");
+const normalizeRichText = (value) => {
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw || raw === "<p><br></p>") return "";
+  return value || "";
+};
+const sanitizeDesc = (html) =>
+  sanitizeHtml(html || "", {
+    allowedTags: [
+      "p",
+      "br",
+      "b",
+      "strong",
+      "i",
+      "em",
+      "u",
+      "a",
+      "ul",
+      "ol",
+      "li",
+      "blockquote",
+    ],
+    allowedAttrs: ["href", "title", "target", "rel"],
+  });
 
 /* ==== Shortcut helper untuk Multiple Select (Pilih Semua / Hapus Semua) ==== */
 const renderSelectShortcuts = ({ menu, onSelectAll, onClear, disabledAll }) => (
@@ -466,6 +490,32 @@ export default function JurusanContent({ vm }) {
       }}
     >
       {contextHolder}
+      <style jsx global>{`
+        .desc-editor {
+          border: 1px solid #e6eeff;
+          border-radius: 12px;
+          background: #fff;
+          overflow: hidden;
+          box-shadow: inset 0 2px 6px rgba(11, 86, 201, 0.04);
+        }
+        .desc-editor .ql-toolbar {
+          border: 0;
+          border-bottom: 1px solid #e6eeff;
+          background: #f5f8ff;
+          border-radius: 12px 12px 0 0;
+          padding: 6px 10px;
+        }
+        .desc-editor .ql-container {
+          border: 0;
+        }
+        .desc-editor .ql-editor {
+          min-height: 160px;
+          padding: 10px 12px;
+          font-size: 14px;
+          line-height: 1.6;
+          color: #0f172a;
+        }
+      `}</style>
       {/* notification portal */}
       <section
         style={{
@@ -825,8 +875,19 @@ export default function JurusanContent({ vm }) {
               <Input placeholder="Contoh: Fakultas Teknik" />
             </Form.Item>
 
-            <Form.Item label={T.desc} name="description">
-              <Input.TextArea rows={3} placeholder="Deskripsi (opsional)" />
+            <Form.Item
+              label={T.desc}
+              name="description"
+              valuePropName="value"
+              getValueFromEvent={normalizeRichText}
+              initialValue=""
+            >
+              <HtmlEditor
+                className="desc-editor"
+                variant="mini"
+                placeholder="Tulis deskripsi fakultas (opsional)..."
+                minHeight={160}
+              />
             </Form.Item>
 
             {/* Kota (Multiple Select + shortcut) */}
@@ -917,8 +978,19 @@ export default function JurusanContent({ vm }) {
                 <Input placeholder="Nama fakultas" />
               </Form.Item>
 
-              <Form.Item label={T.desc} name="description">
-                <Input.TextArea rows={3} placeholder="Deskripsi (opsional)" />
+              <Form.Item
+                label={T.desc}
+                name="description"
+                valuePropName="value"
+                getValueFromEvent={normalizeRichText}
+                initialValue=""
+              >
+                <HtmlEditor
+                  className="desc-editor"
+                  variant="mini"
+                  placeholder="Perbarui deskripsi fakultas (opsional)..."
+                  minHeight={160}
+                />
               </Form.Item>
 
               {/* Kota (Multiple Select + shortcut) */}
@@ -1033,9 +1105,15 @@ export default function JurusanContent({ vm }) {
               </div>
               <div>
                 <div style={styles.label}>{T.desc}</div>
-                <div style={{ ...styles.value, whiteSpace: "pre-wrap" }}>
-                  {stripTags(detailData?.description) || "—"}
-                </div>
+                <div
+                  style={styles.value}
+                  dangerouslySetInnerHTML={{
+                    __html:
+                      sanitizeDesc(
+                        detailData?.description || activeRow?.description || ""
+                      ) || "<em>-</em>",
+                  }}
+                />
               </div>
               <div>
                 <div style={styles.label}>Tanggal dibuat</div>

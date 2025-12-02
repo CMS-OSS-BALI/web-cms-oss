@@ -39,6 +39,8 @@ import {
   ArrowDownOutlined,
   PlusOutlined,
 } from "@ant-design/icons";
+import HtmlEditor from "@/app/components/editor/HtmlEditor";
+import { sanitizeHtml } from "@/app/utils/dompurify";
 
 // ReactQuill (rich text) – client only
 const ReactQuill = dynamic(() => import("react-quill"), { ssr: false });
@@ -144,7 +146,28 @@ const numParser = (val) => {
 const numOrNull = (v) =>
   v === undefined || v === null || v === "" ? null : Number(v);
 
-const stripTags = (s) => (s ? String(s).replace(/<[^>]*>/g, "") : "");
+const sanitizeDesc = (html) =>
+  sanitizeHtml(html || "", {
+    allowedTags: [
+      "p",
+      "br",
+      "b",
+      "strong",
+      "i",
+      "em",
+      "u",
+      "a",
+      "ul",
+      "ol",
+      "li",
+      "blockquote",
+      "h1",
+      "h2",
+      "h3",
+      "h4",
+    ],
+    allowedAttrs: ["href", "title", "target", "rel", "class", "style", "align"],
+  });
 
 // normalize rich text dari ReactQuill: hilangkan paragraf kosong berulang/trailing
 const normalizeRichText = (value) => {
@@ -1088,6 +1111,32 @@ export default function CollegeAContent(props) {
           height: 100% !important;
         }
 
+        /* Rich text editor untuk Deskripsi */
+        .college-desc-editor {
+          border: 1px solid #e6eeff;
+          border-radius: 12px;
+          background: #fff;
+          overflow: hidden;
+          box-shadow: inset 0 2px 6px rgba(11, 86, 201, 0.04);
+        }
+        .college-desc-editor .ql-toolbar {
+          border: 0;
+          border-bottom: 1px solid #e6eeff;
+          background: #f5f8ff;
+          border-radius: 12px 12px 0 0;
+          padding: 8px 10px;
+        }
+        .college-desc-editor .ql-container {
+          border: 0;
+        }
+        .college-desc-editor .ql-editor {
+          min-height: 160px;
+          padding: 10px 12px;
+          font-size: 14px;
+          line-height: 1.6;
+          color: #0f172a;
+        }
+
         /* Rich text editor untuk Catatan */
         .college-notes-editor {
           border: 1px solid #e6eeff;
@@ -1463,8 +1512,16 @@ export default function CollegeAContent(props) {
               label={T.desc}
               name="description"
               rules={req("Deskripsi wajib diisi")}
+              valuePropName="value"
+              getValueFromEvent={normalizeRichText}
+              initialValue=""
             >
-              <Input.TextArea rows={3} placeholder="Deskripsi singkat..." />
+              <HtmlEditor
+                className="college-desc-editor"
+                variant="mini"
+                placeholder="Deskripsi singkat kampus..."
+                minHeight={180}
+              />
             </Form.Item>
 
             <div
@@ -1754,8 +1811,19 @@ export default function CollegeAContent(props) {
               <Form.Item label={T.name} name="name">
                 <Input placeholder="Nama kampus" />
               </Form.Item>
-              <Form.Item label={T.desc} name="description">
-                <Input.TextArea rows={3} placeholder="Deskripsi" />
+              <Form.Item
+                label={T.desc}
+                name="description"
+                valuePropName="value"
+                getValueFromEvent={normalizeRichText}
+                initialValue=""
+              >
+                <HtmlEditor
+                  className="college-desc-editor"
+                  variant="mini"
+                  placeholder="Perbarui deskripsi kampus..."
+                  minHeight={180}
+                />
               </Form.Item>
 
               <div
@@ -2018,9 +2086,15 @@ export default function CollegeAContent(props) {
               </div>
               <div>
                 <div style={styles.label}>{T.desc}</div>
-                <div style={{ ...styles.value, whiteSpace: "pre-wrap" }}>
-                  {stripTags(detailData?.description) || "—"}
-                </div>
+                <div
+                  style={styles.value}
+                  dangerouslySetInnerHTML={{
+                    __html:
+                      sanitizeDesc(
+                        detailData?.description || activeRow?.description || ""
+                      ) || "<em>—</em>",
+                  }}
+                />
               </div>
 
               <div

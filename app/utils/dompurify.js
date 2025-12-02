@@ -19,7 +19,7 @@ export function sanitizeHtml(html, options = {}) {
       "li",
       "p",
     ],
-    allowedAttrs = ["href", "title", "target", "rel"],
+    allowedAttrs = ["href", "title", "target", "rel", "class", "style", "align"],
   } = options || {};
 
   const decode = (s) => {

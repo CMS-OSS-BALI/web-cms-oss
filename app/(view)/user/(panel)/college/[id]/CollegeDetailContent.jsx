@@ -393,6 +393,13 @@ const globalCSS = `
   a.cd-cta-btn:focus { text-decoration: none !important; }
 `;
 
+// Quill alignment classes from admin rich text: preserve text-align on user view
+const quillAlignCSS = `
+  .ql-align-center { text-align: center; }
+  .ql-align-right { text-align: right; }
+  .ql-align-justify { text-align: justify; }
+`;
+
 const modalCSS = `
   .cd-modal-backdrop {
     position: fixed;
@@ -1045,6 +1052,7 @@ export default function CollegeDetailContent({
         ${facultyStyles.media}
         ${ctaStyles.media}
         ${globalCSS}
+        ${quillAlignCSS}
         ${modalCSS}
         ${hideAsideCSS}
       `}</style>
