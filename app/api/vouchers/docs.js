@@ -86,7 +86,7 @@
  *           enum: [FIXED, PERCENT]
  *         value:
  *           type: integer
- *           description: FIXED: rupiah >=0; PERCENT: 1..100.
+ *           description: FIXED (rupiah >=0); PERCENT (1..100).
  *         max_discount:
  *           type: integer
  *           nullable: true
@@ -167,7 +167,7 @@
  *       - in: query
  *         name: event_id
  *         schema: { type: string }
- *         description: Opsional untuk validasi publik: voucher harus cocok event.
+ *         description: Opsional untuk validasi publik (voucher harus cocok event).
  *       - in: query
  *         name: page
  *         schema: { type: integer, minimum: 1, default: 1 }
