@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/lib/swr/fetcher";
+import usePaginationQuerySync from "@/app/hooks/usePaginationQuerySync";
 
 // ---- defaults
 const DEFAULT_SORT = "created_at:desc";
@@ -107,6 +108,16 @@ export default function useNegaraViewModel() {
     isLoading: listLoading,
     mutate: mutateList,
   } = useSWR(listKey, fetcher);
+
+  usePaginationQuerySync({
+    page,
+    perPage,
+    setPage,
+    setPerPage,
+    hydrateFromQuery: true,
+  });
+
+  usePaginationQuerySync({ page, perPage });
 
   // normalize rows
   const negara = useMemo(() => {

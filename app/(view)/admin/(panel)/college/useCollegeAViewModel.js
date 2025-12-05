@@ -2,6 +2,7 @@
 
 import useSWR from "swr";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import usePaginationQuerySync from "@/app/hooks/usePaginationQuerySync";
 
 const DEFAULT_LOCALE = "id";
 const FALLBACK_FOR = (loc) =>
@@ -94,6 +95,15 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
     keepPreviousData: true,
     revalidateOnFocus: false,
   });
+
+  usePaginationQuerySync({
+    page,
+    perPage,
+    setPage,
+    setPerPage,
+    hydrateFromQuery: true,
+  });
+
   // pastikan revalidate saat param halaman/filter berubah
   useEffect(() => {
     mutate();
@@ -151,6 +161,7 @@ export default function useCollegeAViewModel({ locale = DEFAULT_LOCALE } = {}) {
   }, [data]);
 
   const totalPages =
+    data?.meta?.totalPages ??
     data?.totalPages ??
     (colleges.length < perPage && page > 1 ? page : undefined);
 

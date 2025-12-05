@@ -261,6 +261,8 @@ export async function GET(req) {
     // pastikan ada translation sesuai locales
     where.college_translate = { some: { locale: { in: locales } } };
 
+    const total = await prisma.college.count({ where });
+
     const rows = await prisma.college.findMany({
       where,
       orderBy: { created_at: "desc" },
@@ -296,7 +298,17 @@ export async function GET(req) {
     });
 
     const data = rows.map((r) => mapCollege(r, locale, fallback));
-    return NextResponse.json({ data });
+    return NextResponse.json({
+      data,
+      meta: {
+        page,
+        perPage,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / perPage)),
+        locale,
+        fallback,
+      },
+    });
   } catch (err) {
     console.error("GET /api/college error:", err);
     return NextResponse.json(

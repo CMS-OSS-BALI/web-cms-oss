@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/lib/swr/fetcher";
+import usePaginationQuerySync from "@/app/hooks/usePaginationQuerySync";
 
 const DEFAULT_LOCALE = "id";
 const DEFAULT_FALLBACK = "id";
@@ -109,6 +110,14 @@ export default function useKotaViewModel(initial = {}) {
   } = useSWR(listKey, fetcher, {
     keepPreviousData: true,
     revalidateOnFocus: false,
+  });
+
+  usePaginationQuerySync({
+    page,
+    perPage,
+    setPage,
+    setPerPage,
+    hydrateFromQuery: true,
   });
 
   // normalize rows

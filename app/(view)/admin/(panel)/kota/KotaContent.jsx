@@ -211,14 +211,17 @@ export default function KotaContent({ vm, initialLocale = "id" }) {
   const [searchValue, setSearchValue] = useState(viewModel.q || "");
   useEffect(() => setSearchValue(viewModel.q || ""), [viewModel.q]);
 
+  const applySearch = viewModel.setQ;
+
   // debounce search
   useEffect(() => {
+    if (!applySearch) return undefined;
     const v = (searchValue || "").trim();
     const t = setTimeout(() => {
-      viewModel.setQ?.(v); // setter di VM auto setPage(1)
+      applySearch(v); // setter di VM auto setPage(1)
     }, 400);
     return () => clearTimeout(t);
-  }, [searchValue, viewModel]); // eslint-disable-line
+  }, [searchValue, applySearch]);
 
   // negara options (remote)
   const [negaraOptions, setNegaraOptions] = useState([]);

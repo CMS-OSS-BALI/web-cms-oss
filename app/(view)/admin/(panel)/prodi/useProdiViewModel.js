@@ -2,6 +2,7 @@
 
 import useSWR from "swr";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import usePaginationQuerySync from "@/app/hooks/usePaginationQuerySync";
 
 const DEFAULT_LOCALE = "id";
 const FALLBACK_FOR = (loc) =>
@@ -98,6 +99,13 @@ export default function useProdiViewModel(initial = {}) {
   const { data, error, isLoading, mutate } = useSWR(key, jsonFetcher, {
     keepPreviousData: true,
     revalidateOnFocus: false,
+  });
+  usePaginationQuerySync({
+    page,
+    perPage,
+    setPage,
+    setPerPage,
+    hydrateFromQuery: true,
   });
   // revalidate setiap parameter key (page/filter/sort) berubah
   useEffect(() => {
