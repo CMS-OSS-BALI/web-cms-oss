@@ -49,6 +49,15 @@ export async function middleware(req) {
   const { pathname, searchParams } = req.nextUrl;
   const search = req.nextUrl.search || "";
 
+  // Enforce HTTPS in production (SEO-friendly 301) before hitting any routes
+  const proto = req.headers.get("x-forwarded-proto") || req.nextUrl.protocol;
+  const isHttp = proto === "http" || proto === "http:";
+  if (process.env.NODE_ENV === "production" && isHttp) {
+    const httpsUrl = new URL(req.url);
+    httpsUrl.protocol = "https:";
+    return NextResponse.redirect(httpsUrl, 301);
+  }
+
   const isAdminPage = pathname.startsWith("/admin");
   const isAdminApi = pathname.startsWith("/api/admin");
   const isApi = pathname.startsWith("/api");

@@ -45,13 +45,6 @@ const fmtDateLong = (iso, locale) => {
   }
 };
 
-function makeFallbackStart() {
-  const d = new Date();
-  d.setDate(d.getDate() + 30);
-  d.setHours(9, 0, 0, 0);
-  return d.toISOString();
-}
-
 /** Ambil target countdown:
     - start_at terdekat di masa depan
     - jika tidak ada, end_at terdekat dari event yang sedang berlangsung */
@@ -80,16 +73,22 @@ function pickNearestFutureStart(rows = []) {
   }
   if (nearestStart) return new Date(nearestStart).toISOString();
   if (nearestOngoingEnd) return new Date(nearestOngoingEnd).toISOString();
-  return makeFallbackStart();
+  return null;
 }
 
 function useCountdown(startAtISO) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
+    const target = startAtISO ? new Date(startAtISO).getTime() : NaN;
+    if (!Number.isFinite(target)) return undefined;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, []);
-  const target = new Date(startAtISO).getTime();
+  }, [startAtISO]);
+
+  const target = startAtISO ? new Date(startAtISO).getTime() : NaN;
+  if (!Number.isFinite(target)) {
+    return { days: 0, hours: 0, minutes: 0, seconds: 0, finished: true };
+  }
   const diff = Math.max(0, target - now);
 
   const days = Math.floor(diff / (24 * 60 * 60 * 1000));
@@ -163,6 +162,9 @@ export default function useEventsUViewModel({ locale = "id" } = {}) {
     // STUDENT map
     const studentEvents = rows.map((e) => {
       const isFree = String(e.pricing_type).toUpperCase() === "FREE";
+      const eventName = e.title || t(locale, "event ini", "this event");
+      const eventNameShort =
+        eventName.length > 60 ? `${eventName.slice(0, 57)}...` : eventName;
       const priceText = isFree
         ? t(locale, "FREE untuk masuk", "FREE for entry")
         : fmtIDR(e.ticket_price);
@@ -177,8 +179,16 @@ export default function useEventsUViewModel({ locale = "id" } = {}) {
         dateLabel: t(locale, "Tanggal", "Date"),
         dateLong: fmtDateLong(e.start_at, locale),
         ctaText: isFree
-          ? t(locale, "Ambil tiketmu", "Get Ticket")
-          : t(locale, "Beli tiket", "Buy Ticket"),
+          ? t(
+              locale,
+              `Ambil tiket ${eventNameShort}`,
+              `Get tickets for ${eventNameShort}`
+            )
+          : t(
+              locale,
+              `Beli tiket ${eventNameShort}`,
+              `Buy tickets for ${eventNameShort}`
+            ),
         ctaHref: `/user/events/${e.id}`,
         poster: e.banner_url || FALLBACK_POSTER,
       };
@@ -187,29 +197,38 @@ export default function useEventsUViewModel({ locale = "id" } = {}) {
     // REP map (hanya event yang punya booth)
     const repEvents = rows
       .filter((e) => e.booth_quota != null && Number(e.booth_quota) > 0)
-      .map((e) => ({
-        id: `${e.id}-rep`,
-        barTitle: repBarTitle,
-        title: e.title || "(no title)",
-        desc:
-          stripHtml(e.description || "").slice(0, 260) ||
-          t(
+      .map((e) => {
+        const eventName = e.title || t(locale, "event ini", "this event");
+        const eventNameShort =
+          eventName.length > 60 ? `${eventName.slice(0, 57)}...` : eventName;
+        return {
+          id: `${e.id}-rep`,
+          barTitle: repBarTitle,
+          title: e.title || "(no title)",
+          desc:
+            stripHtml(e.description || "").slice(0, 260) ||
+            t(
+              locale,
+              "Buka booth Anda, perluas jaringan, dan temui calon mahasiswa berkualitas.",
+              "Open your booth, expand your network, and meet quality students."
+            ),
+          location: e.location || "-",
+          price:
+            e.booth_quota != null && Number(e.booth_quota) > 0
+              ? fmtIDR(e.booth_price || 0)
+              : t(locale, "Hubungi kami", "Contact us"),
+          priceLabel: t(locale, "Biaya Booth", "Booth Fee"),
+          dateLabel: t(locale, "Tanggal", "Date"),
+          dateLong: fmtDateLong(e.start_at, locale),
+          ctaText: t(
             locale,
-            "Buka booth Anda, perluas jaringan, dan temui calon mahasiswa berkualitas.",
-            "Open your booth, expand your network, and meet quality students."
+            `Booking booth ${eventNameShort}`,
+            `Book a booth for ${eventNameShort}`
           ),
-        location: e.location || "-",
-        price:
-          e.booth_quota != null && Number(e.booth_quota) > 0
-            ? fmtIDR(e.booth_price || 0)
-            : t(locale, "Hubungi kami", "Contact us"),
-        priceLabel: t(locale, "Biaya Booth", "Booth Fee"),
-        dateLabel: t(locale, "Tanggal", "Date"),
-        dateLong: fmtDateLong(e.start_at, locale),
-        ctaText: t(locale, "Booking Booth", "Book a Booth"),
-        ctaHref: `/user/events/${e.id}#booth`,
-        poster: e.banner_url || FALLBACK_POSTER,
-      }));
+          ctaHref: `/user/events/${e.id}#booth`,
+          poster: e.banner_url || FALLBACK_POSTER,
+        };
+      });
 
     /* ===== WHY (copywriting disesuaikan) ===== */
     const why2Title = t(

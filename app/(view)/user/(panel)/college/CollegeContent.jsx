@@ -757,20 +757,30 @@ export default function CollegeContent({
                   </div>
 
                   <div className="uni-footer" style={styles.uni.footer}>
-                    <a
-                      href={u.href || "#"}
-                      style={styles.uni.viewMore}
-                      onMouseEnter={(e) =>
-                        (e.currentTarget.style.boxShadow =
-                          "0 10px 24px rgba(15,23,42,.16)")
-                      }
-                      onMouseLeave={(e) =>
-                        (e.currentTarget.style.boxShadow =
-                          "0 6px 16px rgba(15,23,42,.10)")
-                      }
-                    >
-                      {locale === "en" ? "View More" : "Selengkapnya"}
-                    </a>
+                    {(() => {
+                      const uniName = u.name || (locale === "en" ? "this campus" : "kampus ini");
+                      const label =
+                        locale === "en"
+                          ? `Explore ${uniName}`
+                          : `Lihat detail ${uniName}`;
+                      return (
+                        <a
+                          href={u.href || "#"}
+                          style={styles.uni.viewMore}
+                          aria-label={label}
+                          onMouseEnter={(e) =>
+                            (e.currentTarget.style.boxShadow =
+                              "0 10px 24px rgba(15,23,42,.16)")
+                          }
+                          onMouseLeave={(e) =>
+                            (e.currentTarget.style.boxShadow =
+                              "0 6px 16px rgba(15,23,42,.10)")
+                          }
+                        >
+                          {label}
+                        </a>
+                      );
+                    })()}
                   </div>
                 </article>
               );
